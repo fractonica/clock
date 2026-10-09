@@ -1,0 +1,167 @@
+/* Clock face (SPEC §8-§10) – every class is prefixed face-. Colours come from the tokens in app.css. */
+
+.face-root {
+  min-width: 0;
+  /* unlit counter dots: >= 3:1 against the dark glass (--teal-dim is 2.5:1) */
+  --face-dot-off: #2b7d77;
+  --face-dot-off: color-mix(in srgb, var(--teal) 55%, #080c10);
+}
+.face-wrap { position: relative; flex: 1; min-height: 0; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+
+/* ---------- stage: the pill is sized by face.js to fit this box ---------- */
+.face-stage {
+  position: relative; flex: 1 1 auto; min-height: 0; border-radius: 12px;
+  background:
+    radial-gradient(70% 38% at 50% 28%, rgb(79 209 197 / 0.07), transparent 70%),
+    radial-gradient(70% 38% at 50% 74%, rgb(255 214 10 / 0.04), transparent 70%);
+}
+.face-svg {
+  position: absolute; left: 0; top: 0; width: 100%; height: 100%; display: block; overflow: visible;
+  user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent; cursor: default; outline: none;
+  filter: drop-shadow(0 12px 22px rgb(0 0 0 / 0.5));
+}
+.face-svg.is-over { cursor: pointer; }
+.face-svg text { font-family: var(--font-ui); user-select: none; -webkit-user-select: none; pointer-events: none; }
+
+/* device */
+.face-body { stroke: rgb(255 255 255 / 0.07); stroke-width: 0.8; }
+.face-well { fill: #000; }
+.face-glare { pointer-events: none; }
+.face-svg:focus-visible .face-body { stroke: var(--cursor); stroke-width: 1.6; }
+
+/* ---------- glyph ink: teal periods, gold solar sync ---------- */
+.face-glyph { fill: none; stroke: var(--teal); stroke-linecap: round; stroke-linejoin: round; }
+.face-glyph circle { fill: var(--teal); stroke: none; }
+.face-row--solar .face-glyph { stroke: var(--gold); }
+.face-row--solar .face-glyph circle { fill: var(--gold); }
+.face-ink { filter: drop-shadow(0 0 2.4px rgb(79 209 197 / 0.5)); }
+.face-row--solar .face-ink { filter: drop-shadow(0 0 2.4px rgb(255 214 10 / 0.42)); }
+
+/* rows: hover / selected / focus plates */
+.face-row { outline: none; cursor: pointer; }
+.face-plate { fill: transparent; stroke: transparent; stroke-width: 1; transition: fill 0.15s, stroke 0.15s; }
+.face-row.is-hover .face-plate { fill: rgb(255 255 255 / 0.045); }
+.face-row.is-selected .face-plate { fill: var(--face-fill, rgb(79 209 197 / 0.07)); stroke: var(--face-line, rgb(79 209 197 / 0.3)); }
+.face-row.is-selected.is-hover .face-plate { fill: var(--face-fill); }
+.face-row:focus-visible .face-plate { stroke: var(--cursor); stroke-width: 1.6; fill: rgb(138 180 255 / 0.08); }
+
+/* tap regions: a wash that fades towards the boundary, a pulse when pressed, a red one when refused */
+.face-hover, .face-pulse, .face-block { opacity: 0; pointer-events: none; transition: opacity 0.18s; }
+.face-hover.is-hover { opacity: 1; }
+.face-pulse, .face-block { transition: none; }
+.face-chevron { fill: none; stroke: var(--ink-3); stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; opacity: 0; transition: opacity 0.15s; pointer-events: none; }
+.face-chevron.is-hover { opacity: 0.75; }
+
+/* sibling counters */
+.face-dot { fill: none; stroke: var(--face-dot-off); stroke-width: 1.2; pointer-events: none; transition: fill 0.2s, stroke 0.2s; }
+.face-dot.is-lit { fill: var(--teal); stroke: var(--teal); }
+.face-dot.is-now { filter: drop-shadow(0 0 3px rgb(79 209 197 / 0.85)); }
+
+/* ---------- letters and info labels (share the gaps; info replaces letters) ---------- */
+.face-overlay { opacity: 0; transition: opacity 0.2s ease; pointer-events: none; }
+.face-svg[data-overlay="letters"] .face-letters,
+.face-svg[data-overlay="info"] .face-info { opacity: 1; }
+.face-letter { font-size: 27px; font-weight: 500; fill: var(--teal); dominant-baseline: central; }
+.face-letter-depth { font: 500 10px var(--font-mono); fill: var(--ink-3); dominant-baseline: central; }
+.face-cap { font-size: 10px; font-weight: 600; letter-spacing: 0.1em; fill: var(--ink-3); dominant-baseline: central; }
+.face-val { font-family: var(--font-mono) !important; font-size: 12.5px; font-variant-numeric: tabular-nums; dominant-baseline: central; }
+.face-val--teal { fill: var(--teal); }
+.face-val--gold { fill: var(--gold); }
+.face-val--gold-dim { fill: #c9aa12; }
+
+/* before the first reading nothing is drawn: no plausible but wrong time */
+.face-svg.is-pending .face-ink, .face-svg.is-pending .face-counter { opacity: 0; }
+
+/* solar sync not defined next to the catalogue ends: one message instead of dashes under a second caption */
+.face-na { display: none; }
+.face-svg.is-solar-na .face-na { display: block; }
+.face-svg.is-solar-na .face-info-sol { display: none; }
+.face-row--solar.is-na .face-ink { display: none; }
+
+/* out of catalogue */
+.face-oor { display: none; }
+.face-svg.is-oor .face-oor { display: block; }
+.face-svg.is-oor .face-row, .face-svg.is-oor .face-overlay, .face-svg.is-oor .face-regions, .face-svg.is-oor .face-na { display: none; }
+.face-svg.is-oor .face-glass { opacity: 0.55; }
+.face-oor-t { font-size: 13px; font-weight: 500; fill: var(--ink-2); dominant-baseline: central; }
+.face-oor-r { font: 11px var(--font-mono); fill: var(--ink-3); dominant-baseline: central; }
+
+/* ---------- below the pill ---------- */
+.face-caption, .face-controls, .face-foot { width: 100%; max-width: 360px; margin-inline: auto; }
+.face-caption { min-height: 16px; font-size: 11px; line-height: 16px; text-align: center; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.face-controls { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+.face-btn { flex-direction: column; gap: 3px; height: 46px; padding: 0 2px; font-size: 11px; line-height: 1.1; color: var(--ink-2); border-radius: 12px; }
+.face-btn:hover { color: var(--ink); }
+.face-btn svg { width: 16px; height: 16px; }
+.face-btn[aria-disabled="true"] { opacity: 0.4; }
+.face-btn[aria-disabled="true"]:hover { background: var(--panel-2); border-color: var(--line-2); color: var(--ink-2); }
+.face-btn[aria-pressed="true"] { color: var(--teal); }
+.face-aa { font: 600 14px/16px var(--font-ui); letter-spacing: -0.02em; }
+.face-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 28px; }
+.face-help svg { width: 14px; height: 14px; }
+.face-depths { font-size: 12px; white-space: nowrap; }
+.face-depths.dim { color: var(--ink-2); } /* --ink-3 is 4.2:1 on the card, below AA for 12 px text */
+
+/* ---------- how-to popover ---------- */
+.face-pop {
+  position: absolute; left: 0; right: 0; bottom: 38px; z-index: 6; max-height: calc(100% - 46px); overflow: auto;
+  background: linear-gradient(180deg, rgb(24 32 42 / 0.98), rgb(14 20 27 / 0.98)); border-color: var(--line-2);
+  box-shadow: 0 18px 44px rgb(0 0 0 / 0.6); outline: none; animation: face-pop-in 0.16s ease-out;
+}
+.face-pop-close { margin-right: -4px; }
+.face-minis { display: flex; justify-content: space-around; padding: 2px 0 12px; }
+.face-mini { margin: 0; text-align: center; }
+.face-mini-svg { width: 36px; height: 64px; display: block; margin: 0 auto 4px; }
+.face-mini figcaption { display: flex; flex-direction: column; gap: 1px; font-size: 11px; color: var(--ink-2); }
+.face-mini figcaption b { font-weight: 600; color: var(--ink); }
+.face-pop-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; font-size: 12.5px; line-height: 1.4; color: var(--ink-2); }
+.face-pop-list li { position: relative; padding-left: 14px; }
+.face-pop-list li::before { content: ""; position: absolute; left: 0; top: 0.5em; width: 7px; height: 7px; border-radius: 50%; background: var(--teal); }
+.face-pop-list li.face-pop-gold::before { background: var(--gold); }
+.face-pop-list li.face-pop-dot::before { background: transparent; border: 1.5px solid var(--teal); }
+.face-pop-list li.face-pop-count::before { background: transparent; border: 1.5px solid var(--face-dot-off); box-shadow: 0 0 0 2px var(--panel-2) inset; }
+.face-pop-list b { color: var(--ink); font-weight: 600; }
+.face-pop-keys { margin: 10px 0 0; font-size: 11px; line-height: 1.7; }
+.face-pop-keys .kbd { margin: 0 2px; }
+@keyframes face-pop-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+/* ---------- tooltip (shared .tip look) ---------- */
+.face-tip { min-width: 210px; max-width: 290px; }
+.face-tip-h { display: flex; align-items: baseline; flex-wrap: wrap; gap: 2px 8px; margin-bottom: 4px; }
+.face-tip-h b { font-size: 13px; }
+.face-tip-sw { width: 8px; height: 8px; border-radius: 50%; flex: none; align-self: center; background: var(--teal); }
+.face-tip-l { color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.face-tip-b:empty { display: none; }
+.face-tip-hint { margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--line); font-size: 11px; }
+
+/* touch: the footer button and the popover's close button reach 40 px (the main buttons are 46) */
+@media (pointer: coarse) {
+  .face-foot { min-height: 40px; }
+  .face-help, .face-pop-close { min-height: 40px; }
+  .face-pop-close { min-width: 40px; }
+}
+
+/* short desktop windows: give the pill the height (the card is as high as the viewport allows) */
+@media (min-width: 861px) and (max-height: 760px) {
+  .face-wrap { gap: 5px; }
+  .face-btn { height: 38px; gap: 1px; }
+  .face-caption { min-height: 14px; line-height: 14px; }
+  .face-foot { min-height: 26px; }
+}
+
+/* ---------- small screens: the card sizes itself, so the stage needs a height ---------- */
+@media (max-width: 860px) {
+  .face-wrap { flex: none; }
+  .face-stage { flex: none; height: min(540px, 74vh); height: clamp(400px, 74svh, 560px); }
+}
+
+/* landscape phones: the whole pill has to fit between the bars (the stage is not a 400 px minimum there) */
+@media (max-width: 860px) and (max-height: 520px) {
+  .face-stage { height: clamp(240px, calc(100svh - 150px), 400px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .face-overlay, .face-plate, .face-hover, .face-chevron, .face-dot, .face-btn, .face-help { transition: none; }
+  .face-pop { animation: none; }
+}

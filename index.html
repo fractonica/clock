@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#07090d">
+  <title>Fractonica Clock</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='-3 -3 6 12'%3E%3Cg fill='none' stroke='%234FD1C5' stroke-width='.5' stroke-linecap='round'%3E%3Cpath d='M0 0V6M0 0C0 0 0 1 1 1C2 1 2 0 2 0M-1 3H1'/%3E%3C/g%3E%3C/svg%3E">
+  <link rel="stylesheet" href="src/styles/app.css">
+  <link rel="stylesheet" href="src/styles/face.css">
+  <link rel="stylesheet" href="src/styles/rings.css">
+  <link rel="stylesheet" href="src/styles/ladder.css">
+  <link rel="stylesheet" href="src/styles/timeline.css">
+  <link rel="stylesheet" href="src/styles/wave.css">
+  <link rel="stylesheet" href="src/styles/calendar.css">
+  <link rel="stylesheet" href="src/styles/sound.css">
+  <script src="fractonica.js"></script>
+  <script type="module" src="src/main.js"></script>
+</head>
+<body>
+  <div class="app" id="app">
+    <header class="topbar" id="topbar">
+      <div class="brand">
+        <svg class="brand-mark" viewBox="-3 -3 6 12" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width=".42" stroke-linecap="round"><path d="M0 0V9M0 0C0 0 0 1 1 1C2 1 2 0 2 0M0 3C0 3 0 2 -1 2C-2 2 -2 3 -2 3M-1 6H1"/></g></svg>
+        <div class="brand-text"><b>Fractonica</b><small>Saros 141 clock</small></div>
+      </div>
+
+      <div class="readout" id="readout" aria-label="Displayed time">
+        <div class="readout-time mono" id="ro-time">--:--:--</div>
+        <div class="readout-sub">
+          <span id="ro-date">—</span>
+          <span id="ro-tz" class="dim"></span>
+          <span id="ro-pos" class="dim mono"></span>
+        </div>
+      </div>
+
+      <i class="topbar-br b1" aria-hidden="true"></i>
+      <i class="topbar-br b2" aria-hidden="true"></i>
+      <div class="jump" id="slot-jump" aria-label="Jump to a time"></div>
+
+      <div class="transport" id="transport" role="group" aria-label="Time travel">
+        <button class="btn btn-icon" id="tp-prev" type="button" title="Previous cycle of the selected depth ([)" aria-label="Previous cycle"></button>
+        <button class="btn btn-icon" id="tp-play" type="button" title="Play / pause time-lapse (Space)" aria-label="Play or pause"></button>
+        <button class="btn btn-icon" id="tp-next" type="button" title="Next cycle of the selected depth (])" aria-label="Next cycle"></button>
+        <select class="select" id="tp-rate" title="Time-lapse speed" aria-label="Time-lapse speed"></select>
+        <button class="btn pill" id="tp-live" type="button" title="Return to the device clock (N)"></button>
+      </div>
+
+      <div class="tools">
+        <select class="select" id="zone" title="Time zone for Gregorian display" aria-label="Time zone"></select>
+        <button class="btn btn-icon" id="btn-link" type="button" title="Copy a link to this moment" aria-label="Copy link"></button>
+        <button class="btn btn-icon" id="btn-sound" type="button" title="Sound on / off (M)" aria-label="Sound" aria-pressed="false"></button>
+      </div>
+    </header>
+
+    <main class="shell">
+      <section class="card slot-face" id="slot-face" aria-label="Clock face"></section>
+
+      <section class="main" aria-label="Views">
+        <nav class="tabs" id="tabs" role="tablist" aria-label="Views"></nav>
+        <div class="views" id="views">
+          <div class="view" id="view-rings" role="tabpanel" hidden></div>
+          <div class="view" id="view-timeline" role="tabpanel" hidden></div>
+          <div class="view" id="view-wave" role="tabpanel" hidden></div>
+          <div class="view" id="view-calendar" role="tabpanel" hidden></div>
+          <div class="view" id="view-sound" role="tabpanel" hidden></div>
+        </div>
+      </section>
+
+      <aside class="side" aria-label="Cycle overview">
+        <section class="card" id="slot-upnext"></section>
+        <section class="card" id="slot-ladder"></section>
+      </aside>
+    </main>
+
+    <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+  </div>
+</body>
+</html>

@@ -1,0 +1,12 @@
+{
+  "name": "fractonica-clock",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Web app for the Fractonica eclipse-anchored harmonic clock (SPEC.md) built on fractonica.js",
+  "scripts": {
+    "start": "python3 -m http.server 5199",
+    "test": "node --test",
+    "check": "node tools/run-checks.mjs"
+  }
+}

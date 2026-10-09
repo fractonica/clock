@@ -1,0 +1,407 @@
+/* rings – owned by the rings module. Prefix: rings- */
+
+.rings {
+  --rings-accent: var(--lv-6);
+  --rings-accent-soft: rgb(79 209 197 / 0.16);
+  /* small captions: 5.4:1 on the cards (the shared --ink-3 is just under 4.5:1 at these sizes) */
+  --rings-dim: #8493a3;
+  container: rings / inline-size;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  flex: 1;
+}
+
+/* ---------- toolbar ---------- */
+.rings-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  min-height: 34px;
+}
+.rings-range { display: inline-flex; align-items: center; gap: 8px; }
+.rings-tb-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--rings-dim);
+}
+.rings-tb-sep { color: var(--rings-dim); font-size: 12px; }
+.rings-step {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.rings-step .btn {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  border-radius: 7px;
+  color: var(--ink-2);
+}
+.rings-step .btn:hover { background: var(--panel-3); color: var(--ink); }
+.rings-step .btn svg { width: 14px; height: 14px; }
+.rings-step-val {
+  min-width: 46px;
+  text-align: center;
+  font-size: 12.5px;
+  color: var(--ink);
+}
+.rings-toggles button { font-size: 12px; }
+.rings-offdial {
+  max-width: 100%;
+  color: var(--rings-accent);
+  border-color: var(--rings-accent);
+  background: var(--rings-accent-soft);
+}
+.rings-help-btn { gap: 6px; }
+.rings-help-btn svg { width: 14px; height: 14px; }
+.rings-hint { color: var(--rings-dim); margin-left: auto; font-size: 12px; white-space: nowrap; }
+.rings-hint-mouse { display: inline-flex; align-items: center; gap: 4px; }
+.rings-hint-touch { display: none; }
+/* no hover and no keyboard arrows on a touch screen: say what the fingers do */
+@media (hover: none) {
+  .rings-hint-mouse { display: none; }
+  .rings-hint-touch { display: inline; }
+}
+
+/* ---------- legend ---------- */
+.rings-help { padding: 12px 16px 14px; }
+.rings-help dl {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 12px 22px;
+  margin: 0;
+}
+.rings-help dt {
+  font-size: 10.5px;
+  font-weight: 650;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--teal);
+  margin-bottom: 2px;
+}
+.rings-help dd { margin: 0; font-size: 12.5px; line-height: 1.55; color: var(--ink-2); }
+.rings-help dd b { color: var(--ink); font-weight: 600; }
+
+/* ---------- layout ---------- */
+.rings-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  min-width: 0;
+}
+.rings-stage { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.rings-side { min-width: 0; }
+
+/* two columns only when the dial column stays at least as big as the dial of the single column (about 670 px) */
+@container rings (min-width: 1120px) {
+  .rings-body { grid-template-columns: minmax(0, 1fr) minmax(340px, 420px); }
+  .rings-side { position: sticky; top: calc(var(--topbar-h) + var(--gap)); }
+}
+@container rings (max-width: 800px) {
+  .rings-hint { display: none; }
+}
+@container rings (max-width: 460px) {
+  .rings-toolbar { gap: 8px 10px; }
+  .rings-range { gap: 5px; }
+  .rings-step-val { min-width: 40px; }
+}
+
+/* ---------- the dial ---------- */
+.rings-dialcard { padding: 8px; display: grid; place-items: center; }
+.rings-dialwrap {
+  position: relative;
+  width: min(100%, 740px, max(320px, calc(100vh - 230px)));
+  aspect-ratio: 1 / 1;
+  border-radius: 50%;
+  outline-offset: 3px;
+}
+.rings-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  touch-action: manipulation;
+  /* tap and hold shows the tooltip: no text selection, no callout over it */
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+/* static layers: below / above the live canvas, never in the way of the pointer */
+.rings-layer-base,
+.rings-layer-over { pointer-events: none; }
+
+/* ---------- centre read-out (scales with the hole radius --rings-rh) ---------- */
+.rings-centre {
+  --rh: var(--rings-rh, 120px);
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: calc(var(--rh) * 1.5);
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: calc(var(--rh) * 0.035);
+  text-align: center;
+  pointer-events: none;
+}
+.rings-centre button,
+.rings-centre .rings-chips { pointer-events: auto; }
+
+.rings-cn { display: flex; flex-direction: column; align-items: center; gap: calc(var(--rh) * 0.03); }
+.rings-cn-name {
+  font-size: clamp(10.5px, calc(var(--rh) * 0.095), 16px);
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  color: var(--rings-accent);
+  white-space: nowrap;
+}
+.rings-cn-phase {
+  font-size: clamp(10px, calc(var(--rh) * 0.078), 13px);
+  line-height: 1.5;
+  padding: 0 calc(var(--rh) * 0.06);
+  border-radius: 999px;
+  background: var(--rings-accent-soft);
+  color: var(--ink);
+  white-space: nowrap;
+  min-height: 1.5em;
+}
+.rings-cn-phase:empty { display: none; }
+.rings-eyebrow {
+  margin-top: calc(var(--rh) * 0.03);
+  font-size: clamp(9px, calc(var(--rh) * 0.062), 11px);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--rings-dim);
+  white-space: nowrap;
+}
+.rings-count {
+  font-family: var(--font-ui);
+  font-size: clamp(19px, calc(var(--rh) * 0.2), 42px);
+  font-weight: 650;
+  line-height: 1.05;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.rings-more {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: calc(var(--rh) * 0.05);
+  width: 100%;
+}
+.rings-end {
+  font-size: clamp(10px, calc(var(--rh) * 0.075), 12.5px);
+  color: var(--ink-2);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.rings-chips {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  width: 100%;
+}
+.rings-chip {
+  appearance: none;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: baseline;
+  column-gap: 6px;
+  row-gap: 1px;
+  padding: 3px calc(var(--rh) * 0.045) 4px;
+  min-width: 0;
+  line-height: 1.25;
+  text-align: left;
+  color: var(--ink-2);
+  background: rgb(255 255 255 / 0.03);
+  border: 1px solid var(--line-2);
+  border-radius: 9px;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+}
+.rings-chip:hover { background: rgb(255 255 255 / 0.07); border-color: #3a4d62; }
+.rings-chip[disabled] { cursor: default; opacity: 0.4; pointer-events: none; }
+.rings-chip-name {
+  font-size: clamp(8px, calc(var(--rh) * 0.063), 9.5px);
+  font-weight: 650;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--rings-dim);
+}
+.rings-chip-in { font-size: clamp(8.5px, calc(var(--rh) * 0.066), 10px); color: var(--rings-accent); text-align: right; white-space: nowrap; }
+/* date and time are separate spans: they share a line while they fit and wrap otherwise, nothing is ellipsised */
+.rings-chip-time { grid-column: 1 / -1; display: flex; flex-wrap: wrap; column-gap: 0.5em; font-size: clamp(8.5px, calc(var(--rh) * 0.07), 10.5px); color: var(--ink-2); }
+.rings-chip-time > span { white-space: nowrap; }
+/* passed: quieter box and a struck-through time, but text that stays readable (no opacity) */
+.rings-chip.is-passed { background: transparent; border-color: var(--line); }
+.rings-chip.is-passed .rings-chip-time { color: var(--rings-dim); text-decoration: line-through; text-decoration-color: var(--rings-dim); }
+.rings-chip.is-next {
+  color: var(--ink);
+  border-color: var(--rings-accent);
+  background: var(--rings-accent-soft);
+}
+.rings-chip.is-next .rings-chip-name { color: var(--rings-accent); }
+.rings-chip.is-next .rings-chip-time { color: var(--ink); }
+
+/* the row sits near the bottom of the hole, where its corners are the part that reaches furthest from the centre */
+.rings-btns { display: flex; gap: 4px; justify-content: center; align-items: center; width: 100%; max-width: calc(var(--rh) * 1.08); }
+.rings-btns .btn { height: 26px; padding: 0 8px; font-size: 11.5px; border-radius: 8px; }
+.rings-btns .btn svg { width: 14px; height: 14px; }
+.rings-b-thr { flex: 1 1 auto; min-width: 0; max-width: 150px; padding: 0 6px; }
+.rings-b-text { font-size: 11px; }
+
+.rings.is-out .rings-cn-name { color: var(--ink-2); }
+
+/* compact dials: the extras live in a card below the dial */
+.rings-detail {
+  padding: 10px 12px 12px;
+  --rh: 130px;
+}
+.rings-detail .rings-more { gap: 10px; align-items: stretch; --rh: 130px; }
+.rings-detail .rings-end { font-size: 12.5px; text-align: center; }
+.rings-detail .rings-chips { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+.rings-detail .rings-chip { padding: 5px 8px 6px; }
+.rings-detail .rings-chip-name { font-size: 9.5px; }
+.rings-detail .rings-chip-in { font-size: 10.5px; }
+.rings-detail .rings-chip-time { font-size: 10.5px; }
+.rings-detail .rings-btns .btn { height: 32px; font-size: 12.5px; }
+.rings-detail .rings-btns { gap: 6px; max-width: none; }
+/* four chips need about 120 px each for "valley 56 min 12 s": below that they go two by two */
+@container rings (max-width: 640px) {
+  .rings-detail .rings-chips { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+/* ring picker: a real button per ring where the rings themselves are too thin to hit or to read */
+.rings-picker { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin-bottom: 10px; }
+.rings-pick {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-width: 52px;
+  height: 36px;
+  padding: 0 10px;
+  font: 600 13px var(--font-ui);
+  color: var(--ink-2);
+  background: rgb(255 255 255 / 0.03);
+  border: 1px solid var(--line-2);
+  border-radius: 10px;
+  cursor: pointer;
+}
+.rings-pick i { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--c); }
+.rings-pick .mono { font-size: 11.5px; color: var(--rings-dim); }
+.rings-pick:hover { background: rgb(255 255 255 / 0.07); }
+.rings-pick[aria-pressed="true"] {
+  color: var(--ink);
+  border-color: var(--c);
+  background: rgb(255 255 255 / 0.08);
+  background: color-mix(in srgb, var(--c) 20%, transparent);
+}
+.rings-pick[aria-pressed="true"] .mono { color: var(--ink-2); }
+
+/* a selected cycle too fast to follow: its digits are refreshed at 4 Hz, so keep them quiet */
+.rings.is-fast .rings-cn,
+.rings.is-fast .rings-count,
+.rings.is-fast .rings-wh-pct { opacity: 0.55; }
+
+/* ---------- waveform inset ---------- */
+.rings-inset-chip { color: var(--ink); }
+.rings-wavehead { display: flex; align-items: center; gap: 12px; margin-bottom: 6px; min-height: 46px; }
+.rings-glyph { flex: none; width: 24px; height: 44px; display: grid; place-items: center; }
+.rings-glyph svg { display: block; width: 100%; height: 100%; }
+.rings-wh-text { flex: 1; min-width: 0; }
+.rings-wh-name { font-size: 15px; font-weight: 650; color: var(--rings-accent); white-space: nowrap; }
+.rings-wh-sub { font-size: 12px; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rings-wh-pctbox { flex: none; display: flex; flex-direction: column; align-items: flex-end; gap: 1px; }
+.rings-wh-pct { font-size: 22px; font-weight: 650; letter-spacing: -0.01em; line-height: 1.15; color: var(--ink); white-space: nowrap; }
+.rings-wh-pctl { font-size: 10.5px; line-height: 1.2; color: var(--rings-dim); white-space: nowrap; min-height: 1.2em; }
+.rings-wavebox { position: relative; height: 222px; }
+.rings-wave,
+.rings-wave-base {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: 10px;
+}
+.rings-wave { touch-action: pan-y; user-select: none; -webkit-user-select: none; }
+.rings-wave-base { pointer-events: none; }
+.rings-wave-in {
+  position: absolute;
+  pointer-events: none;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 12px;
+  white-space: nowrap;
+  color: var(--rings-accent);
+}
+.rings-wave-hint { margin: 6px 0 0; font-size: 11px; line-height: 1.6; color: var(--rings-dim); }
+.rings-facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 14px;
+  margin: 12px 0 0;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+  font-size: 12px;
+}
+.rings-facts > div { min-width: 0; }
+.rings-facts dt {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--rings-dim);
+  margin-bottom: 2px;
+}
+.rings-facts dd { margin: 0; display: flex; flex-direction: column; gap: 1px; color: var(--ink); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.rings-facts dd .dim { font-size: 11.5px; color: var(--rings-dim); }
+.rings-f-wide { grid-column: 1 / -1; }
+.rings-f-addr { flex-direction: row !important; flex-wrap: wrap; align-items: center; gap: 2px 4px !important; }
+.rings-addr { font: 600 11.5px var(--font-mono); color: var(--c, var(--ink)); white-space: nowrap; }
+.rings-addr-sep { color: var(--ink-3); }
+
+/* ---------- tooltip ---------- */
+.rings-tip { max-width: 300px; }
+.rings-tip-h { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+.rings-tip-h b { font-family: var(--font-mono); font-size: 12.5px; }
+.rings-tip-h .dim { font-size: 11px; }
+.rings-tip-row { font-size: 11.5px; line-height: 1.5; color: var(--ink); font-variant-numeric: tabular-nums; }
+.rings-tip-row.dim { color: var(--ink-3); }
+.rings-tip-sep { height: 1px; margin: 6px 0; background: var(--line-2); }
+.rings-tip-hint { margin-top: 6px; font-size: 11px; color: var(--teal); }
+
+@media (prefers-reduced-motion: reduce) {
+  .rings-chip { transition: none; }
+}
+
+/* fingers: 40 px targets in the toolbar and the centre controls */
+@media (pointer: coarse) {
+  .rings-step .btn { width: 40px; height: 40px; }
+  .rings-step-val { min-width: 36px; }
+  .rings-toggles button { min-height: 36px; }
+  .rings-help-btn,
+  .rings-offdial { height: 40px; }
+  .rings-pick { height: 40px; }
+  .rings-detail .rings-btns .btn { height: 44px; min-width: 44px; }
+  .rings-detail .rings-chip { min-height: 44px; }
+}

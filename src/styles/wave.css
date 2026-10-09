@@ -1,0 +1,189 @@
+/* wave – owned by the wave module (prefix wave-). Uses the tokens and shared classes of app.css. */
+
+.wave-card {
+  flex: 0 0 auto; display: flex; flex-direction: column; overflow: hidden;
+  --wave-ink-3: #7a8a9a; /* --ink-3 is 4.2:1 on the panel; small text here needs 4.5:1 */
+  --wave-hue: var(--lv-3);
+}
+.wave-card .dim { color: var(--wave-ink-3); }
+.wave-head { flex-wrap: wrap; row-gap: 6px; }
+.wave-sub { font-size: 12px; letter-spacing: 0.02em; }
+.wave-steps { display: inline-flex; gap: 6px; }
+.wave-steps .btn { gap: 4px; }
+.wave-steps .btn:first-child { padding: 0 11px 0 7px; }
+.wave-steps .btn:last-child { padding: 0 7px 0 11px; }
+
+/* ---------- focus-level control: one chip per depth, with that level's progress ---------- */
+.wave-ctl { display: flex; align-items: baseline; gap: 6px 14px; padding: 8px 14px 6px; min-width: 0; }
+.wave-lbl { flex: none; font-size: 11px; font-weight: 650; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-2); }
+.wave-hint { min-width: 0; font-size: 12px; line-height: 1.35; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wave-hint-touch { display: none; }
+@media (pointer: coarse) { .wave-hint-fine { display: none; } .wave-hint-touch { display: inline; } }
+.wave-levels {
+  display: flex; align-items: stretch; gap: 4px;
+  /* room above the chips for their focus ring (2 px offset + 2 px line), which the scrolling row would clip */
+  padding: 6px 14px 10px; overflow-x: auto; overscroll-behavior-x: contain;
+  scroll-snap-type: x proximity;
+}
+.wave-levels[data-more="right"] { -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 34px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 34px), transparent); }
+.wave-levels[data-more="left"] { -webkit-mask-image: linear-gradient(to left, #000 calc(100% - 34px), transparent); mask-image: linear-gradient(to left, #000 calc(100% - 34px), transparent); }
+.wave-levels[data-more="both"] { -webkit-mask-image: linear-gradient(to right, transparent, #000 34px, #000 calc(100% - 34px), transparent); mask-image: linear-gradient(to right, transparent, #000 34px, #000 calc(100% - 34px), transparent); }
+.wave-lv {
+  --c: var(--teal); --p: 0;
+  appearance: none; flex: 0 0 auto; position: relative; width: 42px; height: 52px; padding: 5px 0 10px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  border-radius: 10px; border: 1px solid var(--line); background: var(--bg-2); color: var(--ink-2);
+  cursor: pointer; scroll-snap-align: center;
+  transition: background .12s, border-color .12s, box-shadow .12s;
+}
+.wave-lv:hover { background: var(--panel-2); border-color: var(--line-2); }
+.wave-lv-g { font-size: 19px; line-height: 21px; color: var(--c); }
+.wave-lv-n { font: 600 10px/12px var(--font-mono); color: var(--wave-ink-3); }
+.wave-lv::after {
+  content: attr(data-crest); position: absolute; top: 3px; right: 5px;
+  font: 700 10px/1 var(--font-mono); color: var(--wave-ink-3);
+}
+.wave-lv-bar { position: absolute; left: 7px; right: 7px; bottom: 5px; height: 3px; border-radius: 2px; background: var(--line-2); overflow: hidden; }
+.wave-lv-bar b { display: block; width: 100%; height: 100%; background: var(--c); transform-origin: left center; transform: scaleX(var(--p)); }
+.wave-lv[aria-checked="true"] {
+  color: var(--ink);
+  background: color-mix(in srgb, var(--c) 15%, var(--panel-2));
+  border-color: color-mix(in srgb, var(--c) 62%, var(--line-2));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--c) 22%, transparent);
+}
+.wave-lv[aria-checked="true"] .wave-lv-n { color: var(--ink-2); }
+.wave-lv-all { width: 52px; }
+.wave-lv-all .wave-lv-g { color: var(--teal); font-size: 22px; }
+.wave-lv-all::after { content: none; }
+.wave-lv-sep { flex: 0 0 1px; margin: 6px 4px; background: var(--line); }
+
+/* ---------- read-out of the focused half-arc ---------- */
+.wave-read {
+  /* the card sits between the shell's side columns, so the layout follows the card's own width, not the window's */
+  container: waveread / inline-size;
+  padding: 11px 14px 12px; border-top: 1px solid var(--line); background: rgb(0 0 0 / 0.14);
+}
+.wave-read-grid { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) auto; gap: 8px 22px; align-items: center; }
+.wave-r-main { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.wave-r-badge {
+  --c: var(--teal); flex: none; width: 42px; height: 42px; display: grid; place-items: center;
+  font-size: 23px; line-height: 1; color: var(--c); border-radius: 12px;
+  background: color-mix(in srgb, var(--c) 14%, var(--bg-2));
+  border: 1px solid color-mix(in srgb, var(--c) 48%, var(--line));
+}
+.wave-r-txt { min-width: 0; }
+.wave-r-title { font-size: 14px; display: flex; flex-wrap: wrap; align-items: center; gap: 3px 6px; min-width: 0; }
+.wave-r-title b { font-weight: 650; flex: none; }
+/* the two numberings of the half-arc, one line each: its loop number inside the parent half-arc, and the cycle it belongs to */
+.wave-r-loop, .wave-r-cyc { margin-top: 2px; font-size: 12.5px; line-height: 1.4; }
+.wave-r-loop { color: var(--wave-ink-3); }
+.wave-r-cyc { color: var(--ink-2); }
+.wave-r-loop[hidden] { display: none; }
+.wave-r-sign {
+  display: inline-block; flex: none; padding: 0 8px; border-radius: 999px; font-size: 11px; line-height: 18px;
+  color: var(--ink-2); background: var(--panel-3); border: 1px solid var(--line-2);
+}
+.wave-r-fast { display: inline-block; flex: none; padding: 0 8px; border-radius: 999px; font-size: 11px; line-height: 18px; color: var(--gold); border: 1px solid var(--gold-dim); background: rgb(255 214 10 / 0.07); }
+/* a span that does not fit (a short arc across midnight, a clipped one) wraps at its arrow rather than losing its end */
+.wave-r-span { font-size: 12.5px; color: var(--ink-2); margin-top: 2px; overflow-wrap: break-word; }
+.wave-r-side { min-width: 0; display: flex; flex-direction: column; gap: 5px; }
+.wave-r-side { --wave-pw: 70px; } /* width of the number column: the labels beside the shares stay where they are while the digits change */
+.wave-r-pct { display: flex; align-items: baseline; gap: 8px; }
+.wave-r-pct b { flex: none; min-width: var(--wave-pw); font-size: 19px; line-height: 1; font-weight: 600; color: var(--ink); white-space: nowrap; }
+.wave-r-what { flex: none; font-size: 12px; white-space: nowrap; }
+.wave-r-bar { flex: 1; min-width: 28px; align-self: center; height: 5px; border-radius: 3px; background: var(--line-2); overflow: hidden; }
+/* the same progress through the whole cycle, the share every other view shows */
+.wave-r-pct2 { display: flex; align-items: baseline; gap: 8px; font-size: 12px; line-height: 1.3; color: var(--ink-2); white-space: nowrap; }
+.wave-r-pct2 b { flex: none; min-width: var(--wave-pw); font-weight: 600; color: var(--ink); }
+.wave-r-bar i { display: block; width: 100%; height: 100%; background: var(--teal); transform-origin: left center; transform: scaleX(0); }
+.wave-r-next { font-size: 12px; line-height: 1.5; color: var(--ink); min-width: 0; }
+.wave-r-n1, .wave-r-n2 { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wave-r-next .dim { margin-right: 2px; }
+.wave-r-glyph { min-width: 26px; display: flex; justify-content: flex-end; }
+.wave-r-glyph svg { display: block; height: 46px; width: auto; }
+.wave-r-oor { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; justify-content: space-between; }
+.wave-r-oor p { margin: 0; flex: 1 1 320px; color: var(--ink-2); font-size: 13px; }
+.wave-r-acts { display: flex; flex-wrap: wrap; gap: 8px; }
+
+/* ---------- stage ---------- */
+.wave-stage {
+  position: relative; flex: none; overflow: hidden;
+  /* tall enough to be the star of the page, short enough that it fits the window under the header and tabs */
+  height: clamp(420px, calc(100vh - 394px), 820px);
+  border-top: 1px solid var(--line); border-bottom: 1px solid var(--line);
+  background: radial-gradient(900px 520px at 50% 42%, rgb(79 209 197 / 0.055), transparent 70%), var(--bg-2);
+}
+/* pan-y: a finger on the empty part of the stage scrolls the page; where it lands on the arc, the touchstart handler keeps the page still */
+.wave-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: pan-y; }
+.wave-canvas:focus-visible { outline: 2px solid var(--cursor); outline-offset: -3px; border-radius: 0; }
+.wave-zoom { position: absolute; top: 10px; right: 10px; display: flex; flex-direction: column; gap: 6px; }
+.wave-zoom .btn { background: rgb(21 29 38 / 0.86); backdrop-filter: blur(6px); width: 32px; height: 32px; }
+/* a control that cannot act right now stays focusable and explains itself when pressed */
+.wave-card .btn[aria-disabled="true"] { opacity: 0.4; cursor: default; }
+.wave-card .btn[aria-disabled="true"]:hover { background: var(--panel-2); border-color: var(--line-2); }
+
+/* tooltip (shared .tip + our body) */
+.wave-tip { top: 0; left: 0; width: max-content; max-width: min(300px, calc(100vw - 24px)); will-change: transform; }
+.wave-tip-h { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+.wave-tip-h b { font-weight: 650; }
+.wave-tip-badge {
+  --c: var(--teal); display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 7px;
+  font-size: 14px; color: var(--c); background: color-mix(in srgb, var(--c) 16%, var(--bg-2));
+  border: 1px solid color-mix(in srgb, var(--c) 50%, var(--line));
+}
+.wave-tip-sign { margin-left: auto; font-size: 11px; color: var(--ink-2); padding: 0 7px; border-radius: 999px; background: var(--panel-3); border: 1px solid var(--line-2); }
+.wave-tip-r { font-size: 12px; line-height: 1.45; }
+.wave-tip-r.mono { font-size: 11.5px; }
+.wave-tip-g { display: flex; gap: 10px; align-items: center; margin-top: 7px; padding-top: 7px; border-top: 1px solid var(--line-2); font-size: 12px; line-height: 1.4; }
+.wave-tip-glyph svg { display: block; height: 38px; width: auto; }
+.wave-tip-a { margin-top: 7px; font-size: 11px; color: var(--ink-3); }
+
+/* ---------- caption and legend ---------- */
+.wave-foot { padding: 10px 14px 14px; display: flex; flex-direction: column; gap: 9px; }
+.wave-caption { margin: 0; max-width: 92ch; font-size: 12.5px; line-height: 1.5; color: var(--ink-2); }
+.wave-legend { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 12px; color: var(--wave-ink-3); }
+.wave-card[data-mode="all"] .wave-legend [data-for="focus"], .wave-card[data-mode="focus"] .wave-legend [data-for="all"] { display: none; }
+.wave-legend li { display: inline-flex; align-items: center; gap: 7px; }
+.wave-key { display: inline-block; flex: none; }
+.wave-key-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--wave-hue); box-shadow: 0 0 0 2px var(--bg-2), 0 0 0 3px var(--wave-hue); margin: 0 3px; }
+.wave-key-on { width: 22px; height: 3px; border-radius: 2px; background: var(--wave-hue); box-shadow: 0 0 8px var(--wave-hue); }
+.wave-key-off { width: 22px; height: 3px; border-radius: 2px; background: color-mix(in srgb, var(--wave-hue) 34%, transparent); }
+.wave-key-tether { width: 22px; height: 0; border-top: 1.5px dashed var(--wave-hue); }
+.wave-key-eclipse { width: 6px; height: 6px; border-radius: 50%; background: var(--ink-2); margin: 0 2px; }
+.wave-key-n { color: var(--ink-2); font-size: 11.5px; flex: none; white-space: nowrap; }
+.wave-legend li { max-width: 100%; }
+.wave-key-tick { width: 2px; height: 12px; border-radius: 1px; background: var(--ink-2); }
+
+@container waveread (max-width: 700px) {
+  .wave-read-grid { grid-template-columns: minmax(0, 1fr) auto; }
+  .wave-r-side { grid-column: 1 / 2; }
+  .wave-r-glyph { grid-column: 2; grid-row: 1 / span 2; }
+}
+@media (max-width: 640px) {
+  .wave-sub { display: none; }
+  .wave-lbl { display: none; }
+  .wave-ctl { padding-left: 10px; padding-right: 10px; }
+  .wave-hint { white-space: normal; } /* two short lines rather than a hint cut off */
+  .wave-steps .btn span { display: none; }
+  .wave-steps .btn:first-child, .wave-steps .btn:last-child { padding: 0 9px; }
+  .wave-levels { padding-left: 10px; padding-right: 10px; }
+  .wave-lv { width: 40px; }
+  .wave-read { padding: 10px; }
+  .wave-read-grid { gap: 8px 12px; }
+  .wave-r-badge { width: 38px; height: 38px; font-size: 21px; }
+  .wave-r-title { font-size: 13px; }
+  .wave-r-loop, .wave-r-cyc { font-size: 12px; }
+  .wave-r-span { font-size: 11.5px; line-height: 1.35; }
+  .wave-r-glyph svg { height: 40px; }
+  .wave-stage { height: clamp(380px, 106vw, 560px); }
+  .wave-foot { padding: 10px; }
+}
+/* finger-sized targets (40 px) on phones and any touch screen */
+@media (max-width: 640px), (pointer: coarse) {
+  .wave-steps .btn { height: 40px; min-width: 40px; }
+  .wave-zoom .btn { width: 40px; height: 40px; }
+  .wave-r-acts .btn { height: 40px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .wave-lv { transition: none; }
+}

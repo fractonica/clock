@@ -1,0 +1,116 @@
+/* timeline – owned by the timeline module (prefix tl-) */
+
+.tl-root {
+  display: flex;
+  flex-direction: column;
+  flex: none; /* as tall as its content: the canvas height is set from the lane count and the viewport */
+  overflow: hidden;
+}
+
+/* ---------- toolbar ---------- */
+.tl-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+}
+.tl-presets { max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+.tl-presets::-webkit-scrollbar { display: none; }
+.tl-presets button { white-space: nowrap; min-height: 26px; }
+/* the strip scrolls on narrow screens, which clips an outset ring: draw it inside the button instead */
+.tl-presets button:focus-visible { outline: 2px solid var(--cursor); outline-offset: -2px; }
+.tl-presets button:hover:not([aria-pressed="true"]) { background: var(--panel-2); color: var(--ink); }
+.tl-group { display: flex; gap: 6px; }
+.tl-group .btn { padding: 0 11px; }
+.tl-group .btn.btn-icon { width: 34px; padding: 0; }
+.tl-group .btn svg { opacity: 0.9; }
+/* a zoom limit has been reached (aria-disabled keeps the focus where it is) */
+.tl-group .btn[aria-disabled="true"] { opacity: 0.4; cursor: default; }
+.tl-group .btn[aria-disabled="true"]:hover { background: var(--panel-2); border-color: var(--line-2); }
+.tl-group .btn[aria-disabled="true"]:active { transform: none; }
+
+/* ---------- canvas ---------- */
+.tl-stage {
+  position: relative;
+  flex: none;
+  height: 480px;
+  overflow: hidden;
+  background: linear-gradient(180deg, rgb(255 255 255 / 0.012), transparent 40%);
+}
+.tl-canvas {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  outline: none;
+  touch-action: pan-y; /* horizontal drags are ours, vertical swipes still scroll the page */
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.tl-canvas:focus-visible { box-shadow: inset 0 0 0 2px var(--cursor); border-radius: 6px; }
+
+/* ---------- footer ---------- */
+.tl-foot {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 2px 18px;
+  padding: 8px 14px 10px;
+  border-top: 1px solid var(--line);
+  font-size: 12px;
+  line-height: 1.4;
+}
+.tl-win { color: var(--ink-2); min-height: 17px; font-size: 11.5px; }
+.tl-hint { font-size: 11.5px; color: var(--ink-2); }
+
+/* ---------- tooltip (extends the shared .tip) ---------- */
+.tl-tip { min-width: 200px; max-width: 360px; padding: 9px 11px; }
+.tl-tip-h { font-size: 12.5px; font-weight: 600; line-height: 1.35; margin-bottom: 2px; }
+.tl-tip-h .dim, .tl-tip-p .dim { font-weight: 400; }
+.tl-tip-p { color: var(--ink-2); font-size: 12px; line-height: 1.4; margin-top: 3px; }
+.tl-tip-p.mono { font-size: 11.5px; }
+.tl-tip-k { font-weight: 600; letter-spacing: 0.01em; }
+.tl-tip-detail { padding-top: 5px; margin-top: 6px; border-top: 1px solid var(--line-2); color: var(--ink); }
+.tl-tip-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px 16px;
+  margin-top: 7px;
+  padding-top: 7px;
+  border-top: 1px solid var(--line-2);
+  font-size: 12px;
+}
+.tl-tip-row { display: flex; align-items: baseline; gap: 7px; padding: 1px 4px; margin: 0 -4px; border-radius: 5px; white-space: nowrap; }
+.tl-tip-row .tl-tip-k { min-width: 2.6em; }
+.tl-tip-row .dim { margin-left: auto; }
+.tl-tip-row.is-on { background: rgb(255 255 255 / 0.08); }
+
+/* ---------- responsive ---------- */
+@media (max-width: 640px) {
+  .tl-toolbar { padding: 8px 10px; gap: 8px; }
+  .tl-group .btn { padding: 0; width: 34px; }
+  .tl-group .btn:has(.tl-fit-label), .tl-group .btn:has(.tl-btn-label) { width: auto; padding: 0 10px; }
+  .tl-presets button { padding: 5px 8px; }
+  .tl-foot { padding: 6px 10px 8px; }
+  .tl-hint { font-size: 11px; }
+}
+/* fingers: 40 px targets (the lanes themselves are as tall as the screen allows) */
+@media (pointer: coarse), (max-width: 480px) {
+  .tl-presets button { min-height: 36px; }
+  .tl-group .btn { height: 40px; }
+  .tl-group .btn.btn-icon { width: 40px; }
+}
+@media (max-width: 400px) {
+  .tl-presets { width: 100%; }
+  .tl-presets button { flex: 1; padding: 5px 4px; }
+}
+@media (max-width: 349px) {
+  .tl-btn-label { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tl-canvas { scroll-behavior: auto; }
+}

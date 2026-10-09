@@ -1,0 +1,951 @@
+/**
+ * Headless verification of the clock face module.
+ *   node tools/checks/check-face.mjs            screenshots (tools/out/face-*.png) + interaction checks
+ *
+ * Exits non-zero when a check fails or when the page logs an error that comes from the face files.
+ */
+import path from 'node:path';
+import { withApp, outDir } from '../browse.mjs';
+
+const T_A = 1791460800; // SPEC vector A 2026-10-08T12:00:00Z
+const checks = [];
+function check(name, ok, detail = '') {
+  checks.push({ name, ok: !!ok, detail });
+  console.log(`${ok ? 'ok  ' : 'FAIL'} ${name}${detail !== '' ? '  ' + detail : ''}`);
+}
+// An error is ours when the page error's stack runs through src/ui/face (any uncaught exception from face code,
+// whatever its message says), or when a console error is tagged [face] (the app loop's isolation of a throwing render).
+const ownError = (e) => /src\/ui\/face/.test(e) || /\[face\]/.test(e) || (/face/i.test(e) && !/rings|ladder|timeline|wave|calendar|sound|upnext|jump/i.test(e));
+
+const api = (page) => ({
+  state: () => page.evaluate(() => ({ ...window.__fractonica.store.state, t: window.__fractonica.store.t() })),
+  face: (fn, ...args) => page.evaluate(([f, a]) => new Function('face', 'ctx', 'args', `return (${f})(face, ctx, args)`)(window.__fractonica.instances.face, window.__fractonica.ctx, a), [fn.toString(), args]),
+  // logical screen coordinates -> client pixels
+  client: (x, y) =>
+    page.evaluate(([x, y]) => {
+      const s = document.querySelector('.face-svg');
+      const p = new DOMPoint(x, y).matrixTransform(s.getScreenCTM());
+      return { x: p.x, y: p.y };
+    }, [x, y]),
+});
+
+async function tapAt(page, f, x, y) {
+  const p = await f.client(x, y);
+  await page.mouse.click(p.x, p.y);
+}
+
+async function faceCard(page, shot, name) {
+  const box = await page.locator('#slot-face').boundingBox();
+  const file = await shot(name, { clip: box, fullPage: true });
+  return file;
+}
+
+// ------------------------------------------------------------------------------------------------
+await withApp(
+  async ({ page, url, errors, shot, browser }) => {
+    // the harness records only error messages: keep the stacks too, so errors can be attributed to a file
+    page.on('pageerror', (e) => errors.push(`pageerror stack: ${e.stack || e.message}`));
+    const f = api(page);
+    const q = (t, extra = '') => `?t=${t}&view=rings&zone=UTC${extra}`;
+    // other modules may be unfinished while this runs: keep the header from distorting the layout under test
+    const open = async (query) => {
+      await page.goto(url(query));
+      await page.addStyleTag({ content: '#slot-jump{display:none!important;} #topbar{max-height:140px;overflow:hidden;}' });
+      await page.waitForSelector('.face-svg .face-glyph path');
+      await page.waitForFunction(() => !document.querySelector('.face-svg').classList.contains('is-pending')); // first reading drawn
+    };
+
+    // ---- 1. readings at the SPEC vectors -------------------------------------------------------
+    await open(q(T_A));
+    await page.waitForTimeout(700);
+    const read = () =>
+      page.evaluate(() => {
+        const out = {};
+        for (const k of ['top', 'solar', 'bottom']) {
+          const row = document.querySelector(`.face-row--${k}`);
+          out[k] = {
+            d: [...row.querySelectorAll('.face-glyph path')].map((p) => p.getAttribute('d')),
+            dots: [...row.querySelectorAll('.face-glyph circle')].map((c) => c.getAttribute('display') !== 'none'),
+          };
+          const dots = [...row.querySelectorAll('.face-dot')].filter((d) => d.getAttribute('display') !== 'none');
+          out[k].counter = dots.length;
+          out[k].lit = dots.filter((d) => d.classList.contains('is-lit')).length;
+        }
+        out.overlay = document.querySelector('.face-svg').dataset.overlay;
+        out.letters = [...document.querySelectorAll('.face-letter')].map((e) => e.textContent);
+        out.caption = document.querySelector('.face-caption').textContent;
+        out.depths = document.querySelector('.face-depths').textContent;
+        return out;
+      });
+    let r = await read();
+    check('vector A: top odometer is depth 7 [13,0] (3 trits: -3 rising) with no dot', r.top.dots.join() === 'false,false', JSON.stringify(r.top.dots));
+    check('vector A: bottom odometer depth 8 [5,4]: first glyph dotted (falling), second not', r.bottom.dots.join() === 'true,false', JSON.stringify(r.bottom.dots));
+    check('vector A: solar digits [5,11,13] -> dots on 5 and 11 (falling), not 13', r.solar.dots.join() === 'true,true,false', JSON.stringify(r.solar.dots));
+    check('vector A: top counter has 11 dots, 1 lit (local 0)', r.top.counter === 11 && r.top.lit === 1, `${r.top.counter}/${r.top.lit}`);
+    check('vector A: bottom counter has 9 dots, 8 lit (local 7)', r.bottom.counter === 9 && r.bottom.lit === 8, `${r.bottom.counter}/${r.bottom.lit}`);
+    check('letters show briefly on load', r.overlay === 'letters' && r.letters.join('') === 'ηθ', `${r.overlay} ${r.letters}`);
+    check('caption shows the displayed time because time travel is not live', /2026-10-08 12:00:00 UTC/.test(r.caption), r.caption);
+    check('depth readout', /η 7 · θ 8/.test(r.depths), r.depths);
+    // glyph ink equals the library geometry
+    const inkOk = await page.evaluate(() => {
+      const { model } = window.__fractonica;
+      const geo = (i) => model.F.CBT.geometry(model.F.CBT.fromIndex(i, { depth: 2 }), { scale: 10, thickness: 0.3 }).path;
+      const top = [...document.querySelectorAll('.face-row--top .face-glyph path')].map((p) => p.getAttribute('d'));
+      const od = model.odometerAt(model.tMin + 0, 6); // just to be sure the model is alive
+      return top[0] === geo(13) && top[1] === geo(0) && !!od;
+    });
+    check('glyph paths are the library CBT.geometry paths', inkOk);
+
+    await page.waitForTimeout(4300); // letters expire
+    r = await read();
+    check('letters disappear after ~4 s', r.overlay === 'none', r.overlay);
+    console.log(await faceCard(page, shot, 'face-A.png'));
+
+    // ---- 2. other instants + edges --------------------------------------------------------------
+    const instants = [
+      ['2000', 946684800, 'face-2000.png'],
+      ['2061', 2886085800, 'face-2061.png'],
+    ];
+    for (const [name, t, file] of instants) {
+      await page.evaluate((t) => window.__fractonica.store.setTime(t), t);
+      await page.waitForTimeout(500);
+      const rr = await read();
+      check(`${name}: renders 2+3+2 glyphs and counters`, rr.top.d.length === 2 && rr.solar.d.length === 3 && rr.bottom.d.length === 2 && rr.top.counter > 0);
+      await faceCard(page, shot, file);
+    }
+    // vector B and C digits
+    await page.evaluate(() => window.__fractonica.store.setTime(946684800));
+    await page.waitForTimeout(300);
+    r = await read();
+    const digitsB = await page.evaluate(() => {
+      const { model } = window.__fractonica;
+      const g = (i) => model.F.CBT.geometry(model.F.CBT.fromIndex(i, { depth: 2 }), { scale: 10, thickness: 0.3 }).path;
+      return [...document.querySelectorAll('.face-row--top .face-glyph path')].map((p) => p.getAttribute('d')).join('|') === [g(5), g(6)].join('|');
+    });
+    check('vector B: top odometer shows [5,6]', digitsB);
+
+    for (const [name, expr] of [
+      ['tMin+5', 'model.tMin + 5'],
+      ['tMax-5', 'model.tMax - 5'],
+    ]) {
+      await page.evaluate((e) => {
+        const { model, store } = window.__fractonica;
+        store.setTime(new Function('model', `return ${e}`)(model));
+      }, expr);
+      await page.waitForTimeout(400);
+      const rr = await read();
+      check(`${name}: period glyphs and counters render`, rr.top.d.length === 2 && rr.top.counter > 0 && rr.bottom.counter > 0);
+      check(`${name}: solar odometer shows an explicit "not defined" state (the sync cycle leaves the catalogue)`, await page.evaluate(() => document.querySelector('.face-svg').classList.contains('is-solar-na')));
+      await faceCard(page, shot, `face-${name.replace(/[^a-z0-9]/gi, '')}.png`);
+    }
+
+    // out of range: the shared store clamps, so drive the module directly with an out-of-range frame
+    await page.evaluate(() => {
+      const { model, instances } = window.__fractonica;
+      const frame = model.frame(model.tMax + 10);
+      window.__oorFrame = frame;
+      // freeze the app loop's own rendering of the face by shadowing render
+      const inst = instances.face;
+      inst.__origRender = inst.render;
+      inst.render = (fr, info) => inst.__origRender(window.__oorFrame, { ...info, dirty: true });
+    });
+    await page.waitForTimeout(500);
+    const oor = await page.evaluate(() => ({
+      cls: document.querySelector('.face-svg').classList.contains('is-oor'),
+      text: [...document.querySelectorAll('.face-oor text')].map((t) => t.textContent).join(' | '),
+    }));
+    check('out of range: dimmed state with the catalogue range', oor.cls && /outside Saros 141/.test(oor.text) && /1613-05-19/.test(oor.text) && /2857-06-13/.test(oor.text), oor.text);
+    await faceCard(page, shot, 'face-oor.png');
+    await page.evaluate(() => {
+      const inst = window.__fractonica.instances.face;
+      inst.render = inst.__origRender;
+    });
+    await page.waitForTimeout(300);
+    check('out of range: recovers when time is back inside', await page.evaluate(() => !document.querySelector('.face-svg').classList.contains('is-oor')));
+
+    // ---- 3. interactions --------------------------------------------------------------------------
+    await open(q(T_A));
+    await page.waitForTimeout(5000);
+    await page.evaluate(() => window.__fractonica.store.set({ selectedLevel: 9, showLetters: false }));
+    let s = await f.state();
+    check('start: depth 7', s.topDepth === 7);
+
+    await tapAt(page, f, 96, 20); // top region, outside the row
+    s = await f.state();
+    check('tap top region -> longer period (depth 6)', s.topDepth === 6, `topDepth=${s.topDepth}`);
+    await page.waitForTimeout(250);
+    r = await read();
+    check('brief letters after a depth change (ζ η)', r.overlay === 'letters' && r.letters.join('') === 'ζη', `${r.overlay} ${r.letters}`);
+    await tapAt(page, f, 96, 475); // bottom region
+    s = await f.state();
+    check('tap bottom region -> shorter period (depth 7)', s.topDepth === 7, `topDepth=${s.topDepth}`);
+    await tapAt(page, f, 96, 475);
+    check('tap bottom again -> depth 8', (await f.state()).topDepth === 8);
+    for (let i = 0; i < 8; i++) await tapAt(page, f, 96, 475);
+    s = await f.state();
+    check('bottom taps clamp at depth 11', s.topDepth === 11, `topDepth=${s.topDepth}`);
+    check('clamped tap shows a hint toast', await page.evaluate(() => !document.querySelector('#toast').hidden && /shortest/i.test(document.querySelector('#toast').textContent)));
+    await page.waitForTimeout(120);
+    check('"Shorter" button is aria-disabled at depth 11', (await page.getAttribute('.face-btn[data-act="shorter"]', 'aria-disabled')) === 'true');
+    await faceCard(page, shot, 'face-depth11.png');
+    for (let i = 0; i < 12; i++) await tapAt(page, f, 96, 14);
+    s = await f.state();
+    check('top taps clamp at depth 2', s.topDepth === 2, `topDepth=${s.topDepth}`);
+    await faceCard(page, shot, 'face-depth2.png');
+    await page.evaluate(() => window.__fractonica.store.set({ topDepth: 7 }));
+    await page.waitForTimeout(100);
+
+    // persistence
+    const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('fractonica-clock/v1')).topDepth);
+    check('depth is persisted through store.set', stored === 7, String(stored));
+
+    // info + double tap
+    await page.waitForTimeout(4300);
+    await tapAt(page, f, 96, 170); // middle (not on the solar row)
+    await page.waitForTimeout(300);
+    r = await read();
+    check('single tap in the middle shows info labels', r.overlay === 'info', r.overlay);
+    const info = await page.evaluate(() => [...document.querySelectorAll('.face-info text')].map((t) => t.textContent));
+    console.log('     info labels:', info.join(' | '));
+    check('info labels: threshold caption + local times', info.some((t) => /^NEXT /.test(t)) && info.filter((t) => /\d\d:\d\d/.test(t)).length === 3, info.join('|'));
+    await faceCard(page, shot, 'face-info.png');
+    await page.waitForTimeout(4300);
+    r = await read();
+    check('info labels disappear after ~4 s', r.overlay === 'none', r.overlay);
+    await tapAt(page, f, 96, 170);
+    await page.waitForTimeout(120);
+    await tapAt(page, f, 96, 170);
+    await page.waitForTimeout(300);
+    s = await f.state();
+    r = await read();
+    check('double tap toggles persistent letters on', s.showLetters === true && r.overlay === 'letters', `${s.showLetters} ${r.overlay}`);
+    await page.waitForTimeout(4400);
+    r = await read();
+    check('persistent letters stay after 4 s', r.overlay === 'letters');
+    await faceCard(page, shot, 'face-letters.png');
+    await tapAt(page, f, 96, 170);
+    await page.waitForTimeout(100);
+    await tapAt(page, f, 96, 170);
+    await page.waitForTimeout(300);
+    s = await f.state();
+    check('double tap toggles letters off', s.showLetters === false);
+    await page.waitForTimeout(500);
+    // slow taps are two infos, not a double tap
+    await tapAt(page, f, 96, 170);
+    await page.waitForTimeout(550);
+    await tapAt(page, f, 96, 170);
+    s = await f.state();
+    check('taps 550 ms apart do not toggle letters', s.showLetters === false);
+    await page.waitForTimeout(4300);
+
+    // keyboard
+    await page.focus('.face-svg');
+    await page.keyboard.press('ArrowUp');
+    check('ArrowUp -> depth 6', (await f.state()).topDepth === 6);
+    await page.keyboard.press('ArrowDown');
+    await page.keyboard.press('ArrowDown');
+    check('ArrowDown x2 -> depth 8', (await f.state()).topDepth === 8);
+    await page.keyboard.press('ArrowUp');
+    await page.keyboard.press('i');
+    await page.waitForTimeout(250);
+    check('key i shows info', (await read()).overlay === 'info');
+    await page.keyboard.press('l');
+    await page.waitForTimeout(250);
+    s = await f.state();
+    check('key l toggles persistent letters', s.showLetters === true && (await read()).overlay === 'letters');
+    await page.keyboard.press('l');
+    check('key l again turns them off', (await f.state()).showLetters === false);
+
+    // buttons
+    await page.click('.face-btn[data-act="longer"]');
+    check('button Longer -> depth 6', (await f.state()).topDepth === 6);
+    await page.click('.face-btn[data-act="shorter"]');
+    check('button Shorter -> depth 7', (await f.state()).topDepth === 7);
+    await page.click('.face-btn[data-act="info"]');
+    await page.waitForTimeout(250);
+    check('button Info shows info labels', (await read()).overlay === 'info');
+    await page.click('.face-btn[data-act="letters"]');
+    await page.waitForTimeout(250);
+    check('button Letters pins letters and aria-pressed follows', (await f.state()).showLetters === true && (await page.getAttribute('.face-btn[data-act="letters"]', 'aria-pressed')) === 'true');
+    await page.click('.face-btn[data-act="letters"]');
+
+    // selection by clicking a row (also steps)
+    await page.waitForTimeout(4300);
+    await page.evaluate(() => window.__fractonica.store.set({ selectedLevel: 2, topDepth: 7 }));
+    await page.waitForTimeout(150);
+    await tapAt(page, f, 96, 80); // top row = level 6
+    s = await f.state();
+    check('click top row selects its level (6) and steps the face (depth 6)', s.selectedLevel === 6 && s.topDepth === 6, `sel=${s.selectedLevel} depth=${s.topDepth}`);
+    await page.waitForTimeout(250);
+    // level 6 is now the bottom row -> accent there
+    const sel1 = await page.evaluate(() => document.querySelector('.face-row.is-selected')?.dataset.row);
+    check('the selected cycle stays on screen with an accent (bottom row)', sel1 === 'bottom', String(sel1));
+    await tapAt(page, f, 96, 410); // bottom row = level 6 again, shorter
+    s = await f.state();
+    check('click bottom row selects its level (6), face steps back to depth 7', s.selectedLevel === 6 && s.topDepth === 7, `sel=${s.selectedLevel} depth=${s.topDepth}`);
+    await page.waitForTimeout(200);
+    check('accent moves to the top row', (await page.evaluate(() => document.querySelector('.face-row.is-selected')?.dataset.row)) === 'top');
+    await page.evaluate(() => window.__fractonica.store.set({ selectedLevel: 0 }));
+    await page.waitForTimeout(150);
+    check('no accent when the selected level is not on screen', (await page.evaluate(() => !document.querySelector('.face-row.is-selected'))));
+
+    // hover tooltip
+    await page.waitForTimeout(100);
+    const topc = await f.client(96, 80);
+    await page.mouse.move(topc.x - 5, topc.y);
+    await page.mouse.move(topc.x, topc.y);
+    await page.waitForTimeout(200);
+    let tip = await page.evaluate(() => {
+      const t = document.querySelector('.face-tip');
+      return { hidden: t.hidden, text: t.innerText };
+    });
+    check('hover on the top row shows a teaching tooltip', !tip.hidden && /State 13 of 16: value −3, rising ↗/.test(tip.text) && /depth 7/.test(tip.text), tip.text.replace(/\n/g, ' / '));
+    await shot('face-tip.png');
+    const solarc = await f.client(96, 245);
+    await page.mouse.move(solarc.x, solarc.y);
+    await page.waitForTimeout(250);
+    tip = await page.evaluate(() => ({ hidden: document.querySelector('.face-tip').hidden, text: document.querySelector('.face-tip').innerText }));
+    check('hover on the solar row shows sync number, phase, drift, next quarter', !tip.hidden && /Solar sync #4820/.test(tip.text) && /Phase 35\.8 %/.test(tip.text) && /Drift/.test(tip.text) && /Next node/.test(tip.text), tip.text.replace(/\n/g, ' / '));
+    const ringc = await f.client(96, 13); // over the counter arc of the top period
+    await page.mouse.move(ringc.x - 4, ringc.y);
+    await page.mouse.move(ringc.x, ringc.y);
+    await page.waitForTimeout(200);
+    tip = await page.evaluate(() => ({ hidden: document.querySelector('.face-tip').hidden, text: document.querySelector('.face-tip').innerText }));
+    check('hover on a counter arc explains the cycle number (Cycle n of m in its parent)', !tip.hidden && /Cycle \d+ of 11 in its ζ/.test(tip.text), tip.text.replace(/\n/g, ' / '));
+    await page.mouse.move(solarc.x, solarc.y - 100 + 40); // y=185: middle region, no row
+    await page.mouse.move(solarc.x, solarc.y - 60);
+    await page.waitForTimeout(700);
+    tip = await page.evaluate(() => ({ hidden: document.querySelector('.face-tip').hidden, text: document.querySelector('.face-tip').innerText }));
+    check('resting on empty screen shows a gesture hint', !tip.hidden && /info/i.test(tip.text), tip.text.replace(/\n/g, ' / '));
+    await page.mouse.move(5, 5);
+    await page.waitForTimeout(200);
+    check('tooltip hides when the pointer leaves', await page.evaluate(() => document.querySelector('.face-tip').hidden));
+
+    // keyboard focus on rows
+    await page.evaluate(() => document.querySelector('.face-svg').focus());
+    await page.keyboard.press('Tab');
+    const focusedRow = await page.evaluate(() => document.activeElement?.dataset?.row);
+    check('Tab moves focus to the first glyph row', focusedRow === 'top', String(focusedRow));
+    await page.waitForTimeout(150);
+    check('a focused row shows its tooltip', await page.evaluate(() => !document.querySelector('.face-tip').hidden));
+    await shot('face-focus.png');
+    await page.keyboard.press('Enter');
+    check('Enter on a focused row selects that level', (await f.state()).selectedLevel === 6);
+    await page.keyboard.press('Tab');
+    await page.keyboard.press('Tab');
+    check('rows have accessible names', await page.evaluate(() => [...document.querySelectorAll('.face-row')].every((e) => /\w/.test(e.getAttribute('aria-label') || ''))));
+
+    // popover
+    await page.click('.face-help');
+    await page.waitForTimeout(250);
+    check('How to read opens (aria-expanded)', (await page.getAttribute('.face-help', 'aria-expanded')) === 'true' && (await page.isVisible('.face-pop')));
+    check('popover has 5 lines and 3 mini glyphs', (await page.locator('.face-pop-list li').count()) === 5 && (await page.locator('.face-mini').count()) === 3);
+    await faceCard(page, shot, 'face-popover.png');
+    await page.keyboard.press('Escape');
+    check('Escape closes the popover and returns focus to the button', !(await page.isVisible('.face-pop')) && (await page.evaluate(() => document.activeElement?.classList.contains('face-help'))));
+    await page.click('.face-help');
+    await page.mouse.click(900, 500);
+    check('clicking outside closes the popover', !(await page.isVisible('.face-pop')));
+
+    // ---- 4. modes: live, time-lapse ------------------------------------------------------------------
+    await open('?view=rings&zone=UTC');
+    await page.waitForTimeout(900);
+    r = await read();
+    check('live mode: no caption under the pill', r.caption === '', JSON.stringify(r.caption));
+    await faceCard(page, shot, 'face-live.png');
+    const liveNow = await page.evaluate(() => {
+      const { model, store } = window.__fractonica;
+      const od = model.odometerAt(store.t(), 6);
+      const g = (i) => model.F.CBT.geometry(model.F.CBT.fromIndex(i, { depth: 2 }), { scale: 10, thickness: 0.3 }).path;
+      const top = [...document.querySelectorAll('.face-row--top .face-glyph path')].map((p) => p.getAttribute('d'));
+      return top[0] === g(od.digits[0]);
+    });
+    check('live mode: top glyph matches the model for the device clock', liveNow);
+
+    await open(q(T_A, '&rate=3600'));
+    const before = await read();
+    await page.waitForTimeout(2500);
+    const after = await read();
+    check('time-lapse x3600: glyphs advance', JSON.stringify(before.bottom.d) !== JSON.stringify(after.bottom.d));
+    check('time-lapse: caption follows the displayed time', /2026-10-08 1[2-9]|2026-10-08 2|2026-10-09/.test(after.caption), after.caption);
+    await faceCard(page, shot, 'face-lapse.png');
+
+    // ---- 4b. tick cue: one short fade after a calm change, never in time-lapse; none under reduced motion ----------------
+    const cueAnims = () => page.evaluate(() => document.getAnimations().filter((a) => a.effect?.target?.closest?.('#slot-face')).length);
+    await open(q(T_A));
+    await page.waitForTimeout(1800); // the glyphs have been still longer than the cue's calm period
+    await page.evaluate(() => window.__fractonica.store.setTime(window.__fractonica.store.t() + 1900)); // changes glyphs
+    // the cue lasts ~160 ms: poll every frame so a slow machine cannot miss it
+    const cueSeen = await page
+      .waitForFunction(() => document.getAnimations().some((a) => a.effect?.target?.closest?.('#slot-face')), null, { timeout: 1500, polling: 'raf' })
+      .then(() => true, () => false);
+    check('tick cue: a glyph that changes after a calm period fades in once', cueSeen);
+    await page.waitForTimeout(500);
+    check('tick cue: it is over within half a second (no lingering dim glyph)', (await cueAnims()) === 0);
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await open(q(T_A));
+    await page.waitForTimeout(1800);
+    await page.evaluate(() => window.__fractonica.store.setTime(window.__fractonica.store.t() + 1900));
+    await page.click('.face-btn[data-act="longer"]');
+    await page.waitForTimeout(80);
+    check('prefers-reduced-motion: no animations or transitions run inside the face', (await cueAnims()) === 0, `animations=${await cueAnims()}`);
+    await page.emulateMedia({ reducedMotion: 'no-preference' });
+
+    // time-lapse: glyphs change faster than the cue lasts, so none of them may strobe (opacity stays 1)
+    for (const [label, query, sel] of [
+      ['x3600, depth 7, top coarse glyph', q(T_A, '&rate=3600&depth=7'), '.face-row--top .face-glyph'],
+      ['x3600, depth 7, solar middle glyph', q(T_A, '&rate=3600&depth=7'), '.face-row--solar .face-glyph:nth-child(2)'],
+      ['x86400, depth 5, solar left glyph', q(T_A, '&rate=86400&depth=5'), '.face-row--solar .face-glyph'],
+    ]) {
+      await open(query);
+      await page.waitForTimeout(3500);
+      const dim = await page.evaluate(
+        (sel) =>
+          new Promise((resolve) => {
+            const el = document.querySelector(sel);
+            let frames = 0;
+            let dimmed = 0;
+            let changes = 0;
+            let last = el.querySelector('path').getAttribute('d');
+            const tick = () => {
+              if (+getComputedStyle(el).opacity < 0.99) dimmed++;
+              const d = el.querySelector('path').getAttribute('d');
+              if (d !== last) (changes++, (last = d));
+              if (++frames < 150) requestAnimationFrame(tick);
+              else resolve({ dimmed, changes });
+            };
+            requestAnimationFrame(tick);
+          }),
+        sel,
+      );
+      check(`time-lapse ${label}: glyph never dims (${dim.changes} changes in 150 frames)`, dim.dimmed === 0 && dim.changes > 0, JSON.stringify(dim));
+    }
+
+    // ---- 5. render cost --------------------------------------------------------------------------------
+    for (const [label, query] of [
+      ['live', '?view=rings&zone=UTC'],
+      ['time-lapse x3600', q(T_A, '&rate=3600')],
+      ['time-lapse x31.6M (1 y/s)', q(T_A, '&rate=31557600')],
+      ['frozen', q(T_A)],
+    ]) {
+      await open(query);
+      await page.waitForTimeout(500);
+      const ms = await page.evaluate(
+        () =>
+          new Promise((resolve) => {
+            const inst = window.__fractonica.instances.face;
+            const orig = inst.render;
+            const times = [];
+            inst.render = (...a) => {
+              const t0 = performance.now();
+              orig(...a);
+              times.push(performance.now() - t0);
+              if (times.length >= 150) {
+                inst.render = orig;
+                const sorted = [...times].sort((a, b) => a - b);
+                resolve({ mean: times.reduce((x, y) => x + y, 0) / times.length, p95: sorted[Math.floor(times.length * 0.95)], max: sorted.at(-1) });
+              }
+            };
+          }),
+      );
+      check(`render() cost, ${label}: mean ${ms.mean.toFixed(3)} ms, p95 ${ms.p95.toFixed(3)} ms, max ${ms.max.toFixed(2)} ms`, ms.mean < 1 && ms.p95 < 3);
+    }
+
+    // ---- 6. time zone follows the formatter -------------------------------------------------------------
+    await open(`?t=${T_A}&view=rings&zone=Asia/Tokyo`);
+    await page.waitForTimeout(500);
+    await page.click('.face-btn[data-act="info"]');
+    await page.waitForTimeout(300);
+    const tokyo = await page.evaluate(() => ({ cap: document.querySelector('.face-caption').textContent, info: [...document.querySelectorAll('.face-info text')].map((t) => t.textContent) }));
+    check('zone: caption and labels use the selected zone (Tokyo = UTC+9)', /2026-10-08 21:00:00 UTC\+09:00/.test(tokyo.cap), tokyo.cap);
+
+    // ---- 7. mobile ------------------------------------------------------------------------------------------
+    await page.setViewportSize({ width: 390, height: 844 });
+    await open(q(T_A));
+    await page.waitForTimeout(800);
+    const faceOverflow = () =>
+      page.evaluate(() => {
+        const card = document.querySelector('#slot-face').getBoundingClientRect();
+        let worst = 0;
+        for (const e of document.querySelectorAll('#slot-face *')) {
+          if (e.closest('.face-pop[hidden], .face-tip[hidden]')) continue;
+          const r = e.getBoundingClientRect();
+          if (r.width) worst = Math.max(worst, r.right - card.right, card.left - r.left);
+        }
+        return { worst, cardRight: card.right, innerW: innerWidth };
+      });
+    const mob = await page.evaluate(() => {
+      const c = document.querySelector('#slot-face').getBoundingClientRect();
+      const s = document.querySelector('.face-svg').getBoundingClientRect();
+      return { card: [c.width, c.height], svg: [s.width, s.height] };
+    });
+    const ov = await faceOverflow();
+    check('mobile 390: nothing in the face card overflows the card or the viewport', ov.worst <= 0.5 && ov.cardRight <= ov.innerW, JSON.stringify(ov));
+    check('mobile 390: pill height is sensible (<= 600) and inside the card', mob.svg[1] <= 600 && mob.svg[0] <= mob.card[0], JSON.stringify(mob.svg));
+    await shot('face-mobile.png', { fullPage: true });
+    await faceCard(page, shot, 'face-mobile-card.png');
+    // touch tap on the top region
+    const ctx2 = await page.context();
+    await page.setViewportSize({ width: 360, height: 640 });
+    await open(q(T_A));
+    await page.waitForTimeout(600);
+    const m2 = await faceOverflow();
+    check('mobile 360: nothing in the face card overflows', m2.worst <= 0.5 && m2.cardRight <= m2.innerW, JSON.stringify(m2));
+    await faceCard(page, shot, 'face-mobile360.png');
+    await page.setViewportSize({ width: 800, height: 900 });
+    await open(q(T_A));
+    await page.waitForTimeout(600);
+    await faceCard(page, shot, 'face-tablet.png');
+    await page.setViewportSize({ width: 1920, height: 1080 });
+    await open(q(T_A));
+    await page.waitForTimeout(600);
+    await faceCard(page, shot, 'face-1920.png');
+    void ctx2;
+
+    // ---- 8. touch: tap steps, press-and-hold teaches ---------------------------------------------------
+    {
+      const tctx = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, deviceScaleFactor: 3, colorScheme: 'dark' });
+      const tp = await tctx.newPage();
+      tp.on('pageerror', (e) => errors.push('pageerror(touch) stack: ' + (e.stack || e.message)));
+      tp.on('console', (m) => m.type() === 'error' && errors.push('console.error(touch): ' + m.text()));
+      await tp.goto(url(q(T_A)));
+      await tp.addStyleTag({ content: '#slot-jump{display:none!important;} #topbar{max-height:140px;overflow:hidden;}' });
+      await tp.waitForSelector('.face-svg .face-glyph path');
+      await tp.waitForTimeout(600);
+      await tp.locator('.face-svg').scrollIntoViewIfNeeded();
+      const tf = api(tp);
+      const tdepth = () => tp.evaluate(() => window.__fractonica.store.state.topDepth);
+      const cdp = await tctx.newCDPSession(tp);
+      const touch = async (x, y, holdMs = 40) => {
+        await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
+        await tp.waitForTimeout(holdMs);
+        await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+      };
+      const p1 = await tf.client(96, 20);
+      await touch(p1.x, p1.y);
+      await tp.waitForTimeout(150);
+      check('touch: tap on the top region steps to a longer period', (await tdepth()) === 6, String(await tdepth()));
+      const p2 = await tf.client(96, 410);
+      await touch(p2.x, p2.y);
+      await tp.waitForTimeout(150);
+      check('touch: tap on the bottom region steps back', (await tdepth()) === 7, String(await tdepth()));
+      const p3 = await tf.client(96, 245);
+      await touch(p3.x, p3.y);
+      await tp.waitForTimeout(250);
+      check('touch: tap in the middle shows info', (await tp.evaluate(() => document.querySelector('.face-svg').dataset.overlay)) === 'info');
+      await tp.waitForTimeout(4300);
+      const p4 = await tf.client(96, 410);
+      await touch(p4.x, p4.y, 700);
+      await tp.waitForTimeout(150);
+      const held = await tp.evaluate(() => ({ hidden: document.querySelector('.face-tip').hidden, text: document.querySelector('.face-tip').innerText, depth: window.__fractonica.store.state.topDepth }));
+      check('touch: press and hold on a row shows its tooltip without stepping', !held.hidden && /depth 8/.test(held.text) && held.depth === 7, `${held.depth} ${held.text.slice(0, 30)}`);
+      await tp.screenshot({ path: path.join(outDir, 'face-touch-hold.png') });
+      await tp.waitForTimeout(3000);
+      check('touch: the held tooltip fades away on its own', await tp.evaluate(() => document.querySelector('.face-tip').hidden));
+      const sizeInfo = await tp.evaluate(() => {
+        const r = document.querySelector('.face-svg').getBoundingClientRect();
+        return { w: r.width, h: r.height, dpr: devicePixelRatio };
+      });
+      check('touch: 3x display, pill sized to whole device pixels or exact fit', sizeInfo.dpr === 3 && sizeInfo.h > 300, JSON.stringify(sizeInfo));
+      // a hold that turns into a scroll (pointercancel) must not leave the viewport-fixed tooltip behind
+      const tipHidden = () => tp.evaluate(() => document.querySelector('.face-tip').hidden);
+      const touchStart = (x, y) => cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
+      const touchEnd = () => cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+      const touchMove = (x, y) => cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x, y }] });
+      await tp.evaluate(() => scrollTo(0, 0));
+      await tp.locator('.face-svg').scrollIntoViewIfNeeded();
+      const h1 = await tf.client(96, 410);
+      await touchStart(h1.x, h1.y);
+      await tp.waitForTimeout(650);
+      const shown1 = !(await tipHidden());
+      for (let i = 1; i <= 8; i++) {
+        await touchMove(h1.x, h1.y - i * 25);
+        await tp.waitForTimeout(16);
+      }
+      await touchEnd();
+      await tp.waitForTimeout(300);
+      const scrolled = await tp.evaluate(() => scrollY);
+      check('touch: a hold that turns into a scroll hides its tooltip (no tooltip pinned over other controls)', shown1 && (await tipHidden()) && scrolled > 50, `shown=${shown1} scrollY=${scrolled}`);
+      await tp.waitForTimeout(3000);
+      check('touch: ... and it stays hidden', await tipHidden());
+      // the browser cancelling the pointer (without any scroll) hides it too
+      const hc = await tf.client(96, 410);
+      await touchStart(hc.x, hc.y);
+      await tp.waitForTimeout(650);
+      const shownC = !(await tipHidden());
+      await tp.evaluate(() => document.querySelector('.face-svg').dispatchEvent(new PointerEvent('pointercancel', { pointerId: 1, pointerType: 'touch', bubbles: true })));
+      await tp.waitForTimeout(100);
+      check('touch: pointercancel while a tooltip is held hides it', shownC && (await tipHidden()));
+      await touchEnd();
+      await tp.waitForTimeout(200);
+      // the next touch dismisses a held tooltip even when it lands on the middle region or elsewhere
+      await tp.evaluate(() => scrollTo(0, 0));
+      await tp.locator('.face-svg').scrollIntoViewIfNeeded();
+      const h2 = await tf.client(96, 410);
+      await touchStart(h2.x, h2.y);
+      await tp.waitForTimeout(650);
+      await touchEnd();
+      const shown2 = !(await tipHidden());
+      await tp.waitForTimeout(400);
+      const mid = await tf.client(96, 170);
+      await touchStart(mid.x, mid.y);
+      await tp.waitForTimeout(40);
+      await touchEnd();
+      await tp.waitForTimeout(150);
+      check('touch: a tap in the middle after a hold dismisses the held tooltip at once', shown2 && (await tipHidden()));
+      // a page scroll without touching the face hides it too
+      const h3 = await tf.client(96, 410);
+      await touchStart(h3.x, h3.y);
+      await tp.waitForTimeout(650);
+      await touchEnd();
+      await tp.evaluate(() => scrollBy(0, 50));
+      await tp.waitForTimeout(250);
+      check('touch: scrolling the page hides a held tooltip', await tipHidden());
+      await tp.evaluate(() => document.querySelector('.face-help').click());
+      const targets = await tp.evaluate(() => {
+        const h = document.querySelector('.face-help').getBoundingClientRect();
+        const c = document.querySelector('.face-pop-close').getBoundingClientRect();
+        return { help: h.height, closeW: c.width, closeH: c.height };
+      });
+      check('touch: the footer button and the dialog close button are at least 40 px', targets.help >= 40 && targets.closeW >= 40 && targets.closeH >= 40, JSON.stringify(targets));
+      await tctx.close();
+    }
+
+    // ---- 8b. DOM wiring against independently derived values (model + fmt, read in the page) -----------------------
+    // Instants x zones. Expected strings come from model/fmt, never from the face's own helpers.
+    const berlinDst = Date.UTC(2026, 9, 25, 0, 30) / 1000; // 02:30 CEST, the hour that repeats
+    const wiring = [
+      [T_A, 'UTC'],
+      [T_A, 'Asia/Tokyo'],
+      [946684800, 'America/New_York'],
+      [2886085800, 'Europe/Berlin'],
+      [berlinDst, 'Europe/Berlin'],
+      [1784000123.5, 'Asia/Kolkata'],
+      [1234567890, 'Australia/Lord_Howe'],
+    ];
+    await open(q(T_A));
+    for (const [t, zone] of wiring) {
+      await page.evaluate(([t, zone]) => {
+        const { store } = window.__fractonica;
+        store.set({ zone, topDepth: 7, selectedLevel: 6, showLetters: false });
+        store.setTime(t);
+      }, [t, zone]);
+      await page.waitForTimeout(250);
+      await page.click('.face-btn[data-act="info"]');
+      await page.waitForTimeout(350);
+      const got = await page.evaluate(() => [...document.querySelectorAll('.face-info text')].map((e) => e.textContent));
+      const want = await page.evaluate(() => {
+        const { model, store, fmt } = window.__fractonica;
+        const t = store.t();
+        const lv = model.levelAt(t, 6);
+        let sol = null;
+        try {
+          sol = model.solarAt(t);
+        } catch {}
+        return [
+          `NEXT ${lv.next.name.toUpperCase()}`,
+          lv.next.time != null ? fmt.label(lv.next.time, t) : '\u2014',
+          sol ? `NEXT ${sol.threshold.name.toUpperCase()}` : 'SOLAR SYNC',
+          sol ? fmt.label(sol.threshold.time, t) : '\u2014',
+          'SYNC TIME',
+          sol ? fmt.label(sol.start, t) : '\u2014',
+        ];
+      });
+      check(`info labels @${t} ${zone} equal model + fmt (next threshold, next solar threshold, sync START)`, JSON.stringify(got) === JSON.stringify(want), JSON.stringify(got) + ' vs ' + JSON.stringify(want));
+      await page.waitForTimeout(100);
+    }
+    {
+      // the solar rows carry the date (SPEC §8: "Mon D HH:MM" when on another day) and the sync time is the sync START
+      await page.evaluate(() => {
+        const { store } = window.__fractonica;
+        store.set({ zone: 'UTC' });
+        store.setTime(1791460800);
+      });
+      await page.click('.face-btn[data-act="info"]');
+      await page.waitForTimeout(350);
+      const sv = await page.evaluate(() => [...document.querySelectorAll('.face-info text')].map((e) => e.textContent));
+      check('info labels: solar threshold and sync time show "Mon D HH:MM" (they fall on other days)', /^[A-Z][a-z]{2} \d{1,2} \d\d:\d\d$/.test(sv[3]) && /^[A-Z][a-z]{2} \d{1,2} \d\d:\d\d$/.test(sv[5]) && sv[5] !== sv[3], sv.join('|'));
+    }
+
+    // sibling counters: every dot where the spec puts it (radius 86 on the screen-end arcs, 11.5 degree step), lit through the current cycle
+    const dotsOk = async (t) => {
+      await page.evaluate((t) => window.__fractonica.store.setTime(t), t);
+      await page.waitForTimeout(250);
+      return page.evaluate(() => {
+        const { model, store } = window.__fractonica;
+        const t = store.t();
+        const depth = store.state.topDepth;
+        const problems = [];
+        for (const [kind, level] of [
+          ['top', depth - 1],
+          ['bottom', depth],
+        ]) {
+          const lv = model.levelAt(t, level);
+          const dots = [...document.querySelectorAll(`.face-row--${kind} .face-dot`)].filter((d) => d.getAttribute('display') !== 'none');
+          if (dots.length !== lv.siblings) problems.push(`${kind}: ${dots.length} dots, want ${lv.siblings}`);
+          dots.forEach((d, i) => {
+            const a = ((i - (lv.siblings - 1) / 2) * 11.5 * Math.PI) / 180;
+            const wx = 96 + 86 * Math.sin(a);
+            const wy = kind === 'top' ? 96 - 86 * Math.cos(a) : 394 + 86 * Math.cos(a);
+            if (Math.abs(+d.getAttribute('cx') - wx) > 0.01 || Math.abs(+d.getAttribute('cy') - wy) > 0.01) problems.push(`${kind} dot ${i} at ${d.getAttribute('cx')},${d.getAttribute('cy')} want ${wx.toFixed(2)},${wy.toFixed(2)}`);
+            if (d.classList.contains('is-lit') !== i <= lv.local) problems.push(`${kind} dot ${i} lit=${d.classList.contains('is-lit')}`);
+            if (d.classList.contains('is-now') !== (i === lv.local)) problems.push(`${kind} dot ${i} now=${d.classList.contains('is-now')}`);
+          });
+          const ys = dots.map((d) => +d.getAttribute('cy'));
+          if (kind === 'top' ? !ys.every((y) => y < 245) : !ys.every((y) => y > 245)) problems.push(`${kind} counter is on the wrong end of the screen`);
+        }
+        return problems;
+      });
+    };
+    for (const depthNow of [7, 4, 11]) {
+      await page.evaluate((d) => window.__fractonica.store.set({ topDepth: d }), depthNow);
+      for (const t of [T_A, 946684800.4, 2886085800]) {
+        const bad = await dotsOk(t);
+        check(`counter dots @${t} depth ${depthNow}: positions, lit and current dot equal the model`, bad.length === 0, bad.join('; '));
+      }
+    }
+    await page.evaluate(() => window.__fractonica.store.set({ topDepth: 7 }));
+
+    // tooltips: every line against model + fmt (rows, counter arcs, solar)
+    await page.evaluate(() => {
+      const { store } = window.__fractonica;
+      store.set({ zone: 'Europe/Berlin', topDepth: 7 });
+      store.setTime(1791460800);
+    });
+    await page.waitForTimeout(300);
+    const tipAt = async (x, y) => {
+      const c = await f.client(x, y);
+      await page.mouse.move(c.x - 3, c.y);
+      await page.mouse.move(c.x, c.y);
+      await page.waitForTimeout(300);
+      return page.evaluate(() => ({ hidden: document.querySelector('.face-tip').hidden, lines: [...document.querySelector('.face-tip').querySelectorAll('b, .face-tip-l')].map((e) => e.textContent) }));
+    };
+    for (const [row, x, y] of [
+      ['top', 96, 80],
+      ['bottom', 96, 410],
+      ['top', 96, 13],
+      ['bottom', 96, 477],
+    ]) {
+      const got = await tipAt(x, y);
+      const want = await page.evaluate(([row]) => {
+        const { model, store, fmt } = window.__fractonica;
+        const t = store.t();
+        const level = row === 'top' ? store.state.topDepth - 1 : store.state.topDepth;
+        const lv = model.levelAt(t, level);
+        const od = model.odometerAt(t, level, { strokes: 2, digits: 2 });
+        const major = model.odometerAt(t, level, { digits: 1 });
+        const info = model.levelInfo(level);
+        return {
+          title: `${info.letter} \u00b7 depth ${level + 1}`,
+          state: `State ${od.digits[0]} of 16: `,
+          fine: `Right (fine) glyph: state ${od.digits[1]} of 16, changes at ${fmt.label(od.nextTime, t)}`,
+          next: `Next change ${fmt.label(major.nextTime, t)} (`,
+          cycle: `Cycle ${lv.local + 1} of ${lv.siblings} in its ${model.levelInfo(level - 1).letter} \u00b7 ends ${fmt.label(lv.end, t)}`,
+        };
+      }, [row]);
+      const ok = !got.hidden && got.lines[0] === want.title && got.lines[1].startsWith(want.state) && got.lines.includes(want.fine) && got.lines.some((l) => l.startsWith(want.next)) && got.lines.includes(want.cycle);
+      check(`tooltip (${row}, ${y < 100 || y > 400 ? 'row or arc' : 'row'} at y=${y}): title, state, fine glyph, next change, cycle number and end equal model + fmt`, ok, JSON.stringify(got.lines) + ' vs ' + JSON.stringify(want));
+    }
+    {
+      const got = await tipAt(96, 245);
+      const want = await page.evaluate(() => {
+        const { model, store, fmt } = window.__fractonica;
+        const t = store.t();
+        const s = model.solarAt(t);
+        const pct = (Math.floor(s.phase * 1000 + 1e-7) / 10).toFixed(1); // floored, like the rings text
+        return [`Solar sync #${s.sync}`, `Phase ${pct} % of this 4-day sync`, `Next ${s.threshold.name} ${fmt.label(s.threshold.time, t)}`, `Sync time ${fmt.label(s.start, t)}`];
+      });
+      const ok = !got.hidden && got.lines[0] === want[0] && want.slice(1).every((w, i) => (i === 0 ? got.lines.includes(w) : got.lines.includes(w))) && got.lines.some((l) => /^Drift against civil days [+\u2212]?\d/.test(l));
+      check('tooltip (solar): sync number, phase, next quarter, sync time and drift equal model + fmt', ok, JSON.stringify(got.lines) + ' vs ' + JSON.stringify(want));
+    }
+    await page.mouse.move(5, 5);
+    await page.evaluate(() => window.__fractonica.store.set({ zone: 'UTC' }));
+
+    // ---- 8c. regressions of reviewed bugs ---------------------------------------------------------------------------
+    // a press that starts on the face and ends elsewhere is not a tap, and leaves no stale press behind
+    await open(q(T_A, '&depth=7'));
+    {
+      const c = await f.client(96, 20);
+      await page.mouse.move(c.x, c.y);
+      await page.mouse.down();
+      await page.mouse.move(1000, 600);
+      await page.mouse.up();
+      await page.mouse.move(900, 780);
+      await page.mouse.down();
+      await page.mouse.move(c.x, c.y);
+      await page.mouse.up();
+      check('a press started elsewhere and released over the face is not a tap', (await f.state()).topDepth === 7, String((await f.state()).topDepth));
+      await page.mouse.move(c.x, c.y);
+      await page.mouse.down();
+      await page.mouse.move(1000, 600);
+      await page.mouse.move(c.x, c.y);
+      await page.mouse.up();
+      check('leaving the face during a press cancels the tap', (await f.state()).topDepth === 7);
+      await page.mouse.down();
+      await page.mouse.up();
+      check('a plain click still steps afterwards', (await f.state()).topDepth === 6);
+    }
+    // the gesture hint disappears once its click has changed the depth, and with the keyboard / buttons too
+    {
+      await page.evaluate(() => window.__fractonica.store.set({ topDepth: 7 }));
+      const c = await f.client(96, 138);
+      await page.mouse.move(c.x - 3, c.y);
+      await page.mouse.move(c.x, c.y);
+      await page.waitForTimeout(700);
+      const before = await page.evaluate(() => ({ hidden: document.querySelector('.face-tip').hidden, text: document.querySelector('.face-tip').innerText, swatch: !document.querySelector('.face-tip-sw').hidden }));
+      check('region hint names the target depth and carries no colour dot', !before.hidden && /top becomes ζ, depth 6/.test(before.text) && !before.swatch, before.text);
+      await page.mouse.move(c.x + 2, c.y + 2);
+      await page.waitForTimeout(80);
+      check('region hint survives a couple of pixels of pointer jitter', await page.evaluate(() => !document.querySelector('.face-tip').hidden));
+      await page.mouse.down();
+      await page.mouse.up();
+      await page.waitForTimeout(80);
+      check('region hint is hidden after the click it described', await page.evaluate(() => document.querySelector('.face-tip').hidden));
+      await page.mouse.move(c.x + 1, c.y + 30);
+      await page.mouse.move(c.x, c.y + 32);
+      await page.waitForTimeout(700);
+      await page.click('.face-btn[data-act="shorter"]');
+      await page.waitForTimeout(80);
+      check('region hint is hidden after a depth change by button too', await page.evaluate(() => document.querySelector('.face-tip').hidden));
+      await page.mouse.move(5, 5);
+    }
+    // the row hint says what a click does
+    {
+      await page.evaluate(() => window.__fractonica.store.set({ topDepth: 7 }));
+      const c = await f.client(96, 80);
+      await page.mouse.move(c.x - 3, c.y);
+      await page.mouse.move(c.x, c.y);
+      await page.waitForTimeout(300);
+      const text = await page.evaluate(() => document.querySelector('.face-tip').innerText);
+      check('row tooltip hint: a click selects and shows longer periods', /Click or tap: select this cycle in every view and show longer periods/.test(text), text.replace(/\n/g, ' / '));
+      await page.mouse.move(5, 5);
+    }
+    // a click event with no pointer behind it (assistive technology) activates rows
+    await page.evaluate(() => window.__fractonica.store.set({ topDepth: 7, selectedLevel: 2 }));
+    await page.evaluate(() => document.querySelector('.face-row--bottom').dispatchEvent(new MouseEvent('click', { bubbles: true })));
+    check('a bare click event on a glyph row selects its level (assistive technology)', (await f.state()).selectedLevel === 7 && (await f.state()).topDepth === 7);
+    // chained taps in the middle
+    {
+      await page.evaluate(() => window.__fractonica.store.set({ showLetters: false }));
+      const c = await f.client(96, 170);
+      const letters = async () => (await f.state()).showLetters;
+      await page.mouse.click(c.x, c.y);
+      await page.waitForTimeout(100);
+      await page.mouse.click(c.x, c.y);
+      await page.waitForTimeout(100);
+      const on = await letters();
+      await page.mouse.click(c.x, c.y);
+      await page.waitForTimeout(60);
+      check('double tap toggles letters on, and a quick third tap does not toggle them back', on === true && (await letters()) === true);
+      await page.waitForTimeout(600);
+      await page.evaluate(() => window.__fractonica.store.set({ showLetters: false }));
+    }
+    // info labels are announced
+    await open(q(T_A));
+    await page.click('.face-btn[data-act="info"]');
+    await page.waitForTimeout(300);
+    {
+      const said = await page.evaluate(() => document.querySelector('#slot-face [role=status]').textContent);
+      check('Info announces the labels in the live region', /^Next \w+ of the top period: .+ Next \w+ of the solar sync: .+ Sync time: .+/.test(said), said);
+    }
+    // keyboard: the focused row's tooltip is its description
+    await page.focus('.face-svg');
+    await page.keyboard.press('Tab');
+    await page.waitForTimeout(200);
+    {
+      const d = await page.evaluate(() => {
+        const r = document.activeElement;
+        const id = r.getAttribute('aria-describedby');
+        const tip = id && document.getElementById(id);
+        return { row: r.dataset.row, id, hidden: tip?.hidden, hint: tip?.querySelector('.face-tip-hint')?.textContent };
+      });
+      check('a keyboard-focused row is described by its tooltip, whose hint names Enter', d.row === 'top' && !!d.id && d.hidden === false && /^Enter:/.test(d.hint), JSON.stringify(d));
+      await page.keyboard.press('Tab');
+      check('moving focus removes the description again', await page.evaluate(() => !document.querySelector('.face-row--top').hasAttribute('aria-describedby')));
+    }
+    // the dialog keeps its keys to itself (Space must not start the time-lapse)
+    await page.click('.face-help');
+    await page.keyboard.press('Space');
+    await page.keyboard.press('3');
+    await page.waitForTimeout(150);
+    {
+      const st = await page.evaluate(() => ({ rate: window.__fractonica.store.rate, view: window.__fractonica.store.state.view }));
+      check('keys typed in the How to read dialog do not reach the global shortcuts', st.rate === 0 && st.view === 'rings', JSON.stringify(st));
+      await page.keyboard.press('Escape');
+      check('... and Escape still closes the dialog', await page.evaluate(() => document.querySelector('.face-pop').hidden));
+    }
+    // out of the catalogue and back: the accent and labels return
+    await open('?view=rings&zone=UTC&depth=7&sel=7');
+    await page.waitForTimeout(300);
+    await page.evaluate(() => {
+      window.__realNow = Date.now;
+      Date.now = () => 29e9 * 1000;
+    });
+    await page.waitForTimeout(300);
+    {
+      const oorNow = await page.evaluate(() => ({ oor: document.querySelector('.face-svg').classList.contains('is-oor'), label: document.querySelector('.face-svg').getAttribute('aria-label'), sel: !!document.querySelector('.face-row.is-selected') }));
+      check('out of range (device clock): label says so, no accent', oorNow.oor && /outside the Saros 141 catalogue/.test(oorNow.label) && !oorNow.sel, JSON.stringify(oorNow));
+      await page.evaluate(() => (Date.now = window.__realNow));
+      await page.waitForTimeout(300);
+      const back = await page.evaluate(() => ({ oor: document.querySelector('.face-svg').classList.contains('is-oor'), label: document.querySelector('.face-svg').getAttribute('aria-label'), sel: document.querySelector('.face-row.is-selected')?.dataset.row }));
+      check('back in range: the selected-row accent and the label are redrawn', !back.oor && back.sel === 'top' && /depth 7 η over depth 8 θ/.test(back.label), JSON.stringify(back));
+    }
+    // before the first reading nothing is drawn
+    await page.route('**/src/ui/sound.js', async (route) => {
+      await new Promise((r) => setTimeout(r, 1500));
+      try {
+        await route.continue();
+      } catch {}
+    });
+    await page.goto(url(q(T_A)));
+    await page.waitForSelector('.face-svg');
+    await page.waitForTimeout(500);
+    {
+      const pending = await page.evaluate(() => ({ cls: document.querySelector('.face-svg').classList.contains('is-pending'), ink: getComputedStyle(document.querySelector('.face-row--top .face-ink')).opacity, dots: getComputedStyle(document.querySelector('.face-row--top .face-counter')).opacity }));
+      check('before the first reading the screen is blank (no all-zero clock)', pending.cls && pending.ink === '0' && pending.dots === '0', JSON.stringify(pending));
+      await page.waitForTimeout(2200);
+      check('... and the glyphs appear with the first reading', await page.evaluate(() => !document.querySelector('.face-svg').classList.contains('is-pending') && getComputedStyle(document.querySelector('.face-row--top .face-ink')).opacity === '1'));
+    }
+    await page.unroute('**/src/ui/sound.js');
+    // persisted garbage: null / out-of-range depth and selection must not break the face
+    await page.evaluate(() => localStorage.setItem('fractonica-clock/v1', JSON.stringify({ topDepth: null, selectedLevel: null, showLetters: 'yes' })));
+    await page.goto(url(`?t=${T_A}&view=rings&zone=UTC`));
+    await page.waitForSelector('.face-svg .face-glyph path');
+    await page.waitForTimeout(500);
+    check('stored topDepth null falls back to the default depth 7', /η 7 · θ 8/.test(await page.textContent('.face-depths')), await page.textContent('.face-depths'));
+    await page.evaluate(() => localStorage.clear());
+    // small details of the page chrome
+    await open(q(T_A));
+    {
+      const d = await page.evaluate(() => {
+        // computed colours come back as rgb(...) or, for color-mix(), as color(srgb r g b) with channels 0..1
+        const rgb = (c) => c.match(/[\d.]+/g).slice(0, 3).map((v) => (c.startsWith('color(') ? Math.round(Number(v) * 255) : Number(v)));
+        const lin = (v) => ((v /= 255) <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4);
+        const L = ([r, g, b]) => 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+        const cr = (a, b) => (Math.max(L(a), L(b)) + 0.05) / (Math.min(L(a), L(b)) + 0.05);
+        const off = document.querySelector('.face-dot:not(.is-lit)');
+        return {
+          help: document.querySelector('.face-help').getAttribute('aria-label'),
+          cap: parseFloat(getComputedStyle(document.querySelector('.face-cap')).fontSize),
+          dotContrast: cr(rgb(getComputedStyle(off).stroke), [8, 12, 16]),
+          depthsContrast: cr(rgb(getComputedStyle(document.querySelector('.face-depths')).color), [16, 22, 29]),
+        };
+      });
+      check('How to read has its own accessible name (the Rings panel has one too)', /^How to read the clock face$/.test(d.help), d.help);
+      check('info captions are 10 design px (they were 7.5)', d.cap === 10, String(d.cap));
+      check('unlit counter dots keep >= 3:1 contrast with the glass; the footer text >= 4.5:1', d.dotContrast >= 3 && d.depthsContrast >= 4.5, `${d.dotContrast.toFixed(2)} / ${d.depthsContrast.toFixed(2)}`);
+    }
+
+    // ---- 9. console hygiene ---------------------------------------------------------------------------------
+    const mine = errors.filter(ownError);
+    check('no console / page errors from the face files', mine.length === 0, mine.join(' || '));
+  },
+  { viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 },
+);
+
+const failed = checks.filter((c) => !c.ok);
+console.log(`\n${checks.length - failed.length}/${checks.length} checks passed`);
+if (failed.length) {
+  console.log('FAILED:\n' + failed.map((c) => ` - ${c.name} ${c.detail}`).join('\n'));
+  process.exit(1);
+}
