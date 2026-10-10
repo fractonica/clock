@@ -4,9 +4,10 @@
  *   epsilon 5 · 1625:1024      349.1 Hz · F4 −1¢ · 16.2 d
  * Hovering, focusing or (on a touch screen) tapping a strip explains where the note comes from.
  *
- * Pure mode (`getPure()` returns ctx.pure): the second line reads `octave +1 · 801¢ · 2ε½` (octave offset, cents above the
- * ground, cycle length counted in Fractonica periods) instead of Hz, note name and an Earth duration, the ratio is
- * written with a slash ("65/64"), and the tooltip speaks in ratios, cents, periods and glyph pairs.
+ * Pure mode (`getPure()` returns ctx.pure): the second line reads `108.6 pB · octave +1 · 799¢ · 1ε` (the pitch in
+ * cycles per Blink, octave offset, cents above the ground, cycle length counted in Fractonica periods) instead of Hz,
+ * note name and an Earth duration, the ratio is written with a slash ("65/64"), and the tooltip speaks in ratios,
+ * pB, cents, periods and glyph pairs.
  */
 import { levelColor } from '../../core/theme.js';
 import { frequencyOf, noteLabel } from '../../audio/tuning.js';
@@ -30,7 +31,7 @@ export function createMixer(root, { rows, model, fmt, tooltip, getBase, getLive,
       <button class="snd-strip-main" type="button">
         <span class="sr-only">Select ${name}: </span>
         <span class="snd-l1"><span class="snd-depth mono">${row.depth}</span><span class="snd-ratio mono">${row.ratio}</span><span class="snd-per-n mono">${period}</span></span>
-        <span class="snd-l2 mono"><span class="snd-hz"></span><span class="snd-note"></span><span class="snd-per">${period}</span></span>
+        <span class="snd-l2 mono"><span class="snd-hz"></span><span class="snd-reg"></span><span class="snd-note"></span><span class="snd-per">${period}</span></span>
       </button>
       <span class="snd-meter" aria-hidden="true"><i></i></span>`;
     root.append(el);
@@ -43,6 +44,7 @@ export function createMixer(root, { rows, model, fmt, tooltip, getBase, getLive,
       perN: el.querySelector('.snd-per-n'),
       per: el.querySelector('.snd-per'),
       hz: el.querySelector('.snd-hz'),
+      reg: el.querySelector('.snd-reg'),
       note: el.querySelector('.snd-note'),
       bar: el.querySelector('.snd-meter i'),
       lastHz: NaN,
@@ -60,9 +62,9 @@ export function createMixer(root, { rows, model, fmt, tooltip, getBase, getLive,
 
   function tipHtml(row, info) {
     const pu = getPure();
-    if (pu) return W.voiceTip({ row, info, pure: pu, live: getLive(row.level), int: fmtInt, color: levelColor(row.level, 1, 70) });
     const base = getBase();
     const hz = frequencyOf(row, base);
+    if (pu) return W.voiceTip({ row, info, pure: pu, live: getLive(row.level), int: pu.groupDigits, color: levelColor(row.level, 1, 70), hz });
     const live = getLive(row.level);
     const place = row.octave === 0 ? 'at the base octave' : `${row.octave} octave${row.octave > 1 ? 's' : ''} above the base`;
     const cents = row.pcCents.toFixed(1);
@@ -88,6 +90,7 @@ export function createMixer(root, { rows, model, fmt, tooltip, getBase, getLive,
       s.ratio.textContent = pu ? W.ratioText(rows[s.L]) : rows[s.L].ratio;
       s.perN.textContent = period;
       s.per.textContent = period;
+      s.reg.textContent = pu ? W.octaveOffset(rows[s.L].octave) : ''; // pure only: the octave is a part of its own
       s.lastHz = NaN; // rewrite the note line at the next update
     }
   }
@@ -104,20 +107,17 @@ export function createMixer(root, { rows, model, fmt, tooltip, getBase, getLive,
     const pu = getPure();
     for (const s of strips) {
       const L = s.L;
-      if (pu) {
-        // octave offset and cents above the ground do not depend on the base pitch: written once per mode
-        if (s.lastHz !== -1) {
-          s.hz.textContent = W.octaveOffset(rows[L].octave);
+      const hz = frequencyOf(rows[L], base);
+      if (!(Math.abs(hz - s.lastHz) <= 1e-6)) {
+        if (pu) {
+          // the pitch in pB follows the base pitch; the octave offset and cents above the ground do not
+          s.hz.textContent = W.pbOf(pu, hz);
           s.note.textContent = W.cents(rows[L].pcCents);
-          s.lastHz = -1;
-        }
-      } else {
-        const hz = frequencyOf(rows[L], base);
-        if (!(Math.abs(hz - s.lastHz) <= 1e-6)) {
+        } else {
           s.hz.textContent = fmtHz(hz);
           s.note.textContent = noteLabel(hz);
-          s.lastHz = hz;
         }
+        s.lastHz = hz;
       }
       if (s.lastOn !== on[L]) {
         s.on.setAttribute('aria-pressed', String(on[L]));

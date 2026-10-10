@@ -1,7 +1,8 @@
 // Pure-mode check for the calendar tab and the header jump box (headless Chromium).
 //   node tools/checks/check-calendar-pure.mjs [--soft] [--shots]
 //
-// 1. Leak scan: the shared scanner (tools/pure-scan.mjs) over the pure converter, the pure δ½ page and the jump box in
+// Revision 2 of pure mode: whole cycles (no halves), one δ page = 5 ε x 7 ζ = 35 ζ cells, offsets in every unit and
+// Blinks. 1. Leak scan: the shared scanner (tools/pure-scan.mjs) over the pure converter, the pure δ page and the jump box in
 //    states it cannot reach by itself: open glyph picker, typed errors in every field, every jump-box input class
 //    (names, addresses, stamps, offsets, boundaries, glyph states, Earth input, errors, examples, history), tooltips of
 //    cells / η bands / sync marks / ribbon, keyboard-only tooltips, toasts, out-of-range moments, phone width.
@@ -99,21 +100,21 @@ await withApp(
       await field('Stamp or name').fill('Gamma Difracton');
       await field('Stamp or name').press('Enter');
       await page.waitForTimeout(250);
-      ok(/^α#6 β#4 γ#2 · δ½#1 · ε½#1 · ζ½#1 · 0η 0ι 0λ$/.test(await stampNow()), `a name sets the moment: ${await stampNow()}`);
+      ok(/^α#6 β#4 γ#2 · δ#1 · ε#1 · ζ#1 · 0η 0ι 0λ$/.test(await stampNow()), `a name sets the moment: ${await stampNow()}`);
       ok((await page.locator('.cal-pconv .cal-pin').getAttribute('aria-pressed')) === 'true', 'an edit pins the converter');
       ok(/α#6 β#4 γ#2/.test(await field('Stamp or name').inputValue()), 'the stamp field shows the new moment');
       ok(Math.abs((await t()) - T) < 1, 'the app itself did not move until Apply');
-      // counters: + on δ½ moves by one δ½
+      // counters: + on δ moves by one δ
       const c0 = await conv();
       await page.locator('.cal-pconv .cal-cstep').first().locator('button').nth(1).click();
       await page.waitForTimeout(200);
-      ok(/δ½#2 · ε½#1/.test(await stampNow()), `δ½ + 1: ${await stampNow()}`);
+      ok(/δ#2 · ε#1/.test(await stampNow()), `δ + 1: ${await stampNow()}`);
       ok((await conv()) > c0, 'the counter moved the moment forward');
-      await field('δ½ number, 1 to 10').fill('7');
+      await field('δ number, 1 to 5').fill('4');
       await page.waitForTimeout(250);
-      ok(/δ½#7/.test(await stampNow()), 'typing a counter sets it');
-      // the Counters section is written in the notation: δ½# before the number, the unit after it for the clock
-      ok((await page.locator('.cal-pconv .cal-cstep.is-ord .cal-sl').allInnerTexts()).join(' ') === 'δ½# ε½# ζ½#', 'the date counters are labelled δ½# ε½# ζ½#');
+      ok(/δ#4/.test(await stampNow()), 'typing a counter sets it');
+      // the Counters section is written in the notation: δ# before the number, the unit after it for the clock
+      ok((await page.locator('.cal-pconv .cal-cstep.is-ord .cal-sl').allInnerTexts()).join(' ') === 'δ# ε# ζ#', 'the date counters are labelled δ# ε# ζ#');
       ok((await page.locator('.cal-pconv .cal-cstep.is-count .cal-sl').allInnerTexts()).join(' ') === 'η ι λ', 'the clock counters are labelled η ι λ after the number');
       ok(/Press \? for the glossary/.test(await page.locator('.cal-pconv .cal-pc-moment .cal-help').first().innerText()), 'the converter help points to the glossary');
       // address steppers: ε + carries
@@ -161,7 +162,9 @@ await withApp(
       note(await scan(page, `${label} ← ${text}`));
       await loc.press('Escape');
     };
-    for (const bad of ['2031-06-01', '+3d', 'Moscow', 'xyz', '14:30', 'next ζ½ peak', '+2δ', '+2θ', 'ζ½ 9', 'ζ½#9', 'α#19', 'η 3 ζ½ 5', '3η ζ½#5', '11η', '3γ', 'tomorrow', '1791460800']) await typeIn('Stamp or name', bad);
+    for (const bad of ['2031-06-01', '+3d', 'Moscow', 'xyz', '14:30', 'next ζ½ peak', 'δ½ 3', '+2ξ', 'ζ#9', 'δ#6', 'α#19', 'η 3 ζ 5', '3η ζ#5', '11η', '3γ', '3η 4ν', 'tomorrow', '1791460800', '3 beats']) await typeIn('Stamp or name', bad);
+    // offsets in every unit, Blinks and unit names included, are read by the stamp field
+    for (const good of ['+4 Blinks', '+2 Hadrons 3 Helions', '+2ζ 3η', '+0.14ν', '-1ι']) await typeIn('Stamp or name', good);
     await typeIn('Eclipse number', '99');
     await typeIn('Fraction', 'abc');
     await typeIn('Exact position (Saros units)', '1e9');
@@ -242,12 +245,12 @@ await withApp(
     console.log('pure page: navigation, clicks, keys, selects');
     await goto(`?pure=1&t=${T}&view=calendar`);
     const v0 = await view();
-    await page.locator('.cal-pmonth .cal-nb[aria-label="Forward one δ½"]').click();
+    await page.locator('.cal-pmonth .cal-nb[aria-label="Forward one δ"]').click();
     await page.waitForTimeout(250);
     const v1 = await view();
-    ok(v1.hv === v0.hv + 1, `forward one δ½ moves the page (${v0.hv} -> ${v1.hv})`);
+    ok(v1.hv === v0.hv + 1, `forward one δ moves the page (${v0.hv} -> ${v1.hv})`);
     note(await scan(page, 'next page'));
-    for (const [sym, pages] of [['γ', 10], ['β', 130], ['α', 650]]) {
+    for (const [sym, pages] of [['γ', 5], ['β', 65], ['α', 325]]) {
       await page.locator(`.cal-pm-step button:has-text("${sym}")`).click();
       const before = (await view()).hv;
       await page.locator('.cal-pmonth .cal-nb').nth(1).click();
@@ -257,12 +260,13 @@ await withApp(
       await page.locator('.cal-pmonth .cal-nb').nth(0).click();
       await page.waitForTimeout(150);
     }
-    await page.locator('.cal-pm-step button:has-text("δ½")').click();
+    await page.locator('.cal-pm-step button:has-text("δ")').click();
     await page.waitForTimeout(100);
     await page.selectOption('.cal-pmonth select[aria-label="Alpha of the page"]', '9');
     await page.waitForTimeout(250);
     note(await scan(page, 'alpha 9'));
     ok((await view()).info.alpha === 9, 'the α select jumps to α#9');
+    ok((await page.locator('.cal-pm-cell').count()) === 35, 'a page is 35 ζ cells (5 ε rows x 7 ζ columns)');
     // the band level: δ ε ζ cycles are whole cells, η cycles are inside them; the choice is the app-wide selected depth
     for (const [i, level] of [[0, 3], [1, 4], [2, 5], [3, 6]]) {
       await page.locator('.cal-pmonth .cal-ovseg button').nth(i).click();
@@ -302,6 +306,13 @@ await withApp(
       ok((await page.locator('.cal-pm-tag.is-sync').count()) >= 6, 'sync numbers label the cells where a sync begins');
       ok(/^S\d+$/.test(await page.locator('.cal-pm-tag.is-sync').first().innerText()), 'a sync label is S + its number');
       ok(/eclipse #22 \+ \.\d+/.test(await page.locator('.cal-pconv .cal-meta .cal-chip').first().innerText()), 'the converter chip names the same eclipse #22');
+      // the eclipse is marked where it falls in its cell: 0, 1/4, 1/2 or 3/4 (#22 is k mod 4 = 2: the middle)
+      const ex = await page.evaluate(() => {
+        const c = document.querySelector('.cal-pm-cell:has(.cal-pm-tag.is-ecl)');
+        const l = c?.querySelector('.cal-pm-eline');
+        return l ? { left: l.style.left, icon: c.querySelector('.cal-pm-ecl')?.style.left } : null;
+      });
+      ok(ex && /^50(\.0+)?%$/.test(ex.left) && /^50(\.0+)?%$/.test(ex.icon), `the eclipse hairline sits at the middle of its cell: ${JSON.stringify(ex)}`);
       ok(/eclipse #22/.test(await page.locator('.cal-pconv .cal-eclipses').innerText()), 'the eclipse rows name #22 and #23: ' + (await page.locator('.cal-pconv .cal-eclipses').innerText()).replace(/\s+/g, ' '));
       await goto(`?pure=1&t=${T}&view=calendar`);
     }
@@ -354,16 +365,17 @@ await withApp(
     const inputs = [
       'Gamma Difracton', 'Gamma Difracton in Beta Tetrafracton', 'Alpha Hexafracton Beta Tetrafracton Gamma Nonafracton', 'Difracton', 'Omega Monofracton',
       'α#6 β#4 γ#9', 'ε#5', 'ζ 6', 'a6 b3 g11', 'α#19', 'β#6', 'γ#14',
-      'δ½#3 · ε½#2 · ζ½#5', 'δ½ 3 · ε½ 2 · ζ½ 5', 'η 3', 'ζ½ 5 η 3', 'ζ½#6 · 5η', '3η 17ι 21λ', '0η29ι21λ', 'δ½ 11', 'δ½#11', 'η 11', '11η', '3γ',
-      '+2ζ½ 3η', '-1ι', '3η ago', '+3', '+2δ', '+2θ', '+9999α',
+      'δ#3 · ε#2 · ζ#5', 'δ 3 · ε 2 · ζ 5', 'η 3', 'ζ 5 η 3', 'ζ#6 · 5η', '3η 17ι 21λ', '0η29ι21λ', 'δ#6', 'ε#6', 'ζ#8', 'η 11', '11η', '3γ', 'ν#3 · 3η',
+      '+2ζ 3η', '-1ι', '3η ago', '+3', '+2δ', '+2θ', '+9999α', '+4 Blinks', '+0.14ν', '+2ξ', '+2 Hadrons 3 Helions', '3 Preons ago', 'in 5 Flavons', '+7ν',
+      'δ½ 3', 'δ½#3', 'ζ½', 'next ζ½', '+2ζ½ 3η', 'delta half 3', '3 beats',
       'pos 22.9', 'pos 99', 'sync 4820', 'S4820 node', 'sync 99999999',
-      'next ε', 'prev ζ', 'next ζ½', 'next peak η', 'next 3 ε', 'next peak', 'next ε½ peak', 'ε',
+      'next ε', 'prev ζ', 'next Helion', 'next peak η', 'next 3 ε', 'next peak', 'next Nuclide', 'prev Atom', 'next Blink', 'ε', 'Helion',
       'η [13,0]', 'η 13·4', 'η [16,0]', 'd7#717211', 'd7#99999999999', 'd20 1,2', 'now',
       '2031-06-01 14:30', 'Thu 8 Oct 2026', '+3d', 'in 2 weeks', 'tomorrow', '14:30 Tokyo', '1791460800', 'UTC',
       'xyz', '???', 'x'.repeat(300),
     ];
     for (const text of inputs) await typeJump(text);
-    // the stamp the header prints is accepted, also in the second half of the η that straddles a ζ ("ζ½#6 · 5η")
+    // the stamp the header prints is accepted at every η of a ζ ("ζ#6 · 5η": the clock counts inside the whole ζ)
     {
       const inst = await page.evaluate(() => {
         const { model, ctx } = window.__fractonica;
@@ -376,7 +388,7 @@ await withApp(
         }
         return null;
       });
-      ok(!!inst && / · 5η$/.test(inst.stamp), `a stamp in the second half of an odd η: ${inst?.stamp}`);
+      ok(!!inst && / · 5η$/.test(inst.stamp), `a stamp inside the middle η of a ζ: ${inst?.stamp}`);
       await goto(`?pure=1&t=${inst.t}&view=rings`);
       await jump.fill(inst.stamp);
       await page.waitForTimeout(250);
@@ -388,7 +400,7 @@ await withApp(
       const shown = await page.evaluate(() => window.__fractonica.ctx.pure.stamp(window.__fractonica.store.t(), 'eta'));
       ok(shown === inst.stamp, `Enter lands on the same stamp: ${shown}`);
       // the old spelling of the same stamp
-      const old = inst.stamp.replace(/δ½#(\d+)/, 'δ½ $1').replace(/ε½#(\d+)/, 'ε½ $1').replace(/ζ½#(\d+)/, 'ζ½ $1').replace(/ · (\d+)η$/, ' · η $1');
+      const old = inst.stamp.replace(/δ#(\d+)/, 'δ $1').replace(/ε#(\d+)/, 'ε $1').replace(/ζ#(\d+)/, 'ζ $1').replace(/ · (\d+)η$/, ' · η $1');
       await jump.fill(old);
       await page.waitForTimeout(250);
       ok(/^cycle$/i.test(await page.locator('.jump-item').first().locator('.jump-kind').innerText()), `the old spelling "${old}" is still read`);
@@ -455,7 +467,7 @@ await withApp(
     ok(await page.evaluate(() => !document.body.dataset.pure), 'the header button switches pure mode off');
     const after = await normalText();
     ok(/converter/i.test(after) && /gregorian/i.test(after) && /cycle band/i.test(after), 'normal text is back (Gregorian panel, cycle band)');
-    ok(!/\wfracton\b|δ½|ε½|ζ½|glyph pair|cell \d+ of 35/i.test(after), 'no pure text is left in the normal mode (calendar tab and jump box)');
+    ok(!/\wfracton\b|Blink|glyph pair|cell \d+ of 35/i.test(after), 'no pure text is left in the normal mode (calendar tab and jump box)');
     ok((await jump.inputValue()) === '' && /2031-06-01/.test(await jump.getAttribute('placeholder')), 'the box is empty again with the normal placeholder');
     ok(/2026-10-08/.test(await page.locator('.cal-conv input[aria-label="Date"]').inputValue()), 'the Gregorian converter shows the shown time again');
     // the other direction: pure -> normal -> pure keeps working, deep link
@@ -464,7 +476,7 @@ await withApp(
     ok(await page.evaluate(() => document.body.dataset.pure === '1'), 'pure again');
     note(await scan(page, 'toggled on again'));
     const stampNow = await page.locator('.cal-pconv [aria-label="Stamp or name"]').inputValue();
-    ok(/^α#\d+ β#\d γ#\d+ · δ½#\d+ · ε½#\d · ζ½#\d · \d+η \d+ι \d+λ$/.test(stampNow), `pure converter stamp: ${stampNow}`);
+    ok(/^α#\d+ β#\d γ#\d+ · δ#\d · ε#\d · ζ#\d · \d+η \d+ι \d+λ$/.test(stampNow), `pure converter stamp: ${stampNow}`);
     }
 
     // ---------------------------------------------------------------- report

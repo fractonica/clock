@@ -2,15 +2,16 @@
  * Pure-mode wording of the clock face (docs/design/80-pure.md): every string the face shows, speaks or
  * explains, rewritten in Fractonica terms only. No clock times, dates, zones or Earth time units, no percentages.
  *
- * Notation (header of src/core/pure.js): X#n is an ordinal, counted from 1 ("η#1", "δ½#6"); nX is a count of units
- * ("6ι 43λ", the clock counters "0η 29ι 21λ" count completed units from 0); a letter + a space + a number ("η 7") is only
- * a depth chip.
+ * Notation (header of src/core/pure.js): X#n is an ordinal, counted from 1 ("η#1", "δ#6"); nX is a count of units
+ * ("1θ 2ι", the clock counters "0η 29ι 21λ" count completed units from 0); a letter + a space + a number ("η 7") is only
+ * a depth chip. Whole cycles only: one unit per depth, no halves (revision 2 of docs/design/80-pure.md).
  *
- *   - countdowns are spans counted in ladder units  ("in 3η 2ι"),
- *   - cycle ends name the cycle that begins          ("ends in 6ι 43λ → Eta Difracton begins"),
+ *   - countdowns are spans counted in ladder units  ("in 1θ 2ι"),
+ *   - cycle ends name the cycle that begins          ("ends in 1θ 2ι → Eta Difracton begins"),
  *   - progress through a cycle is a pair of 2-stroke glyphs (256 states), never a number with a percent sign,
  *   - the solar sync drift is counted in λ           ("drift −623λ", ctx.pure.driftText),
- *   - cycles carry their emergent names              ("Eta Monofracton" = η#1, the 1st η inside its ζ).
+ *   - cycles carry their emergent names              ("Eta Monofracton" = η#1, the 1st η inside its ζ),
+ *   - the units carry their own names where a tooltip explains one ("one cycle = 1η (Helion)", "19 Helions").
  *
  * All spans, cycle lengths and drifts come from the shared vocabulary (`ctx.pure`); nothing here measures or trims a
  * duration itself. Like helpers.js nothing here touches the DOM. The functions return the same shapes as their
@@ -102,7 +103,10 @@ export function purePeriodTooltip(d, p) {
     lines.push(atEdge ? `Ends ${inText(p, d.now, d.cycleEnd)}, with the catalogue` : `Ends ${inText(p, d.now, d.cycleEnd)} → ${p.cycleName(d.level, d.cycle + 1)} begins`);
   }
   lines.push(FROM_ONE);
-  return { title: `${d.letter} · depth ${d.depth}`, aside: `one cycle = ${d.length}`, lines, hint: rowHint(d) };
+  // a depth is its own unit: "1η", and the unit's name where it has one ("Helion"; α β γ read as their level names)
+  const unit = p.unitOf(d.letter);
+  const named = unit?.named ? ` (${unit.name})` : '';
+  return { title: `${d.letter} · depth ${d.depth}`, aside: `one cycle = ${d.length}${named}`, lines, hint: rowHint(d) };
 }
 
 /**
@@ -118,7 +122,7 @@ export function pureSolarTooltip(d, p) {
     `Sync began ${agoText(p, d.now, d.start)}`,
   ];
   const hint = d.by === 'key' ? 'Enter: show the info labels · key l: keep the letters' : 'Click or tap: info labels · double tap: letters';
-  return { title: `Solar sync #${intText(d.sync)}`, aside: '19η per sync', lines, hint };
+  return { title: `Solar sync #${intText(d.sync)}`, aside: `one sync = 19η (19 ${p.unitName('η', 19)})`, lines, hint };
 }
 
 /**
@@ -183,14 +187,14 @@ export function pureRowAriaLabel(kind, d, p) {
 // ---- caption, letters, out of range --------------------------------------------------------------------
 /**
  * The caption under the pill when time is not live: the address down to the clock counters, in one short line
- * ("α#6 β#4 γ#9 · δ½#3 ε½#2 ζ½#5 · 3η 17ι 42λ": the numbers of pure.stamp(t, 'lambda') without the separators that
+ * ("α#6 β#4 γ#9 · δ#3 ε#2 ζ#5 · 3η 17ι 42λ": the numbers of pure.stamp(t, 'lambda') without the separators that
  * cost width). Ordinals carry a #, the counters are counts and start at 0 (CAPTION_NOTE says so on hover).
  */
 export function pureCaption(p, t) {
   const d = p.date(t);
   const c = p.clock(t);
   if (!d || !c) return '';
-  return `α#${d.alpha} β#${d.beta} γ#${d.gamma} · δ½#${d.delta} ε½#${d.epsilon} ζ½#${d.zeta} · ${c.eta}η ${c.iota}ι ${c.lambda}λ`;
+  return `α#${d.alpha} β#${d.beta} γ#${d.gamma} · δ#${d.delta} ε#${d.epsilon} ζ#${d.zeta} · ${c.eta}η ${c.iota}ι ${c.lambda}λ`;
 }
 /** The hover text of the caption: which of its numbers start at 0. */
 export const CAPTION_NOTE = `${FROM_ONE} ${GLOSSARY_NOTE}`;
@@ -213,7 +217,8 @@ export const PURE_SOLAR_NA = Object.freeze({
 // ---- how to read ---------------------------------------------------------------------------------------
 /**
  * The lines of the "How to read" popover in pure wording (`pairHTML` renders the example glyph pair): the five of
- * normal mode, plus one on which numbers start at 0 and which at 1 (the dialog then ends with the glossary pointer).
+ * normal mode, plus one on which numbers start at 0 and which at 1 and what η ι λ are called (Helion, Preon, Flavon);
+ * the dialog then ends with the glossary pointer.
  */
 export function pureHowToLines(pairHTML) {
   return [
@@ -221,7 +226,7 @@ export function pureHowToLines(pairHTML) {
     ['dot', '<b>Dot = falling.</b> A dot above the stem marks the falling half; rising and the two turning points have none.'],
     ['pair', `<b>Pair = odometer.</b> The left glyph is the coarse step, the right one the fine step inside it: 16 × 16 = 256 phases of a cycle. ${pairHTML ? `<span class="face-pop-eg">${pairHTML}</span>` : ''}`],
     ['count', '<b>Counter dots</b> are the cycles of the parent period; lit up to the one you are in.'],
-    ['zero', '<b>Counters from 0, names from 1.</b> A clock counter such as 0η 29ι 21λ counts completed units from 0; an ordinal such as δ½#6 or Eta Monofracton (η#1) counts from 1.'],
-    ['gold', '<b>Yellow</b> is the solar sync: 19η cycles. Its start drifts a little earlier with every sync, counted in λ.'],
+    ['zero', '<b>Counters from 0, names from 1.</b> The clock 0η 29ι 21λ counts completed units from 0: η is a Helion, ι a Preon, λ a Flavon, each counted inside the one above. An ordinal such as δ#6 or Eta Monofracton (η#1) counts from 1.'],
+    ['gold', '<b>Yellow</b> is the solar sync: 19η cycles, 19 Helions. Its start drifts a little earlier with every sync, counted in λ.'],
   ];
 }

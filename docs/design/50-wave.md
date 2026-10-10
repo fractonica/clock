@@ -46,6 +46,14 @@ green `#0d1b14` background; you may call `clock.compose` for a quick overview if
 Add pure geometry helpers (point on arc, bounds, per-level markers) in `src/ui/wave/geometry.js` and test them,
 including that the marker of level L lies on the arc of its half-cycle at progress = phase of the half-cycle.
 
-## Solar wave and pure mode
-See docs/design/80-pure.md (final section). Files: `src/ui/wave/solar.js` (geometry/phase), `sun.js` (dial), `words.js`
-(wording incl. pure). Eclipse labels are `#k` like the position; drift reads `drift −623λ`; progress pairs replace percentages.
+## Solar wave and pure mode (revision 2: whole cycles, named units, the Blink)
+See docs/design/80-pure.md (REVISION 2 and the final section). Files: `src/ui/wave/solar.js` (geometry/phase), `sun.js` (dial), `words.js`
+(wording incl. pure). "Half-arc" is the view's own geometry (a cycle is a crest followed by a trough), not a unit; every length is counted in
+whole-cycle units.
+
+- Eclipse labels are `#k` like the position; drift reads `drift −6 236λ` (`pure.driftText`); progress pairs replace percentages.
+- Spans are the core's (`pure.durationPos`): `ends in 1θ 2ι`, a half-arc "lasts" half a cycle counted in units (`4θ 2ι`, `3ζ 5η`), below one Blink a
+  decimal (`0.071ν`). A depth button says `one cycle = 1η (Helion)`.
+- The time next to the focus marker is three consecutive parts of the pure date / clock by the depth of the arc (`α#6 β#4 γ#9`, `δ#3 ε#5 ζ#4`,
+  `ε#5 ζ#4 · 0η`, `0η 29ι 21λ`), the same groups as the face caption.
+- Solar: `one sync = 19η` (19 Helions in tooltips and the caption), `node in 2η 6θ`, drift in λ.

@@ -27,8 +27,9 @@ export function createRing(canvas) {
    * @param {number} s.baseHz
    * @param {boolean} s.reduced   prefers-reduced-motion: no glow
    * @param {Set<number>} [s.flash]  levels whose note of "Hear this moment" is sounding right now
-   * @param {{ground:{head:string, sub:string}}|null} [s.pure]  pure mode: spokes are named in cents (no note names), the centre
-   *   names the ground (`head` / `sub` from words.groundWords), the corner is as before
+   * @param {{ground:{head:string, sub:string}, pb:string}|null} [s.pure]  pure mode: spokes are named in cents (no note names),
+   *   the centre names the ground (`head` / `sub` from words.groundWords) and its pitch in pB (`pb`: "34.2 pB"), the corner
+   *   is as before
    */
   function draw({ rows, on, loud, enabled, selected, baseHz, reduced, flash, pure = null }) {
     if (!view.visible) return;
@@ -115,13 +116,18 @@ export function createRing(canvas) {
       g.fillText(rows[L].letter, lx, ly);
     }
 
-    // centre: the base pitch
+    // centre: the base pitch (pure: the ground, its ratio and its pitch in pB on three lines)
     g.fillStyle = INK;
     g.font = '600 15px ui-sans-serif, system-ui, sans-serif';
-    g.fillText(pure ? pure.ground.head : base.name, cx, cy - 6);
+    g.fillText(pure ? pure.ground.head : base.name, cx, cy - (pure ? 12 : 6));
     g.fillStyle = INK_2;
     g.font = '10px ui-monospace, SFMono-Regular, Menlo, monospace';
-    g.fillText(pure ? pure.ground.sub : `${baseHz.toFixed(baseHz % 1 ? 1 : 0)} Hz`, cx, cy + 9);
+    if (pure) {
+      g.fillText(pure.ground.sub, cx, cy + 2);
+      g.fillText(pure.pb, cx, cy + 15);
+    } else {
+      g.fillText(`${baseHz.toFixed(baseHz % 1 ? 1 : 0)} Hz`, cx, cy + 9);
+    }
     // the selected level's exact interval, in the corner
     if (selected >= 0 && rows[selected]) {
       const r = rows[selected];

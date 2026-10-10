@@ -1,5 +1,5 @@
 /**
- * Pure mode of the Sound panel, checked in headless Chromium (docs/design/80-pure.md):
+ * Pure mode of the Sound panel, checked in headless Chromium (docs/design/80-pure.md, revision 2: Blinks and pB):
  *
  *   node tools/checks/check-sound-pure.mjs            run the checks (exit code 1 on failure; screenshots in tools/out/)
  *   node tools/checks/check-sound-pure.mjs --dump F   only write the visible text of every state in the current mode to F
@@ -221,10 +221,11 @@ export async function walkSound(page, url, visit, { pure }) {
   }
   await set(() => window.__fractonica.store.set({ selectedLevel: 6 }));
 
-  // ---- tempo lock
+  // ---- tempo lock (the box counts seconds in normal mode, Blinks in pure mode; the extremes clamp to the same limits;
+  //      1930 Blinks = 600 s is the one number that reads like a year to the soft rule: it is only ever shown after typing more)
   for (const depth of ['2', '7', '14', '9']) {
     await page.selectOption('.snd-tdepth', depth);
-    for (const secs of ['0.25', '4', '1', '600', '13.5']) {
+    for (const secs of pure ? ['0.5', '12', '1', '1500', '13.5', '36'] : ['0.25', '4', '1', '600', '13.5']) {
       await page.fill('.snd-secs', secs);
       await page.press('.snd-secs', 'Enter'); // Enter always locks or re-tunes; the button would toggle
       await at(`locked depth ${depth} for ${secs}`);
@@ -405,13 +406,22 @@ async function main() {
       const f0 = await freqs();
 
       check((await q(page, '.snd-status')) === 'Sound is off. Press the speaker (or M) to start.', 'status line (off)');
-      check(/^ground ×1$/.test(await q(page, '.snd-base ~ output')), 'base pitch reads "ground ×1", not Hz', await q(page, '.snd-base ~ output'));
+      const baseOut = async () => ({
+        ratio: await q(page, '.snd-base ~ output > span:first-child'),
+        pb: await q(page, '.snd-base ~ output > .snd-out-sub'),
+        all: await q(page, '.snd-base ~ output'),
+      });
+      check(
+        (await baseOut()).ratio === 'ground ×1' && (await baseOut()).pb === '34.2 pB' && !/Hz|kHz/.test((await baseOut()).all),
+        'base pitch reads "ground ×1" over its pitch "34.2 pB", not Hz',
+        (await baseOut()).all,
+      );
       await page.locator('.snd-base').fill('7');
-      check((await q(page, '.snd-base ~ output')) === '+700¢ ×1.5', 'base pitch +7 steps reads "+700¢ ×1.5"', await q(page, '.snd-base ~ output'));
+      check((await baseOut()).ratio === '+700¢ ×1.5' && (await baseOut()).pb === '51.2 pB', 'base pitch +7 steps reads "+700¢ ×1.5" and 51.2 pB', (await baseOut()).all);
       await page.locator('.snd-base').fill('12');
-      check((await q(page, '.snd-base ~ output')) === '+1 octave ×2', '+12 steps reads "+1 octave ×2"', await q(page, '.snd-base ~ output'));
+      check((await baseOut()).ratio === '+1 octave ×2' && (await baseOut()).pb === '68.4 pB', '+12 steps reads "+1 octave ×2" and 68.4 pB (an octave doubles the pitch)', (await baseOut()).all);
       await page.locator('.snd-base').fill('-12');
-      check((await q(page, '.snd-base ~ output')) === '−1 octave ×½', '−12 steps reads "−1 octave ×½"', await q(page, '.snd-base ~ output'));
+      check((await baseOut()).ratio === '−1 octave ×½' && (await baseOut()).pb === '17.1 pB', '−12 steps reads "−1 octave ×½" and 17.1 pB', (await baseOut()).all);
       await page.locator('.snd-base').fill('0');
       check((await page.$$('.snd-rev ~ output .pure-pair svg')).length === 2 && !/%/.test(await q(page, '.snd-rev ~ output')), 'reverb is a pair of glyphs, no percent');
       check((await page.$$('.snd-vol ~ output .pure-pair svg')).length === 2, 'volume is a pair of glyphs, no dB');
@@ -424,7 +434,7 @@ async function main() {
       check(
         (await page.getAttribute('.snd-rev', 'aria-valuetext')) === 'reverb 3 and 8 of 256' &&
           /^volume \d+ and \d+ of 256$/.test(await page.getAttribute('.snd-vol', 'aria-valuetext')) &&
-          (await page.getAttribute('.snd-base', 'aria-valuetext')) === 'ground ×1',
+          (await page.getAttribute('.snd-base', 'aria-valuetext')) === 'ground ×1, 34.2 pB',
         'screen readers get the pair (two digits, "reverb 3 and 8 of 256") and the ground for the sliders, not bare numbers or "3·8"',
         `${await page.getAttribute('.snd-rev', 'aria-valuetext')} / ${await page.getAttribute('.snd-vol', 'aria-valuetext')} / ${await page.getAttribute('.snd-base', 'aria-valuetext')}`,
       );
@@ -441,20 +451,37 @@ async function main() {
         'the How-to-listen footer points to the glossary',
       );
       check(
-        (await page.$$eval('.snd-floor option', (o) => o.map((x) => x.textContent))).join('|') === '0.05 beats · dense|0.12 beats · lively|0.25 beats|0.5 beats · default|1 beat · sparse',
-        'chime floors are counts of beats',
+        (await page.$$eval('.snd-floor option', (o) => o.map((x) => x.textContent))).join('|') === '0.161 Blinks · dense|0.386 Blinks · lively|0.804 Blinks|1.61 Blinks · default|3.22 Blinks · sparse',
+        'chime floors are counts of Blinks',
+        (await page.$$eval('.snd-floor option', (o) => o.map((x) => x.textContent))).join('|'),
       );
+      {
+        const depths = await page.$$eval('.snd-tdepth option', (o) => o.map((x) => x.textContent));
+        check(
+          depths.slice(0, 7).join('|') === '2 · β|3 · γ|4 · δ|5 · ε|6 · ζ|7 · η|8 · θ' && depths.at(-1) === '14 · ξ (0.14ν)',
+          'depth options: every depth is one unit (no "1η" tautology); ξ, finer than a Blink, carries its length 0.14ν',
+          depths.join('|'),
+        );
+      }
+      check((await q(page, '.snd-secs-unit')) === 'Blinks' && (await page.getAttribute('.snd-secs', 'aria-label')) === 'Blinks per cycle', 'tempo lock is counted in Blinks');
       check(
-        (await page.$$eval('.snd-tdepth option', (o) => o.map((x) => x.textContent))).slice(0, 7).join('|') === '2 · β (1β)|3 · γ (1γ)|4 · δ (2δ½)|5 · ε (2ε½)|6 · ζ (2ζ½)|7 · η (1η)|8 · θ (4ι)',
-        'depth options carry the cycle length in Fractonica periods',
+        (await page.inputValue('.snd-secs')) === '12' &&
+          (await page.getAttribute('.snd-secs', 'min')) === '0.8' &&
+          (await page.getAttribute('.snd-secs', 'max')) === '1930' &&
+          (await page.getAttribute('.snd-secs', 'step')) === 'any',
+        'the box shows a clean 12 Blinks by default; its limits are those of 0.25 s .. 600 s',
+        `${await page.inputValue('.snd-secs')} [${await page.getAttribute('.snd-secs', 'min')}, ${await page.getAttribute('.snd-secs', 'max')}]`,
       );
-      check((await q(page, '.snd-secs-unit')) === 'beats' && (await page.getAttribute('.snd-secs', 'aria-label')) === 'Beats per cycle', 'tempo lock is counted in beats');
       // the separators are CSS (::before), so join the three parts the way they are drawn
-      const strip5 = await page.$eval('.snd-strip[data-level="4"] .snd-l2', (e) => [...e.children].map((c) => c.textContent).join(' · '));
-      check(/^octave \+1 · 79\d¢ · 2ε½$/.test(strip5), 'a mixer strip reads octave offset · cents · cycle length', strip5);
+      const strip5 = await page.$eval('.snd-strip[data-level="4"] .snd-l2', (e) => [...e.children].map((c) => c.textContent).filter(Boolean).join(' · '));
+      check(/^108\.\d pB · octave \+1 · (799|800)¢ · 1ε$/.test(strip5), 'a mixer strip reads pitch in pB · octave offset · cents · cycle length', strip5);
+      const stripNu = await page.$eval('.snd-strip[data-level="12"] .snd-l2', (e) => [...e.children].map((c) => c.textContent).filter(Boolean).join(' · '));
+      check(/^932\.\d pB · octave \+4 · \d+¢ · 1ν$/.test(stripNu), 'the finest mixer strip: 932.6 pB, a Blink long', stripNu);
       check((await q(page, '.snd-strip[data-level="2"] .snd-ratio')) === '65/64', 'ratios use a slash (65:64 would read as a time of day)');
       const rateBtns = await page.$$eval('.snd-rate', (b) => b.map((x) => [...x.children].map((c) => c.textContent).join(' ')));
-      check(rateBtns.join('|') === 'Live follow now|real time|λ per beat|ι per beat|η per beat|ζ½ per beat|δ½ per beat|Pause|Reverse', 'speed buttons are the helper\'s units per beat, "real time" for ×1 (no bare multiplier)', rateBtns.join(' | '));
+      check(rateBtns.join('|') === 'Live follow now|real time|λ per Blink|ι per Blink|η per Blink|ζ per Blink|δ per Blink|Pause|Reverse', 'speed buttons are the helper\'s units per Blink, "real time" for ×1 (no bare multiplier)', rateBtns.join(' | '));
+      const rateTips = await page.$$eval('.snd-rate', (b) => b.map((x) => x.getAttribute('title')));
+      check(rateTips.slice(2, 7).join('|') === 'One Flavon passes every Blink|One Preon passes every Blink|One Helion passes every Blink|One Hadron passes every Blink|One Atom passes every Blink', 'speed tooltips name the unit: "One Helion passes every Blink"', rateTips.join(' | '));
       // every speed button says exactly what the header's speed select says for the same rate
       const headerSays = await page.evaluate(() => {
         const sel = document.querySelector('#tp-rate');
@@ -464,6 +491,35 @@ async function main() {
           .map((b) => [[...b.children].map((c) => c.textContent).join(' '), byValue[Number(b.dataset.rate)]]);
       });
       check(headerSays.length === 6 && headerSays.every(([btn, hdr]) => btn === hdr), 'speed buttons and the header select use the same words', JSON.stringify(headerSays.filter(([a, b]) => a !== b)));
+
+      // the pitch in pB on both canvases: the ring's centre and the octave lines of the spectrum
+      {
+        const { items } = await snapshot(page);
+        const cv = items.filter((i) => i.kind === 'canvas').map((i) => i.text);
+        check(['ground', '×1', '34.2 pB'].every((t) => cv.includes(t)), 'the ring centre names the ground, its ratio and its pitch in pB', cv.join(' | '));
+        check(
+          ['17.1', '34.2 pB', '68.4', '136.8', '273.6', '547.2'].every((t) => cv.includes(t)) && ['×½', '×2', '×64'].every((t) => cv.includes(t)),
+          'the octave lines of the spectrum are labelled in pB over their ratio',
+          cv.join(' | '),
+        );
+        check(!cv.some((t) => /Hz|kHz|[A-G][#♯]?\d$/.test(t)), 'no Hz, kHz or note name is drawn on the canvases', cv.join(' | '));
+      }
+
+      // the physical register: the true rates of the deepest cycles are whole numbers of pB
+      await page.click('.snd [data-layer="physical"]');
+      await page.waitForTimeout(150);
+      const physList = async () => (await q(page, '.snd-phys-list')).replace(/\s+/g, ' ').trim();
+      check(/^ο 38\.5 pB · π 346\.5 pB · ρ 1 386 pB$/.test(await physList()), 'physical register (−1 octave): the sounding rates in pB', await physList());
+      await page.click('.snd-phys [data-step="1"]');
+      await page.waitForTimeout(100);
+      check(/^ο 77 pB · π 693 pB$/.test(await physList()), 'physical register (no shift): ο 77 pB, π 693 pB', await physList());
+      await page.hover('.snd [data-layer="physical"]');
+      await page.waitForTimeout(150);
+      const physTip = await page.$eval('.snd-tip', (e) => e.textContent.replace(/\s+/g, ' '));
+      check(/\(ξ 7 pB, ο 77 pB, π 693 pB, ρ 2 772 pB\)/.test(physTip) && !/beat|Hz/.test(physTip), 'the Physical tooltip names the true rates: ξ 7 pB, ο 77 pB, π 693 pB, ρ 2 772 pB', physTip);
+      await page.mouse.move(2, 2);
+      await page.click('.snd-phys [data-step="-1"]');
+      await page.click('.snd [data-layer="physical"]');
 
       // "Hear this moment" outside the catalogue: the app clamps the time, so the displayed time is faked for one click
       const momentToast = () =>
@@ -489,38 +545,59 @@ async function main() {
       check(judge([{ kind: 'text', text: oor.status, where: '.snd-status' }], 'out of range').length === 0, 'out-of-range text has no leak (not even a soft one)');
       await page.waitForTimeout(100);
 
-      // tempo lock
+      // tempo lock: the number box is in Blinks, the stored length in seconds
       await page.selectOption('.snd-tdepth', '7');
-      await page.fill('.snd-secs', '4');
+      await page.fill('.snd-secs', '12');
       await page.press('.snd-secs', 'Enter');
       await page.waitForTimeout(300);
-      check((await q(page, '.snd-lock-txt')) === 'Locked: one η = 4 beats', 'lock chip', await q(page, '.snd-lock-txt'));
-      check(/^9ι per beat: one η cycle lasts 4 beats; a quarter lasts 1 beat\.$/.test(await q(page, '.snd-read')), 'tempo read-out counts the lock in units per beat (9ι), not "×4,547"', await q(page, '.snd-read'));
+      check((await q(page, '.snd-lock-txt')) === 'Locked: one η = 12 Blinks', 'lock chip', await q(page, '.snd-lock-txt'));
+      check(/^3ι per Blink: one η cycle lasts 12 Blinks; a quarter lasts 3 Blinks\.$/.test(await q(page, '.snd-read')), 'tempo read-out counts the lock in units per Blink (3ι), not "×4,547"', await q(page, '.snd-read'));
       check(
-        (await page.$eval('#tp-rate', (s) => s.options[s.selectedIndex].textContent)) === '9ι per beat' && /9ι per beat/.test(await page.getAttribute('.snd-chip-lock', 'title')),
-        'the header select and the lock chip say the same: 9ι per beat',
+        (await page.$eval('#tp-rate', (s) => s.options[s.selectedIndex].textContent)) === '3ι per Blink' && /3ι per Blink/.test(await page.getAttribute('.snd-chip-lock', 'title')),
+        'the header select and the lock chip say the same: 3ι per Blink',
       );
       check(
         !/×\s*(\d{1,3}(,\d{3})+|\d{3,})/.test((await collectSound(page)).map((i) => i.text).join(' | ')),
         'no bare multiplier (×4,547) anywhere in the panel while the tempo is locked',
       );
-      check((await page.$$eval('.snd-rhythm .snd-rh', (e) => e.map((x) => x.textContent.trim()))).join('|').startsWith('η 4 beats ♪|θ 0.444 beats'), 'rhythm chips are counted in beats', await q(page, '.snd-rhythm'));
-      check(/Tempo locked: one η cycle = 4 beats \(9ι per beat\)/.test((await q(page, '#toast')) ?? ''), 'toast', await q(page, '#toast'));
-      check((await q(page, '.snd-chip-lapse')) === 'Time-lapse 9ι per beat', 'hero speed chip counts the lock in units per beat', await q(page, '.snd-chip-lapse'));
+      check((await page.$$eval('.snd-rhythm .snd-rh', (e) => e.map((x) => x.textContent.trim()))).join('|').startsWith('η 12 Blinks ♪|θ 1.33 Blinks'), 'rhythm chips are counted in Blinks', await q(page, '.snd-rhythm'));
+      check(/Tempo locked: one η cycle = 12 Blinks \(3ι per Blink\)/.test((await q(page, '#toast')) ?? ''), 'toast', await q(page, '#toast'));
+      check((await q(page, '.snd-chip-lapse')) === 'Time-lapse 3ι per Blink', 'hero speed chip counts the lock in units per Blink', await q(page, '.snd-chip-lapse'));
+      // the stored length is still seconds (settings, audio, normal mode): 12 Blinks = 3.73 s
+      const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('fractonica-clock/sound/v1') ?? '{}').tempo);
+      check(stored && Math.abs(stored.seconds - 12 * 0.3109211464193154) < 1e-6 && stored.depth === 7, 'the lock is stored in seconds (12 Blinks = 3.731 s)', JSON.stringify(stored));
+      // a clean pair of Blinks and a preset: one η in 36 Blinks is exactly "ι per Blink", the box keeps what was typed
+      await page.fill('.snd-secs', '36');
+      await page.press('.snd-secs', 'Enter');
+      await page.waitForTimeout(250);
+      check((await q(page, '.snd-chip-lapse')) === 'Time-lapse ι per Blink' && (await page.inputValue('.snd-secs')) === '36', 'one η in 36 Blinks is "ι per Blink"; the box reads 36', `${await q(page, '.snd-chip-lapse')} / ${await page.inputValue('.snd-secs')}`);
+      // limits: 5 000 Blinks is clamped to the 600 s of the normal mode (1930 Blinks), 0.1 to 0.25 s (0.804)
+      await page.fill('.snd-secs', '5000');
+      await page.press('.snd-secs', 'Enter');
+      check((await page.inputValue('.snd-secs')) === '1930', '5 000 Blinks is clamped to the same limit as 600 s (1930 Blinks)', await page.inputValue('.snd-secs'));
+      await page.fill('.snd-secs', '0.1');
+      await page.press('.snd-secs', 'Enter');
+      check((await page.inputValue('.snd-secs')) === '0.804', '0.1 Blinks is clamped to the limit of 0.25 s (0.804 Blinks)', await page.inputValue('.snd-secs'));
+      await page.fill('.snd-secs', '12');
+      await page.press('.snd-secs', 'Enter');
       await page.click('.snd-rate:has(span:text-is("η"))');
       await page.waitForTimeout(300);
       const pressed = await page.$eval('.snd-rate:has(span:text-is("η"))', (b) => b.getAttribute('aria-pressed'));
       const rate = await page.evaluate(() => window.__fractonica.store.rate);
       const etaRate = await page.evaluate(() => window.__fractonica.ctx.pure.RATES.find((r) => r.id === 'eta').rate);
-      check(pressed === 'true' && rate === etaRate, 'the η per beat button sets that speed and shows pressed', `rate ${rate}`);
-      check((await q(page, '.snd-chip-lapse')) === 'Time-lapse η per beat', 'speed chip', await q(page, '.snd-chip-lapse'));
+      check(pressed === 'true' && rate === etaRate, 'the η per Blink button sets that speed and shows pressed', `rate ${rate}`);
+      check((await q(page, '.snd-chip-lapse')) === 'Time-lapse η per Blink', 'speed chip', await q(page, '.snd-chip-lapse'));
 
       // tooltips that carry pairs, a voice and the ring
       await page.evaluate(() => window.__fractonica.store.setRate(0));
       await page.hover('.snd-strip[data-level="4"]');
       await page.waitForTimeout(150);
       const tip = await page.$eval('.snd-tip', (e) => ({ text: e.textContent.replace(/\s+/g, ' '), pairs: e.querySelectorAll('.pure-pair svg').length }));
-      check(tip.pairs === 4 && /one cycle = 2ε½/.test(tip.text) && /True rate of this cycle: 1 cycle per 1\.40 M beats/.test(tip.text), 'voice tooltip: ratio, periods, rate per beat, phase and loudness as glyph pairs', tip.text);
+      check(
+        tip.pairs === 4 && /one cycle = 1ε/.test(tip.text) && /Placed 1 octave above the ground: 108\.5 pB/.test(tip.text) && /True rate of this cycle: 1 per 4 504 500 Blinks/.test(tip.text),
+        'voice tooltip: ratio, period, placed pitch in pB, rate per Blink, phase and loudness as glyph pairs',
+        tip.text,
+      );
       await page.mouse.move(2, 2);
 
       // switching the mode while a tooltip is open re-words it at once
@@ -538,14 +615,14 @@ async function main() {
       await page.hover('.snd-strip[data-level="4"]');
       await page.mouse.move(2, 2);
       let desc = await collectDescriptions(page);
-      check(desc.some((d) => /one cycle = 2ε½/.test(d.text)) && judge(desc, 'descriptions').filter((l) => l.severity === 'hard').length === 0, 'the description of a hovered strip is pure');
+      check(desc.some((d) => /one cycle = 1ε/.test(d.text)) && judge(desc, 'descriptions').filter((l) => l.severity === 'hard').length === 0, 'the description of a hovered strip is pure');
       await press(page, 'p');
       await page.waitForTimeout(300);
       check((await collectDescriptions(page)).length === 0, 'switching the mode empties the hidden descriptions (nothing stale for a screen reader)');
       await page.hover('.snd-strip[data-level="4"]');
       await page.mouse.move(2, 2);
       desc = await collectDescriptions(page);
-      check(desc.some((d) => /Hz/.test(d.text)) && !desc.some((d) => /beats|ground/.test(d.text)), 'back in normal mode the descriptions are normal again');
+      check(desc.some((d) => /Hz/.test(d.text)) && !desc.some((d) => /Blinks|pB|ground/.test(d.text)), 'back in normal mode the descriptions are normal again');
       await press(page, 'p');
       await page.waitForTimeout(300);
 
@@ -679,7 +756,7 @@ async function main() {
       await press(page, '5');
       await page.waitForTimeout(500);
       check(await page.evaluate(() => document.body.dataset.view === 'sound'), 'the Sound tab opens (key 5)');
-      check(/^ground ×1$/.test(await q(page, '.snd-base ~ output')) && (await q(page, '.snd-secs-unit')) === 'beats', 'a switch made while the panel was hidden is already applied when it opens');
+      check(/^ground ×1 34\.2 pB$/.test(await q(page, '.snd-base ~ output')) && (await q(page, '.snd-secs-unit')) === 'Blinks', 'a switch made while the panel was hidden is already applied when it opens');
       await press(page, '1');
       await press(page, 'p');
       await page.waitForTimeout(300);

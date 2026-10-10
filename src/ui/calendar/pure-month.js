@@ -1,41 +1,42 @@
 /**
- * The pure calendar (right half of the Calendar tab in pure mode): one δ½ page as 5 rows (ε½) x 7 columns (ζ½).
+ * The pure calendar (right half of the Calendar tab in pure mode): one δ (Atom) page as 5 rows (ε) x 7 columns (ζ).
  *
- * The page is a ruler. Every cell is a ζ½ with its number 1..35; a band along the bottom shows the η cycles that run
- * through it at their exact fractional position (labelled with their counter 0..10 inside their ζ), the peak / node /
- * valley mark of each η, and the solar sync quarters as gold diamonds. The corner of a cell names what is in it: the
- * eclipse (#22, numbered like the position) and the number of a solar sync that begins there (S4821). (The cells used to
- * carry the 256-state ε phase pair at 18 px: only 14 distinct pairs, not readable at that size, so it lives in the
- * tooltip and the inspector now.) The shown moment is a cursor in its cell; the live clock marks its cell in red.
- * Header: ◀ ▶ over δ½ and γ, the address strip α β γ δ½, "Now", and under the page a ribbon of the ten δ½ of the γ
- * with the ε½ rhythm.
+ * The page is a ruler. Every cell is a whole ζ cycle (Hadron) with its number 1..35; a band along the bottom shows the
+ * 11 η cycles that run through it at their exact fractional position (labelled with their counter 0..10 inside the ζ),
+ * the node mark of each η, and the solar sync quarters as gold diamonds. The corner of a cell names what is in it: the
+ * eclipse (#22, numbered like the position; its mark sits at the fraction 0, ¼, ½ or ¾ of the cell where it falls) and
+ * the number of a solar sync that begins there (S4821). The 256-state ε phase pair is in the tooltip and the
+ * inspector. The shown moment is a cursor in its cell; the live clock marks its cell in red.
+ * Header: ◀ ▶ over δ, γ (5 δ), β (13 γ) and α (5 β), the address strip α β γ δ, "Now", and under the page a ribbon of
+ * the five δ of the γ with the ε rhythm (5 ε per δ).
  *
- * Notation (core/pure.js): X#n is an ordinal from 1 (δ½#6, ζ½#3, η#3), nX a count from 0 (the band's η counters, 9ι).
+ * Notation (core/pure.js): X#n is an ordinal from 1 (δ#3, ζ#6, η#3), nX a count from 0 (the band's η counters, 9ι).
  * Geometry and data come from ./pure-conv.js (positions, exact integer tick maths); this file is DOM only. Nothing
- * here says a Gregorian date, a weekday, a month, a year or a percentage.
+ * here says a Gregorian date, a weekday, a month, a year or a percentage. Unit names (Atom, Hadron, Helion) are used in
+ * tooltips and the legend, where a unit is explained; the compact text keeps the Greek letters.
  */
 import { GOLD, levelColor } from '../../core/theme.js';
-import { LEVEL_NAMES } from '../../core/pure.js';
+import { LEVEL_NAMES, UNITS } from '../../core/pure.js';
 import { h, ICONS, esc, setText, setHtml, setStyle, setAttr, toggleClass, hasSound, hearMoment, loadPrefs, savePrefs } from './dom.js';
 import { LETTERS, cycleLabel, pointOfCycle } from './convert.js';
-import { GRID, buildPureGrid, buildRibbon, cellFraction, cellOfTime, cellTime, clampView, countText, cycleStart, overlayCycle, spanText, viewCount, viewFromPath, viewInfo, viewOfTime } from './pure-conv.js';
+import { CELLS_PER, ETA_PER_CELL, GRID, PAGES_PER, buildPureGrid, buildRibbon, cellFraction, cellOfTime, cellTime, clampView, countText, cycleStart, madeOf, overlayCycle, spanText, viewCount, viewFromPath, viewInfo, viewOfTime } from './pure-conv.js';
 
 const PREFS_KEY = 'fractonica-clock/calendar/pure/v1';
-/** The cycle level the band shows: δ ε ζ (a cycle is a whole number of cells) or η (cycles inside the cell). */
-const OVERLAYS = [3, 4, 5, 6].map((level) => ({ level, sym: LETTERS[level], title: `${LEVEL_NAMES[level]} · depth ${level + 1}` }));
+/** The cycle level the band shows: δ ε ζ (a cycle is a whole number of cells) or η (11 cycles inside the cell). */
+const OVERLAYS = [3, 4, 5, 6].map((level) => ({ level, sym: LETTERS[level], title: `${LEVEL_NAMES[level]} · ${UNITS[level].name} · depth ${level + 1}` }));
 const overlayOf = (level) => OVERLAYS.find((o) => o.level === Number(level)) ?? OVERLAYS[3];
-/** What the ◀ ▶ buttons step by, in δ½ pages: one δ½, a γ (10 δ½), a β (13 γ), an α (5 β). */
+/** What the ◀ ▶ buttons step by, in δ pages: one δ, a γ (5 δ), a β (13 γ), an α (5 β). */
 const STEPS = [
-  { id: 'half', sym: 'δ½', pages: 1, name: 'δ½', level: 3 },
-  { id: 'gamma', sym: 'γ', pages: 10, name: 'γ', level: 2 },
-  { id: 'beta', sym: 'β', pages: 130, name: 'β', level: 1 },
-  { id: 'alpha', sym: 'α', pages: 650, name: 'α', level: 0 },
+  { id: 'delta', sym: 'δ', pages: 1, name: 'δ', level: 3 },
+  { id: 'gamma', sym: 'γ', pages: PAGES_PER.gamma, name: 'γ', level: 2 },
+  { id: 'beta', sym: 'β', pages: PAGES_PER.beta, name: 'β', level: 1 },
+  { id: 'alpha', sym: 'α', pages: PAGES_PER.alpha, name: 'α', level: 0 },
 ];
 const pct = (x) => (x * 100).toFixed(3) + '%';
 
 export function createPureMonth(ctx, { tip }) {
   const { model, store, pure } = ctx;
-  const prefs = loadPrefs(PREFS_KEY, { step: 'half', overlay: 6 });
+  const prefs = loadPrefs(PREFS_KEY, { step: 'delta', overlay: 6 });
   const V = {
     hv: -1,
     follow: true,
@@ -67,36 +68,36 @@ export function createPureMonth(ctx, { tip }) {
     b.addEventListener('click', fn);
     return b;
   };
-  const hPrev = iconBtn(ICONS.prev, 'Back one δ½', () => stepView(-step.pages));
-  const hNext = iconBtn(ICONS.next, 'Forward one δ½', () => stepView(step.pages));
+  const hPrev = iconBtn(ICONS.prev, 'Back one δ', () => stepView(-step.pages));
+  const hNext = iconBtn(ICONS.next, 'Forward one δ', () => stepView(step.pages));
   const titleMain = h('div.cal-pm-tm');
   const titleSub = h('div.cal-pm-ts');
   const title = h('div.cal-pm-title', { 'aria-live': 'polite' }, titleMain, titleSub);
   const nowBtn = h('button.btn.btn-sm.cal-today', { type: 'button', text: 'Now', title: 'Show the page of the live clock' });
   const shownBtn = h('button.btn.btn-sm.cal-shown.is-away', { type: 'button', html: ICONS.target + '<span>Shown cell</span>', title: 'Return to the page of the shown moment' });
-  // the address strip: α β γ δ½ (each a select; the page follows)
+  // the address strip: α β γ δ (each a select; the page follows)
   const addrSels = [];
   const addrStrip = h('div.cal-pm-addr', { role: 'group', 'aria-label': 'Address of the page' });
   const addrSpec = [
     { key: 'alpha', sym: 'α', name: 'Alpha', level: 0, count: () => Number(model.clock.count(0)) },
     { key: 'beta', sym: 'β', name: 'Beta', level: 1, count: () => 5 },
     { key: 'gammaOrd', sym: 'γ', name: 'Gamma', level: 2, count: () => 13 },
-    { key: 'half', sym: 'δ½', name: 'Delta half', level: 3, count: () => 10 },
+    { key: 'delta', sym: 'δ', name: 'Delta', level: 3, count: () => PAGES_PER.gamma },
   ];
   for (const spec of addrSpec) {
     const sel = h('select.select.cal-pm-sel', { 'aria-label': `${spec.name} of the page`, style: `--lv:${levelColor(spec.level)}` });
     for (let n = 1; n <= spec.count(); n++) sel.append(h('option', { value: String(n), text: String(n) }));
     sel.addEventListener('change', () => {
       const cur = viewInfo(model, V.hv);
-      const v = { alpha: cur.alpha, beta: cur.beta, gammaOrd: cur.gammaOrd, half: cur.half, [spec.key]: Number(sel.value) };
-      setView(viewFromPath(model, v.alpha, v.beta, v.gammaOrd, v.half));
+      const v = { alpha: cur.alpha, beta: cur.beta, gammaOrd: cur.gammaOrd, delta: cur.delta, [spec.key]: Number(sel.value) };
+      setView(viewFromPath(model, v.alpha, v.beta, v.gammaOrd, v.delta));
     });
     addrSels.push({ spec, sel });
     addrStrip.append(h('label.cal-pm-addrf', { style: `--lv:${levelColor(spec.level)}` }, h('span.cal-pm-addrl', { text: `${spec.sym}#`, title: spec.name }), sel));
   }
   const stepSeg = h('div.seg.cal-pm-step', { role: 'group', 'aria-label': 'The arrows step by' });
   const stepBtns = STEPS.map((st) => {
-    const b = h('button', { type: 'button', text: st.sym, 'aria-pressed': String(st === step), title: `Step by one ${st.name}`, style: `--c:${levelColor(st.level)}` });
+    const b = h('button', { type: 'button', text: st.sym, 'aria-pressed': String(st === step), title: `Step by one ${st.name} (${st.pages === 1 ? 'one page' : st.pages + ' pages'})`, style: `--c:${levelColor(st.level)}` });
     b.addEventListener('click', () => {
       step = st;
       savePrefs(PREFS_KEY, { step: st.id });
@@ -143,20 +144,20 @@ export function createPureMonth(ctx, { tip }) {
   const legendHtml = () => {
     const lv = V.overlay;
     const swatch = `<span class="cal-lg-sw" style="--c:${levelColor(lv)}"></span>`;
-    const head = 'Rows <b>ε½#</b>1–5 · columns <b>ζ½#</b>1–7. ';
-    const tail = ` <span class="cal-pm-lgs"></span> a solar sync quarter · <b class="cal-pm-lgt">#22</b> an eclipse (numbered like the position) · <b class="cal-pm-lgt">S4821</b> a sync that begins here. # numbers count from 1, counters from 0. Press ? for the glossary.`;
-    if (lv === 6) return `${swatch}<span>${head}The band is the <b>η</b> cycles, each with its counter 0–10; ticks at <b>9ι</b>, <b>18ι</b>, <b>27ι</b> of each η (peak, node, valley);${tail}</span>`;
+    const head = 'Rows <b>ε#</b>1–5 · columns <b>ζ#</b>1–7: a cell is one ζ (a Hadron). ';
+    const tail = ` <span class="cal-pm-lgs"></span> a solar sync quarter · <b class="cal-pm-lgt">#22</b> an eclipse, marked where it falls in its cell · <b class="cal-pm-lgt">S4821</b> a sync that begins here. # numbers count from 1, counters from 0. Press ? for the glossary.`;
+    if (lv === 6) return `${swatch}<span>${head}The band is the 11 <b>η</b> (Helions) of the cell with their counters 0–10; the tick in each is its node, <b>18ι</b> of 36;${tail}</span>`;
     const info = model.levelInfo(lv);
-    const cells = lv === 3 ? 70 : lv === 4 ? 14 : 2;
+    const cells = CELLS_PER[lv];
     const n = Math.min(5, info.siblings);
-    return `${swatch}<span>${head}The band is the <b>${LETTERS[lv]}</b> cycles: <b>${cycleLabel(lv, n)}</b> is the ${n}th ${LETTERS[lv]} inside its ${LETTERS[lv - 1]}; each lasts ${cells} cells. A bold label marks where one begins, a paler one continues it;${tail}</span>`;
+    return `${swatch}<span>${head}The band is the <b>${LETTERS[lv]}</b> cycles: <b>${cycleLabel(lv, n)}</b> is the ${n}th ${LETTERS[lv]} inside its ${LETTERS[lv - 1]}; each lasts ${cells === 1 ? 'one cell' : cells + ' cells'}. A bold label marks where one begins, a paler one continues it;${tail}</span>`;
   };
   function paintLegend() {
     legend.innerHTML = legendHtml();
     el.style.setProperty('--cal-c', levelColor(V.overlay));
   }
 
-  const gridEl = h('div.cal-pm-grid', { role: 'group', 'aria-label': 'ζ½ cells of the page' });
+  const gridEl = h('div.cal-pm-grid', { role: 'group', 'aria-label': 'ζ cells of the page' });
   const cursor = h('span.cal-cursor', { 'aria-hidden': 'true' });
   const inspector = h('div.cal-inspect', { 'aria-live': 'polite' });
   const hearBtn = h('button.btn.btn-sm.cal-hear.cal-hear-day', { type: 'button', html: ICONS.sound + '<span>Hear this moment</span>', title: 'Hear this moment: a short chord of the shown moment', hidden: true });
@@ -171,7 +172,7 @@ export function createPureMonth(ctx, { tip }) {
   const el = h(
     'section.card.cal-month.cal-pmonth',
     { 'aria-label': 'Calendar of cycles' },
-    h('header.card-h', null, h('h2', { text: 'Calendar' }), h('span.spacer'), h('span.cal-pm-hsub.dim', { text: 'one δ½ = 5ε½ × 7ζ½' })),
+    h('header.card-h', null, h('h2', { text: 'Calendar' }), h('span.spacer'), h('span.cal-pm-hsub.dim', { text: 'one δ = 5ε × 7ζ' })),
     h(
       'div.card-b.cal-month-body',
       null,
@@ -218,14 +219,16 @@ export function createPureMonth(ctx, { tip }) {
   // ------------------------------------------------------------------------------------------
   // grid building
   // ------------------------------------------------------------------------------------------
-  const halfOfCell = (c) => (c.z % 2 === 0 ? 'first' : 'last');
-  const cellStampText = (c) => `δ½#${V.info.half} · ε½#${c.row + 1} · ζ½#${c.col + 1}`;
+  const cellStampText = (c) => `δ#${V.info.delta} · ε#${c.row + 1} · ζ#${c.col + 1}`;
+  /** Where in its cell an eclipse falls: 0, ¼, ½, ¾ of the cell. */
+  const ECL_WHERE = { 0: 'at the start of', 0.25: 'a quarter of the way into', 0.5: 'in the middle of', 0.75: 'three quarters of the way into' };
+  const eclWhere = (c) => ECL_WHERE[c.eclipseFrac] ?? `at ${c.eclipseFrac.toFixed(2)} of`;
   function cellLabel(c) {
-    const ecl = c.eclipse >= 0 ? `, eclipse number ${c.eclipse}` : '';
+    const ecl = c.eclipse >= 0 ? `, eclipse number ${c.eclipse} ${eclWhere(c)} the cell` : '';
     const sync = c.syncs?.find((s) => s.q === 0);
     const syn = sync ? `, solar sync S${sync.sync} begins here` : '';
-    if (!c.inRange) return `Cell ${c.ord}: ζ½#${c.col + 1} of ε½#${c.row + 1}, outside the catalogue`;
-    return `Cell ${c.ord}: ζ½#${c.col + 1} of ε½#${c.row + 1}, ${halfOfCell(c)} half of ${pure.cycleName(5, Math.floor(c.z / 2))}${ecl}${syn}`;
+    if (!c.inRange) return `Cell ${c.ord}: ζ#${c.col + 1} of ε#${c.row + 1}, outside the catalogue`;
+    return `Cell ${c.ord}: ζ#${c.col + 1} of ε#${c.row + 1}, ${pure.cycleName(5, c.z)}${ecl}${syn}`;
   }
   /** The corner of a cell: the eclipse inside it and the solar sync that begins in it (aria-hidden: the cell's label says it). */
   function tagsHtml(c) {
@@ -239,10 +242,11 @@ export function createPureMonth(ctx, { tip }) {
   function bandHtml(c) {
     let s = '';
     if (V.overlay === 6) {
+      // 11 η per cell, whole cycles: [j/11, (j+1)/11). The counter labels thin out with the width (CSS, data-estep).
       for (const e of c.etas) {
-        s += `<i class="cal-pm-seg${e.odd ? ' is-odd' : ''}${e.startsHere ? ' is-start' : ' is-cont'}${e.endsHere ? '' : ' is-open'}${e.local > 9 ? ' is-wide' : ''}" data-lv="6" data-idx="${e.eta}" style="left:${pct(e.x0)};width:${pct(e.x1 - e.x0)}"><b>${e.local}</b></i>`;
+        s += `<i class="cal-pm-seg is-eta${e.odd ? ' is-odd' : ''} is-start${e.local % 2 === 0 ? ' k2' : ''}${e.local % 5 === 0 ? ' k5' : ''}${e.local > 9 ? ' is-wide' : ''}" data-lv="6" data-idx="${e.eta}" style="left:${pct(e.x0)};width:${pct(e.x1 - e.x0)}"><b>${e.local}</b></i>`;
       }
-      for (const q of c.quarters) s += `<u class="cal-pm-q q${q.q}" style="left:${pct(q.x)}"></u>`;
+      for (const q of c.quarters) if (q.q === 2) s += `<u class="cal-pm-q q${q.q}" style="left:${pct(q.x)}"></u>`;
     } else {
       // δ ε ζ: a cycle is a whole number of cells, so the band is one segment per cell, labelled where the cycle begins
       // (and again at the start of every row it continues into)
@@ -253,6 +257,13 @@ export function createPureMonth(ctx, { tip }) {
     for (const sy of c.syncs) s += `<s class="cal-pm-s${sy.q === 0 ? ' is-start' : ''}" data-sync="${sy.sync}" data-q="${sy.q}" style="left:${pct(sy.x)}"></s>`;
     return s;
   }
+  /** The eclipse of a cell: a gold hairline through the band and the icon above it, both at the fraction where it falls. */
+  function eclipseHtml(c) {
+    if (c.eclipse < 0) return '';
+    const at = c.eclipseFrac;
+    const icon = at === 0 ? 'left:2px' : `left:${pct(at)};transform:translateX(-50%)`;
+    return `<span class="cal-pm-ecl" aria-hidden="true" style="${icon}">${ICONS.eclipse}</span><span class="cal-pm-eline" aria-hidden="true" style="left:${pct(at)}"></span>`;
+  }
 
   function rebuild() {
     const t0 = performance.now();
@@ -261,16 +272,16 @@ export function createPureMonth(ctx, { tip }) {
     V.info = viewInfo(model, V.hv);
     gridEl.textContent = '';
     let html = '<div class="cal-pm-corner" aria-hidden="true"></div>';
-    for (let c = 0; c < GRID.cols; c++) html += `<div class="cal-pm-ch${c === 0 ? ' is-first' : ''}" aria-hidden="true"><i>ζ½#</i>${c + 1}</div>`;
+    for (let c = 0; c < GRID.cols; c++) html += `<div class="cal-pm-ch${c === 0 ? ' is-first' : ''}" aria-hidden="true"><i>ζ#</i>${c + 1}</div>`;
     for (let r = 0; r < GRID.rows; r++) {
-      html += `<div class="cal-pm-rh${r === 0 ? ' is-first' : ''}" aria-hidden="true"><i>ε½#</i>${r + 1}</div>`;
+      html += `<div class="cal-pm-rh${r === 0 ? ' is-first' : ''}" aria-hidden="true"><i>ε#</i>${r + 1}</div>`;
       for (let c = 0; c < GRID.cols; c++) {
         const cell = grid.cells[r * GRID.cols + c];
         html +=
           `<div class="cal-pm-cell${cell.inRange ? '' : ' is-out'}${cell.partial ? ' is-partial' : ''}${cell.col === 6 ? ' is-last' : ''}" data-i="${cell.index}">` +
           `<button type="button" class="cal-pm-day" tabindex="-1"><span class="cal-pm-num">${cell.ord}</span></button>` +
           (cell.inRange ? tagsHtml(cell) : '') +
-          (cell.eclipse >= 0 ? `<span class="cal-pm-ecl" aria-hidden="true" style="${cell.eclipseFrac ? 'left:50%;transform:translateX(-50%)' : 'left:2px'}">${ICONS.eclipse}</span>` : '') +
+          eclipseHtml(cell) +
           (cell.inRange ? `<div class="cal-pm-band">${bandHtml(cell)}</div>` : '') +
           (cell.partial ? `<span class="cal-pm-cut" aria-hidden="true" style="left:${pct(cell.cut)}"></span>` : '') +
           `</div>`;
@@ -298,9 +309,9 @@ export function createPureMonth(ctx, { tip }) {
     }
     // title and selects
     const info = V.info;
-    setHtml(titleMain, `<span style="color:${levelColor(2)}">γ#${info.gammaOrd}</span> · <span style="color:${levelColor(3)}">δ½#${info.half}</span>`);
-    setText(titleSub, pure.periodName(2, info.gammaOrd));
-    setAttr(title, 'title', [pure.periodName(0, info.alpha), pure.periodName(1, info.beta), pure.periodName(2, info.gammaOrd)].join(' › '));
+    setHtml(titleMain, `<span style="color:${levelColor(2)}">γ#${info.gammaOrd}</span> · <span style="color:${levelColor(3)}">δ#${info.delta}</span>`);
+    setText(titleSub, pure.periodName(3, info.delta));
+    setAttr(title, 'title', [pure.periodName(0, info.alpha), pure.periodName(1, info.beta), pure.periodName(2, info.gammaOrd), pure.periodName(3, info.delta)].join(' › '));
     for (const { spec, sel } of addrSels) sel.value = String(info[spec.key]);
     paintLegend();
     buildRibbon_();
@@ -445,8 +456,9 @@ export function createPureMonth(ctx, { tip }) {
       e.preventDefault();
       const dir = e.key === 'PageUp' ? -1 : 1;
       // the same cell of the neighbouring page (a γ further with Shift)
-      V.focusZ = c.data.z + dir * (e.shiftKey ? 10 : 1) * GRID.cells;
-      setView(V.hv + dir * (e.shiftKey ? 10 : 1));
+      const pages = e.shiftKey ? PAGES_PER.gamma : 1;
+      V.focusZ = c.data.z + dir * pages * GRID.cells;
+      setView(V.hv + dir * pages);
       return;
     }
     if (delta === null) return;
@@ -467,20 +479,20 @@ export function createPureMonth(ctx, { tip }) {
   // ------------------------------------------------------------------------------------------
   const rel = (t) => {
     const T = store.t();
-    if (Math.abs(t - T) < 0.5) return 'at the shown moment';
+    if (Math.abs(t - T) < 0.0005) return 'at the shown moment';
     const text = spanText(model, pure, Math.min(T, t), Math.max(T, t));
     return t > T ? `in ${text}` : `${text} ago`;
   };
   function cellTipHtml(c) {
     let html = `<div class="cal-tt-h">${esc(cellStampText(c))}</div>`;
     if (!c.inRange) return html + `<div class="dim">Outside the catalogue<br>${esc(pure.catalogueText())}</div>`;
-    html += `<div class="dim">cell ${c.ord} of 35 · ${halfOfCell(c)} half of ${esc(pure.cycleName(5, Math.floor(c.z / 2)))}</div>`;
+    html += `<div class="dim">cell ${c.ord} of 35 · ${esc(pure.cycleName(5, c.z))}</div>`;
     html += `<div class="mono cal-tt-addr">${esc(pure.stamp(c.start, 'zeta'))}</div>`;
     html += `<div class="cal-tt-pair">${pure.pairHTML(c.epsPhase, { label: 'ε phase' })}<span class="dim">ε phase at the start · <span class="mono">${esc(pure.pairText(c.epsPhase))}</span></span></div>`;
     html += `<div class="dim">starts ${esc(rel(c.start))} · pos ${c.pos0.toFixed(6)}</div>`;
-    if (c.eclipse >= 0) html += `<div class="cal-tt-ecl">${ICONS.eclipse}<span>Saros 141 eclipse ${esc(pure.eclipseName(c.eclipse))} ${c.eclipseFrac ? 'in the middle of' : 'at the start of'} this cell</span></div>`;
+    if (c.eclipse >= 0) html += `<div class="cal-tt-ecl">${ICONS.eclipse}<span>Saros 141 eclipse ${esc(pure.eclipseName(c.eclipse))} ${eclWhere(c)} this cell</span></div>`;
     for (const sy of c.syncs.filter((s) => s.q === 0)) html += `<div class="cal-tt-sync"><span class="cal-pm-lgs"></span><span>Solar sync ${sy.sync} begins in this cell</span></div>`;
-    html += '<div class="dim cal-tt-hint">Click: this ζ½ at the shown offset.<br>Double-click: its middle.</div>';
+    html += '<div class="dim cal-tt-hint">Click: this ζ at the shown offset.<br>Double-click: its middle.</div>';
     return html;
   }
   function cycleTipHtml(level, idx) {
@@ -498,7 +510,7 @@ export function createPureMonth(ctx, { tip }) {
         break;
       }
     }
-    // "starts 2ε½ 6ζ½ ago", then how far into the cycle each threshold lies ("+9ι"); the next one also says when it comes
+    // "starts 2ε 6ζ ago", then how far into the cycle each threshold lies ("+9ι"); the next one also says when it comes
     const len = 4 / info.prefixNum;
     const into = (i) => `+${pure.durationPos((len * i) / 4, { parts: level === 6 ? 1 : 2 })}`;
     const rows = times
@@ -512,13 +524,15 @@ export function createPureMonth(ctx, { tip }) {
     // the identity is the ordinal (η#3 · Eta Trifracton); an η also has the clock counter the header counts (2η: two completed)
     const head = cycleLabel(level, local);
     const counter = level === 6 ? `<div class="dim">clock counter ${esc(countText('η', local - 1))}: ${local - 1} η completed in its ζ when it begins</div>` : '';
-    const hint = level === 6 ? `${info.siblings} η per ζ, 36 ι per η · ` : '';
+    // the unit this cycle is one of, in words: "Helion · 11 per ζ, 36ι each"
+    const made = madeOf(model, pure, level);
+    const unit = `${pure.unitName(LETTERS[level])} · ${info.siblings} per ${LETTERS[level - 1]}${made ? `, lasts ${made}` : ''} · `;
     return (
       `<div class="cal-tt-h" style="color:${col}">${esc(head)}<span class="dim"> · ${esc(pure.cycleName(level, idx))}</span>${cur ? ' <span class="chip cal-chip is-info">shown</span>' : ''}</div>` +
       counter +
       `<div class="mono cal-tt-addr">${esc(path.map((n, L) => cycleLabel(L, n)).slice(3).join(' '))}</div>` +
       `<dl class="cal-tt-dl">${rows}</dl>` +
-      `<div class="dim cal-tt-hint">${hint}global index ${idx} · click to go to its start</div>`
+      `<div class="dim cal-tt-hint">${esc(unit)}global index ${idx} · click to go to its start</div>`
     );
   }
   function syncTipHtml(n, q) {
@@ -562,7 +576,7 @@ export function createPureMonth(ctx, { tip }) {
       setStyle(cursor, 'left', (x * 100).toFixed(2) + '%');
       // the band cycle under the cursor
       let key;
-      if (V.overlay === 6) key = `6:${(22 * c.z + Math.min(21, Math.floor(x * 22))) >> 2}`;
+      if (V.overlay === 6) key = `6:${c.z * ETA_PER_CELL + Math.min(ETA_PER_CELL - 1, Math.floor(x * ETA_PER_CELL))}`;
       else key = `${V.overlay}:${overlayCycle(model, c.z, V.overlay).idx}`;
       if (key !== V.curSeg) {
         for (const b of gridEl.querySelectorAll('.cal-pm-seg.is-current')) b.classList.remove('is-current');
@@ -605,7 +619,7 @@ export function createPureMonth(ctx, { tip }) {
     for (const li of inspector.querySelectorAll('.cal-ddr[data-key]')) toggleClass(li, 'is-current', li.dataset.key === V.curSeg);
   }
   /** "ζ#4 η#1": the η as an ordinal inside its ζ (its counter is that number minus one: 0η). */
-  const etaChain = (e) => `${cycleLabel(5, Math.floor(e.eta / 11) % 7 + 1)} ${cycleLabel(6, e.local + 1)}`;
+  const etaChain = (e) => `${cycleLabel(5, Math.floor(e.eta / ETA_PER_CELL) % 7 + 1)} ${cycleLabel(6, e.local + 1)}`;
   function paintInspector() {
     const idx = V.shownIdx;
     const key = `${idx}|${V.hv}|${V.overlay}`;
@@ -619,10 +633,11 @@ export function createPureMonth(ctx, { tip }) {
         return;
       }
       const c = V.cells[idx].data;
-      let html = `<div class="cal-dd-h"><b>${esc(cellStampText(c))}</b><span class="dim">cell ${c.ord} of 35 · ${halfOfCell(c)} half of ${esc(pure.cycleName(5, Math.floor(c.z / 2)))}</span>`;
-      if (c.eclipse >= 0) html += `<span class="chip cal-chip is-gold" title="Greatest eclipse of Saros 141">${ICONS.eclipse}eclipse ${esc(pure.eclipseName(c.eclipse))}</span>`;
-      html += `<span class="cal-pm-elapsed" title="How much of this ζ½ has passed"><span class="dim">elapsed</span><span class="cal-pm-el"></span></span></div>`;
-      html += '<ul class="cal-dd-list">';
+      let html = `<div class="cal-dd-h"><b>${esc(cellStampText(c))}</b><span class="dim">cell ${c.ord} of 35 · ${esc(pure.cycleName(5, c.z))}</span>`;
+      if (c.eclipse >= 0) html += `<span class="chip cal-chip is-gold" title="Greatest eclipse of Saros 141, ${esc(eclWhere(c))} this cell">${ICONS.eclipse}eclipse ${esc(pure.eclipseName(c.eclipse))}</span>`;
+      html += `<span class="cal-pm-elapsed" title="How much of this ζ has passed"><span class="dim">elapsed</span><span class="cal-pm-el"></span></span></div>`;
+      const eta = V.overlay === 6;
+      html += `<ul class="cal-dd-list${eta ? ' is-grid' : ''}">`;
       const col = levelColor(V.overlay);
       const rowHtml = (level, idx, label, chain, cont) => {
         const t0 = cycleStart(model, level, idx);
@@ -632,11 +647,12 @@ export function createPureMonth(ctx, { tip }) {
           `<button type="button" class="cal-go" data-lv="${level}" data-idx="${idx}" title="Go to the start of ${esc(label)}" aria-label="Go to the start of ${esc(label)}">${ICONS.go}</button></li>`
         );
       };
-      if (V.overlay === 6) for (const e of c.etas) html += rowHtml(6, e.eta, countText('η', e.local), etaChain(e), !e.startsHere);
+      if (eta) for (const e of c.etas) html += rowHtml(6, e.eta, countText('η', e.local), etaChain(e), false);
       else {
         const cy = overlayCycle(model, c.z, V.overlay);
         html += rowHtml(V.overlay, cy.idx, cycleLabel(V.overlay, cy.local), pure.cycleName(V.overlay, cy.idx), !cy.startsHere);
       }
+      if (eta && c.syncs.length) html += '</ul><ul class="cal-dd-list is-grid is-syncs">';
       for (const s of c.syncs) {
         const names = ['start', 'peak', 'node', 'valley'];
         html +=
@@ -687,7 +703,7 @@ export function createPureMonth(ctx, { tip }) {
   });
 
   // ------------------------------------------------------------------------------------------
-  // ribbon: the ten δ½ of the γ
+  // ribbon: the five δ of the γ
   // ------------------------------------------------------------------------------------------
   function buildRibbon_() {
     const info = V.info;
@@ -709,22 +725,22 @@ export function createPureMonth(ctx, { tip }) {
           style: `left:${pct(sg.x0)};width:${pct(sg.x1 - sg.x0)}`,
           'data-hv': String(sg.hv),
           class: sg.inRange ? '' : 'is-out',
-          'aria-label': `δ½#${sg.half} of γ#${r.path[2]}`,
-          title: `δ½#${sg.half} of γ#${r.path[2]}`,
+          'aria-label': `δ#${sg.delta} of γ#${r.path[2]}`,
+          title: `δ#${sg.delta} of γ#${r.path[2]}`,
         },
-        h('span', { text: String(sg.half) }),
+        h('span', { text: `δ#${sg.delta}` }),
       );
       segs.append(b);
     }
     ribbonEl.append(segs);
     const ticks = h('div.cal-rticks', { 'aria-hidden': 'true' });
     for (const t of r.eps) ticks.append(h('i.cal-rt.is-eps', { style: `left:${pct(t.x)};--c:${levelColor(4)}` }));
-    // δ cycles begin at every second δ½; they carry their ordinal inside the γ
-    for (let i = 0; i < 5; i++) ticks.append(h('i.cal-rt.is-delta', { style: `left:${pct(i / 5)};--c:${levelColor(3)}` }, h('span', { text: cycleLabel(3, i + 1) })));
+    // the δ boundaries between the five pages
+    for (const d of r.deltas) ticks.append(h('i.cal-rt.is-delta', { style: `left:${pct(d.x)};--c:${levelColor(3)}` }));
     ribbonEl.append(ticks);
     ribbonEl.append(ribCursor);
-    setHtml(ribTitle, `γ#${r.path[2]} <span class="dim">· 10δ½</span>`);
-    setText(ribbonSum, `${pure.periodName(2, r.path[2])} holds 10δ½ = 50ε½ = 350ζ½; it is the ${r.path[2]}${ordSuffix(r.path[2])} γ of ${pure.periodName(1, r.path[1])}.`);
+    setHtml(ribTitle, `γ#${r.path[2]} <span class="dim">· 5δ</span>`);
+    setText(ribbonSum, `${pure.periodName(2, r.path[2])} holds 5δ = 25ε = 175ζ; it is the ${r.path[2]}${ordSuffix(r.path[2])} γ of ${pure.periodName(1, r.path[1])}.`);
     updateRibbonMarkers(true);
   }
   const ordSuffix = (n) => (n % 100 >= 11 && n % 100 <= 13 ? 'th' : ['th', 'st', 'nd', 'rd'][n % 10 > 3 ? 0 : n % 10]);
@@ -740,8 +756,8 @@ export function createPureMonth(ctx, { tip }) {
     const m = e.target.closest('.cal-rm');
     if (m) {
       const hv = Number(m.dataset.hv);
-      const t = Math.ceil(model.timeOfPosition((hv * 2) / model.levelInfo(3).prefixNum) * 1000) / 1000;
-      tip.show(`<div class="cal-tt-h">δ½#${(hv % 10) + 1} of γ#${V.ribbon.path[2]}</div><div class="dim">${esc(pure.stamp(t, 'delta'))}</div><div class="dim">starts ${esc(rel(t))}</div><div class="dim cal-tt-hint">Click to show this page.</div>`, e.clientX, e.clientY);
+      const t = cycleStart(model, 3, hv) ?? model.tMax;
+      tip.show(`<div class="cal-tt-h">δ#${(hv % PAGES_PER.gamma) + 1} of γ#${V.ribbon.path[2]}<span class="dim"> · ${esc(pure.cycleName(3, hv))}</span></div><div class="dim">${esc(pure.stamp(t, 'delta'))}</div><div class="dim">starts ${esc(rel(t))}</div><div class="dim cal-tt-hint">Click to show this page.</div>`, e.clientX, e.clientY);
     } else tip.hide();
   });
   ribbonEl.addEventListener('pointerleave', () => tip.hide());

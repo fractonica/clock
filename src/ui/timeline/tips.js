@@ -1,7 +1,9 @@
 /**
  * Pure-mode tooltips of the timeline (HTML strings). The counterpart of the Gregorian tooltips written in
  * timeline.js: the same places answer (lane heads, ruler key, overview, eclipse markers, the plot) but in Fractonica
- * terms – stamps, positions, cycle names, ladder durations and phase glyph pairs instead of dates and percentages.
+ * terms – stamps, positions, cycle names, ladder durations (spans below one Blink as decimals, "0.4ν") and phase
+ * glyph pairs instead of dates and percentages. Names of units appear only where a unit is explained (lane heads, the
+ * ruler key); the plot tooltip stays in symbols.
  */
 
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
@@ -15,6 +17,7 @@ export function pureTipHTML(h, env) {
   const { model, store, pure, ruler, words, theme, levels, data } = env;
   /** First unit of the clock part (η ι λ …) of an address; the units before it are the date part. */
   const clockFrom = ruler.unitIndex('eta');
+  const IOTA = ruler.unitIndex('iota');
   /** Where a position lies among the eclipses, in their own numbers: "between #22 and #23". */
   const between = (p) => {
     const k = Math.min(model.extent - 1, Math.floor(p));
@@ -67,8 +70,9 @@ export function pureTipHTML(h, env) {
     return `<div class="tl-tip-h">${words.outsideTitle}</div><div class="tl-tip-p">The catalogue spans ${esc(words.rangeLabel())}; the clock is not extrapolated.</div>`;
   }
   const p = model.positionOf(t);
-  const upTo = Math.min(ruler.units.length - 1, (env.step?.u ?? 7) + 2);
-  const toks = ruler.tokensAtTime(t, 0, upTo); // read at the instant, like the header: never a unit ahead of it
+  // the address runs on two main-chain units below the tick unit ("7η 22ι 33λ 12ν" while the ticks are ι)
+  const tick = env.step?.u ?? IOTA;
+  const toks = ruler.tokensOf(t, ruler.unitsTo(ruler.below(tick, 2), [tick])); // read at the instant, like the header: never a unit ahead of it
   const date = toks.filter((x) => x.u < clockFrom);
   const clock = toks.filter((x) => x.u >= clockFrom);
   const head = clock.length
@@ -93,7 +97,8 @@ export function pureTipHTML(h, env) {
     const last = f.end >= model.tMax - 1e-3;
     const into = words.endsInto(focus.L, f.cycle, last);
     const ends = last ? 'ends with the catalogue' : `ends ${esc(ruler.relText(f.end, t))} → ${esc(into.short)} begins`;
-    detail = `<div class="tl-tip-p tl-tip-detail">${chip(focus.L, ` <span class="mono">${esc(names.name)}</span>`)}<div class="tl-tip-sub dim">${esc(names.short)} · ${f.local + 1}/${f.siblings} · lasts ${esc(words.cycleLength(focus.L))} · ${ends}</div></div>`;
+    const facts = [esc(names.short), `${f.local + 1}/${f.siblings}`, esc(words.lastsText(focus.L)), ends].filter(Boolean);
+    detail = `<div class="tl-tip-p tl-tip-detail">${chip(focus.L, ` <span class="mono">${esc(names.name)}</span>`)}<div class="tl-tip-sub dim">${facts.join(' · ')}</div></div>`;
   }
   return `${head}
       <div class="tl-tip-p mono dim">pos ${p.toFixed(6)} · ${between(p)}</div>

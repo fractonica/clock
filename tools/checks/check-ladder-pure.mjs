@@ -206,7 +206,7 @@ await withApp(
     ok(names.every((n) => !/\d·\d/.test(n)), 'no row name spells a pair as "13·0" (read as a decimal number)', names.find((n) => /\d·\d/.test(n)));
     ok(names[6].includes('Eta Monofracton') && names[6].includes('then Eta Difracton begins'), 'the row of the current η says its name and what begins at its end', names[6]);
     const hint = await page.locator('#ladder-hint').innerText().catch(() => '');
-    ok(/0\.001 beats/.test(hint) && /2 beats/.test(hint), 'the keyboard hint counts the leads in beats', hint);
+    ok(/0\.00322 Blinks/.test(hint) && /6\.43 Blinks/.test(hint) && !/beats?\b/i.test(hint), 'the keyboard hint counts the leads in Blinks (0.00322 and 6.43), never in beats', hint);
     ok((await page.locator('#slot-upnext [role=progressbar]').getAttribute('aria-valuemax')) === '255' && /^phase \d+ and \d+ of 256$/.test((await page.locator('#slot-upnext [role=progressbar]').getAttribute('aria-valuetext')) ?? ''), 'the hero progress bar reads as a phase of 256 states ("phase 8 and 0 of 256"), not a percentage');
 
     // time-lapse speeds and live
@@ -315,7 +315,7 @@ await withApp(
     ok((await page.locator('#slot-ladder #ladder-opt-6.is-selected .ladder-detail').count()) === 1, 'pure: the detail panel sits in the selected row');
     const rowText = await page.locator('#slot-ladder .ladder-row').evaluateAll((rows) => rows.map((r) => [r.querySelector('.ladder-count').textContent, r.querySelector('.ladder-left').textContent, r.querySelectorAll('.ladder-glyph svg').length]));
     ok(rowText[0][0] === 'Hexafracton' && rowText[6][0] === 'Monofracton' && rowText[7][0] === 'Octafracton', 'pure: counters are the ordinal names of the cycles (α#6, η#1, θ#8)', JSON.stringify(rowText.map((r) => r[0])));
-    ok(/^6ι 4\dλ$/.test(rowText[6][1]), 'pure: η has 6ι 4xλ left (SPEC vector A: 56 min 12 s)', rowText[6][1]);
+    ok(/^1θ 2ι$/.test(rowText[6][1]), 'pure: η has 1θ 2ι left (SPEC vector A: 6.7 ι: whole cycles, one unit per depth)', rowText[6][1]);
     ok(rowText.every((r) => r[2] === 2), 'pure: every row ends in a pair of glyphs (two 2-stroke glyphs = 256 states)');
     ok(rowText.every((r) => r[1].split(' ').length <= 2 && !/ 0\D+$/u.test(r[1])), 'pure: rows count down in two parts at most, zero tails dropped', JSON.stringify(rowText.map((r) => r[1])));
     ok((await page.locator('#slot-ladder .ladder-pct').evaluateAll((els) => els.every((e) => getComputedStyle(e).display === 'none'))), 'pure: no percentage cell is shown');
@@ -422,17 +422,19 @@ await withApp(
     await page.goto(url(`?t=${A}&view=rings&pure=1&sel=7`));
     await ready(page);
     const heroText = await page.locator('#slot-upnext .upnext-hero').innerText();
-    ok(/^NEXT MAJOR TURNOVER/i.test(heroText) && /in\s+1ζ½ 4η \d+ι/.test(heroText) && /→ Zeta Pentafracton begins/.test(heroText) && /α#6 β#4 γ#9 δ#3 ε#5 ζ#5/.test(heroText) && /4 finer cycles \(η, θ, ι, κ\) end with it\./.test(heroText) && /began \d+ι \d+λ ago/.test(heroText), 'pure: the hero reads "in 1ζ½ 4η 24ι · → Zeta Pentafracton begins · address · began … ago"', heroText);
+    ok(/^NEXT MAJOR TURNOVER/i.test(heroText) && /in\s+10η 1θ \d+ι/.test(heroText) && /→ Zeta Pentafracton begins/.test(heroText) && /α#6 β#4 γ#9 δ#3 ε#5 ζ#5/.test(heroText) && /4 finer cycles \(η, θ, ι, κ\) end with it\./.test(heroText) && /began \d+θ \d+ι ago/.test(heroText), 'pure: the hero reads "in 10η 1θ 2ι · → Zeta Pentafracton begins · address · began … ago" (three units at most)', heroText);
     const listText = await page.locator('#slot-upnext .upnext-list').innerText();
     ok(/Zeta Hexafracton/.test(listText) && /Delta Tetrafracton/.test(listText), 'pure: list rows carry the name of the cycle that begins', listText);
-    // wide card (stacked full width): the date counters of a turnover read δ½#6 · ε½#5 · ζ½#4, as pure.dateText writes them
+    // wide card (stacked full width): the date counters of a turnover read δ#6 · ε#5 · ζ#4, as pure.dateText writes them
     await page.setViewportSize({ width: 800, height: 900 });
     await page.goto(url(`?t=${A}&view=rings&pure=1&sel=7`));
     await ready(page);
     const clocks = await page.locator('#slot-upnext .upnext-clock').evaluateAll((els) => els.filter((e) => e.getClientRects().length).map((e) => e.textContent));
-    ok(clocks.length >= 5 && clocks.every((c) => /^δ½#\d+ · ε½#\d+ · ζ½#\d+$/.test(c)), 'pure: the date counters of the list rows are ordinals (δ½#6 · ε½#5 · ζ½#4)', JSON.stringify(clocks));
+    ok(clocks.length >= 5 && clocks.every((c) => /^δ#\d+ · ε#\d+ · ζ#\d+$/.test(c)), 'pure: the date counters of the list rows are ordinals (δ#6 · ε#5 · ζ#4)', JSON.stringify(clocks));
+    const headsWide = await page.locator('#slot-upnext .upnext-grp').evaluateAll((els) => els.filter((e) => e.getClientRects().length).length);
+    ok(headsWide === 0, 'pure: a wide card writes the counters on every row and shows no group headings', String(headsWide));
     const stripText = await page.locator('#slot-upnext .upnext-strip').innerText();
-    ok(/in \d+ι \d+λ/.test(stripText) && /at \d+η \d+ι$/.test(stripText.trim()), 'pure: the strip tells a duration ("in 6ι 43λ") and, apart, a clock reading ("at 1η 0ι")', stripText);
+    ok(/in \d+[θι](?: \d+[ικλ])?/.test(stripText) && /at \d+η \d+ι$/.test(stripText.trim()), 'pure: the strip tells a duration ("in 1θ 2ι") and, apart, a clock reading ("at 1η 0ι")', stripText);
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto(url(`?t=${A}&view=rings&pure=1&sel=7`));
     await ready(page);
@@ -440,7 +442,22 @@ await withApp(
     // importance chips and their legend
     await page.locator('#slot-upnext .upnext-imp [data-id="γ"]').click();
     await frames(page, 4);
-    ok((await page.locator('#slot-upnext .upnext-cap').innerText()) === 'Counting α–γ turnovers · γ cycles last 1γ', 'pure: the legend gives the cycle length in its own unit', await page.locator('#slot-upnext .upnext-cap').innerText());
+    ok((await page.locator('#slot-upnext .upnext-cap').innerText()) === 'Counting α–γ turnovers · a γ cycle is 5δ', 'pure: the legend says what a cycle of the finest counted depth holds (one unit per depth)', await page.locator('#slot-upnext .upnext-cap').innerText());
+    await page.locator('#slot-upnext .upnext-imp [data-id="ζ"]').click();
+    await frames(page, 3);
+    ok((await page.locator('#slot-upnext .upnext-cap').innerText()) === 'Counting α–ζ turnovers · a Hadron (ζ) is 11η', 'pure: the legend names the particle unit where it has one', await page.locator('#slot-upnext .upnext-cap').innerText());
+    ok(/Hadron \(ζ\) is 11η/.test((await page.locator('#slot-upnext .upnext-imp [data-id="ζ"]').getAttribute('title')) ?? ''), 'pure: the importance button explains its unit');
+    // η turnovers come several to a ζ: groups of two or more are headed by their date counters on the narrow card
+    await page.locator('#slot-upnext .upnext-imp [data-id="η"]').click();
+    await frames(page, 4);
+    const heads = await page.locator('#slot-upnext .upnext-grp').evaluateAll((els) => els.filter((e) => e.getClientRects().length).map((e) => e.textContent));
+    ok(heads.length >= 1 && heads.every((h) => /^δ#\d+ · ε#\d+ · ζ#\d+$/.test(h)), 'pure: a group of several events is headed by its date counters (δ#3 · ε#5 · ζ#4)', JSON.stringify(heads));
+    const sepsOk = await page.evaluate(() => {
+      const items = [...document.querySelectorAll('#slot-upnext .upnext-item')];
+      // a heading sits on the first row of its group, never on a row that continues one
+      return items.every((li, i) => !li.querySelector('.upnext-grp:not([hidden])') || i === 0 || li.classList.contains('is-newday'));
+    });
+    ok(sepsOk, 'pure: a heading only on the first row of a group (a separator line precedes it)');
     await page.locator('#slot-upnext .upnext-imp [data-id="ζ"]').click();
 
     // ======================================================================= 4. layout and cost

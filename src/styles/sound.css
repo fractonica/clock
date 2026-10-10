@@ -254,6 +254,8 @@
 .snd-per-n { display: none; margin-left: auto; padding-left: 8px; flex: none; font-size: 11px; color: var(--snd-ink-3); }
 .snd-hz { color: var(--ink-2); }
 .snd-note::before, .snd-per::before { content: " · "; }
+.snd-reg:empty { display: none; } /* pure mode only: "octave +1" between the pitch in pB and the cents */
+.snd-reg::before { content: " · "; }
 .snd-meter { display: block; height: 8px; border-radius: 4px; background: rgb(255 255 255 / 0.06); overflow: hidden; }
 .snd-meter i {
   display: block;
@@ -331,6 +333,12 @@
   .snd-per { display: none; }
   .snd-per-n { display: inline; }
 }
+/* the narrowest phones: the three parts of the pitch line (pure: pB · octave · cents) wrap instead of being cut,
+   spaced by gaps (a dot would be left hanging at the start of the second line) */
+@container snd (max-width: 330px) {
+  .snd[data-pure] .snd-l2 { display: flex; flex-wrap: wrap; column-gap: 1em; overflow: visible; }
+  .snd[data-pure] .snd-l2 :is(.snd-reg, .snd-note)::before { content: none; }
+}
 
 /* phones and tablets: touch targets of at least 40 px, and a "?" on the captions that explain themselves */
 @media (pointer: coarse) {
@@ -369,6 +377,11 @@
 .snd[data-pure] .snd-field { grid-template-columns: minmax(0, 1fr) 118px; }
 .snd[data-pure] .snd-out { width: 118px; }
 .snd[data-pure] .snd-oct { min-width: 84px; }
+/* the second line of a strip carries four parts in pure mode (pB · octave · cents · length): tighter separators */
+.snd[data-pure] :is(.snd-reg, .snd-note, .snd-per)::before { content: "·"; margin: 0 0.45em; }
+/* the base pitch: the ratio over its absolute pitch in pB (two short lines in the width of a glyph pair) */
+.snd-out > span { display: block; }
+.snd-out .snd-out-sub { font-size: 11px; line-height: 1.3; color: var(--snd-ink-3); }
 
 @media (prefers-reduced-motion: reduce) {
   .snd-power-ring { animation: none !important; }

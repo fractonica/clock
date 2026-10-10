@@ -48,15 +48,25 @@ Press **P** (or the glyph button in the header, or open `?pure=1`) and the clock
 Fractonica terms:
 
 - **Where you are**: the header clock counts completed η, ι, λ inside the current ζ (`0η 29ι 21λ`); the date line is the
-  cycle address (`α#6 β#4 γ#9 · δ½#6 · ε½#4 · ζ½#7`). Cycles have names: `Gamma Difracton` is the 2nd γ inside its β
+  cycle address (`α#6 β#4 γ#9 · δ#3 · ε#4 · ζ#7`). Cycles have names: `Gamma Difracton` is the 2nd γ inside its β
   (Mono-, Di-, Tri-, Tetra-, Penta-, Hexa-, Hepta-, Octa-, Nona-, Deca-, Didecafracton, Dodeca-, Trideca- … fracton).
-- **How long**: spans are counted in Fractonica periods only: `1ζ½ 4η 24ι`, `6ι 43λ`. The ladder is
-  α β γ · δ½ ε½ ζ½ · η ι λ · μ ν ξ, where δ½, ε½, ζ½ are halves of a depth-4, 5, 6 cycle and η, ι, λ are depth 7, 9, 11
-  cycles: 1γ = 10δ½, 1δ½ = 5ε½, 1ε½ = 7ζ½, 1ζ½ = 5½η, 1η = 36ι, 1ι = 65λ.
+- **How long**: spans are counted in Fractonica periods only: `1ζ 4η 24ι`, `6ι 3κ`. Every depth is one unit, a whole
+  cycle of that depth, and the units from depth 4 have names:
+
+  | | δ | ε | ζ | **η** | θ | **ι** | κ | **λ** | μ | **ν** |
+  |---|---|---|---|---|---|---|---|---|---|---|
+  | unit | Atom | Nuclide | Hadron | **Helion** | Quark | **Preon** | Chromon | **Flavon** | Somon | **Blink** |
+  | depth | 4 | 5 | 6 | **7** | 8 | **9** | 10 | **11** | 12 | **13** |
+
+  1γ = 5δ, 1δ = 5ε, 1ε = 7ζ, 1ζ = 11η, 1η = 9θ, 1θ = 4ι, 1ι = 5κ, 1κ = 13λ, 1λ = 5μ, 1μ = 5ν. The atomic steps are
+  1η = 36ι, 1ι = 65λ, 1λ = 25ν; 19 Helions lock to the sun. Below a Blink a span is a decimal (`0.14ν`).
 - **How far through a cycle**: two 2-stroke glyphs (16 × 16 = 256 states) instead of a percentage.
-- **How fast**: time-lapse speeds are units per *beat* (one tick of real time): `η per beat`, `9ι per beat`.
+- **How fast**: real time is counted in **Blinks** (one ν cycle). Time-lapse speeds are units per Blink: `η per Blink`,
+  `2.25θ per Blink`; "real time" is one Blink per Blink. A frequency is cycles per Blink, **pB**, instead of Hz: the true
+  rates of the deepest cycles come out as whole numbers (7, 77, 693, 2 772 pB).
 - **Navigation** keeps working: the timeline gets a ruler of cycle units, the Calendar tab becomes a pure converter and a
-  month page of 5 rows × 7 cells (one δ½), the jump box takes names, addresses, `pos`, `sync` and offsets like `+2ζ½ 3η`.
+  month page of 5 rows × 7 cells (one δ: 5 ε × 7 ζ), the jump box takes names, addresses, `pos`, `sync` and offsets like
+  `+2ζ 3η` or `+4 Blinks`.
 - Press **?** for the in-app glossary.
 
 The mode is presentation only: the clock still runs on the device time underneath, and switching back and forth is live.

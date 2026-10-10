@@ -27,6 +27,9 @@ export const RULES = [
   ['am-pm', /\b\d{1,2}\s?(am|pm|AM|PM)\b|\bAD\b|\bBC\b/, 'hard'],
   ['percent', /%|\bper ?cent(age)?s?\b/i, 'hard'],
   ['frequency', /\bHz\b|\bkHz\b|\bhertz\b/i, 'hard'],
+  // revision 2: whole cycles only, and real time is counted in Blinks (cycles per Blink = pB), never in beats
+  ['half-unit', /[αβγδεζηθικλμνξ]½/, 'hard'],
+  ['beat-word', /\bbeats?\b/i, 'hard'],
   ['note-name', /\b[A-G](#|♯|♭)?\d\b/, 'hard'],
   ['saros', /\bSaros\b/i, 'soft'],
   ['year-number', /\b(1[6-9]\d\d|2[0-8]\d\d)\b/, 'soft'],

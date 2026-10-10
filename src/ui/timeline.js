@@ -7,9 +7,11 @@
  * pure maths lives in timeline/helpers.js, cached model queries in timeline/data.js and all
  * drawing in timeline/paint.js.
  *
- * Pure mode (docs/design/80-pure.md): the Gregorian axis is replaced by a ruler of Fractonica units (timeline/ruler.js),
- * every sentence by its Fractonica wording (timeline/words.js, timeline/tips.js) and the percentages of the hover
- * read-out by glyph pairs. The mode is read on every frame (`applyMode`), so switching is live in both directions.
+ * Pure mode (docs/design/80-pure.md, revision 2): the Gregorian axis is replaced by a ruler of the unit ladder
+ * α β γ δ ε ζ η θ ι κ λ μ ν (timeline/ruler.js; one unit per depth, whole cycles, the Blink ν the finest), every
+ * sentence by its Fractonica wording (timeline/words.js, timeline/tips.js) and the percentages of the hover read-out
+ * by glyph pairs. Spans of real time are counted in Blinks and below one Blink as decimals ("0.4ν"). The mode is read
+ * on every frame (`applyMode`), so switching is live in both directions.
  */
 import {
   PRESETS,
@@ -72,6 +74,7 @@ export function mount(el, ctx) {
   const isPure = () => (typeof ctx.isPure === 'function' ? !!ctx.isPure() : !!store.state.pure);
   const data = createData({ model, fmt, pure });
   const ruler = data.ruler;
+  const IOTA = ruler.unitIndex('iota'); // the default tick unit before the first frame
   const words = createWords({ model, pure, ruler });
   const lim = data.lim;
   const uid = ++mountCount;
@@ -79,7 +82,7 @@ export function mount(el, ctx) {
   const selLevel = () => validLevel(store.state.selectedLevel);
 
   // ---- DOM -------------------------------------------------------------------------------------
-  /** Zoom preset buttons: Day … All in normal mode, the ladder units λ … α and All in pure mode. */
+  /** Zoom preset buttons: Day … All in normal mode, the ladder units ν λ ι η ζ ε δ γ β α and All in pure mode. */
   function presetsHTML(pureOn) {
     if (pureOn) {
       return ruler.PRESETS.map((p) => `<button type="button" data-preset="${p.id}" aria-pressed="false" title="${esc(words.presetTitle(p))}">${esc(words.presetLabel(p))}</button>`).join('');
@@ -996,7 +999,7 @@ export function mount(el, ctx) {
 
   // ---- per-frame work ------------------------------------------------------------------------------------------------------
   function flagLabel(t) {
-    if (pureMode) return ruler.flagText(roundMs(t), S.step ? S.step.u : 7);
+    if (pureMode) return ruler.flagText(roundMs(t), S.step ? S.step.u : IOTA);
     const span = win.span;
     t = roundMs(t);
     if (span <= 3 * DAY) return fmt.time(t, { seconds: true, ms: span < 40 });
@@ -1170,13 +1173,13 @@ export function mount(el, ctx) {
   function describeView(t, inRange) {
     const t0 = win.c - win.span / 2;
     if (pureMode) {
-      const u = S.step ? S.step.u : 7;
+      const u = S.step ? S.step.u : IOTA;
       const out = [`Timeline shows ${ruler.rangeText(t0, t0 + win.span, u)}, ${ruler.spanText(t0, t0 + win.span, 2, PIXEL / plotW())} across.`];
       if (!inRange) {
         out.push('The cursor is outside the Saros 141 catalogue.');
         return out.join(' ');
       }
-      out.push(`Cursor at ${ruler.stampText(t, Math.min(11, u + 1))}${store.live ? ', live' : store.playing ? ', in time-lapse' : ''}.`);
+      out.push(`Cursor at ${ruler.stampText(t, ruler.below(u, 1))}${store.live ? ', live' : store.playing ? ', in time-lapse' : ''}.`);
       const L = selLevel();
       const cyc = data.cycleAt(L, t);
       if (cyc) out.push(words.selectedSentence(L, cyc.idx, cyc.local, model.levelInfo(L).siblings ?? data.alpha.length, cyc.end >= model.tMax - 1e-3));

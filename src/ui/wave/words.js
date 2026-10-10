@@ -3,8 +3,10 @@
  *
  * Normal mode delegates to tooltip.js (Gregorian spans, h / min countdowns, percentages). Pure mode says the
  * same things in Fractonica terms only (docs/design/80-pure.md): cycle names and address chains instead of
- * dates, durations counted in ladder units (λ ι η ζ½ ε½ δ½ γ β α), a pair of 2-stroke glyphs (256 states)
- * instead of a percentage, eclipses numbered instead of dated.
+ * dates, durations counted in ladder units (one unit per depth, α β γ δ ε ζ η θ ι κ λ μ ν; whole cycles only),
+ * a pair of 2-stroke glyphs (256 states) instead of a percentage, eclipses numbered instead of dated.
+ * "Half-arc" is the view's own geometry (a cycle is a crest followed by a trough), not a unit: lengths are
+ * always counted in whole-cycle units ("4θ 2ι").
  *
  * Everything here is a function of (mode, readings): the mode is asked each time (`isPure()`), so a text
  * built a moment ago is never reused after the switch. Pure helpers take the `pure` object of src/core/pure.js
@@ -33,18 +35,11 @@ const signed = (n) => (n < 0 ? '−' : '') + Math.abs(n);
 // ------------------------------------------------------------------ pure wording helpers
 
 /**
- * A span of `dpos` Saros positions in ladder units: "1ζ½", "2η 5ι" (pure.durationPos: trailing zero parts are dropped
- * there). Below the finest unit (ξ) the ladder would say "0ξ" for a span that is not nothing, so this says how much of
- * one instead: "0.5ξ".
+ * A span of `dpos` Saros positions in ladder units: "1ζ", "2η 5θ" (pure.durationPos: up to `parts` non-zero counts,
+ * zero units skipped). Below one Blink the core writes a decimal count of it ("0.5ν").
  */
 export function pureSpan(pure, dpos, parts = 2) {
-  const text = pure.durationPos(dpos, { parts });
-  const last = pure.UNITS[pure.UNITS.length - 1];
-  if (text === `0${last.sym}` && Math.abs(dpos) > 0) {
-    const r = Math.abs(dpos) / pure.unitPos(last);
-    return r < 0.01 ? `<0.01${last.sym}` : `${Number(r.toPrecision(2))}${last.sym}`;
-  }
-  return text;
+  return pure.durationPos(dpos, { parts });
 }
 
 /**
@@ -66,15 +61,21 @@ export function positionSpan(pure, model, t1, t2) {
   return (hi - lo) / pure.secondsPerPosition(a === null ? model.tMin : model.tMax);
 }
 
-/** "in 1η 12ι" / "3ι ago": how far `to` lies from `from`, counted in ladder units. */
+/** "in 1η 5θ" / "3ι ago": how far `to` lies from `from`, counted in ladder units. */
 export function pureCountdown(pure, model, from, to, parts = 2) {
   const text = pureSpan(pure, positionSpan(pure, model, from, to), parts);
   return to >= from ? `in ${text}` : `${text} ago`;
 }
 
-/** The cycle length of a depth in ladder units, exact: one unit when it is one (η, ι, λ ...), else "2ζ½", "13λ", "4ι". */
+/** The cycle length of a depth in ladder units, exact: every depth is a unit of its own, so "1η", "1ι" ("0.14ν" for ξ). */
 export const cycleLengthPure = (pure, level) => pure.cycleLength(level);
-/** The length of half-arc `d` (clipped ones are shorter). */
+/** `cycleLengthPure` with the unit's name where it has one: "1η (Helion)", "1γ", "0.14ν". */
+export function cycleNamedPure(pure, info) {
+  const u = pure.unitOf(info.letter);
+  const len = cycleLengthPure(pure, info.level);
+  return u?.named && len === `1${u.sym}` ? `${len} (${u.name})` : len;
+}
+/** The length of half-arc `d`: half of a cycle counted in units ("4θ 2ι"; clipped ones are shorter). */
 export const halfLengthPure = (pure, model, d) => pureSpan(pure, (2 * d.fraction) / model.levelInfo(d.level).prefixNum);
 
 /** "α#6 β#4 γ#9 δ#3 ε#5": the address of cycle `cycleIdx` of `level`, at most `links` links, deepest last. */
@@ -95,24 +96,24 @@ export function chainText(pure, model, level, cycleIdx, links = 5) {
  * The displayed time written next to the focus marker: three consecutive parts of the pure date / clock, chosen by the
  * depth of the arc, like the date or clock a Gregorian label would show at that scale. Ordinals are written X#n
  * (1-based), the counters of the clock nX (units completed since the parent began, 0-based), as pure.stamp does:
- *   α β γ -> "α#6 β#4 γ#9"        ε½ ζ½ η -> "ε½#2 · ζ½#5 · 3η"        η ι λ -> "3η 17ι 21λ"
+ *   α β γ -> "α#6 β#4 γ#9"        δ ε ζ -> "δ#3 ε#5 ζ#4"        ε ζ η -> "ε#5 ζ#4 · 0η"        η ι λ -> "3η 17ι 21λ"
  */
 export function nowLabelPure(pure, t, level) {
   const d = pure.date(t);
   if (!d) return '—';
   const start = Math.min(Math.max(level, 0), 6);
   const c = start >= 4 ? pure.clock(t) : null;
-  // [group, text]: α β γ and the counters η ι λ sit side by side, each half-cycle ordinal is a group of its own
+  // [group, text]: the ordinals α β γ, the ordinals δ ε ζ and the counters η ι λ each sit side by side (the face caption's groups)
   const all = [
     [0, `α#${d.alpha}`],
     [0, `β#${d.beta}`],
     [0, `γ#${d.gamma}`],
-    [1, `δ½#${d.delta}`],
-    [2, `ε½#${d.epsilon}`],
-    [3, `ζ½#${d.zeta}`],
-    [4, c ? `${c.eta}η` : ''],
-    [4, c ? `${c.iota}ι` : ''],
-    [4, c ? `${c.lambda}λ` : ''],
+    [1, `δ#${d.delta}`],
+    [1, `ε#${d.epsilon}`],
+    [1, `ζ#${d.zeta}`],
+    [2, c ? `${c.eta}η` : ''],
+    [2, c ? `${c.iota}ι` : ''],
+    [2, c ? `${c.lambda}λ` : ''],
   ];
   const win = all.slice(start, start + 3);
   return win.reduce((str, [group, tok], i) => (i ? str + (win[i - 1][0] === group ? ' ' : ' · ') + tok : tok), '');
@@ -195,6 +196,16 @@ export function createWords({ fmt, pure, model, theme, isPure }) {
     // ---- static labels
     /** Cycle length of a level for the depth buttons: "5.1 h" or "1η". */
     cycleLength: (info) => (on() ? cycleLengthPure(pure, info.level) : fmt.duration(info.meanSeconds)),
+    /** Tooltip of a depth button: "η · depth 7 · cycle ≈ 5 h 3 min · 9 …" or "η · depth 7 · one cycle = 1η (Helion) · 9 …". */
+    chipTitle: (info) =>
+      on()
+        ? `${info.text} · depth ${info.depth} · one cycle = ${cycleNamedPure(pure, info)} · ${info.factor} child half-arcs per half-arc`
+        : `${info.text} · depth ${info.depth} · cycle ≈ ${fmt.duration(info.meanSeconds)} · ${info.factor} child half-arcs per half-arc`,
+    /** The spoken label of a depth button (its live reading is appended by chipLive). */
+    chipAria: (info) =>
+      on()
+        ? `Depth ${info.depth}, ${info.text}, one cycle is ${cycleNamedPure(pure, info)}`
+        : `Depth ${info.depth}, ${info.text}, cycle about ${fmt.duration(info.meanSeconds)}`,
     /** Half-arc length of a level for the "too fast to follow" badge. */
     halfLength: (info) => (on() ? pureSpan(pure, 2 / info.prefixNum) : fmt.duration(info.meanSeconds / 2)),
     catalogueTitle: (count) =>
@@ -281,11 +292,11 @@ export function createWords({ fmt, pure, model, theme, isPure }) {
     sunDefinition: () => (on() ? '19η' : '19 η cycles ≈ 4 days'),
     sunToggleTitle: () =>
       on()
-        ? 'Solar sync wave: one yellow wave of 19η. A ripple rides the focused arc where one and a half or more syncs fit, and a dial shows the phase at every depth'
+        ? 'Solar sync wave: one yellow wave of 19η (19 Helions). A ripple rides the focused arc where one and a half or more syncs fit, and a dial shows the phase at every depth'
         : 'Solar sync wave: one yellow wave of 19 η cycles (about 4 days). A ripple rides the focused arc where one and a half or more syncs fit, and a dial shows the phase at every depth',
     sunCaption: () =>
       on()
-        ? 'The yellow ripple is the solar sync: one wavelength is 19η, drawn along the focused arc where one and a half or more fit, with a dot at its present phase; the yellow dial shows the same phase at every depth.'
+        ? 'The yellow ripple is the solar sync: one wavelength is 19η (19 Helions), drawn along the focused arc where one and a half or more fit, with a dot at its present phase; the yellow dial shows the same phase at every depth.'
         : 'The yellow ripple is the solar sync: one wavelength is 19 η cycles (about 4 days), drawn along the focused arc where one and a half or more fit, with a dot at its present phase; the yellow dial shows the same phase at every depth.',
     sunLegend: () => (on() ? 'solar sync: 19η, peak · node · valley · end' : 'solar sync: 19 η cycles (about 4 days), peak · node · valley · end'),
     /** "#4820", "#−6718": the minus is the app's own (U+2212), never a hyphen. */
@@ -339,6 +350,7 @@ export function createWords({ fmt, pure, model, theme, isPure }) {
         `<div class="wave-tip-r">Next ${esc(this.sunNext(s, t))}</div>`,
         `<div class="wave-tip-r dim">${esc(this.sunDriftLine(s, t))}</div>`,
         `<div class="wave-tip-r dim">${QUARTERS.join(', ')}: ${on() ? 'a quarter of the sync apart' : 'about a day apart'}</div>`,
+        ...(on() ? [`<div class="wave-tip-r dim">One sync is 19η: 19 ${pure.unitName('η', 19)}</div>`] : []),
         `<div class="wave-tip-a">${esc(action)}</div>`,
       ];
       return lines.join('');

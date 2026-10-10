@@ -57,21 +57,25 @@ import {
   dateTail,
   depthWords,
   endsText,
-  groupByHalf,
+  groupByZeta,
   heroLeft,
-  leadBeats,
+  holds,
+  leadBlinks,
   leftText,
   lengthText,
   levelWord,
   nextCycle,
   pathText,
-  periodBeats,
+  periodBlinks,
   phaseWords,
   positionOfKey,
   quarterWhere,
   sectorName,
   turnoverInfo,
   turnoverWords,
+  unitClause,
+  unitSentence,
+  unitWord,
 } from '../src/ui/ladder/pure-text.js';
 
 const model = createModel();
@@ -655,7 +659,7 @@ test('advancedBy recognises a list that has moved forward', () => {
 });
 
 // ---------------------------------------------------------------------------
-// pure mode (docs/design/80-pure.md): Fractonica terms only
+// pure mode (docs/design/80-pure.md, revision 2): Fractonica terms only; one unit per depth, whole cycles, Blinks
 // ---------------------------------------------------------------------------
 const pure = createPure(model, { now: () => A });
 const R = model.F.rational;
@@ -702,17 +706,22 @@ test('pure: the cycle that begins where a cycle ends, and the end of the catalog
   assert.equal(endsText(null), '→ the catalogue ends');
 });
 
+/** A duration the core writes: up to three "count + unit symbol" parts of the ladder (α … ν), or a decimal of ν. */
+const DURATION = /^(?:\d+[α-ν](?: \d+[α-ν]){0,2}|\d+(?:\.\d+)?ν|<0\.001ν)$/u;
+
 test('pure: time left is counted in ladder units, exactly, and never goes negative', () => {
-  // SPEC vector A: eta has 56 min 12 s left = 6.67 iota
+  // SPEC vector A: eta has 56 min 12 s left = 6.67 iota = 1 theta + 2.67 iota
   const eta = model.levelAt(A, 6);
-  assert.match(leftText(model, pure, A, eta.end), /^6ι 4\dλ$/);
-  assert.equal(leftText(model, pure, A, A - 5), '0ξ', 'a passed instant reads zero');
-  assert.equal(leftText(model, pure, A, A), '0ξ');
+  assert.equal(leftText(model, pure, A, eta.end), '1θ 2ι');
+  assert.equal(leftText(model, pure, A, A - 5), '0ν', 'a passed instant reads zero');
+  assert.equal(leftText(model, pure, A, A), '0ν');
   for (const t of SAMPLE.slice(0, 7)) {
     for (let L = 0; L < 14; L++) {
       const lv = model.levelAt(t, L);
       const txt = leftText(model, pure, t, lv.end);
-      assert.match(txt, /^\d+[αβγδεζημνξικλ½]+( \d+[αβγδεζημνξικλ½]+)?$/u, `${L}: ${txt}`);
+      assert.match(txt, DURATION, `${L}: ${txt}`);
+      assert.ok(txt.split(' ').length <= 2, `${L}: two parts at most: ${txt}`);
+      assert.doesNotMatch(txt, /½|beat/i);
       // agrees with the core's span between two instants
       assert.equal(txt, pure.between(t, lv.end, { parts: 2 }));
     }
@@ -720,36 +729,43 @@ test('pure: time left is counted in ladder units, exactly, and never goes negati
   // the end of the catalogue is a valid instant
   assert.match(leftText(model, pure, model.tMax - 100, model.tMax), /^\d/);
   // outside the catalogue the span falls back to seconds around t1
-  assert.match(leftText(model, pure, model.tMax + 100, model.tMax + 5000), /^\d+[ξνμλικ]/u);
+  assert.match(leftText(model, pure, model.tMax + 100, model.tMax + 5000), DURATION);
+  // below one Blink it is a decimal count of it, never a unit that does not exist
+  const nu = model.levelAt(A, 12);
+  assert.match(leftText(model, pure, nu.end - 0.1, nu.end), /^0\.\d+ν$/u);
 });
 
-test('pure: the hero countdown shows at most three units, zero tails dropped by the core (never finer than λ once the span is a few ι long)', () => {
+test('pure: the hero countdown shows at most three units, zero parts skipped by the core', () => {
   const U = pure.UNITS;
   const len = (id) => pure.unitPos(U.find((u) => u.id === id));
   const sym = (id) => U.find((u) => u.id === id).sym;
   const p0 = 22.9;
   const t0 = model.timeOfPosition(p0);
-  /** The instant `parts` = [[unit id, count], ...] after p0, plus half of the unit that follows the last one (no float edge). */
+  /** The instant `parts` = [[unit id, count], ...] after p0, plus `share` of the unit that follows the last one (no float edge). */
   const after = (parts, tailId, share = 0.5) => model.timeOfPosition(p0 + parts.reduce((a, [id, n]) => a + n * len(id), 0) + share * len(tailId));
   const cases = [
     // [parts, the unit after them, expected text, share of that unit added]
-    [[['gamma', 3], ['delta-half', 1], ['epsilon-half', 2]], 'zeta-half', '3γ 1δ½ 2ε½'],
-    [[['beta', 2], ['gamma', 4], ['delta-half', 7]], 'epsilon-half', '2β 4γ 7δ½'],
-    [[['zeta-half', 1], ['eta', 4], ['iota', 24]], 'lambda', '1ζ½ 4η 24ι'],
-    [[['eta', 3], ['iota', 5], ['lambda', 9]], 'mu', '3η 5ι 9λ'], // λ is the finest counter: η first still gets three units
-    [[['iota', 11], ['lambda', 5]], 'mu', '11ι 5λ'],
-    [[['lambda', 3], ['mu', 2]], 'nu', '3λ 2μ'],
-    [[['gamma', 3], ['delta-half', 0], ['epsilon-half', 2]], 'zeta-half', '3γ 0δ½ 2ε½'], // a zero between two counts stays
-    [[['gamma', 3], ['delta-half', 1]], 'epsilon-half', '3γ 1δ½'], // a zero third part is dropped, not written "0ε½"
-    [[['zeta-half', 2]], 'eta', '2ζ½', 0.02], // 0η and 0ι follow: both zero tails are dropped
+    [[['gamma', 3], ['delta', 1], ['epsilon', 2]], 'zeta', '3γ 1δ 2ε'],
+    [[['beta', 2], ['gamma', 4], ['delta', 3]], 'epsilon', '2β 4γ 3δ'],
+    [[['zeta', 1], ['eta', 4], ['theta', 3]], 'iota', '1ζ 4η 3θ'],
+    [[['eta', 3], ['theta', 5], ['iota', 2]], 'kappa', '3η 5θ 2ι'],
+    [[['iota', 3], ['kappa', 4], ['lambda', 9]], 'mu', '3ι 4κ 9λ'],
+    [[['lambda', 3], ['mu', 2]], 'nu', '3λ 2μ'], // half a Blink left over: the third part is zero and skipped
+    [[['gamma', 3], ['delta', 0], ['epsilon', 2]], 'zeta', '3γ 2ε', 0], // a zero between two counts is skipped, not written "0δ"
+    [[['gamma', 3], ['delta', 0], ['epsilon', 2]], 'zeta', '3γ 2ε 5η'], // ... and the next non-zero unit takes the third place
+    [[['gamma', 3], ['delta', 1]], 'epsilon', '3γ 1δ', 0], // nothing left: no zero part is written, "0ε"
+    [[['zeta', 2]], 'eta', '2ζ', 0], // a whole number of units reads as that count alone
   ];
   for (const [parts, tail, expect, share] of cases) {
     const text = heroLeft(model, pure, t0, after(parts, tail, share));
     assert.equal(text, expect, `${parts.map(([i, n]) => n + sym(i)).join(' ')}`);
     assert.ok(text.split(' ').length <= 3, `at most three units: ${text}`);
-    assert.doesNotMatch(text, / 0[^ ]+$/u, `no trailing zero part: ${text}`);
+    assert.doesNotMatch(text, / 0[^ ]+$/u, `no zero part: ${text}`);
+    assert.equal(text, pure.between(t0, after(parts, tail, share), { parts: 3 }), 'the core counts it');
   }
-  assert.equal(heroLeft(model, pure, A, A - 1), '0ξ', 'nothing left');
+  assert.equal(heroLeft(model, pure, A, A - 1), '0ν', 'nothing left');
+  // a span of a few Blinks keeps the core's decimal
+  assert.match(heroLeft(model, pure, A, A + 0.7), /^2\.\dν$/u);
   // the three-unit hero text starts like the two-unit row text of the same span
   for (const t of SAMPLE.slice(0, 5)) {
     const lv = model.levelAt(t, 5);
@@ -761,7 +777,7 @@ test('pure: the hero countdown shows at most three units, zero tails dropped by 
 });
 
 test('pure: cycle lengths are the units themselves, exactly, at every depth (core pure.cycleLength, no local trimming)', () => {
-  const expect = ['1α', '1β', '1γ', '2δ½', '2ε½', '2ζ½', '1η', '4ι', '1ι', '13λ', '1λ', '1μ', '1ν', '1ξ'];
+  const expect = ['1α', '1β', '1γ', '1δ', '1ε', '1ζ', '1η', '1θ', '1ι', '1κ', '1λ', '1μ', '1ν', '0.14ν'];
   for (let L = 0; L < 14; L++) {
     assert.equal(pure.cycleLength(L), expect[L], `depth ${L + 1}`);
     for (const t of [A, 946684800, 2886085800, model.tMin + 5]) assert.equal(lengthText(model, pure, model.levelAt(t, L)), expect[L], `depth ${L + 1} at ${t}`);
@@ -773,9 +789,30 @@ test('pure: cycle lengths are the units themselves, exactly, at every depth (cor
   assert.equal(lengthText(model, pure, clipped), pure.durationPos(1, { parts: 2 }));
   const lastEta = model.levelAt(model.tMax - 0.002, 6);
   assert.equal(lastEta.clipped, true);
-  assert.match(lengthText(model, pure, lastEta), /^\d+ι( \d+λ)?$/u, 'a clipped η is shorter than 1η');
-  // the core never writes a zero tail, so no length does
+  assert.equal(lengthText(model, pure, lastEta), '2θ 1ι', 'a clipped η is shorter than 1η');
+  // the core never writes a zero part, so no length does
   for (let L = 0; L < 14; L++) assert.doesNotMatch(pure.cycleLength(L), / 0\D/u, `depth ${L + 1}`);
+});
+
+test('pure: a unit is explained by what it holds, with its particle name only where it has one', () => {
+  // names come from the core's table; α β γ have none yet and ξ is not a unit
+  assert.deepEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13].map((L) => unitWord(pure, L)), ['', '', '', 'Atom', 'Nuclide', 'Hadron', 'Helion', 'Quark', 'Preon', 'Chromon', 'Flavon', 'Somon', 'Blink', '']);
+  assert.equal(holds(model, 5), '11η');
+  assert.equal(holds(model, 6), '9θ');
+  assert.equal(holds(model, 2), '5δ');
+  for (let L = 0; L < 13; L++) {
+    // "one cycle holds N of the next unit" is the ladder's own factor, the same as the unit lengths say
+    const n = model.levelInfo(L).factor;
+    assert.equal(holds(model, L), `${n}${pure.UNITS[L + 1]?.sym ?? 'ξ'}`);
+    if (pure.UNITS[L + 1]) assert.ok(Math.abs(pure.unitPos(pure.UNITS[L]) / pure.unitPos(pure.UNITS[L + 1]) - n) < 1e-9, `depth ${L + 1}`);
+  }
+  assert.equal(unitClause(model, pure, 5), 'a Hadron (ζ) is 11η');
+  assert.equal(unitClause(model, pure, 3), 'an Atom (δ) is 5ε');
+  assert.equal(unitClause(model, pure, 2), 'a γ cycle is 5δ');
+  assert.equal(unitClause(model, pure, 0), 'an α cycle is 5β');
+  assert.equal(unitClause(model, pure, 12), 'a Blink (ν) is 7ξ');
+  assert.equal(unitClause(model, pure, 13), 'a ξ cycle is 0.14ν', 'finer than a Blink: told as a part of it');
+  assert.equal(unitSentence(model, pure, 6), 'A Helion (η) is 9θ.');
 });
 
 test('pure: the phase is a pair of glyphs (256 states) whose high digit is the ladder glyph', () => {
@@ -798,13 +835,25 @@ test('pure: the phase is a pair of glyphs (256 states) whose high digit is the l
   assert.equal(phaseWords(pure, 0.5, 'sector phase').label, 'sector phase 8 and 0 of 256');
 });
 
-test('pure: real-time leads are beats, lengths of too-fast cycles two digits', () => {
-  assert.deepEqual([2, 0.4, 0.0775, 0.011, 1.5].map((s) => leadBeats(pure, s)), ['2 beats', '0.4 beats', '0.0775 beats', '0.011 beats', '1.5 beats']);
-  assert.equal(leadBeats(pure, JUST_AFTER_S), '0.001 beats');
-  assert.equal(periodBeats(0.311), '0.31 beats');
-  assert.equal(periodBeats(0.0444), '0.044 beats');
-  assert.equal(periodBeats(1), '1 beat');
-  assert.equal(periodBeats(1.555), '1.6 beats');
+test('pure: real-time leads are counted in Blinks, lengths of too-fast cycles in two digits', () => {
+  // the 2 s of "Just before" and the 1 ms of "Just after", the core's pure.blinks (3 significant digits)
+  assert.deepEqual([2, 0.4, 0.0775, 0.011, 1.5].map((s) => leadBlinks(pure, s)), ['6.43 Blinks', '1.29 Blinks', '0.249 Blinks', '0.0354 Blinks', '4.82 Blinks']);
+  assert.equal(leadBlinks(pure, JUST_AFTER_S), '0.00322 Blinks');
+  assert.equal(leadBlinks(pure, justBeforeLead(model.levelInfo(11).meanSeconds)), '1.25 Blinks', 'a quarter of a μ cycle');
+  for (const s of [2, 0.4, 0.001, 0.0775]) assert.equal(leadBlinks(pure, s), pure.blinks(s), 'the core counts it');
+  // too fast to count down: two significant digits of a Blink
+  const nu = model.levelInfo(12).meanSeconds;
+  const xi = model.levelInfo(13).meanSeconds;
+  assert.equal(periodBlinks(pure, nu), '1 Blink', 'a ν cycle is one Blink, singular');
+  assert.equal(periodBlinks(pure, xi), '0.14 Blinks');
+  assert.equal(periodBlinks(pure, 0.311), '1 Blink');
+  assert.equal(periodBlinks(pure, 0.0777), '0.25 Blinks');
+  assert.equal(periodBlinks(pure, xi / 4), '0.036 Blinks');
+  assert.equal(periodBlinks(pure, 1.555), '5 Blinks');
+  // never a "beat", an Earth unit, or a long float tail
+  for (const s of [2, 0.4, 0.001, nu, xi, xi / 4, 0.0777, 1.555, 33]) {
+    for (const t of [leadBlinks(pure, s), periodBlinks(pure, s)]) assert.match(t, /^(?:<?\d+(?:\.\d{1,5})?) Blinks?$/u, t);
+  }
 });
 
 test('pure: quarter thresholds are named by their two finest counters; the end reads as the next start', () => {
@@ -814,6 +863,12 @@ test('pure: quarter thresholds are named by their two finest counters; the end r
   // clock readings in the notation of the header clock: completed units, count first (0-based), joined by spaces
   assert.deepEqual(where, [`0η 9ι`, `0η 18ι`, `0η 27ι`, `1η 0ι`]);
   assert.equal(where[3], `${c(lv.end + 0.001)[6]} ${c(lv.end + 0.001)[7]}`);
+  // whole cycles all the way down: the date counters of a ζ's quarters are η counts inside it
+  const zeta = model.levelAt(A, 5);
+  assert.deepEqual(
+    zeta.thresholds.slice(1).map((t) => quarterWhere(model, pure, t.time, 5)),
+    ['ζ#4 · 2η', 'ζ#4 · 5η', 'ζ#4 · 8η', 'ζ#5 · 0η'],
+  );
   for (const t of SAMPLE.slice(0, 7)) {
     for (let L = 0; L < 10; L++) {
       const cyc = model.levelAt(t, L);
@@ -825,8 +880,8 @@ test('pure: quarter thresholds are named by their two finest counters; the end r
         assert.ok(labels[3].endsWith(next.slice(0, 9)[Math.min(8, [1, 2, 3, 4, 5, 6, 7, 7, 8, 8][L])]), `depth ${L + 1}: ${labels[3]} vs ${next}`);
       }
       assert.ok(labels.every((x) => x.split(' · ').length <= 2 || /^[αβγ]#\d+ [βγ]#\d+$/.test(x)), `at most two counters: ${labels}`);
-      // notation: ordinals are X#n, counts are nX; the old "ζ½ 5 · η 3" (symbol, space, number) never appears
-      assert.ok(labels.every((x) => !/(^|[\s·])[α-ω]½? \d+(?![\dα-ω#½])/u.test(x)), `no symbol-then-number counters: ${labels}`);
+      // notation: ordinals are X#n, counts are nX; the old "ζ 5 · η 3" (symbol, space, number) never appears
+      assert.ok(labels.every((x) => !/(^|[\s·])[α-ω] \d+(?![\dα-ω#])/u.test(x) && !/½/.test(x)), `no symbol-then-number counters: ${labels}`);
     }
     for (let L = 10; L < 14; L++) assert.equal(quarterWhere(model, pure, model.levelAt(t, L).thresholds[2].time, L), '', 'λ and finer: the ¼ ½ ¾ column says it');
   }
@@ -847,9 +902,19 @@ test('pure: dateAtPosition is the exact-arithmetic twin of pure.date', () => {
   const z = model.levelAt(A, 5);
   const ps = exactPos(z.end + 0.0006);
   assert.deepEqual(dateAtPosition(model, ps.numerator, ps.denominator), pure.date(z.end + 0.0006));
-  assert.equal(dateTail({ delta: 3, epsilon: 2, zeta: 5 }), 'δ½#3 · ε½#2 · ζ½#5');
+  // whole cycles: each ordinal is its cycle's index inside the parent, 1-based (γ 1..13, δ 1..5, ε 1..5, ζ 1..7)
+  const hi = { beta: 5, gamma: 13, delta: 5, epsilon: 5, zeta: 7 };
+  for (let i = 0; i < 400; i++) {
+    const t = Math.round((model.tMin + rnd() * (model.tMax - model.tMin - 2)) * 1000) / 1000;
+    const p = exactPos(t);
+    const d = dateAtPosition(model, p.numerator, p.denominator);
+    assert.ok(d.alpha >= 1 && d.alpha <= 18, `α ${d.alpha}`);
+    for (const [k, n] of Object.entries(hi)) assert.ok(d[k] >= 1 && d[k] <= n, `${k} ${d[k]} of ${n}`);
+  }
+  assert.equal(dateTail({ delta: 3, epsilon: 2, zeta: 5 }), 'δ#3 · ε#2 · ζ#5');
   // the tail is the end of pure.dateText: the one spelling of a date
   for (const t of [A, 946684800, 2886085800]) assert.ok(pure.dateText(t).endsWith(dateTail(pure.date(t))), t);
+  assert.equal(pure.dateText(A), `α#6 β#4 γ#9 · ${dateTail(pure.date(A))}`);
 });
 
 test('pure: an upcoming turnover is named by the cycle that begins there', () => {
@@ -875,27 +940,40 @@ test('pure: an upcoming turnover is named by the cycle that begins there', () =>
   assert.equal(positionOfKey('x'), null);
 });
 
-test('pure: the list is grouped by the ζ½ an event falls in, the pure "day"', () => {
+test('pure: the list is grouped by the ζ (one Hadron) an event falls in, the pure "day"', () => {
   const evs = buildEvents(model, A, { importance: 'η', maxLevel: 9, count: 8 });
-  const g = groupByHalf(model, pure, evs.slice(1));
+  const g = groupByZeta(model, pure, evs.slice(1));
   assert.equal(g.length, 7);
+  const zeta = (t) => model.levelAt(t, 5).cycleBig;
   for (let i = 0; i < g.length; i++) {
-    const before = pure.date(evs[i + 1].time + 0.001);
-    const prev = i === 0 ? null : pure.date(evs[i].time + 0.001);
-    const sameHalf = prev && ['alpha', 'beta', 'gamma', 'delta', 'epsilon', 'zeta'].every((k) => prev[k] === before[k]);
-    if (i > 0) assert.equal(g[i].newDay, !sameHalf, `row ${i}`);
+    const at = evs[i + 1].time + 0.001;
+    const same = i > 0 && zeta(at) === zeta(evs[i].time + 0.001);
+    if (i > 0) assert.equal(g[i].newDay, !same, `row ${i}`);
     assert.equal(g[i].day, null);
-    assert.equal(g[i].clock, dateTail(before));
+    assert.equal(g[i].clock, dateTail(pure.date(at)));
+    // the group is the date counters through ζ: one heading is one ζ
+    assert.equal(g[i].dayKey, String(zeta(at)));
   }
   assert.equal(g[0].newDay, false, 'the first row never carries a separator');
-  // η turnovers come several to a ζ½: some rows share a group
-  assert.ok(g.some((e) => !e.newDay) || evs.length < 3);
-  // events of ζ and coarser each fall in a ζ½ of their own
+  // η turnovers come several to a ζ: the first row of such a group carries the date counters as its heading
+  const heads = g.filter((e) => e.head);
+  assert.ok(heads.length >= 1, 'a group of several events has a heading');
+  for (const e of heads) {
+    const k = g.filter((x) => x.dayKey === e.dayKey).length;
+    assert.ok(k > 1, 'only groups of two or more are headed');
+    assert.equal(e.head, e.clock);
+    assert.ok(g.indexOf(e) === 0 || g[g.indexOf(e) - 1].dayKey !== e.dayKey, 'on the first row of the group');
+  }
+  assert.equal(g.filter((e) => e.head).length, new Set(g.filter((e) => e.head).map((e) => e.dayKey)).size, 'one heading per group');
+  // events of ζ and coarser each fall in a ζ of their own: every row is its own group, none is headed
   const coarse = buildEvents(model, A, { importance: 'ζ', maxLevel: 9, count: 8 });
-  assert.ok(groupByHalf(model, pure, coarse).slice(1).every((e) => e.newDay));
+  const cg = groupByZeta(model, pure, coarse);
+  assert.ok(cg.slice(1).every((e) => e.newDay));
+  assert.ok(cg.every((e) => e.head === ''));
+  assert.equal(new Set(cg.map((e) => e.dayKey)).size, cg.length);
 });
 
-test('pure: everything the two cards can say passes the leak rules (no date, unit word, percent or zone)', () => {
+test('pure: everything the two cards can say passes the leak rules (no date, unit word, percent, zone, half or beat)', () => {
   const strings = new Set();
   const add = (x) => x && strings.add(String(x));
   for (const t of SAMPLE.slice(0, 8)) {
@@ -916,15 +994,20 @@ test('pure: everything the two cards can say passes the leak rules (no date, uni
       add(next?.address);
       add(pathText(pure, model.cycleToPath(L, lv.cycleBig)));
       add(phaseWords(pure, lv.phase).label);
-      add(periodBeats(model.levelInfo(L).meanSeconds));
-      add(`+${periodBeats(lv.duration / 4)}`);
+      add(periodBlinks(pure, model.levelInfo(L).meanSeconds));
+      add(`+${periodBlinks(pure, lv.duration / 4)}`);
       add(sectorName(pure, L, segmentState(lv.phase, lv.factor).index));
       for (const th of lv.thresholds.slice(1)) add(quarterWhere(model, pure, th.time, L));
       add(turnoverWords(L, 13));
+      add(unitClause(model, pure, L));
+      add(unitSentence(model, pure, L));
+      add(unitWord(pure, L));
     }
     for (const imp of IMPORTANCE) {
-      add(`Counting ${imp.label} turnovers · ${imp.id} cycles last ${pure.cycleLength(imp.top)}`);
-      for (const e of buildEvents(model, t, { importance: imp, maxLevel: 9 })) {
+      add(`Counting ${imp.label} turnovers · ${unitClause(model, pure, imp.top)}`);
+      add(`Turnovers of cycles down to ${imp.id}, depth ${imp.top + 1}. ${unitSentence(model, pure, imp.top)}`);
+      const evs = buildEvents(model, t, { importance: imp, maxLevel: 9 });
+      for (const e of evs) {
         const ti = turnoverInfo(model, pure, e);
         add(ti.name);
         add(ti.address);
@@ -932,25 +1015,36 @@ test('pure: everything the two cards can say passes the leak rules (no date, uni
         add(dateTail(ti.date ?? { delta: 1, epsilon: 1, zeta: 1 }));
         add(heroLeft(model, pure, t, e.time));
       }
+      for (const g of groupByZeta(model, pure, evs)) add(g.head);
     }
   }
-  for (const s of [2, 0.4, 0.0775, 0.011, 0.001]) add(leadBeats(pure, s));
+  for (const s of [2, 0.4, 0.0775, 0.011, 0.001]) add(leadBlinks(pure, s));
   add(pure.catalogueText());
   add(pure.stamp(model.tMin, 'beta'));
   add(pure.stamp(model.tMax, 'beta'));
   const hard = judge([...strings].map((text) => ({ kind: 'text', text, where: '' })), 'ladder pure').filter((l) => l.severity === 'hard');
   assert.deepEqual(hard.map((l) => `${l.rule}: ${l.text}`), []);
   assert.ok(strings.size > 300, `${strings.size} strings checked`);
+  // revision 2 vocabulary guards, independent of the scanner: no half units, no beats
+  for (const s of strings) assert.doesNotMatch(s, /½|\bbeats?\b/i, s);
 });
 
 test('pure: the ladder and up next say nothing Earth-ish in their own source strings', () => {
   const src = (f) => readFileSync(new URL(`../src/ui/${f}`, import.meta.url), 'utf8');
+  const strip = (text) => text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
   // every string literal that sits in a pure branch must not carry an Earth unit (checked on the pure wording module whole)
-  const code = src('ladder/pure-text.js').replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  const code = strip(src('ladder/pure-text.js'));
   const literals = (code.match(/'(?:[^'\\\n]|\\.)*'|`(?:[^`\\]|\\.)*`|"(?:[^"\\\n]|\\.)*"/g) ?? []).join('\n');
   assert.ok(literals.length > 200);
   for (const bad of [' ms', ' min', 'hour', ' day', 'week', 'month', 'year', 'second', 'minute', 'UTC', 'percent', '%', ' Hz', 'Unix', 'ISO']) {
     assert.ok(!literals.includes(bad), `pure-text.js strings mention "${bad}"`);
+  }
+  // revision 2: whole cycles and Blinks. No half units, no beats, no "ξ" as a unit, in any code or comment of the two cards
+  for (const f of ['ladder.js', 'upnext.js', 'ladder/pure-text.js', 'ladder/dom.js', 'ladder/lib.js']) {
+    const text = src(f);
+    assert.doesNotMatch(text, /[α-ξ]½/u, `${f} still writes a half-cycle unit`);
+    assert.doesNotMatch(text, /\bbeats?\b/i, `${f} still says "beat"`);
+    assert.doesNotMatch(text, /leadBeats|periodBeats|groupByHalf/, `${f} still uses a retired helper`);
   }
 });
 
@@ -958,7 +1052,7 @@ test('pure: the ladder and up next say nothing Earth-ish in their own source str
 // pure mode: notation, landings, shared helpers (regressions of the audit)
 // ---------------------------------------------------------------------------
 test('pure: notation - ordinals are X#n, counts are nX, "X d" is only a chip', () => {
-  const ORD = /^(?:[αβγ]|[δεζ]½)#\d+$/u;
+  const ORD = /^[α-ζ]#\d+$/u;
   const COUNT = /^\d+[ηιλ]$/u;
   for (const t of SAMPLE.slice(0, 7)) {
     const parts = counterParts(pure, t);
@@ -976,8 +1070,8 @@ test('pure: notation - ordinals are X#n, counts are nX, "X d" is only a chip', (
       for (const th of lv.thresholds.slice(1)) {
         const w = quarterWhere(model, pure, th.time, L);
         // grammar: TOKEN ((" · " | " ") TOKEN)* with TOKEN an ordinal or a count; never a letter, a space and a number
-        assert.match(w, /^(?:(?:[αβγ]|[δεζ]½)#\d+|\d+[ηιλ])(?: · | )(?:(?:[αβγ]|[δεζ]½)#\d+|\d+[ηιλ])$/u, `${L}: ${w}`);
-        assert.doesNotMatch(w, /(^|[\s·])[α-ω]½? \d+(?![\dα-ω#½])/u, `${L}: ${w}`);
+        assert.match(w, /^(?:[α-ζ]#\d+|\d+[ηιλ])(?: · | )(?:[α-ζ]#\d+|\d+[ηιλ])$/u, `${L}: ${w}`);
+        assert.doesNotMatch(w, /(^|[\s·])[α-ω] \d+(?![\dα-ω#])/u, `${L}: ${w}`);
       }
     }
   }

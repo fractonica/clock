@@ -9,11 +9,12 @@
  * Keys: "/" (or Ctrl/Cmd+K) focuses the box · ↑/↓ choose · Enter jumps · Esc clears. Touch devices get no key hints.
  * Input is capped at MAX_INPUT characters (maxlength and in parseJump), so a huge paste cannot freeze the page.
  *
- * Pure mode (docs/design/80-pure.md): the same box speaks Fractonica only. It reads names (Gamma Difracton), addresses,
- * stamps (exactly what the header prints, "α#6 β#4 γ#9 · δ½#3 · ε½#2 · ζ½#5 · 3η 17ι 21λ", or any tail of it; the old
- * spellings "δ½ 3" and "η 5" too), pure offsets (+2ζ½ 3η), positions, syncs, boundaries and glyph states with
- * ./calendar/pure-parse.js, answers anything Gregorian with one short message, and keeps its own history, placeholder,
- * examples and toasts. Notation: X#n is an ordinal counted from 1, nX a count of units counted from 0.
+ * Pure mode (docs/design/80-pure.md, revision 2): the same box speaks Fractonica only. It reads names (Gamma Difracton),
+ * addresses, stamps (exactly what the header prints, "α#6 β#4 γ#9 · δ#3 · ε#2 · ζ#5 · 3η 17ι 21λ", or any tail of it;
+ * the old spellings "δ 3" and "η 5" too), pure offsets in every unit α … ν (+2ζ 3η, +4 Blinks, in 5 Flavons), positions,
+ * syncs, boundaries (next ε, next Helion) and glyph states with ./calendar/pure-parse.js. The half-cycle units are gone:
+ * their old spellings and anything Gregorian get one short pointer. The box keeps its own history, placeholder, examples
+ * and toasts. Notation: X#n is an ordinal counted from 1, nX a count of units counted from 0.
  */
 import { h, ICONS, loadPrefs, savePrefs } from './calendar/dom.js';
 import { MAX_INPUT, dayFirstOfLocale, parseJump } from './calendar/parse.js';

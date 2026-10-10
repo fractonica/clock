@@ -8,8 +8,9 @@
  *
  * Pure mode (docs/design/80-pure.md): the same view in Fractonica terms only. Every sentence that would carry a
  * Gregorian date, a clock time, an Earth unit or a percentage is written again in ./rings/pure-text.js (cycle names,
- * coordinates on the unit ladder, countdowns in ι and λ, "→ the cycle that begins") and the percentage becomes a pair
- * of two-stroke glyphs. The mode is read on every frame, so switching is live in both directions.
+ * coordinates on the unit ladder, countdowns counted in whole-cycle units "1θ 2ι", real time in Blinks,
+ * "→ the cycle that begins") and the percentage becomes a pair of two-stroke glyphs. The mode is read on every
+ * frame, so switching is live in both directions.
  */
 import { createDial } from './rings/dial.js';
 import { createWave } from './rings/wave.js';
@@ -630,7 +631,7 @@ export function mount(el, ctx) {
       const when = (p) => `<span class="mono">${esc(p.date)}</span>${p.time ? `<span class="mono">${esc(p.time)}</span>` : ''}`;
       setHTML(nodes.fStart, `${when(f.start)}<span class="dim">${esc(PT.inText(P, frame.t, lv.start))}</span>`);
       setHTML(nodes.fEnd, `${when(f.end)}<span class="mono">${esc(f.endLine)}</span><span class="dim">${esc(PT.inText(P, frame.t, lv.end))}</span>`);
-      setText(nodes.fLen, `${f.length}${lv.clipped ? ' (clipped by the catalogue)' : ''}`);
+      setText(nodes.fLen, `${f.lengthNamed}${lv.clipped ? ' (clipped by the catalogue)' : ''}`);
       setHTML(nodes.fGlyph, `<span>${esc(PT.stateText(P, lv.phase))}</span><span>value ${valueText(lv.value)}${lv.dotted ? ' · dotted' : ''}</span>`);
     } else {
       const rel = (t) => countdownBody(fmt, t - frame.t);
@@ -785,7 +786,7 @@ export function mount(el, ctx) {
           `<div class="rings-tip-sep"></div>` +
           `<div class="rings-tip-h"><b style="color:${theme.levelColor(L + 1, 1, 72)}">${esc(P.cycleName(ch.level, ch.index))}</b><span class="dim">child · ${esc(cInfo.letter)} ${cInfo.depth} · ${j + 1}/${info.factor}</span></div>` +
           `<div class="rings-tip-row mono">${esc(follower ? `ends → ${follower} begins` : 'the catalogue ends here')}</div>` +
-          `<div class="rings-tip-row dim">lasts ${esc(PT.lengthText(P, ch.level, ch))} · ${esc(PT.startPhrase(P, ch.start, ch.end, frame.t))}</div>` +
+          `<div class="rings-tip-row dim">lasts ${esc(PT.lengthWithName(P, ch.level, ch, cInfo))} · ${esc(PT.startPhrase(P, ch.start, ch.end, frame.t))}</div>` +
           hint;
       } else {
         body =

@@ -49,8 +49,29 @@ Show the next ~8 events whose `top ≤ importance`, where **importance** is a se
 Both cards must look good in the 340 px column and when the layout puts them side by side at ~600 px (≤1320 px
 viewports) or full-width on mobile.
 
-## Pure mode
-Rows: counter (`5 / 11`), countdown (`in 6ι 43λ`), glyph pair instead of a percentage; detail: names, exact length
-(`pure.cycleLength`), quarter offsets as countdowns and counters. Up next: hero `in 1ζ½ 4η 24ι · → Zeta Pentafracton begins`,
-list rows with the name of the cycle that begins and, on wide cards, the date counters `δ½#6 · ε½#5 · ζ½#4`. Wording lives in
-`src/ui/ladder/pure-text.js`. Actions: "Just before" (end − min(2 beats… of the cycle) at ×1) and "Just after" (1 ms in).
+## Pure mode (revision 2: whole cycles, one unit per depth, Blinks)
+Vocabulary comes from `src/core/pure.js` (see the REVISION 2 block of `80-pure.md`); wording lives in
+`src/ui/ladder/pure-text.js` (DOM-free, unit-tested). Nothing here is an Earth unit, a date or a percentage, and there are
+no half-cycle units: every depth is one unit (α β γ δ Atom, ε Nuclide, ζ Hadron, η Helion, θ Quark, ι Preon, κ Chromon,
+λ Flavon, μ Somon, ν Blink); finer than a Blink is a decimal of it (`0.14ν`).
+
+**Ladder rows**: chip (`η 7`), the ordinal name of the cycle (`Monofracton`), time left counted in units with at most two
+non-zero parts (`1θ 2ι`, `10η 1θ`, `1.5ν` under five Blinks), the phase as a pair of 2-stroke glyphs (256 states, the odometer
+of the cycle at the displayed instant, rewritten whenever its state changes). Cycles too fast to count down (ν, ξ) show how
+long one lasts in Blinks with two significant digits (`1 Blink`, `0.14 Blinks`) and keep the quarter column as `+0.036 Blinks`.
+**Detail** of the selected row: the end as "→ Eta Difracton begins", the quarter thresholds as their two finest counters
+(`0η 9ι`, `ζ#4 · 2η`; completed units counted from 0) with the time to go, phase and sector as glyph pairs, the cycle's name
+and address chain, "started … ago", the length from `pure.cycleLength(level)` (always `1X`, `0.14ν` at depth 14; its tooltip
+explains the unit, "An Atom (δ) is 5ε."), and the position span. Actions: "Just before" (end − min(2 s, ¼ of the cycle), then ×1; the
+lead reads `6.43 Blinks`) and "Just after" (1 ms in, `0.00322 Blinks`).
+
+**Up next**: hero `in 10η 1θ 2ι` (at most three non-zero units, zero parts skipped by the core), "→ Zeta Pentafracton begins" with
+its address chain, the finer-cycle sentence in letters, the phase pair. The legend says what the finest counted cycle holds
+(`Counting α–ζ turnovers · a Hadron (ζ) is 11η`; every cycle is one unit, so its length would just repeat its name). The list is
+grouped by the **ζ (one Hadron)** an event falls in, the pure "day": separator lines between groups, the name of the cycle that
+begins on every row, the date counters `δ#6 · ε#5 · ζ#4` on every row of a wide card (≥ 640 px) and, on narrow cards, as the
+heading of a group of two or more events (a group of one needs none). Real-time leads are counted in Blinks everywhere.
+
+Notation: `X#n` ordinal (from 1), `nX` count (from 0), `η 7` only on chips; unit names appear only in prose (tooltips,
+legends, hints). Verified by `tools/checks/check-ladder-pure.mjs` (leak scan of every state of both cards, live switching,
+behaviour, layout) and `test/ladder.test.js`.

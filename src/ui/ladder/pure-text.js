@@ -1,16 +1,18 @@
 /**
- * Pure-mode wording of the ladder and up-next cards (docs/design/80-pure.md): everything these two cards say
- * when `ctx.isPure()` is on, in Fractonica terms only. Cycles are named (Gamma Difracton), spans are counted in
- * ladder units (2ζ½ 4η), progress is a pair of 2-stroke glyphs (256 states), real time is a "beat".
+ * Pure-mode wording of the ladder and up-next cards (docs/design/80-pure.md, revision 2): everything these two cards
+ * say when `ctx.isPure()` is on, in Fractonica terms only. Cycles are named (Gamma Difracton), spans are counted in
+ * ladder units, one unit per depth, whole cycles only (4ι 3κ, 1ζ 4η, 0.14ν), progress is a pair of 2-stroke glyphs
+ * (256 states) and real time is counted in Blinks (the device's tick: "6.43 Blinks").
  *
  * NOTATION (header of src/core/pure.js, never re-derived here):
- *   X#n   an ordinal, 1-based: ζ#5, δ½#6, α#6          (addresses, dates)
- *   nX    a count of units X: durations "6ι 43λ", clock counters "3η 17ι" (completed units, 0-based)
+ *   X#n   an ordinal, 1-based: ζ#5, δ#6, α#6            (addresses, dates)
+ *   nX    a count of units X: durations "6ι 3κ", clock counters "3η 17ι" (completed units, 0-based)
  *   X d   a depth chip ("η 7"), only on level chips; sentences say "η" or "Eta"
+ * Unit NAMES (Hadron, Helion, Preon ...) appear only in prose: tooltips and legends that explain a unit.
  *
  * DOM-free and unit-tested (test/ladder.test.js). `pure` is `ctx.pure` (src/core/pure.js), `model` is `ctx.model`;
  * nothing here reads the formatter, a zone, a Gregorian field or a percentage. Durations come from
- * pure.durationPos / pure.cycleLength only: this module never trims or reformats them.
+ * pure.durationPos / pure.between / pure.cycleLength only: this module never trims or reformats them.
  */
 import { clamp, finerLevels, letterOf, levelLetters } from './lib.js';
 
@@ -52,16 +54,50 @@ export const endsText = (next) => (next ? `→ ${next.name} begins` : '→ the c
 export const sectorName = (pure, level, sectorIndex) => pure.periodName(level + 1, sectorIndex + 1);
 
 // ---------------------------------------------------------------------------
+// the unit a cycle is (prose only: tooltips and legends that explain it)
+// ---------------------------------------------------------------------------
+
+/** "Hadron": the particle name of a level's unit; '' for α β γ (no name yet) and for ξ and finer (not units). */
+export const unitWord = (pure, level) => {
+  const u = pure.UNITS[level];
+  return u?.named ? u.name : '';
+};
+
+/** "11η": how many cycles of the next finer level one cycle of `level` holds, written as a count. */
+export const holds = (model, level) => `${model.levelInfo(level).factor}${letterOf(level + 1)}`;
+
+/** "a" or "an" for the word that follows (names: an Atom; letters read aloud: an α, an ε, an η, a β, a ξ). */
+const article = (word) => (/^[aeiouαεηιουω]/i.test(word) ? 'an' : 'a');
+
+/**
+ * A clause that explains a level's unit: "a Hadron (ζ) is 11η", "a γ cycle is 5δ". Below the Blink there is no
+ * unit: a ξ cycle is told as the part of a Blink it is ("a ξ cycle is 0.14ν").
+ */
+export function unitClause(model, pure, level) {
+  const sym = letterOf(level);
+  if (!pure.UNITS[level]) return `${article(sym)} ${sym} cycle is ${pure.cycleLength(level)}`;
+  const name = unitWord(pure, level);
+  const subject = name ? `${article(name)} ${name} (${sym})` : `${article(sym)} ${sym} cycle`;
+  return `${subject} is ${holds(model, level)}`;
+}
+
+/** The clause as a sentence: "A Hadron (ζ) is 11η." (tooltips). */
+export const unitSentence = (model, pure, level) => {
+  const c = unitClause(model, pure, level);
+  return `${c[0].toUpperCase()}${c.slice(1)}.`;
+};
+
+// ---------------------------------------------------------------------------
 // spans and countdowns
 // ---------------------------------------------------------------------------
 
-/** "6ι 43λ": the time left between two instants counted in ladder units (pure.between). Never negative ("0ξ"). */
+/** "6ι 3κ": the time left between two instants counted in ladder units (pure.between). Never negative ("0ν"). */
 export function leftText(model, pure, t1, t2, parts = 2) {
   return t2 > t1 ? pure.between(t1, t2, { parts }) : pure.durationPos(0, { parts });
 }
 
 /**
- * Length of a cycle reading `lv` (model.levelAt): "1η", "2ζ½", "1β 3γ". A whole cycle is pure.cycleLength(level)
+ * Length of a cycle reading `lv` (model.levelAt): "1η", "1ζ", "0.14ν". A whole cycle is pure.cycleLength(level)
  * (exact: 4 / P Saros, never measured between two float instants); a cycle clipped by the end of the catalogue
  * keeps its shorter, odd tail.
  */
@@ -72,25 +108,21 @@ export function lengthText(model, pure, lv) {
 }
 
 /**
- * The hero countdown: up to three units ("1ζ½ 4η 12ι"; zero tails are dropped by pure.between), never finer
- * than the λ counter once the span is a few ι long ("34ι 12λ"), like "2 d 03 h 11 min" and "12 min 04 s" in normal mode.
+ * The hero countdown: up to three units ("1ζ 4η 3θ"; zero parts are skipped by the core, so "3η 2ι" never reads
+ * "3η 0θ 2ι"), like "2 d 03 h 11 min" in normal mode. Under five Blinks the core's decimal takes over ("2.6ν").
  */
 export function heroLeft(model, pure, t1, t2) {
-  if (!(t2 > t1)) return pure.durationPos(0);
-  const lead = pure.between(t1, t2, { parts: 1 }); // "1ζ½": its unit decides how many parts fit above λ
-  const first = pure.UNITS.findIndex((u) => lead.endsWith(u.sym));
-  const lambda = pure.UNITS.findIndex((u) => u.id === 'lambda');
-  return pure.between(t1, t2, { parts: clamp(lambda - (first < 0 ? lambda : first) + 1, 2, 3) });
+  return t2 > t1 ? pure.between(t1, t2, { parts: 3 }) : pure.durationPos(0);
 }
 
-/** "2 beats", "0.4 beats", "0.001 beats": a short real-time lead counted in beats (Just before / Just after). */
-export const leadBeats = (pure, seconds) => pure.beats(seconds);
+/** "6.43 Blinks", "0.4 Blinks", "0.00322 Blinks": a short real-time lead counted in Blinks (Just before / Just after). */
+export const leadBlinks = (pure, seconds) => pure.blinks(seconds);
 
-/** "0.31 beats": how long a cycle too fast to count down lasts, two significant digits. */
-export const periodBeats = (seconds) => {
-  const n = Number(seconds.toPrecision(2));
-  return `${n} ${n === 1 ? 'beat' : 'beats'}`;
-};
+/** "0.31 Blinks", "1 Blink": how long a cycle too fast to count down lasts, two significant digits. */
+export function periodBlinks(pure, seconds) {
+  const n = Number(pure.secondsToBlinks(seconds).toPrecision(2));
+  return pure.blinks(pure.blinksToSeconds(n));
+}
 
 // ---------------------------------------------------------------------------
 // phase pair
@@ -122,19 +154,19 @@ export function phaseWords(pure, fraction, label = 'phase') {
 // ---------------------------------------------------------------------------
 
 /**
- * Counter tokens of an instant, coarsest first, in the notation of pure.stamp: three ordinals, three half-cycle
- * ordinals and three clock counts: ["α#6","β#4","γ#9","δ½#3","ε½#2","ζ½#5","3η","17ι","42λ"], or null.
+ * Counter tokens of an instant, coarsest first, in the notation of pure.stamp: six whole-cycle ordinals and three
+ * clock counts: ["α#6","β#4","γ#9","δ#3","ε#2","ζ#5","3η","17ι","42λ"], or null.
  */
 export function counterParts(pure, t) {
   const d = pure.date(t);
   const c = pure.clock(t);
   if (!d || !c) return null;
-  return [`α#${d.alpha}`, `β#${d.beta}`, `γ#${d.gamma}`, `δ½#${d.delta}`, `ε½#${d.epsilon}`, `ζ½#${d.zeta}`, `${c.eta}η`, `${c.iota}ι`, `${c.lambda}λ`];
+  return [`α#${d.alpha}`, `β#${d.beta}`, `γ#${d.gamma}`, `δ#${d.delta}`, `ε#${d.epsilon}`, `ζ#${d.zeta}`, `${c.eta}η`, `${c.iota}ι`, `${c.lambda}λ`];
 }
 
 /**
- * Join counter tokens `from..to` like pure.stamp: α β γ read as one group, every half-cycle ordinal is set off by a
- * dot, and the clock counts η ι λ read as one group again ("ζ½#5 · 3η 17ι").
+ * Join counter tokens `from..to` like pure.stamp: α β γ read as one group, every further ordinal is set off by a
+ * dot, and the clock counts η ι λ read as one group again ("ζ#5 · 3η 17ι").
  */
 function joinCounters(parts, from, to) {
   let out = parts[from];
@@ -146,7 +178,7 @@ function joinCounters(parts, from, to) {
 const QUARTER_RESOLUTION = [1, 2, 3, 4, 5, 6, 7, 7, 8, 8];
 
 /**
- * Where a quarter threshold of a cycle of `level` falls, as its two finest counters: "ζ½#5 · 3η", "3η 17ι".
+ * Where a quarter threshold of a cycle of `level` falls, as its two finest counters: "ζ#5 · 3η", "3η 17ι".
  * Empty for cycles of λ and finer (the counters cannot tell their quarters apart: the ¼ ½ ¾ column does).
  * Evaluated 1 ms past `when`, so the end of a cycle reads as the start of the next one whatever the rounding.
  */
@@ -168,23 +200,27 @@ export function positionOfKey(key) {
 }
 
 /**
- * The pure date (alpha, beta, gamma, δ½, ε½, ζ½: 1-based) of an exact position num/den, by exact integer
- * arithmetic; the same counters as `pure.date(t)` for the instant that position belongs to.
+ * The pure date (alpha, beta, gamma, delta, epsilon, zeta: 1-based whole-cycle ordinals) of an exact position
+ * num/den, by exact integer arithmetic; the same counters as `pure.date(t)` for the instant that position belongs to.
  */
 export function dateAtPosition(model, num, den) {
-  const unit = (level, len) => (num * model.levelInfo(level).prefix) / (len * den); // floor: the unit that contains p
+  const ordinalAt = (level) => {
+    const cycle = (num * model.levelInfo(level).prefix) / (4n * den); // floor: the cycle that contains p
+    const sib = model.levelInfo(level).siblings;
+    return Number(sib === null ? cycle : cycle % BigInt(sib)) + 1;
+  };
   return {
-    alpha: Number(unit(0, 4n)) + 1,
-    beta: Number(unit(1, 4n) % 5n) + 1,
-    gamma: Number(unit(2, 4n) % 13n) + 1,
-    delta: Number(unit(3, 2n) % 10n) + 1,
-    epsilon: Number(unit(4, 2n) % 5n) + 1,
-    zeta: Number(unit(5, 2n) % 7n) + 1,
+    alpha: ordinalAt(0),
+    beta: ordinalAt(1),
+    gamma: ordinalAt(2),
+    delta: ordinalAt(3),
+    epsilon: ordinalAt(4),
+    zeta: ordinalAt(5),
   };
 }
 
-/** "δ½#6 · ε½#5 · ζ½#4": the half-cycle ordinals of a date, as pure.dateText writes them. */
-export const dateTail = (d) => `δ½#${d.delta} · ε½#${d.epsilon} · ζ½#${d.zeta}`;
+/** "δ#6 · ε#5 · ζ#4": the whole-cycle ordinals of a date, as pure.dateText writes them after the α β γ group. */
+export const dateTail = (d) => `δ#${d.delta} · ε#${d.epsilon} · ζ#${d.zeta}`;
 
 /** "ζ ends — 4 finer cycles (η, θ, ι, κ) end with it.": the hero sentence (a letter names the cycle, never "ζ 6"). */
 export function turnoverWords(top, maxLevel) {
@@ -199,7 +235,7 @@ const turnoverCache = new Map();
 
 /**
  * What an upcoming turnover is, in pure terms: the cycle that begins (name, short name, address chain), the
- * date counters where it falls and a group key (the ζ½ it falls in: the pure "day" of the list).
+ * date counters where it falls and a group key (the ζ cycle, one Hadron, it falls in: the group of the list).
  * `name` is null when the catalogue ends there.
  * @param {{key:string, top:number}} ev event from buildEvents
  */
@@ -212,7 +248,7 @@ export function turnoverInfo(model, pure, ev) {
   if (!p) info = { name: null, short: '', address: '', date: null, group: ev.key };
   else {
     const idx = (p.num * model.levelInfo(level).prefix) / (4n * p.den);
-    const group = String((p.num * model.levelInfo(5).prefix) / (2n * p.den));
+    const group = String((p.num * model.levelInfo(5).prefix) / (4n * p.den));
     if (idx >= model.clock.count(level)) info = { name: null, short: '', address: '', date: null, group };
     else {
       const path = model.cycleToPath(level, idx);
@@ -231,15 +267,22 @@ export function turnoverInfo(model, pure, ev) {
 }
 
 /**
- * Pure counterpart of groupByDay: the "day" of a pure list is the ζ½ an event falls in. `newDay` marks the
- * separator drawn between two groups; `clock` is the date counters shown on wide cards.
+ * The grouping of the pure list: events are grouped by the ζ (Hadron) they fall in, the pure "day". Per event:
+ *   newDay  marks the separator drawn between two groups (never on the first row),
+ *   clock   the date counters "δ#6 · ε#5 · ζ#4" (wide cards write them on every row),
+ *   head    the same counters as the heading of a group of two or more events, on its first row ('' elsewhere):
+ *           a group of one is its own date, the heading only helps where several events share a ζ.
  */
-export function groupByHalf(model, pure, events) {
+export function groupByZeta(model, pure, events) {
+  const infos = events.map((e) => turnoverInfo(model, pure, e));
+  const size = new Map();
+  for (const i of infos) size.set(i.group, (size.get(i.group) ?? 0) + 1);
   let prev = null;
   return events.map((e, i) => {
-    const info = turnoverInfo(model, pure, e);
-    const newDay = i > 0 && info.group !== prev;
+    const info = infos[i];
+    const first = info.group !== prev;
     prev = info.group;
-    return { ...e, dayKey: info.group, newDay, day: null, clock: info.date ? dateTail(info.date) : '' };
+    const clock = info.date ? dateTail(info.date) : '';
+    return { ...e, dayKey: info.group, newDay: i > 0 && first, day: null, clock, head: first && size.get(info.group) > 1 ? clock : '' };
   });
 }

@@ -98,7 +98,40 @@ should be explainable from this: "this note is the cycle of depth N".
   polyphony cap is reached the quietest/finest note is stolen so the coarse notes of a major boundary always sound.
 - Tempo lock is a visible state ("Locked: one ζ = 4 s") with an unlock action; it clears when the rate changes elsewhere.
 
-## Pure mode
-Mixer rows read `ratio · octave · cents` with "ground" instead of Hz; cycle lengths are pure durations (`one cycle = 2ζ½`); true
-rates are "cycles per beat"; speed chips use `pure.rateLabel` (`real time`, `η per beat`, `9ι per beat`); tempo lock counts beats.
-Wording lives in `src/audio/words.js`. Audio output is unchanged.
+## Pure mode (revision 2: whole-cycle units, Blinks, pB)
+
+Same panel, same audio, said in Fractonica terms only (docs/design/80-pure.md, REVISION 2). Wording lives in
+`src/audio/words.js` (pure functions, unit-tested); `src/ui/sound.js`, `src/ui/sound/*` only place it. Normal mode is unchanged.
+
+- **Pitch**: folded ratio with a slash (`65/64`, never `65:64`), octave offset (`octave +1`), cents above the ground (`799¢`), and
+  the absolute pitch in **pB**, cycles per Blink (`pure.pbText(pure.perBlink(hz))`): the default 110 Hz ground is `34.2 pB`, ε at
+  its place `108.5 pB`, the finest strip `932.6 pB`. Never Hz, kHz, a note name or BPM.
+  - base-pitch read-out: `ground ×1` over `34.2 pB` (`+700¢ ×1.5` / `51.2 pB`, `+1 octave ×2` / `68.4 pB`); the slider's
+    `aria-valuetext` is `ground ×1, 34.2 pB`.
+  - mixer row: line 1 depth, ratio, cycle length (narrow); line 2 `108.5 pB · octave +1 · 799¢ · 1ε` (tighter separators; the three
+    parts wrap instead of being cut below 330 px). Strip tooltip: `Placed 1 octave above the ground: 108.5 pB, sounding at 3.17 : 1 to α`,
+    `True rate of this cycle: 1 per 4 504 500 Blinks`.
+  - ring centre: `ground` / `×1` / `34.2 pB`; spectrum axis: the octave lines of the ground, pB over ratio (`17.1 ×½`, `34.2 pB ground`,
+    `68.4 ×2` … `2 189 ×64`; the unit is written once, on the ground's line).
+- **Cycle lengths** are `pure.cycleLength(level)`: every depth is one unit, so the strips say `1α … 1ν`, and ξ (finer than a Blink)
+  `0.14ν`. The depth select of the tempo lock shows the length only where it adds something (`14 · ξ (0.14ν)`).
+- **Physical register**: the tooltip names the true rates, whole numbers of pB (`ξ 7 pB, ο 77 pB, π 693 pB, ρ 2 772 pB`, the owner's
+  point of choosing the Blink); the list under the stepper shows what sounds after the transposition (`ο 38.5 pB · π 346.5 pB ·
+  ρ 1 386 pB` at −1 octave, `ο 77 pB · π 693 pB` at no shift).
+- **Real time is counted in Blinks** (1 Blink = one ν cycle at real time = 0.311 s of the device; the word "beat" is retired,
+  quarters are "pulses"):
+  - chime floors `0.161 Blinks · dense`, `0.386 · lively`, `0.804`, `1.61 · default`, `3.22 · sparse` (the stored floors stay seconds);
+  - **tempo lock**: the number box counts Blinks. The stored length stays in seconds (settings, audio, normal mode), so the box converts with
+    `pure.blinksToSeconds` / `secondsToBlinks` and nothing else changes. Limits are those of 0.25 s … 600 s (`0.8 … 1930`, any step,
+    the spinner moves by 1). The untouched default (4 s) shows the clean **12 Blinks** (one η in 12 Blinks = exactly `3ι per Blink`);
+    36 Blinks per η is `ι per Blink`, 11 Blinks per ζ is `η per Blink`. Normal mode shows the stored seconds with at most three decimals;
+  - read-out `3ι per Blink: one η cycle lasts 12 Blinks; a quarter lasts 3 Blinks.`, rhythm chips `η 12 Blinks ♪ ×9 θ 1.33 Blinks …`
+    (rates in the chips' tooltips are pB), lock chip `Locked: one η = 12 Blinks`, toast `Tempo locked: one η cycle = 12 Blinks (3ι per Blink)`;
+  - counts use narrow-space digit groups like the helper (`58 500 Blinks`) and K / M / G above a million (`2.63 M Blinks`).
+- **Speed chips**: `Live`, `real time`, `λ ι η ζ δ` over `per Blink` (`pure.rateLabel`, the header select's words), `Pause`, `Reverse`;
+  tooltips `One Helion passes every Blink` (unit names are for prose: tooltips and help).
+- **Texts**: how-to ("one Blink is one ν cycle at real time"), rhythm legend ("Up to about 9 pB such a cycle is still heard as the
+  drone's modulation": 30 Hz × 0.311), caption, mixer legend, tooltips, status line, toasts; progress is a pair of glyphs.
+
+Kept on purpose: the stored tempo is seconds (so normal mode, the engine and saved settings are untouched); typing more than 600 s worth
+of Blinks shows `1930`, the one number the soft "year" rule flags (it only appears after an out-of-range entry).

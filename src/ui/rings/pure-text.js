@@ -5,37 +5,53 @@
  * and `model` is `createModel()`; both are passed in so the module stays testable without a browser.
  *
  * The notation is the one of core/pure.js (read its header comment):
- *   X#n  an ordinal, 1-based: `ζ½#5`, `α#6`, `η#1`        nX  a count of units: `6ι 43λ`, `0η 29ι 21λ` (0-based clock)
+ *   X#n  an ordinal, 1-based: `ζ#5`, `α#6`, `η#1`          nX  a count of units: `1θ 2ι`, `0η 29ι 21λ` (0-based clock)
  *   X d  a depth chip, only on level chips: `η 7`
  *
+ * One unit per depth, whole cycles only (revision 2): a ζ is a Hadron, an η a Helion, a ν a Blink.
+ *
  * A "coordinate" is the pure replacement of a date + time of day. It has the same two parts:
- *   date  the ordinals of the cycles the instant sits in:      `ε½#2 · ζ½#5`  (what a calendar date is to a day)
- *   time  the counters of the finer cycles since the ζ start:  `3η 17ι`       (what a clock reading is to a day)
+ *   date  the ordinals of the cycles the instant sits in:      `ε#2 · ζ#5`   (what a calendar date is to a day)
+ *   time  the counters of the finer cycles since the ζ start:  `3η 17ι`      (what a clock reading is to a day)
  * and, like a clock, its resolution follows the length of the cycle it labels (a cycle's quarter is the step).
+ * The digits are the header clock's: α β γ δ ε ζ as ordinals, then η ι λ (the clock) and μ ν (inside their parent);
+ * θ and κ are units of the ladder but not digits of the clock. Below one Blink (the ξ ring) the ν counter gets
+ * decimals: `3.14ν`.
  *
  * Durations are never measured or trimmed here: they come from `pure.between` / `pure.durationPos` /
- * `pure.cycleLength` (a whole cycle has its exact nominal length, never the difference of two floats).
+ * `pure.cycleLength` (a whole cycle has its exact nominal length, never the difference of two floats). Real
+ * time (how long a turn lasts for the device) is counted in Blinks: `blinkSpan`.
  */
 import { levelTag } from './text.js';
 
 const QUARTERS = ['peak', 'node', 'valley', 'end'];
-/** Index of ζ½ in `pure.UNITS`: the ordinal tokens are α#, β#, γ#, δ½#, ε½#, ζ½#; the counters start after it. */
+/**
+ * The digits of a coordinate, longest first: ids of `pure.UNITS` (six ordinals, then the counters η ι λ μ ν), followed
+ * by three virtual digits: the first, second and third decimal of the ν counter (a count of Blinks finer than one).
+ * `resolutionIndex` returns an index into this list.
+ */
+export const COORD = Object.freeze(['alpha', 'beta', 'gamma', 'delta', 'epsilon', 'zeta', 'eta', 'iota', 'lambda', 'mu', 'nu', 'nu.1', 'nu.2', 'nu.3']);
+/** Index of ζ in `COORD`: the ordinal tokens are α#, β#, γ#, δ#, ε#, ζ#; the counters start after it. */
 const LAST_ORDINAL = 5;
-
-const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+/** Index of ν in `COORD`: the finest whole digit; the entries after it are its decimals. */
+const NU = 10;
+/** The symbol of digit `i` of a coordinate ("ζ", "λ"; the decimals of ν read "ν"). */
+export const coordSym = (pure, i) => pure.unitOf(COORD[Math.min(i, NU)]).sym;
 
 /**
- * The ladder fields of an instant: 1-based ordinals (α β γ δ½ ε½ ζ½) and 0-based counters (η ι λ μ ν ξ).
- * @returns {null | {ord:number[], count:number[]}} null outside the catalogue
+ * The fields of an instant: 1-based ordinals (α β γ δ ε ζ) and 0-based counters (η ι λ μ ν), plus `frac`, how far the
+ * running ν (Blink) has travelled (0..1: the decimals of the ν counter below one Blink).
+ * @returns {null | {ord:number[], count:number[], frac:number}} null outside the catalogue
  */
 export function pureFields(pure, model, t) {
   const d = pure.date(t);
   const c = pure.clock(t);
   if (!d || !c) return null;
-  const sub = (level) => model.levelAt(t, level)?.local ?? 0; // μ ν ξ within their parent
+  const sub = (level) => model.levelAt(t, level)?.local ?? 0; // μ ν within their parent
   return {
     ord: [d.alpha, d.beta, d.gamma, d.delta, d.epsilon, d.zeta],
-    count: [c.eta, c.iota, c.lambda, sub(11), sub(12), sub(13)],
+    count: [c.eta, c.iota, c.lambda, sub(11), sub(12)],
+    frac: model.levelAt(t, 12)?.phase ?? 0,
   };
 }
 
@@ -47,17 +63,19 @@ export function pureFields(pure, model, t) {
  */
 export function fieldsAtPosition(model, num, den = 1n) {
   const info = (level) => model.levelInfo(level);
-  // whole cycles of `level` (or halves: `per` = 2) completed at the position
-  const done = (level, per = 4n) => (num * info(level).prefix) / (per * den);
+  // whole cycles of `level` completed at the position
+  const done = (level) => (num * info(level).prefix) / (4n * den);
   const local = (level) => {
     const sib = info(level).siblings;
     const n = done(level);
     return Number(sib === null ? n : n % BigInt(sib));
   };
-  const half = (level, within) => Number((done(level, 2n) % BigInt(within)) + 1n);
+  const nuWhole = (num * info(12).prefix) / (4n * den);
+  const nuRest = num * info(12).prefix - nuWhole * 4n * den;
   return {
-    ord: [Number(done(0)) + 1, local(1) + 1, local(2) + 1, half(3, 10), half(4, 5), half(5, 7)],
-    count: [local(6), local(7) * info(8).siblings + local(8), local(9) * info(10).siblings + local(10), local(11), local(12), local(13)],
+    ord: [Number(done(0)) + 1, local(1) + 1, local(2) + 1, local(3) + 1, local(4) + 1, local(5) + 1],
+    count: [local(6), local(7) * info(8).siblings + local(8), local(9) * info(10).siblings + local(10), local(11), local(12)],
+    frac: Number(nuRest) / Number(4n * den),
   };
 }
 
@@ -68,21 +86,24 @@ export function fieldsAtPosition(model, num, den = 1n) {
 export const cycleSpanPos = (model, level) => 4 / model.levelInfo(level).prefixNum;
 
 /**
- * Index into `pure.UNITS` of the largest unit that fits `divisor` times into a span of `spanPos` Saros units:
+ * Index into `COORD` of the largest digit that fits `divisor` times into a span of `spanPos` Saros units:
  * the resolution a coordinate needs to tell the quarters of a cycle apart (divisor 4) or a pointer position (160).
+ * Past the Blink the digits are the decimals of its counter; the third decimal is the floor.
  */
 export function resolutionIndex(pure, spanPos, divisor = 4) {
   const step = spanPos / divisor;
-  const i = pure.UNITS.findIndex((u) => pure.unitPos(u) <= step * (1 + 1e-9));
-  return i < 0 ? pure.UNITS.length - 1 : i;
+  const nu = pure.unitPos(pure.unitOf('nu'));
+  const lengths = COORD.map((id, i) => (i > NU ? nu / 10 ** (i - NU) : pure.unitPos(pure.unitOf(id))));
+  const i = lengths.findIndex((len) => len <= step * (1 + 1e-9));
+  return i < 0 ? COORD.length - 1 : i;
 }
 
 /** A boundary instant is read 1 ms into the state that starts there (the way the jump buttons land on it). */
 const NUDGE = 0.001;
 
-/** Every ordinal is `sym#n`: α#6 β#4 γ#9 · δ½#3 · ε½#2 · ζ½#5, exactly as `pure.dateText` writes them. */
-const ordinalToken = (pure, i, n) => `${pure.UNITS[i].sym}#${n}`;
-/** Greek ordinals sit together (`α#6 β#4 γ#9`), half-cycle ordinals are set off (`· δ½#3 · ε½#2`), as in `pure.stamp`. */
+/** Every ordinal is `sym#n`: α#6 β#4 γ#9 · δ#3 · ε#2 · ζ#5, exactly as `pure.dateText` writes them. */
+const ordinalToken = (pure, i, n) => `${coordSym(pure, i)}#${n}`;
+/** The first three ordinals sit together (`α#6 β#4 γ#9`), the others are set off (`· δ#3 · ε#2`), as in `pure.stamp`. */
 function joinOrdinals(tokens, firstIndex) {
   let out = '';
   tokens.forEach((tok, k) => {
@@ -92,14 +113,24 @@ function joinOrdinals(tokens, firstIndex) {
   return out;
 }
 
-/** The coordinate text of already-read fields at resolution `res` (see `whenParts`). */
+/** "3.14": the ν counter with `dec` decimals, floored (a count never reads further along than it is). */
+function nuCount(whole, frac, dec) {
+  const k = 10 ** dec;
+  return (Math.floor((whole + frac) * k + 1e-7) / k).toFixed(dec);
+}
+/** The coordinate text of already-read fields at resolution `res` (an index into COORD; see `whenParts`). */
 function partsOf(pure, f, res, { dateTokens = 3, timeTokens = 6 } = {}) {
   const last = Math.min(res, LAST_ORDINAL);
   const first = Math.max(0, last - dateTokens + 1);
   const tokens = [];
   for (let i = first; i <= last; i++) tokens.push(ordinalToken(pure, i, f.ord[i]));
   const time = [];
-  for (let i = Math.max(LAST_ORDINAL + 1, res - timeTokens + 1); i <= res; i++) time.push(`${f.count[i - LAST_ORDINAL - 1]}${pure.UNITS[i].sym}`);
+  const lastDigit = Math.min(res, NU);
+  for (let i = Math.max(LAST_ORDINAL + 1, lastDigit - timeTokens + 1); i <= lastDigit; i++) {
+    const n = f.count[i - LAST_ORDINAL - 1];
+    // below a Blink the ν counter carries its decimals ("3.14ν"): the quarters of a ν or ξ cycle then tell themselves apart
+    time.push(`${i === NU && res > NU ? nuCount(n, f.frac ?? 0, res - NU) : n}${coordSym(pure, i)}`);
+  }
   return { date: joinOrdinals(tokens, first), time: time.join(' ') };
 }
 /**
@@ -112,16 +143,16 @@ function fieldsAt(pure, model, t) {
 }
 
 /**
- * Coordinate of instant `t` at resolution `res` (an index into `pure.UNITS`).
+ * Coordinate of instant `t` at resolution `res` (an index into `COORD`).
  * @param {{dateTokens?:number, timeTokens?:number}} [o]  how many trailing ordinal / counter tokens to keep (the rest is context)
- * @returns {{date:string, time:string}}  `date` "ε½#2 · ζ½#5", `time` "3η 17ι" ('' when the resolution is coarser than η)
+ * @returns {{date:string, time:string}}  `date` "ε#2 · ζ#5", `time` "3η 17ι" ('' when the resolution is coarser than η)
  */
 export function whenParts(pure, model, t, res, o) {
   const f = fieldsAt(pure, model, t);
   return f ? partsOf(pure, f, res, o) : { date: '—', time: '' };
 }
 
-/** `whenParts` on one line: "ε½#2 · ζ½#5 · 3η 17ι". */
+/** `whenParts` on one line: "ε#2 · ζ#5 · 3η 17ι". */
 export function whenText(pure, model, t, res, o) {
   const { date, time } = whenParts(pure, model, t, res, o);
   return [date, time].filter(Boolean).join(' · ');
@@ -174,6 +205,7 @@ export function factParts(pure, model, level, lv) {
     end: whenParts(pure, model, lv.end, res, o),
     endLine: endLine(pure, model, level, lv),
     length: lengthText(pure, level, lv),
+    lengthNamed: lengthWithName(pure, level, lv, model.levelInfo(level)),
   };
 }
 
@@ -208,30 +240,34 @@ export function endsSentence(pure, model, level, lv) {
 }
 
 /**
- * The span between two instants counted on the ladder: "6ι 43λ" (no "in"); `parts` consecutive units, trailing zero
- * parts dropped by the core. Negative when `to` is before `from` ("−20ι 21λ").
+ * The span between two instants counted on the ladder: "1θ 2ι" (no "in"); up to `parts` non-zero counts, longest
+ * first, zero units skipped by the core. Negative when `to` is before `from` ("−1θ 2ι").
  */
 export const between = (pure, from, to, parts = 2) => pure.between(from, to, { parts });
 
 /**
- * The big countdown in the middle of the dial. Same rule as the Up next hero: up to three units, but never finer
- * than λ (a third part that is a λ or coarser changes at most every 7.8 s and stays steady; a μ would flicker), so
- * "6ι 43λ" there and here, "1ζ½ 4η 24ι" on both. A compact dial has no room for a third part: two.
+ * The big countdown in the middle of the dial: two counts, or three while the third stays steady (never finer than
+ * λ: a λ or coarser changes at most every 7.8 s, a μ would flicker). "1θ 2ι" or "1ζ 4η 2θ". A compact dial has no
+ * room for a third count: two. A span that leads with a λ or something finer has no steady third count either, and
+ * reads as the core writes it ("5λ 1μ", "3μ 2ν").
  */
 export function centreSpan(pure, model, from, to, { compact = false } = {}) {
   const a = model.positionOf(from);
   const b = model.positionOf(to);
   if (compact || a === null || b === null) return between(pure, from, to, 2);
   const d = Math.max(0, b - a);
-  const lambda = pure.UNITS.findIndex((u) => u.id === 'lambda');
-  const first = pure.UNITS.indexOf(pure.decompose(d, 1)[0].unit);
-  return pure.durationPos(d, { parts: clamp(lambda - first + 1, 2, 3) });
+  const lam = pure.unitOf('lambda');
+  if (pure.decompose(d, 1)[0].unit.level >= lam.level) return pure.durationPos(d, { parts: 2 });
+  // count only down to whole Flavons: the counts of the longer units are then the ones the core would give
+  const len = pure.unitPos(lam);
+  const steady = Math.floor((d + pure.EPS_POS) / len) * len;
+  return pure.durationPos(steady, { parts: 3 });
 }
 
-/** "in 6ι 43λ" / "5ι 2λ ago". */
+/** "in 1θ 2ι" / "5ι 2λ ago". */
 export const inText = (pure, now, t, parts = 2) => (t >= now ? `in ${between(pure, now, t, parts)}` : `${between(pure, t, now, parts)} ago`);
 
-/** "starts in 4ε½ 1ζ½" / "started 2η ago" / "running now". */
+/** "starts in 4ε 1ζ" / "started 2η ago" / "running now". */
 export function startPhrase(pure, start, end, now) {
   if (now >= start && now < end) return 'running now';
   return start > now ? `starts ${inText(pure, now, start)}` : `started ${inText(pure, now, start)}`;
@@ -239,13 +275,39 @@ export function startPhrase(pure, start, end, now) {
 
 /**
  * How long the cycle `cyc` ({start, end, clipped}) of `level` lasts: the exact nominal length of a whole cycle
- * ("1η", "13λ"), never the difference of two float instants; only a cycle clipped by the end of the catalogue,
- * which is shorter than its kind, is measured.
+ * ("1η"; the ξ ring "0.14ν"), never the difference of two float instants; only a cycle clipped by the end of the
+ * catalogue, which is shorter than its kind, is measured.
  */
 export const lengthText = (pure, level, cyc) => (cyc.clipped ? pure.between(cyc.start, cyc.end) : pure.cycleLength(level));
 
-/** Length of one turn of a ring, for a sentence ("about 13λ") or a ring too fast to follow: counted in position, so exact. */
-export const aboutTurn = (pure, info) => pure.cycleLength(info.level, { parts: 1 });
+/**
+ * The name of the unit a whole cycle of `level` is one of ("Helion"), or '' where there is none to say (α β γ read as
+ * their level names, the ξ ring is a part of a Blink). For the tooltips and the Length fact, which explain a unit.
+ */
+export function unitNote(pure, info) {
+  const u = pure.unitOf(info.letter);
+  return u?.named ? u.name : '';
+}
+/** `lengthText` followed by the unit's name where the cycle is a whole one: "1ζ (Hadron)", "3η 2ι" for a clipped one. */
+export function lengthWithName(pure, level, cyc, info) {
+  const text = lengthText(pure, level, cyc);
+  const name = cyc.clipped ? '' : unitNote(pure, info);
+  return name ? `${text} (${name})` : text;
+}
+
+/**
+ * A span of real (device) time counted in Blinks, the one word for real time: "325 Blinks", "58 500 Blinks",
+ * "0.143 Blinks". Long ones get digit groups. (pure.blinks writes "58500".)
+ */
+export function blinkSpan(pure, seconds) {
+  const n = seconds / pure.blinkSeconds();
+  // the ladder is a product of whole factors, so a cycle's mean length is a whole number of Blinks (1 625, 58 500)
+  if (n >= 100) return `${pure.groupDigits(Math.round(n))} ${pure.BLINK}s`;
+  return pure.blinks(seconds);
+}
+
+/** Length of one turn of a ring in real time ("about 325 Blinks"): for a sentence or a ring too fast to follow. */
+export const aboutTurn = (pure, info) => blinkSpan(pure, info.meanSeconds);
 
 // ---------------------------------------------------------------------------------------------
 // threshold chips
@@ -266,7 +328,7 @@ export function chipText(pure, model, level, lv, k, t, now, label) {
   const of = cycleName(pure, level, lv);
   const w = label.full;
   const where = [w.date, w.time].filter(Boolean).join(' · ');
-  const count = between(pure, now, t); // "6ι 43λ" ahead, "−20ι 21λ" once passed
+  const count = between(pure, now, t); // "1θ 2ι" ahead, "−5θ 1κ" once passed
   const next = followerName(pure, model, level, lv);
   const what = k === 3 ? `the end of ${of} (${next ? `${next} begins` : 'the catalogue ends'})` : `the ${name} of ${of}`;
   const when = inText(pure, now, t);
@@ -307,7 +369,7 @@ export const sliderText = (pure, word, phase, name) => `${word}, ${pairLabel(pur
 // the "How to read" panel
 // ---------------------------------------------------------------------------------------------
 
-/** Sentence about how deep the rings go, in turns counted on the ladder. */
+/** Sentence about how deep the rings go, in turns of real time counted in Blinks. */
 export function depthRangeNote(pure, opening, finest) {
   return `The dial opens with ${levelTag(opening)} as its innermost ring (one turn takes about ${aboutTurn(pure, opening)}); the Depth control goes on down to ${levelTag(finest)}, whose turn lasts about ${aboutTurn(pure, finest)}.`;
 }
@@ -320,8 +382,8 @@ export function helpHTML(pure, opening, finest) {
         <div><dt>Arc and dot</dt><dd>The arc grows clockwise from the top as the cycle runs; the dot is the hand, exactly where we are in that cycle. Rings too fast to follow dissolve into a glow.</dd></div>
         <div><dt>Sectors</dt><dd>A ring is cut into the child cycles it contains. The tinted sector is the one running now, and the funnel shows it opening up into the whole next ring.</dd></div>
         <div><dt>Quarters</dt><dd>Beads at the right, the bottom and the left mark peak, node and valley; they fill in as they are passed. The selected ring is labelled.</dd></div>
-        <div><dt>Centre</dt><dd>Countdown to the end of the selected cycle, the cycle that begins there, and its four thresholds. Each threshold has its countdown and its place on the header clock: ε½#4 · ζ½#7 name the half-cycles it falls in (ζ½ is half of a depth-6 cycle), and 0η 9ι counts the η and ι cycles completed since the running ζ cycle began. The wave shows what the glyph does over the same cycle; how far through it you are reads as two glyphs, 256 states.</dd></div>
-        <div><dt>Counting</dt><dd>Counters (η ι λ) count from 0 and names (Eta Monofracton, η#1, ζ½#7) from 1. Spans are counts too: 6ι 43λ is six ι and forty-three λ. Press ? for the glossary.</dd></div>
+        <div><dt>Centre</dt><dd>Countdown to the end of the selected cycle, the cycle that begins there, and its four thresholds. Each threshold has its countdown and its place on the header clock: ε#4 · ζ#7 name the ε and ζ cycles it falls in, and 0η 9ι counts the η cycles completed since the ζ began, then the ι cycles completed since that η began. The wave shows what the glyph does over the same cycle; how far through it you are reads as two glyphs, 256 states.</dd></div>
+        <div><dt>Counting</dt><dd>Counters (η ι λ) count from 0 and names (Eta Monofracton, η#1, ζ#7) from 1. Spans are counts too: 1θ 2ι is one θ and two ι. Every depth is a unit; from δ down the units have names (a Helion is one η cycle, a Preon one ι, a Flavon one λ, a Blink one ν), and real time is counted in Blinks. Press ? for the glossary.</dd></div>
         <div><dt>Navigate</dt><dd>Click a sector to jump to the start of that child cycle, a label to select a ring, drag the wave cursor to scrub inside the cycle. On a touch screen, tap a ring or sector (or touch and hold it) to see what it is, and tap the same sector again to jump. The thresholds in the centre jump to that moment of the selected cycle, passed ones included.</dd></div>
       `;
 }

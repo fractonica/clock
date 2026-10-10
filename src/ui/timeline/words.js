@@ -1,6 +1,11 @@
 /**
  * Pure-mode wording of the timeline: every sentence and label that normal mode writes with dates, Earth units or
- * percentages, said with Fractonica names, ladder units and glyph pairs instead (docs/design/80-pure.md).
+ * percentages, said with Fractonica names, ladder units and glyph pairs instead (docs/design/80-pure.md, revision 2:
+ * one unit per depth, whole cycles only, real time counted in Blinks).
+ *
+ * Compact text (ticks, chips, lane heads, flags) keeps the Greek symbols: `ε ends in 1ε 2ζ ▸`, `7η 22ι 33λ`, `ζ#5`.
+ * Unit NAMES (Atom, Nuclide, Hadron, Helion, Quark, Preon, Chromon, Flavon, Somon, Blink) are for prose: tooltips
+ * that explain a unit, the ruler key, preset titles.
  *
  * No DOM and no canvas: `createWords({ model, pure, ruler })` returns plain strings (and the HTML of glyph pairs
  * through `pure.pairHTML`), so the wording is unit tested and scanned for forbidden words in test/timeline.test.js.
@@ -12,31 +17,59 @@ export function nth(n) {
   return `${n}${r >= 11 && r <= 13 ? 'th' : (['th', 'st', 'nd', 'rd'][n % 10] ?? 'th')}`;
 }
 
+/** "an Atom", "a Helion": the indefinite article of a unit name. */
+const aName = (name) => `${/^[AEIOU]/i.test(name) ? 'an' : 'a'} ${name}`;
+const cap = (s) => s[0].toUpperCase() + s.slice(1);
+
 export function createWords({ model, pure, ruler }) {
   const U = ruler.units;
   const info = (L) => model.levelInfo(L);
+  /** Does depth L (0-based) have a unit on the ladder? The ladder ends at the Blink; ξ and the finer ones are levels only. */
+  const isUnit = (L) => L >= 0 && L < U.length;
+  const symOf = (L) => (isUnit(L) ? U[L].sym : info(L).letter);
+  /** The name of unit u in prose: "Helion" (α β γ read as their level name: "Alpha"). */
+  const nameOf = (u) => pure.unitName(U[u].sym);
+  const FIRST_CLOCK = ruler.unitIndex('eta');
+  const CLOCK = ['eta', 'iota', 'lambda'].map((id) => ruler.unitIndex(id));
 
-  /** How long one cycle of a depth lasts, in ladder units: "1α", "2ε½", "1η", "4ι", "13λ" (the exact nominal length). */
+  /** How long one cycle of a depth lasts, in ladder units: "1η", "1ν" for a unit, "0.14ν" for ξ (the exact nominal length). */
   const cycleLength = (L) => pure.cycleLength(L);
-  /** "half of a depth-6 cycle" / "a depth-7 cycle": what a ladder unit is. */
-  const gloss = (u) => (U[u].half ? `half of a depth-${U[u].level + 1} cycle` : `a depth-${U[u].level + 1} cycle`);
+  /** "a depth-7 cycle": what a ladder unit is. */
+  const gloss = (u) => `a depth-${U[u].level + 1} cycle`;
+  /**
+   * What the lane head says under the letter: how many cycles of the next depth make one of this depth ("= 9θ" for
+   * η). Every lane of the ladder is itself one whole unit, so its length ("1η") would only repeat its letter.
+   */
+  const laneSplit = (L) => `= ${info(L).factor}${info(L + 1).letter}`;
+  /** The tail of a cycle's detail line in the plot tooltip: only a cycle finer than the Blink needs its length said. */
+  const lastsText = (L) => (isUnit(L) ? '' : `lasts ${cycleLength(L)}`);
 
   // ---- toolbar -------------------------------------------------------------------------------------
-  const presetTitle = (p) => (p.u < 0 ? 'Show the whole catalogue' : `Show about one ${U[p.u].sym} across: ${gloss(p.u)}`);
+  function presetTitle(p) {
+    if (p.u < 0) return 'Show the whole catalogue';
+    if (p.deepest) return `Zoom in to the Blink (${U[p.u].sym}) scale: a few Blinks across, the deepest zoom`;
+    return `Show about one ${nameOf(p.u)} (${U[p.u].sym}) across: ${gloss(p.u)}`;
+  }
   const presetLabel = (p) => (p.u < 0 ? 'All' : `${U[p.u].sym}`);
 
   // ---- the ruler -----------------------------------------------------------------------------------
   /**
    * What the tick row and the row above it count, for the tooltip of the ruler key in the gutter. This is the one
-   * place that says why a tick reads "9η" above a lane block "η#10": counts start at 0, ordinals at 1.
+   * place that says why a tick reads "9η" above a lane block "η#10": counts start at 0, ordinals at 1, and what a
+   * count is counted inside (the same counters as the header clock for η ι λ).
    */
   function rulerTip(step) {
     const u = step.u;
     const every = step.m > 1 ? `; every ${nth(step.m)} one is labelled` : '';
     const ctx = step.ctx >= 0 ? ` The row above names the ${U[step.ctx].sym} each one belongs to.` : '';
+    const host = ruler.countedIn[u];
+    const inside =
+      host !== null && u >= FIRST_CLOCK
+        ? ` Here ${U[u].sym} is counted inside ${U[host].sym}, from 0 to ${ruler.per[u] - 1}${CLOCK.includes(u) ? ', like the clock in the header' : ''}.`
+        : '';
     const notation =
-      ' A count such as 9η is how many whole η have gone by since the parent cycle began, so it starts at 0; a number such as ζ½#5 names the 5th ζ½ of its parent and starts at 1, like the lane blocks (η#10).';
-    return `Each tick starts a ${U[u].sym} (${gloss(u)}${u === 0 ? ', counted over the catalogue' : ''})${every}.${ctx}${notation} Press ? for the glossary.`;
+      ' A count such as 9η is how many whole η have gone by since its ζ began, so it starts at 0; a number such as ζ#5 names the 5th ζ of its parent and starts at 1, like the lane blocks (η#10).';
+    return `Each tick starts ${aName(nameOf(u))} (${U[u].sym}, ${gloss(u)}${u === 0 ? ', counted over the catalogue' : ''})${every}.${ctx}${inside}${notation} Press ? for the glossary.`;
   }
   /** The two short lines the ruler key shows in the gutter: the unit of the context row, the unit of the ticks. */
   function rulerKey(step) {
@@ -44,12 +77,19 @@ export function createWords({ model, pure, ruler }) {
   }
 
   // ---- lanes ---------------------------------------------------------------------------------------
-  /** Tooltip of a lane head: what the depth's cycles are and how many there are. */
+  /**
+   * Tooltip of a lane head: what the depth's cycles are, how many make the one above and what one splits into. A
+   * depth with a unit is told by its name ("A Helion (η) is one depth-7 cycle: 11 of them make a ζ.").
+   */
   function laneTip(L, alphaCycles) {
     const inf = info(L);
-    if (L === 0) return `One α cycle spans 4 Saros intervals; the catalogue holds ${alphaCycles} (the last one is cut off).`;
-    const parent = info(L - 1);
-    return `${inf.siblings} per ${parent.letter} cycle, each lasting ${cycleLength(L)}. Every ${parent.letter} cycle splits into ${parent.factor} of them.`;
+    const child = info(L + 1).letter;
+    if (L === 0) {
+      return `One α (${aName(nameOf(0))}) is 4 Saros intervals long; the catalogue holds ${alphaCycles} (the last one is cut off). It splits into ${inf.factor} ${child}.`;
+    }
+    const parent = info(L - 1).letter;
+    const what = isUnit(L) ? `${cap(aName(nameOf(L)))} (${inf.letter}) is one depth-${inf.depth} cycle` : `A ${inf.letter} cycle (depth ${inf.depth}) is finer than the Blink and lasts ${cycleLength(L)}`;
+    return `${what}: ${inf.siblings} of them make ${/[αεηιουω]/.test(parent) ? 'an' : 'a'} ${parent}. It splits into ${inf.factor} ${child}.`;
   }
   /** Name and address of cycle `idx` (global index) of depth L: { name: "Epsilon Pentafracton", short: "ε#5" }. */
   const cycleNames = (L, idx) => ({ name: pure.cycleName(L, idx), short: pure.cycleShort(L, idx) });
@@ -74,8 +114,8 @@ export function createWords({ model, pure, ruler }) {
     out.push(String(n1));
     return out;
   }
-  /** The note on a lane that is too dense to draw. */
-  const denseMsg = (L) => `cycles of ${cycleLength(L)} · zoom in`;
+  /** The note on a lane that is too dense to draw: "ε cycles · zoom in" (a depth finer than the Blink says its length). */
+  const denseMsg = (L) => (isUnit(L) ? `${symOf(L)} cycles · zoom in` : `cycles of ${cycleLength(L)} · zoom in`);
 
   // ---- eclipse lane and catalogue edges -------------------------------------------------------------
   /** The eclipse that sits at position i is #i, 0-based like the position (the same number everywhere in the app). */
@@ -87,7 +127,7 @@ export function createWords({ model, pure, ruler }) {
   const rangeLabel = () => pure.catalogueText();
 
   // ---- the selected depth's turnover pointer ---------------------------------------------------------
-  /** "ε ends in 1ε½ 2ζ½ ▸" (right) / "◂ ε ends in …" – `rel` is the countdown from the cursor to the end. */
+  /** "ε ends in 1ε 2ζ ▸" (right) / "◂ ε ends in …" – `rel` is the countdown from the cursor to the end. */
   const endsChip = (letter, rel, right) => (right ? `${letter} ends ${rel} ▸` : `◂ ${letter} ends ${rel}`);
   /** Tooltip of that pointer: names what ends and what begins there. */
   function turnoverTip(L, idx, right, endsWithCatalogue) {
@@ -115,6 +155,9 @@ export function createWords({ model, pure, ruler }) {
     nth,
     cycleLength,
     gloss,
+    nameOf,
+    laneSplit,
+    lastsText,
     presetTitle,
     presetLabel,
     rulerTip,

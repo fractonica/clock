@@ -23,7 +23,7 @@ const TMAX = 28005212035;
 const QUIET = '.topbar{position:static!important}';
 
 /** Words that only exist in pure mode: none of them may survive in normal mode. */
-const PURE_ONLY = /fracton|[δεζ]½|[α-ξ]#\d|\d·\d|→ end of the catalogue|\bbeats?\b|\d+[ηιλμνξ]\b/;
+const PURE_ONLY = /fracton|[α-ξ]\u00bd|[α-ξ]#\d|\d·\d|→ end of the catalogue|\bbeats?\b|\bBlinks?\b|\d+[ηθικλμνξ]\b/;
 
 // ---------------------------------------------------------------------------------------------
 // collection: everything visible inside the rings view, tagged canvas text, attributes of every kind
@@ -181,8 +181,10 @@ await withApp(
     const all = items.map((i) => i.text).join(' | ');
     check('name of the selected cycle is the canonical one', (await text(page, '.rings-cn-name')) === 'Eta Monofracton', await text(page, '.rings-cn-name'));
     check('pill carries depth chip, counter, phase word and next threshold', /^η 7 · 1\/11 · [↗↘▲▼] (Rising|Falling|Peak|Valley) · to \w+$/.test(await text(page, '.rings-cn-phase')), await text(page, '.rings-cn-phase'));
-    // two units, like Up next / ladder / face: a third one is added only while it stays steady (never finer than λ)
-    check('centre countdown is two units (6ι 43λ), the same string as Up next', /^\d+ι \d+λ$/.test(await text(page, '.rings-count')) && (await text(page, '.rings-count')) === (await text(page, '.rings-chip[data-q="3"] .rings-chip-in')), `${await text(page, '.rings-count')} / ${await text(page, '.rings-chip[data-q="3"] .rings-chip-in')}`);
+    // two counts like the chips / ladder / face: a third one is added only while it stays steady (never finer than λ)
+    const centre = await text(page, '.rings-count');
+    const endIn = await text(page, '.rings-chip[data-q="3"] .rings-chip-in');
+    check('centre countdown is two counts (1θ 2ι) and a steady third (3κ), led by the string of the end chip', /^\d+[θηζ] \d+[ιθ]( \d+[κλ])?$/.test(centre) && centre.startsWith(endIn) && /^\d+[α-ν] \d+[α-ν]$/.test(endIn), `${centre} / ${endIn}`);
     check('the end is the cycle that begins', (await text(page, '.rings-end')) === '→ Eta Difracton', await text(page, '.rings-end'));
     const chipIn = await textAll(page, '.rings-chip-in');
     check('every quarter chip has a countdown, passed ones are negative', chipIn.length === 4 && chipIn.every(Boolean) && chipIn.slice(0, 3).every((c) => c.startsWith('−')) && !chipIn[3].startsWith('−'), chipIn.join(' | '));
@@ -192,8 +194,8 @@ await withApp(
     check('the pair label reads digits, not a percentage', /^phase \d+·\d+$/.test(await text(page, '.rings-wh-pctl')), await text(page, '.rings-wh-pctl'));
     check('the single glyph is hidden (the pair shows it)', await page.evaluate(() => getComputedStyle(document.querySelector('.rings-glyph')).display === 'none'));
     const facts = await page.evaluate(() => ({ s: document.querySelector('.rings-f-start').innerText, e: document.querySelector('.rings-f-end').innerText, l: document.querySelector('.rings-f-len').innerText, a: document.querySelector('.rings-f-addr').innerText.replace(/\s+/g, ' ') }));
-    check('facts: started / ends / length / address are pure', /ago/.test(facts.s) && /→ Eta Difracton/.test(facts.e) && /^1η$/.test(facts.l) && /α#6.*β#4.*γ#9.*δ#3.*ε#5.*ζ#4.*η#1/.test(facts.a), JSON.stringify(facts));
-    check('facts: ordinals are X#n (ε½#4 · ζ½#7), counters nX (0η 0ι), never "ε½ 4"', /ε½#\d+ · ζ½#\d+/.test(facts.s) && /^0η 0ι$/m.test(facts.s) && !/[δεζ]½ \d/.test(facts.s + facts.e), JSON.stringify([facts.s, facts.e]));
+    check('facts: started / ends / length / address are pure (a whole cycle is one unit, with its name)', /ago/.test(facts.s) && /→ Eta Difracton/.test(facts.e) && /^1η \(Helion\)$/.test(facts.l) && /α#6.*β#4.*γ#9.*δ#3.*ε#5.*ζ#4.*η#1/.test(facts.a), JSON.stringify(facts));
+    check('facts: ordinals are X#n (δ#3 · ε#5 · ζ#4), counters nX (0η 0ι), no halves and no "ε 4"', /δ#\d+ · ε#\d+ · ζ#\d+/.test(facts.s) && /^0η 0ι$/m.test(facts.s) && !/\u00bd|(^|[ ·])[δεζ] \d/.test(facts.s + facts.e), JSON.stringify([facts.s, facts.e]));
     const glyphFact = await text(page, '.rings-f-glyph');
     check('glyph fact is spoken as two digits ("phase 13 and 0 of 256"), not "13·0"', /^phase \d+ and \d+ of 256 ?value [+−]?\d+/.test(glyphFact) && !/\d·\d/.test(glyphFact), glyphFact);
     const pairNames = await page.evaluate(() => [...document.querySelectorAll('#view-rings .pure-pair')].map((e) => e.getAttribute('aria-label')));
@@ -216,7 +218,8 @@ await withApp(
     if (SHOTS) await shot('rings-pure-help.png', { fullPage: true });
 
     // ------------------------------------------------------------------ every depth selected, several instants
-    const NOMINAL = ['1α', '1β', '1γ', '2δ½', '2ε½', '2ζ½', '1η', '4ι', '1ι', '13λ', '1λ', '1μ', '1ν', '1ξ'];
+    // revision 2: one unit per depth, so a whole cycle is "1X" (with the unit's name where it has one); ξ is a seventh of a Blink
+    const NOMINAL = ['1α', '1β', '1γ', '1δ (Atom)', '1ε (Nuclide)', '1ζ (Hadron)', '1η (Helion)', '1θ (Quark)', '1ι (Preon)', '1κ (Chromon)', '1λ (Flavon)', '1μ (Somon)', '1ν (Blink)', '0.14ν'];
     const lengths = [];
     for (const sel of Array.from({ length: 14 }, (_, i) => i)) {
       await setStore(page, { selectedLevel: sel, minDepth: 1, maxDepth: 14 });
@@ -373,7 +376,7 @@ await withApp(
     await page.waitForTimeout(350);
     const stubTip = await tipText(page);
     await sweep(page, 'time-lapse stub tooltip');
-    check('a ring too fast to follow says how long one turn is, on the ladder', /about \d+[α-ξ½]+ per cycle/.test(stubTip) || stubTip === '', stubTip);
+    check('a ring too fast to follow says how long one turn is: real time counted in Blinks', /about \d+(\s\d{3})* Blinks per cycle/.test(stubTip) || stubTip === '', stubTip);
     await page.evaluate(() => window.__fractonica.store.pause());
     await setStore(page, { selectedLevel: 6 });
     await page.mouse.move(2, 2);
@@ -390,7 +393,7 @@ await withApp(
       const c = document.querySelector('.rings-count');
       const hole = document.querySelector('.rings-centre').getBoundingClientRect();
       const r = c.getBoundingClientRect();
-      return /^\d+ι \d+λ$/.test(c.textContent) && r.width <= hole.width + 1;
+      return /^\d+[α-ν] \d+[α-ν]$/.test(c.textContent) && r.width <= hole.width + 1;
     }));
     await page.click('.rings-help-btn');
     await sweep(page, 'phone help');

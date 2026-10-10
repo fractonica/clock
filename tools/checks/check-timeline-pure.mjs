@@ -1,5 +1,6 @@
 /**
- * Pure mode of the timeline, in a real browser (docs/design/80-pure.md).
+ * Pure mode of the timeline, in a real browser (docs/design/80-pure.md, revision 2: one unit per depth
+ * α β γ δ ε ζ η θ ι κ λ μ ν, whole cycles, real time in Blinks).
  *
  *   node tools/checks/check-timeline-pure.mjs          (screenshots: tools/out/tl-pure-chk-*.png)
  *   node tools/checks/check-timeline-pure.mjs --quick  (skips the long sweeps of section 1 and 2)
@@ -66,7 +67,7 @@ const forgetCanvas = (page) => page.evaluate(() => { window.__tlCanvas = new Set
  * (the pointer may repaint the old mode just before the click lands) and ask for one clean repaint.
  */
 async function afterSwitch(page, pureOn) {
-  await page.waitForFunction((on) => document.querySelector('.tl-presets button')?.textContent.trim() === (on ? 'λ' : 'Day'), pureOn, { timeout: 5000 });
+  await page.waitForFunction((on) => document.querySelector('.tl-presets button')?.textContent.trim() === (on ? 'ν' : 'Day'), pureOn, { timeout: 5000 });
   await page.waitForTimeout(150);
   await forgetCanvas(page);
   await page.evaluate(() => window.__fractonica.instances.timeline.api.zoomBy(1));
@@ -174,7 +175,8 @@ await withApp(
     // =============================== 2. every preset, edges, out of range, depths ===================================
     await open(`?pure=1&t=${T_A}&view=timeline`);
     const presets = await page.$$eval('.tl-presets [data-preset]', (b) => b.map((x) => ({ id: x.dataset.preset, label: x.textContent.trim(), title: x.title })));
-    check('pure presets: λ ι η ζ½ ε½ δ½ γ β α All', presets.map((p) => p.label).join(' ') === 'λ ι η ζ½ ε½ δ½ γ β α All', presets.map((p) => p.label).join(' '));
+    check('pure presets: ν λ ι η ζ ε δ γ β α All', presets.map((p) => p.label).join(' ') === 'ν λ ι η ζ ε δ γ β α All', presets.map((p) => p.label).join(' '));
+    check('presets name the unit in their title ("one Helion")', /one Helion \(η\) across/.test(presets.find((p) => p.label === 'η')?.title ?? '') && /Blink/.test(presets[0].title), presets.map((p) => p.title).join(' | '));
     check('every preset explains itself in a title', presets.every((p) => p.title.length > 10), presets.map((p) => p.title).join(' | '));
     for (const p of presets) {
       await page.click(`.tl-presets [data-preset="${p.id}"]`);
@@ -183,12 +185,13 @@ await withApp(
       const pressed = await page.$eval(`.tl-presets [data-preset="${p.id}"]`, (b) => b.getAttribute('aria-pressed'));
       check(`preset ${p.label} is pressed after the click`, pressed === 'true');
       const win = it.find((x) => x.kind === 'text' && x.where.includes('tl-win'));
-      check(`preset ${p.label}: the status line counts the window in ladder units`, p.id === 'all' ? /^the whole catalogue · \d+α \d+β across$/.test(win?.text ?? '') : new RegExp(`· 1${p.label} across$`).test(win?.text ?? ''), win?.text ?? '(none)');
+      // (ν is the deepest zoom, a few Blinks across: it reads "1μ 1ν", not one unit)
+      check(`preset ${p.label}: the status line counts the window in ladder units`, p.id === 'all' ? /^the whole catalogue · \d+α \d+β across$/.test(win?.text ?? '') : p.id === 'u:nu' ? /· \d+μ \d+ν across$/.test(win?.text ?? '') : new RegExp(`· 1${p.label} across$`).test(win?.text ?? ''), win?.text ?? '(none)');
       // the ruler never goes blank: 4 to 12 labelled ticks at every preset (it was ONE around β)
       const labels = await page.evaluate(() => window.__fractonica.instances.timeline.api.axisLabels);
       check(`preset ${p.label}: ${labels.length} labelled ticks on the ruler (4 to 12)`, labels.length >= 4 && labels.length <= 12, labels.join(' '));
-      if (['u:lambda', 'u:eta', 'u:delta-half', 'u:beta', 'all'].includes(p.id)) await sweep(`preset ${p.label}`, { cols: 9 });
-      if (['u:iota', 'u:epsilon-half', 'u:gamma', 'all'].includes(p.id)) await shot(`tl-pure-chk-${p.id.replace(':', '_')}.png`, { clip: await page.$eval('.tl-root', (r) => { const b = r.getBoundingClientRect(); return { x: b.x, y: b.y, width: b.width, height: b.height }; }) });
+      if (['u:nu', 'u:lambda', 'u:eta', 'u:delta', 'u:beta', 'all'].includes(p.id)) await sweep(`preset ${p.label}`, { cols: 9 });
+      if (['u:nu', 'u:iota', 'u:epsilon', 'u:gamma', 'all'].includes(p.id)) await shot(`tl-pure-chk-${p.id.replace(':', '_')}.png`, { clip: await page.$eval('.tl-root', (r) => { const b = r.getBoundingClientRect(); return { x: b.x, y: b.y, width: b.width, height: b.height }; }) });
     }
 
     // off-screen chips (cursor, now, the selected depth's end), eclipse chips, the catalogue edges, outside it
@@ -200,7 +203,8 @@ await withApp(
       ['at the catalogue start', (tl, fz) => { tl.setFollow(false); tl.setWindow({ c: fz.model.tMin - 1e7, span: 3e8 }); }],
       ['all outside, left', (tl, fz) => { tl.setFollow(false); tl.setWindow({ c: fz.model.tMin - 9e8, span: 1e8 }); }],
       ['all outside, right', (tl, fz) => { tl.setFollow(false); tl.setWindow({ c: fz.model.tMax + 9e8, span: 1e8 }); }],
-      ['the ξ scale (2 s across)', (tl, fz) => { tl.setFollow(false); tl.setWindow({ c: 1791460800, span: 2 }); }],
+      ['the deepest zoom (a few Blinks across)', (tl, fz) => { tl.setFollow(false); tl.setWindow({ c: 1791460800, span: 2 }); }],
+      ['a sub-Blink pointer offset at the deepest zoom, near the catalogue end', (tl, fz) => { tl.setFollow(false); tl.setWindow({ c: fz.model.tMax - 3, span: 2 }); }],
       ['the whole catalogue', (tl, fz) => { tl.setFollow(false); tl.setWindow({ c: (fz.model.tMin + fz.model.tMax) / 2, span: 1e12 }); }],
     ];
     for (const [name, fn] of windows) {
@@ -216,7 +220,8 @@ await withApp(
     const eclTips = [...tipsSeen].filter((t) => /^Eclipse #\d+ · one of 70/.test(t));
     check('every eclipse marker tooltip numbers it like its position', eclTips.length > 0 && eclTips.every((t) => { const m = /^Eclipse #(\d+) · one of 70 pos (\d+)/.exec(t); return m && m[1] === m[2]; }), eclTips[0]?.slice(0, 70) ?? '(none seen)');
     check('the sweeps met the cursor / now pointers', /centre the view on it/.test(seenAll));
-    check('the sweeps met the ruler key and a lane head', /Each tick starts a/.test(seenAll) && /per [α-ξ] cycle, each lasting/.test(seenAll));
+    check('the sweeps met the ruler key and a lane head (units named in prose)', /Each tick starts an? [A-Z]\w+ \(/.test(seenAll) && /is one depth-\d+ cycle: \d+ of them make an? [α-ξ]\./.test(seenAll));
+    check('the sweeps met sub-Blink readings (decimal Blinks)', /\b0\.\d+ν/.test(seenAll), (seenAll.match(/[^ ]* ?0\.\d+ν[^ ]*/) ?? ['(none)'])[0]);
     check('the sweeps met glyph pairs, never a percentage, in the plot tooltip', /vs now/.test(seenAll) && !/%/.test(seenAll));
 
     // every selected depth, and depth ranges (fewer / more lanes)
@@ -239,7 +244,7 @@ await withApp(
     for (const pos of [0.69, 10.5, 30, 62.1, 68.3]) {
       const t = M.timeOfPosition(pos);
       await open(`?pure=1&t=${t}&view=timeline`);
-      for (const [id, sym] of [['u:alpha', 'α'], ['u:beta', 'β'], ['u:gamma', 'γ'], ['u:delta-half', 'δ½'], ['u:eta', 'η']]) {
+      for (const [id, sym] of [['u:alpha', 'α'], ['u:beta', 'β'], ['u:gamma', 'γ'], ['u:delta', 'δ'], ['u:epsilon', 'ε'], ['u:zeta', 'ζ'], ['u:eta', 'η']]) {
         await page.click(`.tl-presets [data-preset="${id}"]`);
         await settle(450);
         const win = await page.$eval('[data-role="win"]', (e) => e.textContent);
@@ -252,7 +257,8 @@ await withApp(
       const b = M.cycleStartTime(level, k);
       for (const d of [0.003, 0.4]) {
         await open(`?pure=1&t=${(b - d).toFixed(3)}&view=timeline`);
-        await page.click('.tl-presets [data-preset="u:eta"]'); // ι ticks: the flag is "η ι λ", the header's own three counters
+        // a window of 4000 s is labelled in ι: the flag is "η ι λ", the header's own three counters
+        await api((tl, fz) => { tl.setFollow(false); tl.setWindow({ c: fz.store.t(), span: 4000 }); });
         await settle(500);
         await forgetCanvas(page);
         await api((tl) => tl.zoomBy(1));
@@ -326,12 +332,12 @@ await withApp(
     await settle(400);
     const liveItems = await scanState(page, 'live');
     const liveFlag = liveItems.find((x) => x.kind === 'canvas' && /^NOW /.test(x.text));
-    check('live mode: the NOW flag carries a pure address (counts "9η 17ι 44λ" or ordinals "ζ½#5")', /^NOW (\d+[ηιλμνξ]|[α-ζ]½?#\d)/.test(liveFlag?.text ?? ''), liveFlag?.text ?? '(not drawn)');
+    check('live mode: the NOW flag carries a pure address (counts "9η 17ι 44λ" or ordinals "ζ#5")', /^NOW (\d+[ηθικλμν]|[α-ζ]#\d)/.test(liveFlag?.text ?? ''), liveFlag?.text ?? '(not drawn)');
 
     // =============================== 4. a phone: layout, long press, nothing overflows =============================
     await open(`?pure=1&t=${T_A}&view=timeline`, 390, 844);
     await scanState(page, 'phone');
-    for (const p of ['u:eta', 'u:delta-half', 'all']) {
+    for (const p of ['u:nu', 'u:eta', 'u:delta', 'all']) {
       await page.click(`.tl-presets [data-preset="${p}"]`);
       await settle(500);
       await scanState(page, `phone preset ${p}`);
@@ -340,7 +346,7 @@ await withApp(
     const over = await page.evaluate(() => ({ sw: document.documentElement.scrollWidth, iw: innerWidth, rootSW: document.querySelector('.tl-root').scrollWidth, rootCW: document.querySelector('.tl-root').clientWidth }));
     check('phone: the page does not scroll sideways with the longer pure strings', over.sw <= over.iw + 1 && over.rootSW <= over.rootCW + 1, JSON.stringify(over));
     const presetBox = await page.$eval('.tl-presets', (e) => ({ sw: e.scrollWidth, cw: e.clientWidth }));
-    check('phone: the ten presets fit their strip (or scroll inside it)', presetBox.sw <= presetBox.cw + 1 || true, JSON.stringify(presetBox));
+    check('phone: the eleven presets fit their strip (or scroll inside it)', presetBox.sw <= presetBox.cw + 1 || true, JSON.stringify(presetBox));
     g = await geom();
     const fire = (type, x, y) =>
       page.evaluate(([type, x, y]) => {
@@ -361,7 +367,7 @@ await withApp(
 
     // =============================== 5. switching live, both ways ==================================================
     await open(`?pure=0&t=${T_A}&view=timeline&zone=UTC`); // (the mode is persisted: say so)
-    const PURE_LEFTOVER = /[α-ξ]#\d|[δεζ]½|fracton|→ [α-ξ]#|catalogue (starts|ends) ·|\bpos \d+ ·.*(Saros interval|between #)|cycles of \d|\d[ηιλμνξ]/;
+    const PURE_LEFTOVER = /[α-ξ]#\d|[α-ξ]½|fracton|→ [α-ξ]#|catalogue (starts|ends) ·|\bpos \d+ ·.*(Saros interval|between #)|cycles of \d|\d[ηθικλμν]\b|\bBlinks?\b/;
     const normalBefore = await items(page);
     check('normal mode shows its Gregorian axis and presets', /Day.*Week.*Month/.test(normalBefore.map((x) => x.text).join(' ')) || (await page.$$eval('.tl-presets [data-preset]', (b) => b.map((x) => x.textContent.trim()).join(' '))) === 'Day Week Month Year Decade Century All');
     check('normal mode has no pure leftovers to start with', !normalBefore.some((x) => PURE_LEFTOVER.test(x.text)), normalBefore.find((x) => PURE_LEFTOVER.test(x.text))?.text);
@@ -381,7 +387,7 @@ await withApp(
     await settle(700);
     const pureItems = await scanState(page, 'switched on with P');
     const presetNow = await page.$$eval('.tl-presets [data-preset]', (b) => b.map((x) => x.textContent.trim()).join(' '));
-    check('P: the zoom presets became ladder units', presetNow === 'λ ι η ζ½ ε½ δ½ γ β α All', presetNow);
+    check('P: the zoom presets became ladder units', presetNow === 'ν λ ι η ζ ε δ γ β α All', presetNow);
     check('P: nothing Gregorian is left on the timeline', !judge(pureItems, '').some((l) => l.severity === 'hard'), judge(pureItems, '').filter((l) => l.severity === 'hard').map((l) => l.text).slice(0, 3).join(' | '));
     const tipPure = await tipText();
     check('P: the open tooltip was rebuilt in pure words', tipPure === '' || (/vs now/.test(tipPure) && !/UTC|%/.test(tipPure)), tipPure.slice(0, 90));
@@ -407,7 +413,7 @@ await withApp(
     await page.click('#btn-pure');
     await afterSwitch(page, true);
     await scanState(page, 'switched on with the header button');
-    check('the header button switches the timeline on', (await page.$$eval('.tl-presets [data-preset]', (b) => b[0].textContent.trim())) === 'λ');
+    check('the header button switches the timeline on', (await page.$$eval('.tl-presets [data-preset]', (b) => b[0].textContent.trim())) === 'ν');
     await forgetCanvas(page);
     await page.evaluate(() => window.__fractonica.store.set({ pure: false }));
     await settle(500);
@@ -420,7 +426,7 @@ await withApp(
     await forgetCanvas(page);
     await page.keyboard.press('2');
     await afterSwitch(page, true);
-    check('a switch made on another tab is applied when the timeline is shown', (await page.$$eval('.tl-presets [data-preset]', (b) => b[0].textContent.trim())) === 'λ');
+    check('a switch made on another tab is applied when the timeline is shown', (await page.$$eval('.tl-presets [data-preset]', (b) => b[0].textContent.trim())) === 'ν');
     await scanState(page, 'switched while hidden');
     await page.keyboard.press('p');
     await settle(300);

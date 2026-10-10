@@ -45,7 +45,7 @@ import {
   isLessImportant,
 } from '../src/audio/schedule.js';
 import { fmtHz, fmtRate, fmtSeconds, fmtSecondsShort, fmtDb, fmtOct, fmtPeriod, fmtInt } from '../src/audio/format.js';
-import { sanitize, DEFAULT_SETTINGS, FLOORS, SETTINGS_REV, presetLevels, matchPreset, loadSettings, saveSettings, STORAGE_KEY, dbToGain } from '../src/audio/settings.js';
+import { sanitize, DEFAULT_SETTINGS, FLOORS, LIMITS, SETTINGS_REV, presetLevels, matchPreset, loadSettings, saveSettings, STORAGE_KEY, dbToGain } from '../src/audio/settings.js';
 import { createEngine, MAX_NOTES, VOICE_AMP, safetyCurve } from '../src/audio/engine.js';
 import { labelSlots } from '../src/ui/sound/scope.js';
 import { createPure } from '../src/core/pure.js';
@@ -1533,14 +1533,22 @@ test('spectrum letters: every tick that has room is labelled, whatever order the
 });
 
 // ------------------------------------------------------------------------------------------------
-// pure mode wording (docs/design/80-pure.md): ratios, octaves, cents, Fractonica periods, beats, glyph pairs
+// pure mode wording (docs/design/80-pure.md, revision 2): ratios, octaves, cents, pB, Fractonica periods, Blinks, glyph pairs
 // ------------------------------------------------------------------------------------------------
 const pure = createPure(model, { now: () => VECTOR_A });
 const rowsT = buildTuning(model);
 const hardLeaks = (text) => RULES.filter(([, re, severity]) => severity === 'hard' && re.test(text)).map(([id]) => id);
 const noLeak = (text, what) => assert.deepEqual(hardLeaks(text), [], `${what}: "${text}"`);
 /** What a user reads of a piece of markup. */
-const plainText = (html) => html.replace(/<svg[\s\S]*?<\/svg>/g, '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+// (a narrow no-break space of a digit group stays one: only ASCII white space is folded)
+const plainText = (html) =>
+  html
+    .replace(/<svg[\s\S]*?<\/svg>/g, '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/[ \t\r\n]+/g, ' ')
+    .replace(/ ([,.;)])/g, '$1')
+    .trim();
+const NN = ' '; // the narrow no-break space of a digit group
 
 test('pure wording: a ratio is written with a slash and never looks like a time of day', () => {
   assert.equal(W.ratioText(rowsT[0]), '1/1');
@@ -1563,7 +1571,7 @@ test('pure wording: octave offsets, shifts and cents', () => {
   assert.equal(W.cents(1119.6), '1120¢');
 });
 
-test('pure wording: the base pitch is an offset of the ground, never a frequency', () => {
+test('pure wording: the base pitch is an offset of the ground, its absolute pitch is in pB, never a frequency', () => {
   assert.equal(W.groundText(0), 'ground ×1');
   assert.equal(W.groundText(12), '+1 octave ×2');
   assert.equal(W.groundText(-12), '−1 octave ×½');
@@ -1571,6 +1579,8 @@ test('pure wording: the base pitch is an offset of the ground, never a frequency
   assert.equal(W.groundText(-5), '−500¢ ×0.749');
   assert.equal(W.groundPhrase(0), 'ground ×1');
   assert.equal(W.groundPhrase(3), 'ground +300¢ ×1.19');
+  assert.equal(W.groundPhrase(0, '34.2 pB'), 'ground ×1, 34.2 pB');
+  assert.equal(W.groundPhrase(7, '51.2 pB'), 'ground +700¢ ×1.5, 51.2 pB');
   let prev = 0;
   for (let k = -12; k <= 12; k++) {
     const { head, sub } = W.groundWords(k);
@@ -1580,120 +1590,207 @@ test('pure wording: the base pitch is an offset of the ground, never a frequency
     assert.ok(ratio > prev);
     prev = ratio;
     if (k !== 0 && Math.abs(k) !== 12) assert.equal(head, `${k < 0 ? '−' : '+'}${Math.abs(k) * 100}¢`);
+    // and the ground's pB moves with it: 110 Hz is 34.2 pB, an octave is double
+    const pb = W.pbOf(pure, 110 * ratio);
+    assert.match(pb, /^[\d. ]+ pB$/);
+    noLeak(pb, `ground ${k} in pB`);
   }
+  assert.equal(W.pbOf(pure, 110), '34.2 pB', 'the default ground');
+  assert.equal(W.pbOf(pure, 55), '17.1 pB');
+  assert.equal(W.pbOf(pure, 220), '68.4 pB');
 });
 
-test('pure wording: counts of beats and rates per beat', () => {
-  assert.equal(W.fmtBeats(1), '1 beat');
-  assert.equal(W.fmtBeats(4), '4 beats');
-  assert.equal(W.fmtBeats(0.5), '0.5 beats');
-  assert.equal(W.fmtBeats(0.00432), '0.00432 beats');
-  assert.equal(W.fmtBeats(12.34), '12.3 beats');
-  assert.equal(W.fmtBeats(1234.5), '1,235 beats');
-  assert.equal(W.fmtBeats(2.63e6), '2.63 M beats');
-  assert.equal(W.fmtBeats(1.82e9), '1.82 G beats');
-  assert.equal(W.fmtBeats(NaN), '— beats');
+test('pure wording: pB (cycles per Blink) of the deepest cycles are whole numbers, slow cycles are "1 per N Blinks"', () => {
+  const perBlink = (L) => pure.perBlink(1 / model.levelInfo(L).meanSeconds);
+  // the owner's point of choosing the Blink: ξ 7, ο 77, π 693, ρ 2 772 (22.5 Hz, 247.7 Hz, 2.23 kHz, 8.92 kHz before)
+  for (const [L, whole] of [[12, 1], [13, 7], [14, 77], [15, 693], [16, 2772]]) near(perBlink(L), whole, whole * 1e-6, `depth ${L + 1}`);
+  const pb = (L) => W.pbOf(pure, 1 / model.levelInfo(L).meanSeconds);
+  assert.deepEqual([13, 14, 15, 16].map(pb), ['7 pB', '77 pB', '693 pB', `2${NN}772 pB`]);
+  assert.equal(pb(12), '1 pB', 'one ν cycle per Blink, by definition');
+  assert.equal(pb(11), '0.2 pB', 'μ: one cycle per five Blinks');
+  assert.equal(pb(10), '0.04 pB', 'λ: one cycle per 25 Blinks');
+  assert.equal(pb(9), '1 per 325 Blinks', 'κ is slower than 0.04 pB: said as a count of Blinks');
+  assert.equal(pb(8), `1 per 1${NN}625 Blinks`, 'ι');
+  assert.equal(pb(6), `1 per 58${NN}500 Blinks`, 'η: 58 500 Blinks, a whole number');
+  assert.equal(pb(0), `1 per 7${NN}319${NN}812${NN}500 Blinks`, 'α');
+  assert.equal(W.pbOf(pure, 0), '—');
+  assert.equal(W.pbOf(pure, NaN), '—');
+  assert.equal(W.pbOf(pure, Infinity), '—');
+  for (const r of rowsT) noLeak(W.pbOf(pure, r.trueHz), `true rate of depth ${r.depth}`);
+  // finer cycles come faster
+  const per = rowsT.map((r) => r.trueHz);
+  for (let i = 1; i < per.length; i++) assert.ok(per[i] > per[i - 1]);
+  // every voice at the default ground has an absolute pitch in pB; the table of the register above 110 Hz
+  const at = rowsT.map((r) => W.pbOf(pure, frequencyOf(r, 110)));
+  assert.equal(at[0], '34.2 pB');
+  assert.equal(at[4], '108.5 pB');
+  assert.equal(at[12], '932.6 pB');
+  for (const t of at) noLeak(t, t);
+  // the shared helpers keep their meaning
+  assert.equal(pure.BLINK, 'Blink');
+  assert.equal(pure.PER_BLINK, 'pB');
+});
+
+test('pure wording: counts and spans of Blinks', () => {
+  assert.equal(W.fmtBlinks(1), '1 Blink');
+  assert.equal(W.fmtBlinks(4), '4 Blinks');
+  assert.equal(W.fmtBlinks(0.5), '0.5 Blinks');
+  assert.equal(W.fmtBlinks(0.00432), '0.00432 Blinks');
+  assert.equal(W.fmtBlinks(0.0004), '<0.001 Blinks');
+  assert.equal(W.fmtBlinks(12.34), '12.3 Blinks');
+  assert.equal(W.fmtBlinks(1234.5), `1${NN}235 Blinks`);
+  assert.equal(W.fmtBlinks(58500), `58${NN}500 Blinks`);
+  assert.equal(W.fmtBlinks(2.63e6), '2.63 M Blinks');
+  assert.equal(W.fmtBlinks(1.82e9), '1.82 G Blinks');
+  assert.equal(W.fmtBlinks(NaN), '—');
+  assert.equal(W.fmtBlinks(Infinity), '—');
   // no exponent notation, however small the span
   assert.doesNotMatch(W.plain(4.5e-9), /e/);
   assert.equal(W.plain(0), '0');
-  assert.equal(W.fmtPerBeat(22.5), '22.50 cycles per beat');
-  assert.equal(W.fmtPerBeat(247.7), '247.7 cycles per beat');
-  assert.equal(W.fmtPerBeat(2229.4), '2,229 cycles per beat');
-  assert.equal(W.fmtPerBeat(1), '1 cycle per beat');
-  assert.equal(W.fmtPerBeat(1 / 7.77), '1 cycle per 7.77 beats');
-  assert.equal(W.fmtPerBeat(1 / 1.4e6), '1 cycle per 1.40 M beats');
-  assert.equal(W.fmtPerBeat(0), '—');
-  for (const r of rowsT) noLeak(W.fmtPerBeat(r.trueHz), `true rate of depth ${r.depth}`);
-  for (const b of [0.004, 0.0222, 0.1, 0.25, 1, 4, 13.5, 600, 4547, 1e7, 3e10]) noLeak(W.fmtBeats(b), `${b} beats`);
-  // the true rates keep their order: finer cycles come faster
-  const per = rowsT.map((r) => r.trueHz);
-  for (let i = 1; i < per.length; i++) assert.ok(per[i] > per[i - 1]);
+  for (const b of [0.004, 0.0222, 0.1, 0.25, 1, 4, 13.5, 600, 4547, 1e7, 3e10]) noLeak(W.fmtBlinks(b), `${b} Blinks`);
+  // device seconds -> Blinks: 1 Blink is the ν cycle at real time (0.311 s)
+  const blink = pure.blinkSeconds();
+  assert.equal(W.blinkSpan(pure, blink), '1 Blink');
+  assert.equal(W.blinkSpan(pure, 4 * blink), '4 Blinks');
+  assert.equal(W.blinkSpan(pure, blink / 2), '0.5 Blinks');
+  assert.equal(W.blinkSpan(pure, 4), '12.9 Blinks', 'the normal default of the tempo lock, 4 s');
+  assert.equal(W.blinkSpan(pure, 3 * 3600), `34${NN}735 Blinks`);
+  // the same words as the helper's own `blinks` below a thousand
+  for (const n of [0.5, 1, 3.5, 12, 36, 250]) assert.equal(W.blinkSpan(pure, pure.blinksToSeconds(n)), pure.blinks(pure.blinksToSeconds(n)));
 });
 
-test('pure wording: every depth is a whole number of ladder periods, written by the helper (pure.cycleLength)', () => {
+test('pure wording: every depth is a whole unit, written by the helper (pure.cycleLength)', () => {
   assert.deepEqual(
     rowsT.map((r) => pure.cycleLength(r.level)),
-    ['1α', '1β', '1γ', '2δ½', '2ε½', '2ζ½', '1η', '4ι', '1ι', '13λ', '1λ', '1μ', '1ν', '1ξ'],
+    ['1α', '1β', '1γ', '1δ', '1ε', '1ζ', '1η', '1θ', '1ι', '1κ', '1λ', '1μ', '1ν', '0.14ν'],
   );
-  // and the counts give the cycle's length back exactly (in Saros position units)
+  // and the counts give the cycle's length back exactly (in Saros position units); ξ is a decimal count of a Blink
   const len = new Map(pure.UNITS.map((u) => [u.sym, pure.unitPos(u)]));
   for (const r of rowsT) {
     const sum = pure.cycleLength(r.level)
       .split(' ')
-      .reduce((a, part) => a + Number.parseInt(part, 10) * len.get(part.replace(/^\d+/, '')), 0);
-    near(sum / (4 / Number(r.prefix)), 1, 1e-12, `depth ${r.depth}`);
+      .reduce((a, part) => a + Number.parseFloat(part) * len.get(part.replace(/^[\d.]+/, '')), 0);
+    near(sum / (4 / Number(r.prefix)), 1, r.depth === 14 ? 0.02 : 1e-12, `depth ${r.depth}`);
     // a zero part never adds information ("1η", not "1η 0ι"): the helper drops it, the panel does not re-trim
-    assert.doesNotMatch(pure.cycleLength(r.level), /(^| )0\D/, `depth ${r.depth}`);
+    assert.doesNotMatch(pure.cycleLength(r.level), /(^| )0[^.\d]/, `depth ${r.depth}`);
     noLeak(pure.cycleLength(r.level), `length of depth ${r.depth}`);
   }
-  // the words module has no length formatter of its own any more
+  // the words module has no length formatter of its own
   assert.equal(W.cycleLength, undefined);
 });
 
-test('pure wording: the spectrum is labelled by the octaves of the ground', () => {
+test('pure wording: the spectrum is labelled by the octaves of the ground, in pB and ratios', () => {
   const grid = W.octaveGrid(110, 40, 8000);
   // the lines of the A's of the normal mode (55 .. 3520), plus the one more octave that still fits the axis
   assert.deepEqual(grid.map((g) => g.f), [55, 110, 220, 440, 880, 1760, 3520, 7040]);
   assert.deepEqual(grid.map((g) => g.ratio), ['×½', '×1', '×2', '×4', '×8', '×16', '×32', '×64']);
   assert.deepEqual(grid.map((g) => g.offset), ['−1', '0', '+1', '+2', '+3', '+4', '+5', '+6']);
+  assert.deepEqual(grid.map((g) => g.pb), Array(8).fill(''), 'without a formatter there is no pitch text');
   assert.deepEqual(W.octaveGrid(55, 40, 8000).map((g) => g.f), [55, 110, 220, 440, 880, 1760, 3520, 7040]);
   assert.deepEqual(W.octaveGrid(220, 40, 8000).map((g) => g.offset), ['−2', '−1', '0', '+1', '+2', '+3', '+4', '+5']);
   assert.deepEqual(W.octaveGrid(1, 40, 80).map((g) => g.f), [64]);
   for (const base of [55, 110, 163.3, 220]) for (const g of W.octaveGrid(base, 40, 8000)) { noLeak(g.ratio, 'ratio'); noLeak(g.offset, 'offset'); assert.ok(g.f >= 40 && g.f <= 8000 * (1 + 1e-9)); }
+  // each line carries its pitch in pB (the axis' numbers: they double from line to line)
+  const pb = W.octaveGrid(110, 40, 8000, (hz) => W.pbOf(pure, hz)).map((g) => g.pb);
+  assert.deepEqual(pb, ['17.1 pB', '34.2 pB', '68.4 pB', '136.8 pB', '273.6 pB', '547.2 pB', `1${NN}094 pB`, `2${NN}189 pB`]);
+  for (const t of pb) noLeak(t, t);
   // the pitch ring: only every third spoke is named, in cents
   assert.deepEqual(Array.from({ length: 12 }, (_, k) => W.spokeLabel(k)), ['1/1', '', '', '300¢', '', '', '600¢', '', '', '900¢', '', '']);
 });
 
-test('pure wording: speed buttons are the helper\'s rateLabel (units per beat) and agree with the header', () => {
+test('pure wording: speed buttons are the helper\'s rateLabel (units per Blink) and agree with the header', () => {
   const buttons = W.rateButtons(pure);
-  assert.deepEqual(buttons.map((b) => b.label), ['Live', 'real time', 'λ', 'ι', 'η', 'ζ½', 'δ½', 'Pause', 'Reverse']);
-  assert.deepEqual(buttons.map((b) => b.unit), ['follow now', '', 'per beat', 'per beat', 'per beat', 'per beat', 'per beat', '', '']);
+  assert.deepEqual(buttons.map((b) => b.label), ['Live', 'real time', 'λ', 'ι', 'η', 'ζ', 'δ', 'Pause', 'Reverse']);
+  assert.deepEqual(buttons.map((b) => b.unit), ['follow now', '', 'per Blink', 'per Blink', 'per Blink', 'per Blink', 'per Blink', '', '']);
+  // the tooltip says what passes, in prose, by the unit's name
+  assert.deepEqual(
+    buttons.slice(2, 7).map((b) => b.tip),
+    ['One Flavon passes every Blink', 'One Preon passes every Blink', 'One Helion passes every Blink', 'One Hadron passes every Blink', 'One Atom passes every Blink'],
+  );
   // the keys are the rates of the header's speed select, read back exactly (the pressed state compares them with ===)
   for (const b of buttons.slice(1, 7)) {
     const say = `${b.label}${b.unit ? ' ' + b.unit : ''}`;
     assert.equal(pure.rateLabel(Number(b.key)), say, 'the words of a button are what the header says for the same rate');
     assert.ok(pure.RATES.some((x) => x.rate === Number(b.key) && x.label === say), b.label);
   }
-  // no bare multiplier on any button, whatever the unit
+  // no bare multiplier, no "beat" on any button, whatever the unit
   for (const b of buttons) {
     noLeak(`${b.label} ${b.unit} ${b.tip}`, b.key);
     assert.doesNotMatch(b.tip, /clock time/);
     assert.doesNotMatch(`${b.label} ${b.unit}`, /×|\d{3}/, `${b.key}: no ×N`);
   }
-  assert.deepEqual(W.RATE_BUTTON_UNITS.length, 5);
+  assert.deepEqual(W.RATE_BUTTON_UNITS, ['lambda', 'iota', 'eta', 'zeta', 'delta']);
 });
 
-test('pure wording: a tempo lock reads as a count of one unit per beat, never as a bare multiplier', () => {
+test('pure wording: a tempo lock is counted in Blinks and reads as a count of one unit per Blink, never as a bare multiplier', () => {
   const unitSec = new Map(pure.UNITS.map((u) => [u.sym, pure.unitSeconds(u)]));
+  const blink = pure.blinkSeconds();
   let n = 0;
   for (const depth of [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]) {
-    for (const beatsPerCycle of [0.25, 1, 4, 13.5, 60, 600]) {
-      const rate = tempoRate(model, depth, beatsPerCycle);
+    for (const blinks of [0.8, 1, 4, 12, 13.5, 60, 600, 1930]) {
+      const rate = tempoRate(model, depth, pure.blinksToSeconds(blinks));
       const say = pure.rateLabel(rate);
-      assert.match(say, /^(\d+(\.\d+)?)?(α|β|γ|δ½|ε½|ζ½|η|ι|λ|μ|ν|ξ) per beat$/, `depth ${depth} in ${beatsPerCycle}`);
+      assert.match(say, /^(real time|(\d+(\.\d+)?)?(α|β|γ|δ|ε|ζ|η|θ|ι|κ|λ|μ|ν) per Blink)$/, `depth ${depth} in ${blinks} Blinks`);
       assert.doesNotMatch(say, /×|,/, 'no bare multiplier, no digit grouping that looks like one');
-      noLeak(say, `lock ${depth}/${beatsPerCycle}`);
-      // the count is honest: count x unit lasts (within the 3 digits shown) as long as the rate says
-      const [, count, sym] = /^((?:\d+(?:\.\d+)?)?)(.+?) per beat$/.exec(say);
-      near(((count === '' ? 1 : Number(count)) * unitSec.get(sym)) / rate, 1, 0.006, say);
+      noLeak(say, `lock ${depth}/${blinks}`);
+      // the count is honest: count x unit lasts (within the 3 digits shown) as long as the clock moves per Blink
+      if (say !== 'real time') {
+        const [, count, sym] = /^((?:\d+(?:\.\d+)?)?)(.+?) per Blink$/.exec(say);
+        near(((count === '' ? 1 : Number(count)) * unitSec.get(sym)) / (rate * blink), 1, 0.006, say);
+      } else near(rate, 1, 0.005, 'real time is a rate of one');
       n++;
     }
   }
-  assert.equal(n, 78);
-  // the panel's own sentences are built from the helper's label and the beats of the lock
-  const rate = tempoRate(model, 7, 4);
-  assert.equal(pure.rateLabel(rate), '9ι per beat');
+  assert.equal(n, 104);
+  // the panel's own sentences are built from the helper's label and the Blinks of the lock: one η in 12 Blinks
+  const rate = tempoRate(model, 7, pure.blinksToSeconds(12));
+  assert.equal(pure.rateLabel(rate), '3ι per Blink');
+  const ti = tempoInfo(model, 7, rate);
   const lines = [
-    `${pure.rateLabel(rate)}: one η cycle lasts ${W.fmtBeats(tempoInfo(model, 7, rate).cycle)}; a quarter lasts ${W.fmtBeats(tempoInfo(model, 7, rate).beat)}.`,
-    `Tempo locked: one η cycle = ${W.fmtBeats(4)} (${pure.rateLabel(rate)})`,
+    `${pure.rateLabel(rate)}: one η cycle lasts ${W.blinkSpan(pure, ti.cycle)}; a quarter lasts ${W.blinkSpan(pure, ti.beat)}.`,
+    `Tempo locked: one η cycle = ${W.blinkSpan(pure, pure.blinksToSeconds(12))} (${pure.rateLabel(rate)})`,
     `Tempo unlocked. The speed stays at ${pure.rateLabel(rate)} until you change it.`,
   ];
-  assert.equal(lines[0], '9ι per beat: one η cycle lasts 4 beats; a quarter lasts 1 beat.');
-  for (const l of lines) { noLeak(l, l); assert.doesNotMatch(l, /×4/); }
-  // a lock of one cycle in one beat is exactly a named preset
-  assert.equal(pure.rateLabel(tempoRate(model, 7, 1)), 'η per beat');
-  assert.equal(pure.rateLabel(tempoRate(model, 9, 1)), 'ι per beat');
-  assert.equal(pure.rateLabel(-tempoRate(model, 9, 1)), 'ι per beat backward');
+  assert.equal(lines[0], '3ι per Blink: one η cycle lasts 12 Blinks; a quarter lasts 3 Blinks.');
+  assert.equal(lines[1], 'Tempo locked: one η cycle = 12 Blinks (3ι per Blink)');
+  for (const l of lines) { noLeak(l, l); assert.doesNotMatch(l, /×\d/); }
+  // clean locks are exactly named presets: one η in 36 Blinks is one ι per Blink, one ζ in 11 Blinks one η per Blink,
+  // one η in 58 500 Blinks is real time itself
+  assert.equal(pure.rateLabel(tempoRate(model, 7, pure.blinksToSeconds(36))), 'ι per Blink');
+  assert.equal(pure.rateLabel(tempoRate(model, 6, pure.blinksToSeconds(11))), 'η per Blink');
+  assert.equal(pure.rateLabel(tempoRate(model, 7, pure.blinksToSeconds(58500))), 'real time');
+  assert.equal(pure.rateLabel(tempoRate(model, 9, pure.blinksToSeconds(1625))), 'real time');
+  // backwards: the same words and "backward"; one ι lasts 1 625 Blinks at real time, so 65 Blinks is λ per Blink... times 25 slower
+  assert.equal(pure.rateLabel(-tempoRate(model, 9, pure.blinksToSeconds(65))), 'λ per Blink backward');
+});
+
+test('pure wording: the number box of the tempo lock converts Blinks <-> stored seconds, with clean defaults and equal limits', () => {
+  const D = DEFAULT_SETTINGS.tempo.seconds; // 4 s, the normal default
+  assert.equal(W.TEMPO_DEFAULT_BLINKS, 12);
+  assert.equal(W.tempoBlinks(pure, D, D), 12, 'the untouched default reads as a clean number of Blinks');
+  // a box value converts exactly, and back (no drift): 12, 36, 0.8, 1930, 13.5
+  for (const blinks of [0.8, 1, 12, 13.5, 36, 600, 1930]) {
+    const sec = pure.blinksToSeconds(blinks);
+    assert.equal(W.tempoBlinks(pure, sec, D), blinks, `${blinks} Blinks round trip`);
+    near(pure.secondsToBlinks(sec), blinks, blinks * 1e-12);
+  }
+  // 12 Blinks is 3.73 s and 3ι per Blink: it is not the default (4 s = 12.9 Blinks), so it shows its own number
+  near(pure.blinksToSeconds(12), 3.731, 0.001);
+  assert.equal(W.tempoBlinks(pure, 4.0001, D), 12.9);
+  assert.equal(W.tempoBlinks(pure, 0.25, D), 0.804);
+  assert.equal(W.tempoBlinks(pure, 600, D), 1930);
+  // the limits of the box are the stored limits: [0.25 s, 600 s]
+  const [lo, hi] = W.tempoBlinkLimits(pure, LIMITS.tempoSeconds);
+  assert.deepEqual([lo, hi], [0.8, 1930]);
+  near(pure.blinksToSeconds(lo), LIMITS.tempoSeconds[0], 0.003);
+  near(pure.blinksToSeconds(hi), LIMITS.tempoSeconds[1], 0.2);
+  // what the box accepts is clamped by the settings exactly like seconds: 10 000 Blinks -> 600 s -> 1930 Blinks shown
+  const s = sanitize({ tempo: { depth: 7, seconds: pure.blinksToSeconds(10000) } });
+  assert.equal(s.tempo.seconds, 600);
+  assert.equal(W.tempoBlinks(pure, s.tempo.seconds, D), 1930);
+  assert.equal(sanitize({ tempo: { depth: 7, seconds: pure.blinksToSeconds(0.1) } }).tempo.seconds, 0.25);
+  // the default lock: one η in 12 Blinks is 3ι per Blink and a quarter is 3 Blinks (a clean read-out)
+  assert.equal(pure.rateLabel(tempoRate(model, 7, pure.blinksToSeconds(12))), '3ι per Blink');
 });
 
 test('pure wording: a glyph pair is spoken as two digits in the helper\'s words (never "13·0")', () => {
@@ -1713,54 +1810,68 @@ test('pure wording: a glyph pair is spoken as two digits in the helper\'s words 
   assert.equal(W.GLOSSARY_HINT, 'Press ? for the glossary.');
 });
 
-test('pure wording: floors and tempo are counted in beats', () => {
+test('pure wording: chime floors are counted in Blinks', () => {
   assert.deepEqual(
-    FLOORS.map((f) => W.floorLabel(f, f === 0.5 ? 'default' : '')),
-    ['0.05 beats', '0.12 beats', '0.25 beats', '0.5 beats · default', '1 beat'],
+    FLOORS.map((f) => W.floorLabel(pure, f, f === 0.5 ? 'default' : '')),
+    ['0.161 Blinks', '0.386 Blinks', '0.804 Blinks', '1.61 Blinks · default', '3.22 Blinks'],
   );
-  // a lock of one cycle of depth 7 in 4 beats is the rate the normal mode calls x4,547; pure mode counts it: 9 ι per beat
+  // a lock of one cycle of depth 7 in 4 s is the rate the normal mode calls x4,547; pure mode counts the lock in Blinks
   const rate = tempoRate(model, 7, 4);
   assert.equal(fmtRate(rate), '×4,547');
-  assert.equal(pure.rateLabel(rate), '9ι per beat');
+  assert.equal(pure.rateLabel(rate), '2.8ι per Blink');
   const ti = tempoInfo(model, 7, rate);
-  assert.equal(W.fmtBeats(ti.cycle), '4 beats');
-  assert.equal(W.fmtBeats(ti.beat), '1 beat'); // "a quarter lasts 1 beat"
+  assert.equal(W.blinkSpan(pure, ti.cycle), '12.9 Blinks');
+  assert.equal(W.blinkSpan(pure, ti.beat), '3.22 Blinks'); // "a quarter lasts 3.22 Blinks"
 });
 
 test('pure wording: every static text and every tooltip is free of Earth references', () => {
   for (const [h, p] of W.HOW) noLeak(`${h} ${p}`, h);
   for (const text of [W.CAPTION, W.LEGEND_MIXER, W.LEGEND_RHYTHM]) noLeak(plainText(text), text.slice(0, 30));
-  // "30 Hz" became "30 cycles per beat"; "beats" is the time word, so the musical beat of the normal wording is gone
-  assert.match(W.LEGEND_RHYTHM, /30 cycles per beat/);
-  assert.doesNotMatch(W.HOW.map((x) => x.join(' ')).join(' '), /Tempo lock turns quarters into beats/);
-  noLeak(plainText(W.physicalTip([[ 'ξ', 22.5 ], [ 'ο', 247.7 ], [ 'π', 2229.4 ], [ 'ρ', 8915.2 ]])), 'physical tip');
+  // "30 Hz" became "9 pB"; "beat" is not a word of pure mode any more (the quarters are pulses, real time is Blinks)
+  assert.match(W.LEGEND_RHYTHM, /Up to about 9 pB such a cycle/);
+  near(pure.perBlink(30), 9, 0.4, '30 Hz is about 9 pB');
+  const all = [...W.HOW.flat(), W.CAPTION, W.LEGEND_MIXER, W.LEGEND_RHYTHM].join(' ');
+  assert.doesNotMatch(all, /\bbeats?\b|per beat/i);
+  assert.doesNotMatch(all, /½|\bHz\b/);
+  assert.match(W.HOW.map((x) => x.join(' ')).join(' '), /one Blink is one ν cycle at real time/);
+  // the physical register names the true rates: whole numbers of pB
+  const tip = plainText(W.physicalTip(pure, [['ξ', 1 / model.levelInfo(13).meanSeconds], ['ο', 1 / model.levelInfo(14).meanSeconds], ['π', 1 / model.levelInfo(15).meanSeconds], ['ρ', 1 / model.levelInfo(16).meanSeconds]]));
+  assert.match(tip, new RegExp(`\\(ξ 7 pB, ο 77 pB, π 693 pB, ρ 2${NN}772 pB\\)`));
+  noLeak(tip, 'physical tip');
   // the tooltip of every voice, with a live reading and without (outside the catalogue)
   for (const r of rowsT) {
     const info = model.levelInfo(r.level);
     for (const live of [null, { phase: 0.3, loud: 0.62, state: 'falling' }, { phase: 0, loud: 0, state: 'rising' }, { phase: 0.9999, loud: 1, state: 'rising' }]) {
-      const html = W.voiceTip({ row: r, info, pure, live, int: fmtInt, color: '#fff' });
+      const html = W.voiceTip({ row: r, info, pure, live, int: pure.groupDigits, color: '#fff', hz: frequencyOf(r, 110) });
       noLeak(plainText(html), `tip of depth ${r.depth}`);
-      assert.doesNotMatch(plainText(html), /Hz|%|\b[A-G][#♯]?\d\b/);
+      assert.doesNotMatch(plainText(html), /Hz|%|\bbeats?\b|\b[A-G][#♯]?\d\b/);
       assert.equal((html.match(/class="pure-pair"/g) ?? []).length, live ? 2 : 0, 'phase and loudness are glyph pairs');
-      assert.match(html, new RegExp(`one cycle = ${pure.cycleLength(r.level)}`));
+      assert.match(html, new RegExp(`one cycle = ${pure.cycleLength(r.level).replace('.', '\\.')}`));
+      assert.match(plainText(html), /Placed .*: [\d. ]+ pB/, 'the placed pitch is in pB');
     }
   }
   assert.match(W.nowPure(pure, null), /^outside the catalogue$/);
 });
 
-test('pure wording: the voice tooltip teaches ratio, register and rate in Fractonica terms', () => {
+test('pure wording: the voice tooltip teaches ratio, register, pitch and rate in Fractonica terms', () => {
   const r = rowsT[4]; // epsilon, depth 5
-  const html = W.voiceTip({ row: r, info: model.levelInfo(4), pure, live: { phase: 0.3, loud: 0.5, state: 'falling' }, int: fmtInt, color: '#0ff' });
+  const html = W.voiceTip({ row: r, info: model.levelInfo(4), pure, live: { phase: 0.3, loud: 0.5, state: 'falling' }, int: pure.groupDigits, color: '#0ff', hz: frequencyOf(r, 110) });
   const text = plainText(html);
-  assert.match(text, /^ε depth 5 · one cycle = 2ε½ /);
-  assert.match(text, /1,625 such cycles fit in one α cycle/);
+  assert.match(text, /^ε depth 5 · one cycle = 1ε /);
+  assert.match(text, new RegExp(`1${NN}625 such cycles fit in one α cycle`));
   assert.match(text, /Folded into one octave: 1625\/1024 = ×1\.59 \(799\.5¢\)/);
-  assert.match(text, /Placed 1 octave above the ground, sounding at 3\.17 : 1 to α/);
-  assert.match(text, /True rate of this cycle: 1 cycle per 1\.40 M beats/);
+  assert.match(text, /Placed 1 octave above the ground: 108\.5 pB, sounding at 3\.17 : 1 to α/);
+  assert.match(text, new RegExp(`True rate of this cycle: 1 per 4${NN}504${NN}500 Blinks`));
   assert.match(text, /Now: phase \(falling\), loudness/);
-  const a = W.voiceTip({ row: rowsT[0], info: model.levelInfo(0), pure, live: null, int: fmtInt, color: '#0ff' });
+  const a = W.voiceTip({ row: rowsT[0], info: model.levelInfo(0), pure, live: null, int: pure.groupDigits, color: '#0ff', hz: 110 });
   assert.match(plainText(a), /The slowest cycle of the hierarchy is the ground itself: 1 : 1\./);
-  assert.match(plainText(a), /Placed in the ground octave$|Placed in the ground octave True rate/);
+  assert.match(plainText(a), /Placed in the ground octave: 34\.2 pB True rate/);
+  // the deepest cycles say their whole number
+  const xi = W.voiceTip({ row: rowsT[13], info: model.levelInfo(13), pure, live: null, int: pure.groupDigits, color: '#0ff', hz: frequencyOf(rowsT[13], 110) });
+  assert.match(plainText(xi), /one cycle = 0\.14ν/);
+  assert.match(plainText(xi), /True rate of this cycle: 7 pB/);
+  // without a pitch the sentence stays whole (no "undefined", no stray colon)
+  assert.doesNotMatch(plainText(W.voiceTip({ row: r, info: model.levelInfo(4), pure, live: null, int: pure.groupDigits, color: '#0ff' })), /undefined|NaN|: ,/);
 });
 
 test('pure wording: normal mode keeps its numbers (the pure helpers do not replace them)', () => {
@@ -1772,4 +1883,7 @@ test('pure wording: normal mode keeps its numbers (the pure helpers do not repla
   assert.equal(fmtDb(-18), '−18 dB');
   assert.equal(noteLabel(349.2), 'F4 ±0¢');
   assert.equal(rowsT[2].ratio, '65:64');
+  // the stored tempo is still seconds (the settings, the audio and the normal box)
+  assert.equal(DEFAULT_SETTINGS.tempo.seconds, 4);
+  assert.deepEqual(LIMITS.tempoSeconds, [0.25, 600]);
 });

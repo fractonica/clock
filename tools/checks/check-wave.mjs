@@ -1013,8 +1013,8 @@ const collectWave = (page) =>
     window.__canvasText = new Set();
     return items;
   })()`);
-/** The notation rule (src/core/pure.js): a half-cycle ordinal is "δ½#3", a counter "3η"; "δ½ 3" and "η 3" are the old spellings. */
-const OLD_NOTATION = /(?<![\d#])(?:[δεζ]½|[ηιλ]) \d/;
+/** The notation rule (src/core/pure.js): an ordinal is "δ#3", a counter "3η"; "δ 3" and "η 3" are the old spellings, and a half unit does not exist. */
+const OLD_NOTATION = /(?<![\d#])(?:[δεζηιλ]) \d|[αβγδεζηθικλμνξ]\u00bd/;
 const oldNotation = [];
 const waveScan = async (page, state) => {
   await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
@@ -1075,7 +1075,7 @@ async function pureCheck() {
         note(await waveScan(page, `hover ${sp.n} depth ${sel} solar ${solar}`));
         if (sp.n === 'pin' && sel === 5) {
           const tipText = (await page.locator('.wave-tip').innerText()).replace(/\n/g, ' | ');
-          ok('pure: the pin tooltip counts the drift in λ (drift −6 236λ style), says what it does, and names no reference', /Drift [−+]?[\d\u202f]+λ/.test(tipText) && /Drag the pin to travel within this sync/.test(tipText) && !/steady|civil|beat count/.test(tipText), tipText);
+          ok('pure: the pin tooltip counts the drift in λ (drift −6 236λ style), says what it does, and names no reference', /Drift [−+]?[\d\u202f]+λ/.test(tipText) && /Drag the pin to travel within this sync/.test(tipText) && !/steady|civil/.test(tipText), tipText);
         }
       }
       for (const selector of ['.wave-sun', '.wave-sun-svg', '.wave-sun-toggle', '.wave-lv-all', '.wave-lv[data-level="6"]', '.wave-lv[data-level="13"]', '[data-step="1"]', '[data-zoom="1"]', '.wave-r-fast', '.wave-r-cyc', '.wave-r-loop']) {
@@ -1209,7 +1209,7 @@ async function pureCheck() {
         const e1 = diff(back.dom, normal.dom);
         const e2 = diff(back.canvas, normal.canvas);
         ok(`${tag}: switching back (${via}) shows what a fresh normal load shows`, !e1.onlyA.length && !e1.onlyB.length && !e2.onlyA.length && !e2.onlyB.length, JSON.stringify({ e1, e2 }).slice(0, 600));
-        const stale = [...back.dom, ...back.canvas].filter((s) => /fracton|·\d|\d·|#\d+ |ζ½|ε½|δ½|\bη \d|beat|opening half|closing half|of 256/.test(s));
+        const stale = [...back.dom, ...back.canvas].filter((s) => /fracton|·\d|\d·|#\d+ |[α-ξ]\u00bd|\bη \d|\bBlinks?\b|Helion|opening half|closing half|of 256/.test(s));
         ok(`${tag}: nothing pure is left behind in normal mode (${via})`, stale.length === 0, stale.slice(0, 5).join(' || '));
       }
     }
@@ -1315,7 +1315,7 @@ async function pureCheck() {
   }, { viewport: { width: 1440, height: 900 } });
 
   // ---- verdict: the notation rule, then soft hits are only the clock's own words and numbers ---------------------
-  ok('pure: no old-style "δ½ 3" / "η 3" anywhere in the wave tab (ordinals are X#n, counters nX)', oldNotation.length === 0, '\n' + [...new Set(oldNotation)].slice(0, 8).join('\n'));
+  ok('pure: no old-style "δ 3" / "η 3" and no half unit anywhere in the wave tab (ordinals are X#n, counters nX)', oldNotation.length === 0, '\n' + [...new Set(oldNotation)].slice(0, 8).join('\n'));
   const odd = soft.filter((l) => !SOFT_OK(l));
   ok('pure: every soft hit is the clock\'s own base unit (Saros), the eclipse series or a sync number', odd.length === 0, '\n' + formatLeaks(odd, { soft: true }));
   console.log(`soft hits kept (${soft.length}): ${[...new Set(soft.map((l) => l.rule + ' "' + l.match + '"'))].slice(0, 12).join(', ')}`);

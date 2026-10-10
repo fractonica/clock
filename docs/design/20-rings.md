@@ -55,3 +55,22 @@ glyph (2-stroke, from the library) next to it. Dragging the cursor scrubs time w
 - Keyboard: ←/→ select shallower/deeper ring, `[`/`]` already step cycles globally.
 - Out of range: dial greyed with the catalogue range message.
 - Rendering must stay under ~3 ms: precompute geometry on resize/range change; per frame only draw arcs + text that changed.
+
+## Pure mode (revision 2: whole cycles, named units, the Blink)
+Same view, Fractonica terms only (docs/design/80-pure.md). Strings live in `src/ui/rings/pure-text.js`; `rings.js` asks the mode on every frame.
+
+- **Centre**: `ENDS IN 1θ 2ι 3κ` with `→ Eta Difracton` under it. Two non-zero counts (`pure.durationPos`), plus a third while it is steady
+  (never finer than λ: a λ or coarser changes at most every 7.8 s of real time); a compact dial and a span that leads with λ or finer have two.
+- **Quarter chips**: countdown (negative once passed: `−5θ 1κ`) and the place on the header clock (`ε#5 · ζ#4 · 0η 9ι`, the ordinals left to the header
+  while they do not change).
+- **Coordinates** (wave labels, chips, facts): the digits of the header clock: ordinals α β γ δ ε ζ, then the counters η ι λ and μ ν. θ and κ are
+  units of the ladder but not digits of the clock. The resolution follows the cycle it labels (a quarter is the step: an η cycle resolves to ι, a κ
+  cycle to λ); below one Blink (the ν and ξ rings) the ν counter has decimals (`3.2ν`, `3.43ν`) so the five boundaries still differ.
+- **Phase card**: the glyph pair (`phase 13 and 0 of 256`) instead of a percentage; Started / Ends as ordinals + counters + "→ the cycle that begins";
+  Length is the exact nominal length from `pure.cycleLength` and the unit's name (`1η (Helion)`, `1γ`, the ξ ring `0.14ν`); only a cycle clipped by
+  the catalogue is measured.
+- **Real time is counted in Blinks** (`blinkSpan`): "one turn takes about 325 Blinks" in the help, `about 58 500 Blinks per cycle` on a ring too
+  fast to follow. Whole numbers, because the ladder is a product of whole factors.
+- **Tooltips** name the cycle and its child (`Kappa Monofracton · ends → Kappa Difracton begins · lasts 1κ (Chromon) · started 1κ 8λ ago`).
+- **Help**: names from 1, counters from 0, spans are counts, the units have names (Helion, Preon, Flavon, Blink), real time is Blinks, glossary pointer.
+- Toolbar / depth-range / ring labels are depth chips (`η 7`) and need no translation.

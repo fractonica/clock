@@ -801,10 +801,12 @@ test('no user-visible string of the timeline says "level"', () => {
 
 
 // =====================================================================================================
-// Pure mode: the ruler of Fractonica units, its wording and tooltips (docs/design/80-pure.md)
+// Pure mode: the ruler of Fractonica units, its wording and tooltips (docs/design/80-pure.md, revision 2)
 //
-// Notation (src/core/pure.js): X#n is an ordinal, 1-based (ζ½#5, α#6); nX is a count of whole units gone by,
-// 0-based (the ruler tick "9η", the clock "0η 29ι 21λ"); "η 7" is only a depth chip.
+// One unit per depth, whole cycles only: α β γ δ ε ζ η θ ι κ λ μ ν (index 0..12), the Blink ν the finest.
+// Notation (src/core/pure.js): X#n is an ordinal, 1-based (ζ#5, α#6); nX is a count of whole units gone by,
+// 0-based (the ruler tick "9η", the clock "0η 29ι 21λ"); "η 7" is only a depth chip. A count runs inside the
+// atomic parent: η in ζ (11), ι in η (36), λ in ι (65), ν in λ (25); θ κ μ ride along (9 in η, 5 in ι, 5 in λ).
 // =====================================================================================================
 const pure = createPure(model, { now: () => T_A });
 const ruler = createRuler({ model, pure });
@@ -814,75 +816,108 @@ const randomInstants = (n, seed = 7) => {
   const r = lcg(seed);
   return Array.from({ length: n }, () => model.tMin + 1 + r() * (model.tMax - model.tMin - 2));
 };
-/** Hard rules of the leak scanner (tools/pure-scan.mjs): nothing Gregorian, Earth-unit or percentage. */
+/** Hard rules of the leak scanner (tools/pure-scan.mjs): nothing Gregorian, Earth-unit or percentage, no halves, no beats. */
 const hardLeaks = (text) => RULES.filter(([, re, sev]) => sev === 'hard' && re.test(text)).map(([id]) => id);
 const textOf = (html) => html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
-/** The spelling the ruler used before the notation rule: a unit letter, a space, a number ("η 9", "δ½ 3"), not a count ("4η 34ι"). */
-const OLD_SPELLING = /(?<!\d)(?:[ηιλμνξ]|[δεζ]½) \d/;
-/** Units per parent cycle (α: the catalogue's α count). */
+/** The spelling the ruler used before the notation rule: a unit letter, a space, a number ("η 9"), not a count ("4η 34ι"). */
+const OLD_SPELLING = /(?<!\d)[ηθικλμν] \d/;
+/** Units per counting parent (α: the catalogue's α count). */
 const parentSize = (u) => (u === 0 ? ruler.alphaCount : ruler.per[u]);
+const SYMS = ['α', 'β', 'γ', 'δ', 'ε', 'ζ', 'η', 'θ', 'ι', 'κ', 'λ', 'μ', 'ν'];
+const IDX = Object.fromEntries(SYMS.map((s, i) => [s, i]));
+/** The counters of the ladder that the clock and the date do not name, read from the exact model (levelAt). */
+function countersAt(t) {
+  const L = (l) => model.levelAt(t, l);
+  return { theta: L(7).local, kappa: L(9).local, mu: L(11).local, nu: L(11).local * 5 + L(12).local };
+}
 
-test('pure ruler: the unit ladder and the counts per parent', () => {
-  assert.deepEqual(ruler.units.map((u) => u.sym), ['α', 'β', 'γ', 'δ½', 'ε½', 'ζ½', 'η', 'ι', 'λ', 'μ', 'ν', 'ξ']);
-  // α is counted over the catalogue, then 5 β, 13 γ, 10 δ½, 5 ε½, 7 ζ½ ; 11 η in a depth-6 cycle, 36 ι in an η, 65 λ in an ι, 5 μ, 5 ν, 7 ξ
-  assert.deepEqual(ruler.per, [null, 5, 13, 10, 5, 7, 11, 36, 65, 5, 5, 7]);
+test('pure ruler: the unit ladder is one unit per depth, whole cycles, and the counts per parent', () => {
+  assert.deepEqual(ruler.units.map((u) => u.sym), SYMS);
+  assert.deepEqual(ruler.units.map((u) => u.level), [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], 'one unit per depth');
+  // α over the catalogue, then 5 β, 13 γ, 5 δ, 5 ε, 7 ζ, 11 η in a ζ; the atomic cadence ν -25-> λ -65-> ι -36-> η and
+  // the in-between units counted inside the same parent: 9 θ in an η, 5 κ in an ι, 5 μ in a λ
+  assert.deepEqual(ruler.per, [null, 5, 13, 5, 5, 7, 11, 9, 36, 5, 65, 5, 25]);
+  assert.deepEqual(ruler.countedIn.map((i) => (i === null ? '-' : SYMS[i])), ['-', 'α', 'β', 'γ', 'δ', 'ε', 'ζ', 'η', 'η', 'ι', 'ι', 'λ', 'λ']);
   assert.equal(ruler.alphaCount, 18);
-  near(ruler.sec[5] / 3600, 27.79, 0.02, 'a ζ½ is about a day and three hours');
-  near(ruler.sec[3] / 86400, 40.525, 0.01);
+  assert.deepEqual(ruler.mainChain.map((i) => SYMS[i]), ['α', 'β', 'γ', 'δ', 'ε', 'ζ', 'η', 'ι', 'λ', 'ν'], 'θ κ μ sit between the steps of the chain');
+  assert.deepEqual([IDX.θ, IDX.κ, IDX.μ].map(ruler.isInBetween), [true, true, true]);
+  // each unit is a whole number of the next finer one (the ladder is a product of whole factors)
+  for (let i = 1; i < 13; i++) near(ruler.len[i - 1] / ruler.len[i], Math.round(ruler.len[i - 1] / ruler.len[i]), 1e-9, `${SYMS[i - 1]} = whole ${SYMS[i]}`);
+  near(ruler.len[IDX.η] / ruler.len[IDX.ι], 36, 1e-9);
+  near(ruler.len[IDX.ι] / ruler.len[IDX.λ], 65, 1e-9);
+  near(ruler.len[IDX.λ] / ruler.len[IDX.ν], 25, 1e-9);
+  near(ruler.sec[IDX.η] / 3600, 5.05, 0.01, 'a Helion is about five hours (never shown)');
+  near(ruler.sec[IDX.ν], pure.blinkSeconds(), 1e-12, 'the finest unit is the Blink');
+  near(ruler.sec[IDX.ν], 0.311, 0.001);
 });
 
-test('pure ruler: tokens are ordinals (α β γ δ½ ε½ ζ½, from 1) and counts (η ι λ μ ν ξ, from 0), never "η 9"', () => {
-  assert.deepEqual([0, 1, 2, 3, 4, 5].map((u) => ruler.tokenText(u, 5)), ['α#5', 'β#5', 'γ#5', 'δ½#5', 'ε½#5', 'ζ½#5']);
-  assert.deepEqual([6, 7, 8, 9, 10, 11].map((u) => ruler.tokenText(u, 9)), ['9η', '9ι', '9λ', '9μ', '9ν', '9ξ']);
+test('pure ruler: tokens are ordinals (α β γ δ ε ζ, from 1) and counts (η θ ι κ λ μ ν, from 0), never "η 9"', () => {
+  assert.deepEqual([0, 1, 2, 3, 4, 5].map((u) => ruler.tokenText(u, 5)), ['α#5', 'β#5', 'γ#5', 'δ#5', 'ε#5', 'ζ#5']);
+  assert.deepEqual([6, 7, 8, 9, 10, 11, 12].map((u) => ruler.tokenText(u, 9)), ['9η', '9θ', '9ι', '9κ', '9λ', '9μ', '9ν']);
   // the counter of the unit with global index idx: ordinals add 1, counts do not
   assert.equal(ruler.counterOf(0, 5), 6);
   assert.equal(ruler.counterOf(2, 13), 1, 'the 14th γ is the 1st of the next β');
-  assert.equal(ruler.counterOf(6, 11), 0, 'the 12th η is the first of the next ζ cycle: 0 whole η have gone by');
+  assert.equal(ruler.counterOf(6, 11), 0, 'the 12th η is the first of the next ζ: 0 whole η have gone by');
   assert.equal(ruler.counterOf(6, 10), 10);
+  assert.equal(ruler.counterOf(IDX.ι, 36), 0, 'ι is counted inside η: the 37th is the first of the next');
+  assert.equal(ruler.counterOf(IDX.θ, 9), 0);
+  assert.equal(ruler.counterOf(IDX.ν, 49), 24);
   // groups are written as pure.stamp writes them: α β γ and η ι λ … side by side, the rest after a middle dot
-  const toks = ruler.tokensAtTime(T_A, 0, 11);
+  const toks = ruler.tokensAtTime(T_A, 0, 12);
+  const d = pure.date(T_A);
   assert.equal(ruler.joinTokens(toks.slice(0, 3)), 'α#6 β#4 γ#9');
-  assert.equal(ruler.joinTokens(toks.slice(2, 5)), `γ#9 · δ½#${pure.date(T_A).delta} · ε½#${pure.date(T_A).epsilon}`);
-  assert.match(ruler.joinTokens(toks.slice(5, 9)), /^ζ½#\d · \d+η \d+ι \d+λ$/);
-  assert.doesNotMatch(ruler.stampText(T_A, 11), OLD_SPELLING, 'no letter-then-number counters any more');
+  assert.equal(ruler.joinTokens(toks.slice(2, 5)), `γ#9 · δ#${d.delta} · ε#${d.epsilon}`);
+  assert.match(ruler.joinTokens(toks.slice(5, 9)), /^ζ#\d · \d+η \d+ι \d+λ$/);
+  assert.doesNotMatch(ruler.stampText(T_A, 12), OLD_SPELLING, 'no letter-then-number counters any more');
 });
 
 test('pure ruler: addresses are exactly the pure stamp, counters are exactly the pure clock and date', () => {
   const upTo = ['alpha', 'beta', 'gamma', 'delta', 'epsilon', 'zeta', 'eta', 'iota', 'lambda'];
+  const idx = [0, 1, 2, 3, 4, 5, 6, 8, 10]; // (θ κ μ have no stamp name: they are not written in the chain)
   for (const t of randomInstants(1500)) {
-    upTo.forEach((name, i) => assert.equal(ruler.stampText(t, i), pure.stamp(t, name), `${name} @${t}`));
+    upTo.forEach((name, i) => assert.equal(ruler.stampText(t, idx[i]), pure.stamp(t, name), `${name} @${t}`));
     const c = pure.clock(t);
-    const d = pure.date(t);
-    const toks = ruler.tokensAtTime(t, 0, 8);
-    assert.deepEqual(toks.slice(0, 6).map((x) => x.c), [d.alpha, d.beta, d.gamma, d.delta, d.epsilon, d.zeta]);
+    const dd = pure.date(t);
+    const toks = ruler.tokensAtTime(t, 0, 10);
+    assert.deepEqual(toks.map((x) => x.u), [0, 1, 2, 3, 4, 5, 6, 8, 10], 'the chain skips θ κ μ');
+    assert.deepEqual(toks.slice(0, 6).map((x) => x.c), [dd.alpha, dd.beta, dd.gamma, dd.delta, dd.epsilon, dd.zeta]);
     assert.deepEqual(toks.slice(6).map((x) => x.c), [c.eta, c.iota, c.lambda]);
+    // the in-between units and the Blink continue the same notation, counted inside their parent
+    const all = ruler.tokensOf(t, [IDX.θ, IDX.κ, IDX.μ, IDX.ν]).map((x) => x.c);
+    const x = countersAt(t);
+    assert.deepEqual(all, [x.theta, x.kappa, x.mu, x.nu], `θ κ μ ν @${t}`);
+    assert.deepEqual(all.slice(0, 2), [Math.floor(c.iota / 4), Math.floor(c.lambda / 13)], 'θ is every 4th ι, κ every 13th λ');
   }
-  // the finest units continue the same notation: counts of whole units, from 0
-  assert.match(ruler.stampText(T_A, 11), / · \d+η \d+ι \d+λ [0-4]μ [0-4]ν [0-6]ξ$/);
-  assert.equal(ruler.stampText(model.tMax + 5, 7), '');
-  assert.equal(ruler.flagText(model.tMin - 5, 7), '');
+  // an in-between unit is written at its place, only when it is asked for
+  assert.match(ruler.stampText(T_A, 12), / · \d+η \d+ι \d+λ [0-9]+ν$/);
+  assert.match(ruler.stampText(T_A, IDX.θ), / · \d+η \d+θ$/);
+  assert.match(ruler.stampText(T_A, IDX.κ), / · \d+η \d+ι \d+κ$/);
+  assert.match(ruler.stampText(T_A, IDX.μ), / · \d+η \d+ι \d+λ \d+μ$/);
+  assert.equal(ruler.stampText(model.tMax + 5, 8), '');
+  assert.equal(ruler.flagText(model.tMin - 5, 8), '');
   assert.deepEqual(ruler.tokensAtTime(model.tMin - 5), []);
 });
 
 test('pure ruler: near a boundary the ruler reads exactly what the header reads (REGRESSION: EPS = 1e-9 of a unit read the next one up to 2.3 s early)', () => {
   // (before: ruler.stampText(β boundary - 3 ms) was "α#7 β#1 γ#1 … ι 35 · λ 64": the coarse counters ahead, the fine ones behind)
-  const grid = [[0, 7], [1, 31], [2, 100], [3, 400], [4, 2000], [5, 10000], [6, 50000], [7, 700000], [8, 3000000]];
+  const grid = [[0, 7], [1, 31], [2, 100], [3, 400], [4, 2000], [5, 10000], [6, 50000], [7, 400000], [8, 700000], [10, 3000000]];
   for (const [u, k] of grid) {
     const b = ruler.startTime(u, k);
     assert.ok(b !== null);
     for (const d of [0.0004, 0.001, 0.003, 0.02, 0.5, 2.5, 5]) {
       for (const t of [b - d, b + d]) {
-        assert.equal(ruler.stampText(t, 8), pure.stamp(t, 'lambda'), `unit ${u} #${k} ${d < 1 ? d * 1000 + ' ms' : d + ' s'} ${t < b ? 'before' : 'after'}`);
-        assert.equal(ruler.flagText(t, 7), ruler.stampText(t, 8).split(' · ').at(-1), 'the flag is the tail of the stamp');
+        assert.equal(ruler.stampText(t, 10), pure.stamp(t, 'lambda'), `unit ${u} #${k} ${d < 1 ? d * 1000 + ' ms' : d + ' s'} ${t < b ? 'before' : 'after'}`);
+        assert.equal(ruler.flagText(t, 8), ruler.stampText(t, 10).split(' · ').at(-1), 'the flag is the tail of the stamp');
+        assert.equal(ruler.flagText(t, 8), pure.clockText(t).split('·').map((x, i) => x + 'ηιλ'[i]).join(' '), 'and the header clock');
       }
     }
   }
   // never a mixed reading: once the β counter has moved on, so has every finer counter
   const b = ruler.startTime(1, 30);
-  const before = ruler.tokensAtTime(b - 0.003, 0, 8).map((x) => x.c);
-  const after = ruler.tokensAtTime(b + 0.003, 0, 8).map((x) => x.c);
-  assert.deepEqual(after.slice(3), [1, 1, 1, 0, 0, 0], 'a new β begins at δ½ 1, ε½ 1, ζ½ 1 and 0 whole η, ι, λ');
-  assert.deepEqual(before.slice(3), [10, 5, 7, 10, 35, 64], 'and 3 ms before it everything is on its last');
+  const before = ruler.tokensAtTime(b - 0.003, 0, 10).map((x) => x.c);
+  const after = ruler.tokensAtTime(b + 0.003, 0, 10).map((x) => x.c);
+  assert.deepEqual(after.slice(3), [1, 1, 1, 0, 0, 0], 'a new β begins at δ 1, ε 1, ζ 1 and 0 whole η, ι, λ');
+  assert.deepEqual(before.slice(3), [5, 5, 7, 10, 35, 64], 'and 3 ms before it everything is on its last');
   // the position-based reader has an absolute tolerance too: 1e-9 Saros is 0.6 s, not "a unit of α"
   assert.equal(ruler.indexAtPos(0, 12 - 1e-9), 2);
   assert.equal(ruler.indexAtPos(0, 12), 3);
@@ -891,44 +926,56 @@ test('pure ruler: near a boundary the ruler reads exactly what the header reads 
   assert.equal(ruler.indexAtPos(1, 4), 5);
 });
 
-test('pure ruler: the three-unit flag centres on the tick unit', () => {
-  assert.equal(ruler.flagText(T_A, 7), ruler.chainAtTime(T_A, 6, 8));
-  assert.equal(ruler.flagText(T_A, 0), ruler.chainAtTime(T_A, 0, 2), 'α has no coarser neighbour');
-  assert.equal(ruler.flagText(T_A, 11), ruler.chainAtTime(T_A, 9, 11), 'ξ has no finer neighbour');
-  assert.match(ruler.flagText(T_A, 7), /^\d+η \d+ι \d+λ$/);
-  assert.match(ruler.flagText(T_A, 5), /^ε½#\d · ζ½#\d · \d+η$/);
-  assert.match(ruler.flagText(T_A, 3), /^γ#9 · δ½#\d+ · ε½#\d$/);
-  assert.match(ruler.flagText(T_A, 1), /^α#6 β#4 γ#9$/, 'α β γ stand side by side, like in the pure stamp');
-  for (let u = 0; u < 12; u++) assert.ok(ruler.flagText(T_A, u).split(' · ').length <= 3 && ruler.flagText(T_A, u).length <= 24, `flag ${u}: ${ruler.flagText(T_A, u)}`);
+test('pure ruler: the three-unit flag is the tick unit with the chain units around it (the header counters appear where the ticks have them)', () => {
+  const sym = (u) => ruler.flagUnits(u).map((i) => SYMS[i]).join('');
+  assert.deepEqual(Array.from({ length: 13 }, (_, u) => sym(u)), ['αβγ', 'αβγ', 'βγδ', 'γδε', 'δεζ', 'εζη', 'ζηι', 'ηθι', 'ηιλ', 'ικλ', 'ιλν', 'λμν', 'ιλν']);
+  assert.equal(ruler.flagText(T_A, IDX.ι), ruler.chainAtTime(T_A, 6, 10), 'ι ticks: η ι λ, the header clock');
+  assert.equal(ruler.flagText(T_A, IDX.ι), pure.clockText(T_A).split('·').map((x, i) => x + 'ηιλ'[i]).join(' '));
+  assert.equal(ruler.flagText(T_A, 0), 'α#6 β#4 γ#9', 'α has no coarser neighbour: α β γ side by side, like in the pure stamp');
+  assert.match(ruler.flagText(T_A, IDX.ν), /^\d+ι \d+λ \d+ν$/, 'ν has no finer neighbour');
+  assert.match(ruler.flagText(T_A, IDX.ζ), /^ε#\d · ζ#\d · \d+η$/);
+  assert.match(ruler.flagText(T_A, IDX.δ), /^γ#9 · δ#\d · ε#\d$/);
+  assert.match(ruler.flagText(T_A, IDX.θ), /^\d+η \d+θ \d+ι$/);
+  assert.match(ruler.flagText(T_A, IDX.κ), /^\d+ι \d+κ \d+λ$/);
+  assert.match(ruler.flagText(T_A, IDX.μ), /^\d+λ \d+μ \d+ν$/);
+  for (let u = 0; u < 13; u++) assert.ok(ruler.flagText(T_A, u).split(' · ').length <= 3 && ruler.flagText(T_A, u).length <= 24, `flag ${u}: ${ruler.flagText(T_A, u)}`);
+  // how far a tooltip's address runs on: two chain units below the tick unit, the tick unit itself kept
+  assert.deepEqual([IDX.ι, IDX.θ, IDX.ζ, IDX.ν, IDX.μ].map((u) => ruler.below(u, 2)), [IDX.ν, IDX.λ, IDX.ι, IDX.ν, IDX.ν]);
+  assert.deepEqual(ruler.unitsTo(IDX.λ, [IDX.θ]).map((i) => SYMS[i]).join(''), 'αβγδεζηθιλ');
 });
 
-test('pure ruler: steps ascend, a multiple fits twice in its parent, minors are finer, no hole in the ladder', () => {
+test('pure ruler: steps ascend, a multiple fits twice in its parent, minors are finer, every unit has a step, no hole in the ladder', () => {
   const S = ruler.STEPS;
   assert.equal(new Set(S.map((s) => s.id)).size, S.length);
   for (let i = 1; i < S.length; i++) {
     assert.ok(S[i].nominal > S[i - 1].nominal, S[i].id);
     // consecutive steps are at most 2.6 apart: that is what keeps 4 to 12 labels on the plot at every zoom
-    // (ξ itself is never a labelled step: 2 s across is the narrowest window)
-    if (S[i - 1].id !== 'xi') assert.ok(S[i].nominal / S[i - 1].nominal <= 2.61, `${S[i - 1].id} → ${S[i].id}: ×${(S[i].nominal / S[i - 1].nominal).toFixed(2)}`);
+    assert.ok(S[i].nominal / S[i - 1].nominal <= 2.61, `${S[i - 1].id} → ${S[i].id}: ×${(S[i].nominal / S[i - 1].nominal).toFixed(2)}`);
   }
+  assert.deepEqual([...new Set(S.map((s) => s.sym))].reverse(), SYMS, 'all thirteen units have a step');
   for (const s of S) {
     assert.ok(s.pure && s.chars > 0 && s.charsShort > 0 && s.charsShort <= s.chars);
     assert.equal(s.ctx, s.u - 1, `${s.id}: the context row is the next coarser unit`);
     // m need not divide the count (13 γ make a β): it must fit twice, so a parent has a labelled tick besides its start
     if (s.m > 1) assert.ok(2 * s.m <= parentSize(s.u), `${s.id}: 2·${s.m} <= ${parentSize(s.u)}`);
     const m = ruler.minorStepOf(s);
-    if (s.id === 'xi') assert.equal(m, null);
-    else {
-      assert.ok(m && m.nominal < s.nominal, `minor of ${s.id}`);
-      if (s.m > 1) assert.ok(m.u === s.u && s.m % m.m === 0, `${s.id}: its minor ${m.id} is a divisor, so its ticks include the labelled ones`);
-    }
+    assert.ok(m && m.nominal < s.nominal, `minor of ${s.id}`);
+    if (s.m > 1) assert.ok(m.u === s.u && s.m % m.m === 0, `${s.id}: its minor ${m.id} is a divisor, so its ticks include the labelled ones`);
   }
-  assert.equal(ruler.stepById('iota×6').m, 6);
+  assert.equal(ruler.stepById('iota×2').m, 2);
   assert.equal(ruler.stepById('nope'), null);
   assert.ok(ruler.stepById('gamma×2') && ruler.stepById('gamma×3') && ruler.stepById('gamma×6'), 'γ has multiples');
-  assert.ok(ruler.stepById('beta×2') && ruler.stepById('epsilon-half×2') && ruler.stepById('zeta-half×3'));
-  assert.equal(ruler.stepById('epsilon-half×3'), null, '3 does not fit twice in 5');
+  assert.ok(ruler.stepById('beta×2') && ruler.stepById('epsilon×2') && ruler.stepById('zeta×3') && ruler.stepById('theta×4') && ruler.stepById('eta×5'));
+  assert.equal(ruler.stepById('epsilon×3'), null, '3 does not fit twice in 5');
   assert.equal(ruler.stepById('beta×3'), null, '3 does not fit twice in 5');
+  assert.equal(ruler.stepById('theta×5'), null, '5 does not fit twice in 9');
+  // the finest unit has nothing finer on the ladder: its minor ticks are tenths of a Blink, not a step to pick
+  const tenth = ruler.minorStepOf(ruler.stepById('nu'));
+  assert.equal(tenth.id, 'nu/10');
+  assert.equal(tenth.div, 10);
+  near(tenth.nominal * 10, ruler.sec[IDX.ν], 1e-12);
+  assert.ok(!S.some((s) => s.id === 'nu/10'), 'never a labelled step');
+  assert.equal(ruler.minorStepOf(tenth), null);
 });
 
 test('pure ruler: pickStep leaves room, never shows more than 12 labels, and coarsens monotonically', () => {
@@ -946,15 +993,16 @@ test('pure ruler: pickStep leaves room, never shows more than 12 labels, and coa
     }
   }
   // typical zooms across 1000 px
-  assert.equal(ruler.pickStep(1000 / ruler.sec[6], 1000).u, 7, 'an η-wide window is labelled in ι');
-  assert.equal(ruler.pickStep(1000 / (3 * ruler.sec[5]), 1000).u, 6, 'three ζ½ across: labelled in η');
+  assert.equal(ruler.pickStep(1000 / ruler.sec[IDX.η], 1000).u, IDX.θ, 'an η-wide window is labelled in θ (nine ticks)');
+  assert.equal(ruler.pickStep(1000 / ruler.sec[IDX.ι], 1000).u, IDX.κ, 'an ι-wide window: κ');
+  assert.equal(ruler.pickStep(1000 / (3 * ruler.sec[IDX.ζ]), 1000).id, 'eta×3', 'three ζ across: labelled in every third η');
   assert.equal(ruler.pickStep(1000 / (model.tMax - model.tMin), 1000).id, 'alpha×2', 'the whole catalogue across 1000 px: 8 labels, not 18');
-  assert.equal(ruler.pickStep(1000 / 2, 1000).u, 10, 'the narrowest window (2 s) is labelled in ν');
+  assert.equal(ruler.pickStep(1000 / 2, 1000).u, IDX.ν, 'the narrowest window (2 s, six Blinks) is labelled in ν');
 });
 
 test('pure ruler: every zoom shows between 4 and 12 labelled ticks (REGRESSION: one label around the β zoom)', () => {
   const cat = model.tMax - model.tMin;
-  const widths = [1820, 1250, 700];
+  const widths = [1820, 1250, 700, 520];
   const tally = new Map();
   for (const plotW of widths) {
     for (let e = Math.log10(lim.minSpan); e <= Math.log10(lim.maxSpan); e += 0.05) {
@@ -970,14 +1018,14 @@ test('pure ruler: every zoom shows between 4 and 12 labelled ticks (REGRESSION: 
       }
     }
   }
-  // the β zoom itself, the case that read one label: γ multiples carry it now
+  // the β zoom itself, the case that read one label: γ multiples carry it
   const beta = ruler.presetSpan('u:beta', lim, T_A);
   const step = ruler.pickStep(1250 / beta, 1250);
-  assert.equal(step.u, 2, 'at the β preset the ticks are γ');
+  assert.equal(step.u, IDX.γ, 'at the β preset the ticks are γ');
   const n = ruler.ticksIn(step, T_A - beta / 2, T_A + beta / 2).length;
   assert.ok(n >= 5 && n <= 12, `${n} labelled ticks at β`);
-  // and every labelled step of the ladder is used by some zoom (ξ only draws the minor ticks of ν: 2 s is the narrowest window)
-  for (const s of ruler.STEPS) if (s.id !== 'xi') assert.ok(tally.has(s.id), `${s.id} is used`);
+  // and every step of the ladder is used by some zoom
+  for (const s of ruler.STEPS) assert.ok(tally.has(s.id), `${s.id} is used`);
 });
 
 test('pure ruler: ticks sit on the unit boundaries and carry the counters the pure date and clock show there', () => {
@@ -1014,45 +1062,34 @@ test('pure ruler: ticks sit on the unit boundaries and carry the counters the pu
         const t = tk.t + 0.001;
         const c = pure.clock(t);
         const d = pure.date(t);
-        const want = { 3: d.delta, 4: d.epsilon, 5: d.zeta, 6: c.eta, 7: c.iota, 8: c.lambda }[s.u];
-        if (want !== undefined) assert.equal(tk.counter, want, `${s.id} at ${tk.t}`);
-        if (s.u === 2) assert.equal(tk.counter, d.gamma);
-        if (s.u === 1) assert.equal(tk.counter, d.beta);
-        if (s.u === 0) assert.equal(tk.counter, d.alpha);
+        const x = countersAt(t);
+        const want = { 0: d.alpha, 1: d.beta, 2: d.gamma, 3: d.delta, 4: d.epsilon, 5: d.zeta, 6: c.eta, 7: x.theta, 8: c.iota, 9: x.kappa, 10: c.lambda, 11: x.mu, 12: x.nu }[s.u];
+        assert.equal(tk.counter, want, `${s.id} at ${tk.t}`);
       }
     }
   }
 });
 
-test('pure ruler: ticks coincide with the cycle boundaries the lanes draw (full units) and with the half cycles (δ½ ε½ ζ½)', () => {
+test('pure ruler: ticks coincide with the cycle boundaries the lanes draw, for every unit', () => {
   const data = createData({ model, fmt: utc, pure });
-  const cases = [['alpha', 0], ['beta', 1], ['gamma', 2], ['eta', 6], ['iota', 8], ['lambda', 10], ['mu', 11], ['nu', 12], ['xi', 13]];
-  for (const [id, level] of cases) {
-    const step = ruler.stepById(id);
-    const mean = model.levelInfo(level).meanSeconds;
+  for (const [u, sym] of SYMS.entries()) {
+    const step = ruler.stepById(ruler.units[u].id);
+    const mean = model.levelInfo(u).meanSeconds;
     const from = T_A - 5 * mean;
     const to = T_A + 5 * mean;
     const ticks = ruler.ticksIn(step, from, to);
-    const lanes = data.blocksFor(level, from, to).filter((b) => b.start >= from && b.start <= to);
-    assert.ok(ticks.length >= 8, id);
-    assert.deepEqual(ticks.map((x) => x.idx), lanes.map((b) => b.idx), `${id}: the same cycles start at the ticks and in the lane`);
-    ticks.forEach((tk, i) => near(tk.t, lanes[i].start, 1e-6, `${id} tick ${i}`));
-    // the ordinal of α β γ is the lane's 1-based number; the counts η ι λ … are 0-based, one less than the lane's
-    if (level <= 2) ticks.forEach((tk, i) => assert.equal(tk.counter, lanes[i].local + 1));
-    else ticks.forEach((tk, i) => assert.equal(tk.counter, lanes[i].idx % ruler.per[ruler.unitIndex(id)], `${id}: the count inside the parent`));
+    const lanes = data.blocksFor(u, from, to).filter((b) => b.start >= from && b.start <= to);
+    assert.ok(ticks.length >= 8, sym);
+    assert.deepEqual(ticks.map((x) => x.idx), lanes.map((b) => b.idx), `${sym}: the same cycles start at the ticks and in the lane`);
+    ticks.forEach((tk, i) => near(tk.t, lanes[i].start, 1e-6, `${sym} tick ${i}`));
+    // the ordinal of α … ζ is the lane's 1-based number inside its parent; the counts η … ν are 0-based inside theirs
+    if (u <= 5) ticks.forEach((tk, i) => assert.equal(tk.counter, lanes[i].local + 1));
+    else ticks.forEach((tk, i) => assert.equal(tk.counter, lanes[i].idx % ruler.per[u], `${sym}: the count inside the parent`));
   }
-  // half units: every second tick is the start of a cycle of the lane, the ones between are its middle (phase 0.5)
-  for (const [id, level] of [['delta-half', 3], ['epsilon-half', 4], ['zeta-half', 5]]) {
-    const step = ruler.stepById(id);
-    const mean = model.levelInfo(level).meanSeconds;
-    const ticks = ruler.ticksIn(step, T_A - 5 * mean, T_A + 5 * mean);
-    for (const tk of ticks) {
-      const phase = model.levelAt(tk.t + 0.001, level).phase;
-      near(phase, tk.idx % 2 === 0 ? 0 : 0.5, 1e-3, `${id} idx ${tk.idx} phase`);
-    }
-    // spacing is half a cycle in position
-    near(ruler.len[step.u] * 2, 4 / model.levelInfo(level).prefixNum, 1e-12);
-  }
+  // the in-between units are every 4th ι, 5th λ (13 of them make a κ) … : θ starts every ι that is a multiple of 4
+  const th = ruler.ticksIn(ruler.stepById('theta'), T_A, T_A + 20000);
+  const io = ruler.ticksIn(ruler.stepById('iota'), T_A, T_A + 20000);
+  for (const tk of th) assert.ok(io.some((x) => Math.abs(x.t - tk.t) < 1e-6 && x.counter % 4 === 0), `θ ${tk.counter} is an ι with a count divisible by 4`);
 });
 
 test('pure ruler: whole-catalogue ticks, nothing outside it, labels are the ordinal of the cycle', () => {
@@ -1063,20 +1100,25 @@ test('pure ruler: whole-catalogue ticks, nothing outside it, labels are the ordi
   assert.deepEqual(ruler.ticksIn(ruler.stepById('alpha×2'), model.tMin - 1e9, model.tMax + 1e9).map((x) => x.counter), [1, 3, 5, 7, 9, 11, 13, 15, 17]);
   assert.deepEqual(ruler.ticksIn(ruler.stepById('eta'), model.tMax + 100, model.tMax + 1e6), []);
   assert.deepEqual(ruler.ticksIn(ruler.stepById('eta'), model.tMin - 1e6, model.tMin - 100), []);
-  // ι ×6 inside an η is labelled 6ι 12ι 18ι 24ι 30ι (the start of the η itself is the previous tick), δ½ ×2 counts 1 3 5 7 9
+  // inside one η: ι ×2 is 2ι 4ι … 34ι (the start of the η itself is the previous tick), θ ×4 is 4θ, η ×5 inside a ζ is 5η
   const eta = model.levelAt(T_A, 6);
-  const six = ruler.ticksIn(ruler.stepById('iota×6'), eta.start + 0.01, eta.end - 0.01);
-  assert.deepEqual(six.map((x) => x.labels[0]), ['6ι', '12ι', '18ι', '24ι', '30ι']);
+  const two = ruler.ticksIn(ruler.stepById('iota×2'), eta.start + 0.01, eta.end - 0.01);
+  assert.deepEqual(two.map((x) => x.labels[0]), Array.from({ length: 17 }, (_, i) => `${2 * (i + 1)}ι`));
+  assert.deepEqual(ruler.ticksIn(ruler.stepById('theta×4'), eta.start + 0.01, eta.end - 0.01).map((x) => x.labels[0]), ['4θ']);
+  assert.deepEqual(ruler.ticksIn(ruler.stepById('theta'), eta.start, eta.end - 0.01).map((x) => x.labels[0]), Array.from({ length: 9 }, (_, i) => `${i}θ`));
+  const zeta = model.levelAt(T_A, 5);
+  assert.deepEqual(ruler.ticksIn(ruler.stepById('eta×5'), zeta.start + 0.01, zeta.end - 0.01).map((x) => x.labels[0]), ['5η']);
   const g = model.levelAt(T_A, 2);
-  assert.deepEqual(ruler.ticksIn(ruler.stepById('delta-half×2'), g.start + 1, g.end - 1).map((x) => x.labels[0]), ['δ½#3', 'δ½#5', 'δ½#7', 'δ½#9']);
+  assert.deepEqual(ruler.ticksIn(ruler.stepById('delta×2'), g.start + 1, g.end - 1).map((x) => x.labels[0]), ['δ#3']);
   // a multiple that does not divide the count restarts with every parent: γ×2 inside a β is γ#1 γ#3 … γ#11, never γ#13
   const beta = model.levelAt(T_A, 1);
   const g2 = ruler.ticksIn(ruler.stepById('gamma×2'), beta.start, beta.end - 0.01);
   assert.deepEqual(g2.map((x) => x.counter), [1, 3, 5, 7, 9, 11]);
+  assert.deepEqual(ruler.ticksIn(ruler.stepById('gamma×3'), beta.start, beta.end - 0.01).map((x) => x.counter), [1, 4, 7, 10]);
   assert.deepEqual(ruler.ticksIn(ruler.stepById('gamma×6'), beta.start, beta.end - 0.01).map((x) => x.counter), [1, 7]);
-  const two = ruler.ticksIn(ruler.stepById('gamma×2'), beta.start, beta.end + 0.5 * (beta.end - beta.start));
-  assert.equal(two[6].counter, 1, 'the next β starts with its own γ#1');
-  assert.ok(two[6].major && !two[1].major);
+  const next = ruler.ticksIn(ruler.stepById('gamma×2'), beta.start, beta.end + 0.5 * (beta.end - beta.start));
+  assert.equal(next[6].counter, 1, 'the next β starts with its own γ#1');
+  assert.ok(next[6].major && !next[1].major);
   // the last cycle: no tick at the closing instant
   const last = ruler.ticksIn(ruler.stepById('alpha'), model.tMax - 10, model.tMax);
   assert.deepEqual(last, []);
@@ -1110,6 +1152,10 @@ test('pure ruler: context spans tile the line and are named by the address of th
   assert.equal(clipped[0].t0, model.tMin);
   assert.equal(clipped[17].t1, model.tMax);
   assert.deepEqual(clipped[5].labels, ['α#6', '#6']);
+  // the row above ι ticks names the θ each one belongs to: its address carries the θ count, not an ι
+  const th = ruler.spansIn(IDX.θ, T_A, T_A + 5000)[0];
+  assert.match(th.labels[0], /^α#6 β#4 γ#9 · δ#\d · ε#\d · ζ#\d · \d+η \d+θ$/);
+  assert.match(th.labels.at(-1), /^\d+θ$/);
 });
 
 test('pure ruler: windows, spans and countdowns read in ladder units, measured in position', () => {
@@ -1117,43 +1163,57 @@ test('pure ruler: windows, spans and countdowns read in ladder units, measured i
   assert.equal(ruler.spanText(eta.start, eta.end), '1η');
   assert.equal(ruler.spanText(eta.start, eta.end, 1), '1η');
   const zeta = model.levelAt(T_A, 5);
-  assert.equal(ruler.spanText(zeta.start, zeta.end), '2ζ½', 'no "2ζ½ 0η": pure.durationPos drops trailing zeros itself');
-  assert.equal(ruler.spanText(T_A, T_A), '0ξ');
+  assert.equal(ruler.spanText(zeta.start, zeta.end), '1ζ', 'a whole cycle is one unit of its depth, no halves');
+  const eps = model.levelAt(T_A, 4);
+  assert.equal(ruler.spanText(eps.start, eps.end), '1ε');
+  assert.equal(ruler.spanText(T_A, T_A), '0ν');
   // windows that reach outside the catalogue are measured with the mean Saros length
   near(ruler.posExt(model.tMax + model.meanSaros) - ruler.posExt(model.tMax), 1, 1e-9);
   near(ruler.posExt(model.tMin - 2 * model.meanSaros), -2, 1e-9);
   near(ruler.timeExt(ruler.posExt(model.tMax + 1e8)), model.tMax + 1e8, 1e-3);
   near(ruler.timeExt(ruler.posExt(T_A)), T_A, 1e-6);
   assert.equal(ruler.spanText(model.tMin, model.tMax, 1), '17α');
-  // relative to a reference instant, exact in position
+  // relative to a reference instant, exact in position; counted in every unit, zero parts skipped
   assert.equal(ruler.relText(T_A, T_A), 'now');
   assert.equal(ruler.relText(eta.end, eta.start), 'in 1η');
   assert.equal(ruler.relText(eta.start, eta.end), '1η ago');
-  assert.match(ruler.relText(T_A + 3372, T_A), /^in 6ι 4\dλ$/);
+  assert.equal(ruler.relText(T_A + 3372, T_A), `in ${pure.between(T_A, T_A + 3372)}`);
+  assert.match(ruler.relText(T_A + 3372, T_A), /^in 1θ 2ι$/, 'θ and ι count too: 6.7 ι is 1θ 2ι');
   assert.equal(ruler.relText(T_A + 5000, T_A), `in ${pure.between(T_A, T_A + 5000)}`, 'the helper alone writes the duration');
+  // a window that is a few Blinks across, and spans below one Blink, read as decimal Blinks
+  assert.equal(ruler.spanText(T_A, T_A + 2), '1μ 1ν');
+  assert.equal(ruler.spanText(T_A, T_A + 0.05), '0.16ν');
+  assert.equal(ruler.spanText(T_A, T_A + 1), '3.2ν');
+  assert.equal(ruler.relText(T_A + 0.1, T_A), 'in 0.32ν');
+  assert.equal(ruler.relText(T_A - 0.1, T_A), '0.32ν ago');
+  assert.match(ruler.relText(T_A + 0.004, T_A), /^in 0\.013ν$/);
+  assert.equal(ruler.relText(T_A + 0.0004, T_A), 'now', 'within the same millisecond it is now');
   // the window text writes the shared leading part of both addresses once
-  const mid = ruler.rangeText(T_A - 3 * 3600, T_A + 10 * 3600, 7);
-  assert.match(mid, /^α#6 β#4 γ#9 · δ½#\d+ · ε½#\d · ζ½#\d · \d+η \d+ι → \d+η \d+ι$/);
-  const a = ruler.stampText(T_A - 3 * 3600, 7);
-  const b = ruler.stampText(T_A + 10 * 3600, 7);
+  const iota = IDX.ι;
+  const mid = ruler.rangeText(T_A - 3 * 3600, T_A + 10 * 3600, iota);
+  assert.match(mid, /^α#6 β#4 γ#9 · δ#\d+ · ε#\d · ζ#\d · \d+η \d+ι → \d+η \d+ι$/);
+  const a = ruler.stampText(T_A - 3 * 3600, iota);
+  const b = ruler.stampText(T_A + 10 * 3600, iota);
   assert.ok(a.startsWith(mid.split(' → ')[0]), 'the left edge is the head plus its own tail');
   assert.ok(b.endsWith(mid.split(' → ')[1]), 'the right edge keeps its own tail');
   // a window inside one η shares the counter of the η: it is written once, then the finer counters differ
-  const inside = ruler.rangeText(eta.start + 600, eta.start + 1500, 7);
-  assert.match(inside, /^α#6 β#4 γ#9 · δ½#\d+ · ε½#\d · ζ½#\d · \d+η \d+ι → \d+ι$/);
+  const inside = ruler.rangeText(eta.start + 600, eta.start + 1500, iota);
+  assert.match(inside, /^α#6 β#4 γ#9 · δ#\d+ · ε#\d · ζ#\d · \d+η \d+ι → \d+ι$/);
   assert.equal(ruler.rangeText(model.tMin - 1e6, model.tMax + 1e6, 3), 'the whole catalogue');
   assert.equal(ruler.rangeText(model.tMax + 1e6, model.tMax + 2e6, 3), 'after the catalogue');
   assert.equal(ruler.rangeText(model.tMin - 2e6, model.tMin - 1e6, 3), 'before the catalogue');
-  assert.match(ruler.rangeText(model.tMin - 1e6, model.tMin + 1e6, 3), /^before the catalogue → α#1 β#1 γ#1 · δ½#1$/);
+  assert.match(ruler.rangeText(model.tMin - 1e6, model.tMin + 1e6, 3), /^before the catalogue → α#1 β#1 γ#1 · δ#1$/);
   // far apart: nothing in common, every part is written
   assert.match(ruler.rangeText(model.tMin + 10, model.tMax - 10, 2), /^α#1 β#1 γ#1 → α#18 β#\d γ#\d+$/);
+  // a θ window writes the θ count between the η and ι counters
+  assert.match(ruler.rangeText(T_A, T_A + 5000, IDX.θ), /^α#6 β#4 γ#9 · δ#\d+ · ε#\d · ζ#\d · \d+η \d+θ → \d+η \d+θ$|→ \d+θ$/);
 });
 
 test('pure ruler: a window one unit across in position reads exactly one unit (REGRESSION: "4β 12γ across" for α)', () => {
   // the audit's positions: before the fix the width came from the length of ONE Saros interval, so a window that
   // reaches over several of them came out a hair short of 1α and read "4β 12γ"
   for (const pos of [0.69, 10.5, 30, 62.1, 68.3]) {
-    for (const p of ruler.PRESETS.filter((x) => x.u >= 0)) {
+    for (const p of ruler.PRESETS.filter((x) => x.u >= 0 && !x.deepest)) {
       for (const frac of [0.5, 0.2, 0.9]) {
         const at = model.timeOfPosition(pos);
         const w = ruler.presetWindow(p.id, lim, at, frac);
@@ -1178,15 +1238,22 @@ test('pure ruler: a window one unit across in position reads exactly one unit (R
   near((T_A - (all.c - all.span / 2)) / all.span, 0.3, 1e-9);
 });
 
-test('pure ruler: presets are one unit across (measured at the cursor) and the active one is recognised', () => {
-  assert.deepEqual(ruler.PRESETS.map((p) => p.label), ['λ', 'ι', 'η', 'ζ½', 'ε½', 'δ½', 'γ', 'β', 'α', 'All']);
-  assert.equal(new Set(ruler.PRESETS.map((p) => p.id)).size, 10);
+test('pure ruler: presets are one unit across (measured at the cursor), ν is the deepest zoom, and the active one is recognised', () => {
+  assert.deepEqual(ruler.PRESETS.map((p) => p.label), ['ν', 'λ', 'ι', 'η', 'ζ', 'ε', 'δ', 'γ', 'β', 'α', 'All']);
+  assert.equal(new Set(ruler.PRESETS.map((p) => p.id)).size, 11);
+  assert.deepEqual(ruler.PRESETS.filter((p) => p.deepest).map((p) => p.label), ['ν']);
   for (const p of ruler.PRESETS.slice(0, -1)) {
     const span = ruler.presetSpan(p.id, lim, T_A);
-    near(span / ruler.sec[p.u], 1, 0.06, `${p.id} is about one mean unit`);
     assert.equal(ruler.activePreset(span, lim, T_A), p.id);
     assert.equal(ruler.activePreset(span * 1.1, lim, T_A), p.id);
     assert.equal(ruler.activePreset(span * 1.5, lim, T_A), null);
+    if (p.deepest) {
+      // a Blink is narrower than the narrowest window: the deepest preset is that window, a few Blinks across
+      assert.equal(span, lim.minSpan);
+      assert.equal(ruler.spanText(T_A - span / 2, T_A + span / 2), '1μ 1ν');
+      continue;
+    }
+    near(span / ruler.sec[p.u], 1, 0.06, `${p.id} is about one mean unit`);
     // the status line of the window reads exactly one unit
     assert.equal(ruler.spanText(T_A - span / 2, T_A + span / 2, 1), `1${ruler.units[p.u].sym}`, p.id);
     assert.equal(ruler.spanText(T_A - span / 2, T_A + span / 2), `1${ruler.units[p.u].sym}`, p.id);
@@ -1198,6 +1265,54 @@ test('pure ruler: presets are one unit across (measured at the cursor) and the a
   // the preset width at the cursor and the window the preset lays out are the same width when centred
   const w = ruler.presetWindow('u:gamma', lim, T_A, 0.5);
   near(w.span, ruler.presetSpan('u:gamma', lim, T_A), 1e-3 * w.span);
+  const deep = ruler.presetWindow('u:nu', lim, T_A, 0.3);
+  assert.equal(deep.span, lim.minSpan);
+  near((T_A - (deep.c - deep.span / 2)) / deep.span, 0.3, 1e-6); // (a float time at 1.8e9 s is good to ~2e-7 s of 2 s)
+});
+
+test('pure ruler: the deepest zoom (a few Blinks across) keeps exact ticks, tenths of a Blink and decimal spans', () => {
+  const span = lim.minSpan;
+  for (const c of [T_A, model.tMin + span, model.tMax - span, model.catalogue[22] + 0.1]) {
+    const from = c - span / 2;
+    const to = c + span / 2;
+    for (const plotW of [296, 700, 1820]) {
+      const step = ruler.pickStep(plotW / span, plotW);
+      assert.equal(step.id, 'nu', `${plotW} px: the Blink`);
+      const ticks = ruler.ticksIn(step, from, to);
+      assert.ok(ticks.length >= 6 && ticks.length <= 7, `${ticks.length} Blinks across 2 s`);
+      assert.ok(ticks.every((tk) => /^\d+ν$/.test(tk.labels[0]) && tk.counter >= 0 && tk.counter < 25));
+      for (let i = 1; i < ticks.length; i++) {
+        // one Blink apart in position to far better than a pixel (1 px is ~2 ms here, the model is exact to ~1e-7 s)
+        near(model.positionOf(ticks[i].t) - model.positionOf(ticks[i - 1].t), ruler.len[IDX.ν], 1e-12, 'Blink spacing');
+        near(ticks[i].t - ticks[i - 1].t, ruler.sec[IDX.ν], 0.05, 'about 0.31 s');
+      }
+      // and each tick is on the boundary the clock reads: just after it, the counter of ν is the label
+      for (const tk of ticks) {
+        const t = tk.t + 0.001;
+        if (t >= model.tMax) continue;
+        assert.equal(tk.counter, countersAt(t).nu);
+        assert.equal(ruler.flagText(t, IDX.ν).split(' ').at(-1), `${tk.counter}ν`);
+      }
+    }
+    // the unlabelled tenths: ten to a Blink, the multiples of ten sit exactly on the Blink ticks
+    const tenths = ruler.ticksIn(ruler.stepById('nu/10'), from, to);
+    assert.ok(tenths.length >= 60 && tenths.length <= 66, `${tenths.length} tenths`);
+    const blinks = ruler.ticksIn(ruler.stepById('nu'), from, to);
+    for (const b of blinks) assert.ok(tenths.some((x) => x.idx % 10 === 0 && Math.abs(x.t - b.t) < 1e-6), `tenth ${b.labels[0]}`);
+    for (let i = 1; i < tenths.length; i++) near(tenths[i].t - tenths[i - 1].t, ruler.sec[IDX.ν] / 10, 0.01);
+    assert.ok(tenths.every((x) => x.labels.length === 0 && !x.major), 'unlabelled');
+  }
+  // the context row at that zoom is the Somon spans (five Blinks each), written with the λ count they sit in
+  const spans = ruler.spansIn(IDX.μ, T_A - 1, T_A + 1);
+  assert.ok(spans.length >= 2);
+  assert.match(spans[0].labels[0], / · \d+η \d+ι \d+λ \d+μ$/);
+  assert.match(spans[0].labels.at(-1), /^\d+μ$/);
+  near(spans[0].t1 - spans[0].t0, 5 * ruler.sec[IDX.ν], 0.2);
+  // the status line of that window and the sub-Blink readings
+  assert.equal(ruler.spanText(T_A - 1, T_A + 1, 2, 0.5 / 1000), '1μ 1ν');
+  assert.equal(ruler.spanText(T_A - 0.02, T_A + 0.02), '0.13ν');
+  assert.equal(ruler.spanText(T_A - 0.0001, T_A + 0.0001), '<0.001ν');
+  assert.equal(ruler.spanText(T_A, T_A + 0.9), '2.9ν');
 });
 
 test('pure ruler: the catalogue map is numbered with the eclipse numbers (the position of that eclipse)', () => {
@@ -1209,25 +1324,32 @@ test('pure ruler: the catalogue map is numbered with the eclipse numbers (the po
   for (const x of m) near(model.positionOf(x.t), Number(x.labels[0].slice(1)), 1e-9);
 });
 
-test('pure wording: cycle lengths in ladder units, names and lane labels', () => {
-  assert.deepEqual(Array.from({ length: 14 }, (_, L) => words.cycleLength(L)), ['1α', '1β', '1γ', '2δ½', '2ε½', '2ζ½', '1η', '4ι', '1ι', '13λ', '1λ', '1μ', '1ν', '1ξ']);
+test('pure wording: cycle lengths in ladder units, lane heads, names and lane labels', () => {
+  // every depth down to the Blink is one whole unit; only ξ is finer and reads as a decimal Blink
+  assert.deepEqual(Array.from({ length: 14 }, (_, L) => words.cycleLength(L)), ['1α', '1β', '1γ', '1δ', '1ε', '1ζ', '1η', '1θ', '1ι', '1κ', '1λ', '1μ', '1ν', '0.14ν']);
   for (let L = 0; L < 14; L++) assert.equal(words.cycleLength(L), pure.cycleLength(L), 'the lane lengths are the helper\'s exact nominal lengths');
-  assert.equal(words.gloss(5), 'half of a depth-6 cycle');
+  // the lane head says how many cycles of the next depth make one: the ladder itself
+  assert.deepEqual(Array.from({ length: 14 }, (_, L) => words.laneSplit(L)), ['= 5β', '= 13γ', '= 5δ', '= 5ε', '= 7ζ', '= 11η', '= 9θ', '= 4ι', '= 5κ', '= 13λ', '= 5μ', '= 5ν', '= 7ξ', '= 11ο']);
+  assert.equal(words.lastsText(6), '');
+  assert.equal(words.lastsText(13), 'lasts 0.14ν');
   assert.equal(words.gloss(6), 'a depth-7 cycle');
-  assert.equal(words.denseMsg(9), 'cycles of 13λ · zoom in');
+  assert.equal(words.nameOf(IDX.η), 'Helion');
+  assert.equal(words.nameOf(IDX.α), 'Alpha', 'α β γ have no particle name yet');
+  assert.equal(words.denseMsg(IDX.λ), 'λ cycles · zoom in');
+  assert.equal(words.denseMsg(13), 'cycles of 0.14ν · zoom in');
   assert.deepEqual([1, 2, 3, 4, 11, 12, 13, 21, 22, 101, 111].map(nth), ['1st', '2nd', '3rd', '4th', '11th', '12th', '13th', '21st', '22nd', '101st', '111th']);
   // labels of a block, longest first; the banner names what begins when the cycle ends
   const eps = model.levelAt(T_A, 4);
   const lab = (o) => words.blockLabels({ level: 4, local: eps.local, idx: eps.cycle, sib: 5, endsWithCatalogue: false, ...o });
   assert.deepEqual(lab({ wide: true, w: 900 }), [
-    'ε 5 · Epsilon Pentafracton (5/5) · ends → ε#1',
-    'ε 5 · Epsilon Pentafracton',
-    'ε 5 · 5/5',
-    'ε#5',
-    '5',
+    `ε 5 · Epsilon ${pure.ordinalName(eps.local + 1)} (${eps.local + 1}/5) · ends → ε#${((eps.local + 1) % 5) + 1}`,
+    `ε 5 · Epsilon ${pure.ordinalName(eps.local + 1)}`,
+    `ε 5 · ${eps.local + 1}/5`,
+    `ε#${eps.local + 1}`,
+    String(eps.local + 1),
   ]);
-  assert.deepEqual(lab({ wide: false, w: 130 }), ['ε 5 · 5/5', 'ε#5', '5']);
-  assert.deepEqual(lab({ wide: false, w: 20 }), ['5']);
+  assert.deepEqual(lab({ wide: false, w: 130 }), [`ε 5 · ${eps.local + 1}/5`, `ε#${eps.local + 1}`, String(eps.local + 1)]);
+  assert.deepEqual(lab({ wide: false, w: 20 }), [String(eps.local + 1)]);
   assert.match(lab({ wide: true, w: 900, endsWithCatalogue: true })[0], /ends with the catalogue$/);
   // eclipses are numbered like the position: eclipse k sits at pos k and is "#k", 0-based, in every label
   assert.equal(words.eclipseLabel(22), '#22');
@@ -1239,33 +1361,57 @@ test('pure wording: cycle lengths in ladder units, names and lane labels', () =>
   assert.match(words.eclipseChipTip(22, true), /^Next greatest eclipse of Saros 141 \(#22\) – click/);
   assert.equal(words.edgeLabel('start'), 'catalogue starts · pos 0');
   assert.equal(words.edgeLabel('end'), 'catalogue ends · pos 69');
-  assert.equal(words.endsChip('ε', 'in 1ε½ 2ζ½', true), 'ε ends in 1ε½ 2ζ½ ▸');
-  assert.equal(words.endsChip('ε', 'in 1ε½ 2ζ½', false), '◂ ε ends in 1ε½ 2ζ½');
+  assert.equal(words.endsChip('ε', 'in 1ε 2ζ', true), 'ε ends in 1ε 2ζ ▸');
+  assert.equal(words.endsChip('ε', 'in 1ε 2ζ', false), '◂ ε ends in 1ε 2ζ');
   assert.deepEqual(words.markerChip('cursor', '3η 17ι 21λ', true), ['cursor 3η 17ι 21λ ▸', 'cursor ▸']);
   assert.deepEqual(words.markerChip('now', '3η 17ι 21λ', false), ['◂ now 3η 17ι 21λ', '◂ now']);
-  assert.equal(words.rulerKey(ruler.stepById('iota×6')).bottom, 'ι ×6');
-  assert.equal(words.rulerKey(ruler.stepById('iota×6')).top, 'η');
+  assert.equal(words.rulerKey(ruler.stepById('iota×2')).bottom, 'ι ×2');
+  assert.equal(words.rulerKey(ruler.stepById('iota×2')).top, 'θ');
+  assert.equal(words.rulerKey(ruler.stepById('theta')).top, 'η');
   assert.deepEqual(words.rulerKey(ruler.stepById('alpha')), { top: '', bottom: 'α' });
-  const tip = words.rulerTip(ruler.stepById('iota×6'));
-  assert.match(tip, /^Each tick starts a ι \(a depth-9 cycle\); every 6th one is labelled\. The row above names the η each one belongs to\./);
+});
+
+test('pure wording: the ruler key, preset titles and lane heads name the units in prose', () => {
+  const tip = words.rulerTip(ruler.stepById('iota×2'));
+  assert.match(tip, /^Each tick starts a Preon \(ι, a depth-9 cycle\); every 2nd one is labelled\. The row above names the θ each one belongs to\./);
+  // what the count is counted inside, and the same counters as the header clock for η ι λ
+  assert.match(tip, /Here ι is counted inside η, from 0 to 35, like the clock in the header\./);
+  assert.match(words.rulerTip(ruler.stepById('lambda')), /Here λ is counted inside ι, from 0 to 64, like the clock in the header\./);
+  assert.match(words.rulerTip(ruler.stepById('theta')), /Here θ is counted inside η, from 0 to 8\. A count/);
+  assert.match(words.rulerTip(ruler.stepById('nu')), /^Each tick starts a Blink \(ν, a depth-13 cycle\)\. The row above names the μ each one belongs to\. Here ν is counted inside λ, from 0 to 24\./);
+  assert.match(words.rulerTip(ruler.stepById('delta')), /^Each tick starts an Atom \(δ, a depth-4 cycle\)\./, 'an Atom');
+  assert.doesNotMatch(words.rulerTip(ruler.stepById('zeta')), /Here ζ/, 'ordinals are not counted from 0');
+  assert.match(words.rulerTip(ruler.stepById('alpha')), /\(α, a depth-1 cycle, counted over the catalogue\)/);
   // the one place that explains the notation: counts from 0, ordinals from 1, and where to read more
-  assert.match(tip, /A count such as 9η is how many whole η have gone by since the parent cycle began, so it starts at 0; a number such as ζ½#5 names the 5th ζ½ of its parent and starts at 1/);
+  assert.match(tip, /A count such as 9η is how many whole η have gone by since its ζ began, so it starts at 0; a number such as ζ#5 names the 5th ζ of its parent and starts at 1, like the lane blocks \(η#10\)\./);
   assert.match(tip, /Press \? for the glossary\.$/);
-  assert.equal(words.presetTitle(ruler.PRESETS[3]), 'Show about one ζ½ across: half of a depth-6 cycle');
-  assert.equal(words.presetTitle(ruler.PRESETS[9]), 'Show the whole catalogue');
-  assert.match(words.turnoverTip(4, eps.cycle, true, false), /^Next turnover of the selected depth, ε \(depth 5\): Epsilon Pentafracton ends → Epsilon Monofracton begins\./);
+  assert.equal(words.presetTitle(ruler.PRESETS.find((p) => p.label === 'η')), 'Show about one Helion (η) across: a depth-7 cycle');
+  assert.equal(words.presetTitle(ruler.PRESETS.find((p) => p.label === 'δ')), 'Show about one Atom (δ) across: a depth-4 cycle');
+  assert.equal(words.presetTitle(ruler.PRESETS.find((p) => p.label === 'γ')), 'Show about one Gamma (γ) across: a depth-3 cycle');
+  assert.match(words.presetTitle(ruler.PRESETS[0]), /^Zoom in to the Blink \(ν\) scale: a few Blinks across, the deepest zoom$/);
+  assert.equal(words.presetTitle(ruler.PRESETS.at(-1)), 'Show the whole catalogue');
+  assert.equal(words.laneTip(6, 18), 'A Helion (η) is one depth-7 cycle: 11 of them make a ζ. It splits into 9 θ.');
+  assert.equal(words.laneTip(3, 18), 'An Atom (δ) is one depth-4 cycle: 5 of them make a γ. It splits into 5 ε.');
+  assert.equal(words.laneTip(1, 18), 'A Beta (β) is one depth-2 cycle: 5 of them make an α. It splits into 13 γ.');
+  assert.equal(words.laneTip(0, 18), 'One α (an Alpha) is 4 Saros intervals long; the catalogue holds 18 (the last one is cut off). It splits into 5 β.');
+  assert.equal(words.laneTip(12, 18), 'A Blink (ν) is one depth-13 cycle: 5 of them make a μ. It splits into 7 ξ.');
+  assert.equal(words.laneTip(13, 18), 'A ξ cycle (depth 14) is finer than the Blink and lasts 0.14ν: 7 of them make a ν. It splits into 11 ο.');
+  const eps = model.levelAt(T_A, 4);
+  assert.match(words.turnoverTip(4, eps.cycle, true, false), /^Next turnover of the selected depth, ε \(depth 5\): Epsilon \w+ ends → Epsilon \w+ begins\./);
   assert.match(words.turnoverTip(4, eps.cycle, false, false), /^The end of the ε cycle at the cursor lies to the left of the view: /);
   assert.match(words.selectedSentence(6, 717214, 3, 11, false), /^Selected depth 7 \(η\): Eta Tetrafracton, cycle 4 of 11, ends → Eta Pentafracton begins\.$/);
   assert.match(words.selectedSentence(0, 17, 17, 18, true), /ends with the catalogue\.$/);
 });
 
-test('pure wording: no sentence, label or ruler string contains a Gregorian date, an Earth unit or a percentage', () => {
+test('pure wording: no sentence, label or ruler string contains a Gregorian date, an Earth unit, a percentage, a half or a beat', () => {
   const strings = new Set();
   const rulerStrings = new Set(); // what the ruler itself writes: ticks, spans, flags, windows, stamps
   const add = (x, into = strings) => (Array.isArray(x) ? x.forEach((y) => add(y, into)) : (into.add(String(x)), strings.add(String(x))));
   const addRuler = (x) => add(x, rulerStrings);
   for (let L = 0; L < 14; L++) {
     add(words.cycleLength(L));
+    add(words.laneSplit(L));
+    add(words.lastsText(L));
     add(words.denseMsg(L));
     add(words.laneTip(L, 18));
     add(words.blockLabels({ level: L, local: 0, idx: 0, sib: 5, wide: true, w: 900, endsWithCatalogue: false }));
@@ -1287,22 +1433,32 @@ test('pure wording: no sentence, label or ruler string contains a Gregorian date
   }
   for (const p of ruler.PRESETS) add([words.presetTitle(p), words.presetLabel(p)]);
   for (const t of randomInstants(60)) {
-    addRuler(ruler.stampText(t, 11));
-    addRuler(ruler.flagText(t, 7));
+    addRuler(ruler.stampText(t, 12));
+    addRuler(ruler.flagText(t, 8));
     addRuler(ruler.relText(t, T_A));
+  }
+  for (const dt of [0.0004, 0.002, 0.01, 0.1, 0.3, 0.9, 1.4, 4]) {
+    addRuler(ruler.relText(T_A + dt, T_A));
+    addRuler(ruler.relText(T_A - dt, T_A));
+    addRuler(ruler.spanText(T_A, T_A + dt));
   }
   add([words.eclipseLabel(21), words.eclipseChip(3, true), words.eclipseChipTip(3, false), words.edgeLabel('start'), words.edgeLabel('end'), words.outsideTitle, words.rangeLabel()]);
   addRuler(ruler.overviewMarks().flatMap((x) => x.labels));
   assert.ok(strings.size > 500, `${strings.size} strings`);
   const bad = [...strings].map((x) => [x, hardLeaks(x)]).filter(([, r]) => r.length);
   assert.deepEqual(bad, []);
-  // nothing the ruler writes uses the old "η 9" / "δ½ 3" counter spelling (a letter, a space, a number); the depth chips
+  // no half cycles and no "beat" anywhere (the scanner's half-unit and beat-word rules), whatever the unit
+  assert.deepEqual([...strings].filter((x) => /[α-ωδεζ]½|\bbeats?\b/i.test(x)), []);
+  // nothing the ruler writes uses the old "η 9" counter spelling (a letter, a space, a number); the depth chips
   // of the lane blocks ("η 7 · Eta Monofracton") are the one place where a letter and a depth number stand together
   assert.ok(rulerStrings.size > 300);
   assert.deepEqual([...rulerStrings].filter((x) => OLD_SPELLING.test(x)), []);
   assert.ok([...strings].some((x) => /^η 7 · /.test(x)), 'depth chips are kept');
+  // sub-Blink spans are decimals of the Blink, never a count of a smaller unit
+  assert.ok([...rulerStrings].some((x) => /^(in )?0\.\d+ν( ago)?$/.test(x)));
   // and the scan really sees what it should
   assert.deepEqual(hardLeaks('Thu 8 Oct 12:00 for 3 h at 66 %'), ['clock-time', 'month-name', 'weekday', 'earth-unit', 'percent']);
+  assert.deepEqual(hardLeaks('δ½#3 every 4 beats'), ['half-unit', 'beat-word']);
 });
 
 /** Environment of the pure tooltips on the real model, with a stub store and theme. */
@@ -1318,21 +1474,22 @@ test('pure tooltips: lane heads, ruler key, overview, eclipse lane and the plot 
   const env = tipEnv();
   const tip = (h) => pureTipHTML(h, env);
   const lane = tip({ gutter: true, kind: 'lane', lane: 4 });
-  assert.match(textOf(lane), /^ε · depth 5 5 per δ cycle, each lasting 2ε½\. Every δ cycle splits into 5 of them\. Click to select this depth in every view\.$/);
-  assert.match(textOf(tip({ gutter: true, kind: 'lane', lane: 0 })), /One α cycle spans 4 Saros intervals; the catalogue holds 18/);
+  assert.match(textOf(lane), /^ε · depth 5 A Nuclide \(ε\) is one depth-5 cycle: 5 of them make a δ\. It splits into 7 ζ\. Click to select this depth in every view\.$/);
+  assert.match(textOf(tip({ gutter: true, kind: 'lane', lane: 0 })), /One α \(an Alpha\) is 4 Saros intervals long; the catalogue holds 18/);
   assert.equal(tip({ gutter: true, kind: 'lane', lane: 99 }), '');
-  assert.match(textOf(tip({ gutter: true, kind: 'axis' })), /^Ruler Each tick starts a ι \(a depth-9 cycle\)/);
+  assert.match(textOf(tip({ gutter: true, kind: 'axis' })), /^Ruler Each tick starts a Preon \(ι, a depth-9 cycle\)/);
   assert.match(textOf(tip({ gutter: true, kind: 'axis' })), /A count such as 9η .* starts at 1, like the lane blocks \(η#10\)\. Press \? for the glossary\.$/);
   assert.match(textOf(tip({ gutter: true, kind: 'eclipse' })), /70 greatest-eclipse instants \(α#1 – α#18\) are the time base of the clock\. They are numbered #0 – #69, like the position\./);
   assert.match(textOf(tip({ gutter: true, kind: 'overview' })), /the numbers are eclipse numbers, like the position \(#10 sits at pos 10\)/);
   const ov = textOf(tip({ gutter: false, kind: 'overview', x: 250 }));
   assert.match(ov, /^α#\d+ β#\d+ γ#\d+ pos \d+\.\d{3} Click to centre/);
 
-  // the plot at vector A, pointer on the ε lane
+  // the plot at vector A, pointer on the ε lane: the address runs on two chain units below the ι ticks
   const html = tip({ gutter: false, kind: 'lane', lane: 4, inPlot: true, t: T_A, x: 300, y: 200 });
   const text = textOf(html);
-  assert.match(text, /^\d+η \d+ι \d+λ \d+μ α#6 β#4 γ#9 · δ½#\d+ · ε½#\d · ζ½#\d pos 22\.9\d{5} · between #22 and #23 vs now 4η 34ι ago vs cursor now/);
-  assert.match(text, /ε 5 Epsilon Pentafracton ε#5 · 5\/5 · lasts 2ε½ · ends in \d+ε½( \d+ζ½)? → ε#1 begins/);
+  assert.match(text, /^\d+η \d+ι \d+λ \d+ν α#6 β#4 γ#9 · δ#\d+ · ε#\d · ζ#\d pos 22\.9\d{5} · between #22 and #23 vs now 4η 8θ ago vs cursor now/);
+  assert.match(text, /ε 5 Epsilon \w+ ε#\d · \d\/5 · ends in \d+[α-ω]( \d+[α-ω])? → ε#\d begins/);
+  assert.doesNotMatch(text, /lasts/, 'a whole unit does not repeat its own length');
   assert.equal((html.match(/class="tl-tip-row/g) || []).length, 10, 'one row per lane');
   assert.equal((html.match(/is-on/g) || []).length, 1);
   // the head reads the instant exactly like the header of the app does (pure.stamp)
@@ -1350,11 +1507,22 @@ test('pure tooltips: lane heads, ruler key, overview, eclipse lane and the plot 
   env.store.live = true;
   assert.doesNotMatch(textOf(tip({ gutter: false, kind: 'lane', lane: 4, inPlot: true, t: T_A })), /vs cursor/);
 
-  // coarse zoom prints only the date part, fine zoom runs on into μ ν ξ
+  // coarse zoom prints only the date part; fine zoom runs on to the Blink; an in-between tick unit is written too
   env.step = ruler.stepById('alpha');
   assert.match(textOf(tip({ gutter: false, kind: 'lane', lane: 0, inPlot: true, t: T_A })), /^α#6 β#4 γ#9 pos /);
-  env.step = ruler.stepById('mu');
-  assert.match(textOf(tip({ gutter: false, kind: 'lane', lane: 0, inPlot: true, t: T_A })), /^\d+η \d+ι \d+λ \d+μ \d+ν \d+ξ α#6 /, 'at μ ticks the head runs on to ξ');
+  env.step = ruler.stepById('lambda');
+  assert.match(textOf(tip({ gutter: false, kind: 'lane', lane: 0, inPlot: true, t: T_A })), /^\d+η \d+ι \d+λ \d+ν α#6 /);
+  env.step = ruler.stepById('theta');
+  assert.match(textOf(tip({ gutter: false, kind: 'lane', lane: 0, inPlot: true, t: T_A })), /^\d+η \d+θ \d+ι \d+λ α#6 /, 'at θ ticks the head names the θ');
+  env.step = ruler.stepById('nu');
+  assert.match(textOf(tip({ gutter: false, kind: 'lane', lane: 0, inPlot: true, t: T_A })), /^\d+η \d+ι \d+λ \d+ν α#6 /, 'at the deepest zoom the head ends at the Blink');
+
+  // a pointer a few tenths of a Blink from the cursor: the readings are decimal Blinks
+  env.step = ruler.stepById('nu');
+  env.store = { live: false, t: () => T_A, realNow: () => T_A + 0.1 };
+  const fine = textOf(tip({ gutter: false, kind: 'lane', lane: 9, inPlot: true, t: T_A + 0.05 }));
+  assert.match(fine, /vs now 0\.16ν ago vs cursor in 0\.16ν/);
+  assert.equal(hardLeaks(fine).length, 0);
 
   // outside the catalogue
   const out = textOf(tip({ gutter: false, kind: 'lane', lane: 0, inPlot: true, t: model.tMax + 1e7 }));
@@ -1368,6 +1536,13 @@ test('pure tooltips: lane heads, ruler key, overview, eclipse lane and the plot 
   env.hoverEclipse = 20;
   assert.match(textOf(tip({ gutter: false, kind: 'eclipse', inPlot: true, t: model.catalogue[20] })), /^Eclipse #20 .* starts α#6/);
   assert.equal(hardLeaks(e).length, 0);
+});
+
+test('pure tooltips: a lane finer than the Blink says how long its cycle lasts', () => {
+  const env = tipEnv({ levels: [11, 12, 13] });
+  const html = pureTipHTML({ gutter: false, kind: 'lane', lane: 2, inPlot: true, t: T_A + 0.2, x: 100, y: 100 }, env);
+  assert.match(textOf(html), /ξ 14 Xi \w+ ξ#\d · \d\/7 · lasts 0\.14ν · ends in (0\.\d+ν|\d+ν) → ξ#\d begins/);
+  assert.equal(hardLeaks(textOf(html)).length, 0);
 });
 
 test('pure tooltips: the same eclipse has one number (REGRESSION: #23 on the timeline, #22 in the calendar)', () => {
@@ -1391,8 +1566,8 @@ test('pure tooltips: the same eclipse has one number (REGRESSION: #23 on the tim
 test('pure tooltips: no hard leak anywhere on a sweep of instants, steps and lanes', () => {
   const env = tipEnv({ store: { live: false, t: () => T_A, realNow: () => 1.7e9 } });
   let n = 0;
-  for (const t of [...randomInstants(25), model.tMin + 1, model.tMax - 1, model.tMax + 5, model.tMin - 5]) {
-    for (const step of [ruler.stepById('xi'), ruler.stepById('lambda'), ruler.stepById('eta'), ruler.stepById('delta-half'), ruler.stepById('alpha×2')]) {
+  for (const t of [...randomInstants(25), model.tMin + 1, model.tMax - 1, model.tMax + 5, model.tMin - 5, T_A + 0.05]) {
+    for (const step of [ruler.stepById('nu'), ruler.stepById('mu'), ruler.stepById('lambda'), ruler.stepById('eta'), ruler.stepById('delta'), ruler.stepById('alpha×2')]) {
       env.step = step;
       for (const lane of [0, 4, 9]) {
         const html = pureTipHTML({ gutter: false, kind: 'lane', lane, inPlot: true, t, x: 100, y: 100 }, env);
@@ -1406,18 +1581,21 @@ test('pure tooltips: no hard leak anywhere on a sweep of instants, steps and lan
 
 test('pure data layer: ticks, minor ticks and context spans of a pure step are cached and rebuilt on invalidate', () => {
   const data = createData({ model, fmt: utc, pure });
-  const step = ruler.stepById('iota×6');
+  const step = ruler.stepById('iota×2');
   const a = data.ticksFor(step, T_A, T_A + 20000);
   assert.ok(a.length >= 5 && a.every((tk) => /^\d+ι$/.test(tk.labels[0])));
   assert.strictEqual(data.ticksFor(step, T_A + 100, T_A + 20100), a, 'a slightly moved window reuses the list');
   const minor = data.minorFor(step, T_A, T_A + 20000);
-  assert.equal(minor.step.id, 'iota×2');
-  assert.ok(minor.ticks.length >= a.length * 2);
+  assert.equal(minor.step.id, 'iota');
+  assert.ok(minor.ticks.length >= a.length * 2 - 2);
   const ctx = data.contextFor(step, T_A, T_A + 20000);
-  assert.ok(ctx.length >= 1 && /^\d+η$/.test(ctx[0].labels.at(-1)), ctx[0].labels.join(' | '));
+  assert.ok(ctx.length >= 1 && /^\d+θ$/.test(ctx[0].labels.at(-1)), ctx[0].labels.join(' | '));
   assert.deepEqual(data.contextFor(ruler.stepById('alpha'), T_A, T_A + 20000), []);
+  // the finest step's minor ticks are tenths of a Blink
+  const nu = data.minorFor(ruler.stepById('nu'), T_A, T_A + 2);
+  assert.equal(nu.step.id, 'nu/10');
+  assert.ok(nu.ticks.length >= 60);
   assert.equal(data.overviewMarks().length, 6);
-  assert.notStrictEqual(createData({ model, fmt: utc }).ruler, undefined === 1 ? 0 : data.ruler);
   assert.equal(createData({ model, fmt: utc }).ruler, null, 'without a pure vocabulary there is no ruler');
   assert.deepEqual(createData({ model, fmt: utc }).overviewMarks(), []);
   data.invalidate();
@@ -1426,12 +1604,19 @@ test('pure data layer: ticks, minor ticks and context spans of a pure step are c
   assert.ok(data.ticksFor(stepById('h1'), T_A, T_A + 20000).every((tk) => /^\d\d:00$/.test(tk.labels[0]) || /^[A-Z][a-z]{2} \d+$/.test(tk.labels[0])));
 });
 
-test('no dead code: the helpers the shipped modules do not call are gone', () => {
+test('no dead code and no stale vocabulary: halves, beats and the ξ unit are gone from the pure sources', () => {
   for (const f of ['../src/ui/timeline/tips.js', '../src/ui/timeline/ruler.js', '../src/ui/timeline/words.js']) {
     const src = sourceOf(f);
     assert.doesNotMatch(src, /\.replace\(\/<title>/, `${f}: no workaround for the glyph titles (pure.pairHTML strips them)`);
     assert.doesNotMatch(src, /trimZeros/, `${f}: durations are never trimmed or reformatted here`);
     assert.doesNotMatch(src, /durationPos\(4 \//, `${f}: lane lengths come from pure.cycleLength`);
+  }
+  for (const f of ['../src/ui/timeline.js', '../src/ui/timeline/tips.js', '../src/ui/timeline/ruler.js', '../src/ui/timeline/words.js', '../src/ui/timeline/paint.js', '../src/ui/timeline/data.js']) {
+    const src = sourceOf(f);
+    assert.doesNotMatch(src, /[αβγδεζηθικλμνξ]½/, `${f}: no half units`);
+    assert.doesNotMatch(src, /-half|\.half\b|\bhalf:/, `${f}: no half-unit ids`);
+    assert.doesNotMatch(src, /\bbeats?\b/i, `${f}: real time is counted in Blinks`);
+    assert.doesNotMatch(src, /\bxi\b/, `${f}: ξ is not a unit of the ladder`);
   }
   assert.equal(typeof ruler.trimZeros, 'undefined');
   assert.equal(typeof ruler.tokensAt, 'undefined', 'positions and times have their own readers now');

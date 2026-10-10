@@ -286,10 +286,9 @@ export function mount(el, ctx) {
   /** Labels that do not change while the view runs, in the current vocabulary: depth buttons, titles, legend, caption. */
   function buildStatic() {
     infos.forEach((i, l) => {
-      const len = words.cycleLength(i);
       const c = chipByLevel[l];
-      c.title = `${i.text} · depth ${i.depth} · cycle ≈ ${len} · ${i.factor} child half-arcs per half-arc`;
-      c.setAttribute('aria-label', `Depth ${i.depth}, ${i.text}, cycle about ${len}`);
+      c.title = words.chipTitle(i);
+      c.setAttribute('aria-label', words.chipAria(i));
       baseLabel[l] = c.getAttribute('aria-label');
     });
     chipAll.title = words.catalogueTitle(eng.halfCount(0));

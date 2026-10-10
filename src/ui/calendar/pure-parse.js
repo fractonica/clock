@@ -1,19 +1,24 @@
 /**
  * Pure-mode jump grammar (no DOM, no Earth units): parsePure(text, {model, pure, now, real, level}) turns what a
- * person types into ranked candidate moments, speaking Fractonica only (docs/design/80-pure.md).
+ * person types into ranked candidate moments, speaking Fractonica only (docs/design/80-pure.md, REVISION 2).
  *
  *   names          Gamma Difracton · Gamma Difracton in Beta Tetrafracton · Alpha Hexafracton Beta Tetrafracton
  *   addresses      α#6 β#4 γ#9 · α6 β3 γ11 · a6 b3 g11 · 6.3.11 · ε#5 (ancestors from the shown moment) · d7#717211
- *   stamps         α#6 β#4 γ#9 · δ½#3 · ε½#2 · ζ½#5 · 3η 17ι 21λ — exactly what the header prints, or any tail of it
- *                  (the old spellings δ½ 3 · ζ½ 6 · η 5 · ι 17 are still read; so is the clock the header shows: 3η17ι21λ)
- *   offsets        +2ζ½ 3η · -1ι · in 5λ · 3η ago
+ *   stamps         α#6 β#4 γ#9 · δ#3 · ε#2 · ζ#5 · 3η 17ι 21λ — exactly what the header prints, or any tail of it
+ *                  (the old spellings δ 3 · ζ 6 · η 5 · ι 17 are still read; so is the clock the header shows: 3η17ι21λ)
+ *   offsets        +2ζ 3η · -1ι · in 5λ · 3η ago · +0.5ν · +4 Blinks · +2 Hadrons 3 Helions (every unit α … ν)
+ *
+ * UNIT NAMES (core/pure.js `UNITS`): Atom δ, Nuclide ε, Hadron ζ, Helion η, Quark θ, Preon ι, Chromon κ, Flavon λ, Somon μ,
+ * Blink ν (plural with an s) are read wherever a unit letter is: offsets, boundaries, a lone unit. Alpha, Beta and Gamma
+ * have no particle name and stay level names. Unit names are not cycle names: "Gamma Difracton" is the 2nd γ in its β.
+ * The half-cycle units are gone (revision 2): "δ½ 3", "ζ½", "next ζ½" are answered with one short pointer to whole cycles.
  *
  * Notation (core/pure.js): X#n is an ordinal counted from 1, nX a count of units counted from 0. A bare clock reading
  * "3η 17ι 21λ" can be the counters of the current ζ or a span after the shown moment: the counters come first (the
- * header prints them), the span is the second candidate.
+ * header prints them), the span is the second candidate. The clock is η ι λ; ν counts are spans, never clock entries.
  *   position       pos 22.9278 · p22.9278 · saros 22.9 · 22 + 0.9278
  *   sync           sync 4820 · S4820 node
- *   boundaries     next ε · prev ζ · next ζ½ · next end of δ · next peak η · next peak (the selected depth)
+ *   boundaries     next ε · prev ζ · next Helion · next end of δ · next peak η · next peak (the selected depth)
  *   odometer       η [13,0] · d7 13,0 · η 13·4 (the glyph pair)
  *   now            now · live
  *
@@ -24,37 +29,65 @@
 import { LEVEL_NAMES, ORDINAL_NAMES, UNITS } from '../../core/pure.js';
 import { LETTERS, POINTS, an, chainText, childCount, clip, cycleLabel, cycleOfPath, ordinal, pathOfTime, pathText, pointOfCycle, r3, syncRange } from './convert.js';
 import { MAX_INPUT, eventsAround, levelOfToken, mentionsZone, parseGregorian, phaseOfPoint, pointId, tokenizePath } from './parse.js';
-import { LADDER, entriesText, firstMs, landCycleAt, landPoint, ladderRanges, resolveParts, spanText, stampSym, unitById } from './pure-conv.js';
+import { LADDER, entriesText, firstMs, landCycleAt, landPoint, ladderRanges, madeOf, resolveParts, spanText, stampSym, unitById } from './pure-conv.js';
 
 export { MAX_INPUT };
 
 /** Placeholder of the header box in pure mode. */
-export const PURE_PLACEHOLDER = 'Jump to…  Gamma Difracton · α#6 β#3 γ#11 · +2ζ½ 3η · next ε · pos 24.5';
+export const PURE_PLACEHOLDER = 'Jump to…  Gamma Difracton · α#6 β#3 γ#11 · +2ζ 3η · next ε · pos 24.5';
 
 /** Examples offered while the pure box is empty and there is no history. */
 export function pureExamples() {
   return [
     ['Gamma Difracton', 'the 2nd γ inside the current β'],
     ['α#6 β#4 γ#9', 'start of a cycle by its address (#6 = the 6th inside its parent)'],
-    ['δ½#3 · ε½#2 · ζ½#5', 'a stamp, as the header prints it (the rest comes from the shown moment)'],
+    ['δ#3 · ε#2 · ζ#5', 'a date, as the header prints it (the rest comes from the shown moment)'],
     ['3η 17ι 21λ', 'the clock: completed η, ι, λ inside the shown ζ (counters count from 0)'],
-    ['+2ζ½ 3η', 'two ζ½ and three η after the shown moment'],
-    ['next ε', 'the next ε boundary'],
+    ['+2ζ 3η', 'two ζ and three η after the shown moment'],
+    ['+4 Blinks', 'four Blinks (ν) after the shown moment'],
+    ['next Helion', 'the next η boundary (a Helion is one η cycle)'],
     ['pos 24.5', 'Saros position'],
     ['sync 4820', 'start of a solar sync'],
     ['η [13,0]', 'next time depth 7 shows [13, 0]'],
   ];
 }
 
-const HELP = 'Gamma Difracton · α#6 β#3 γ#11 · ζ½#5 · +2ζ½ 3η · next ε · pos 24.5 · sync 4820';
+const HELP = 'Gamma Difracton · α#6 β#3 γ#11 · ζ#5 · +2ζ 3η · +4 Blinks · next ε · pos 24.5 · sync 4820';
 /** The tail of every help line: where the notation is explained. */
 const GLOSSARY = 'Counters count from 0, # numbers from 1. Press ? for the glossary.';
 const POINT_WORDS = 'begin|start|peak|node|valley|end|mid|middle';
 const DEPTH_ALT = '(?:depth|d)\\s*\\d{1,2}';
 const LEVEL_WORDS = LEVEL_NAMES.slice(0, 14).map((name) => name.toLowerCase());
 const LEVEL_WORD_ALT = LEVEL_WORDS.join('|');
-const GREEK_ALT = `${LEVEL_WORD_ALT}|[α-ξ]`;
-const HALF_ALT = '(½|\\s*-?\\s*half\\b)';
+/**
+ * Unit names (Atom … Blink, with an optional plural s) -> depth level. Only the units that have a particle name: α β γ
+ * stay level names (the ten names are the `name` of `UNITS` in core/pure.js, edit them there).
+ */
+const UNIT_WORDS = new Map(UNITS.filter((u) => u.named).map((u) => [u.name.toLowerCase(), u.level]));
+const UNIT_WORD_ALT = [...UNIT_WORDS.keys()].sort((a, b) => b.length - a.length).map((w) => `${w}s?`).join('|');
+const unitWordLevel = (tok) => UNIT_WORDS.get(tok.replace(/s$/, '')) ?? UNIT_WORDS.get(tok) ?? -1;
+/** A depth letter, a level name or a unit name (unit names first: "nuclide" must not be read as "nu" + "clide"). */
+const GREEK_ALT = `${UNIT_WORD_ALT}|${LEVEL_WORD_ALT}|[α-ξ]`;
+/** Level of a unit letter, a level name or a unit name (-1 when it is none of them). */
+const levelOfUnitToken = (tok) => {
+  const t = String(tok).toLowerCase();
+  const w = unitWordLevel(t);
+  return w >= 0 ? w : levelOfToken(t);
+};
+/** No letter may follow a unit token: "3eta" is a count of η, "3etas" and "3etc" are not. */
+const END = '(?![a-zα-ω])';
+/** The half-cycle units are gone: "δ½", "ζ½ 5", "delta half 3" (the old spellings) get one pointer instead of a reading. */
+const HALF_RE = new RegExp(`(?:[α-ξ]|${LEVEL_WORD_ALT})\\s*(?:½|-\\s*half\\b|\\s+half\\b)`);
+const HALF_ANSWER = [
+  'Half-cycle units are gone: write δ, ε or ζ',
+  'Whole cycles only now: δ (Atom), ε (Nuclide), ζ (Hadron). The date reads δ#3 · ε#2 · ζ#5 and a span +2ζ 3η. Press ? for the glossary.',
+];
+/** The retired word for a real-time tick (revision 2 counts real time in Blinks): one pointer instead of a reading. */
+const RETIRED_RE = /\bbeats?\b/;
+const RETIRED_ANSWER = [
+  'Real time is counted in Blinks now: write +4 Blinks or +4ν',
+  'A Blink (ν) is the atomic unit and the tick of the device clock. Speeds read "θ per Blink", frequencies "pB" (cycles per Blink). Press ? for the glossary.',
+];
 const pointLabel = (id) => POINTS.find((p) => p.id === id)?.label.toLowerCase() ?? id;
 
 /** Light normalisation: NFC (NFKC would turn ½ into 1⁄2), plain minus, one kind of space. */
@@ -74,9 +107,10 @@ export function normalizePure(text) {
 const err = (message, detail = '') => ({ kind: 'error', label: message, time: null, detail, error: message });
 const STAMP_UPTO = Object.freeze(['gamma', 'gamma', 'gamma', 'delta', 'epsilon', 'zeta', 'eta', 'iota', 'iota', 'lambda', 'lambda', 'lambda', 'lambda', 'lambda']);
 
-/** "in 2ζ½ 3η" / "5λ ago" / "the shown moment": the distance from the shown moment, in positions. */
+/** "in 2ζ 3η" / "5λ ago" / "the shown moment": the distance from the shown moment, in positions. */
 export function relText(C, t) {
-  if (Math.abs(t - C.now) < 0.5) return 'the shown moment';
+  // (both are whole milliseconds; an offset of a fraction of a Blink is still a different moment)
+  if (Math.abs(t - C.now) < 0.0005) return 'the shown moment';
   const text = spanText(C.model, C.pure, Math.min(C.now, t), Math.max(C.now, t));
   return t > C.now ? `in ${text}` : `${text} ago`;
 }
@@ -89,11 +123,14 @@ function make(C, kind, label, t, { extra = '', upTo = 'eta' } = {}) {
   if (!C.model.inRange(t)) return err(`${label} is outside the catalogue`, `The catalogue runs ${C.pure.catalogueText()}`);
   return { kind, label, time: t, detail: [whenText(C, t, upTo), extra].filter(Boolean).join(' · ') };
 }
-/** "γ lasts 2ε½": the length of a cycle in ladder units; empty when it is just one of its own unit ("η lasts 1η"). */
+/**
+ * "ε lasts 7ζ": the length of a cycle in the next finer units (η = 36ι, ι = 65λ, λ = 25ν follow the clock's counters).
+ * Every cycle is exactly one of its own unit, so that would say nothing; the ν cycle is the finest and says nothing.
+ */
 function lastsText(C, level, clipped = false) {
-  const span = C.pure.cycleLength(level);
-  const own = span === `1${LETTERS[level]}`;
-  return own && !clipped ? '' : `${LETTERS[level]} lasts ${span}${clipped ? ' (clipped by the catalogue end)' : ''}`;
+  const made = madeOf(C.model, C.pure, level);
+  if (!made && !clipped) return '';
+  return `${LETTERS[level]} lasts ${made || '1' + LETTERS[level]}${clipped ? ' (clipped by the catalogue end)' : ''}`;
 }
 const outsideNote = (C) => `The catalogue runs ${C.pure.catalogueText()}`;
 
@@ -128,8 +165,8 @@ function recKeyword(C) {
   return [c];
 }
 
-// ---- offsets: +2ζ½ 3η ----------------------------------------------------------------------
-const TERM = new RegExp(`\\s*(\\d+(?:\\.\\d+)?)\\s*(${GREEK_ALT})${HALF_ALT}?\\s*,?\\s*(?:and\\s+)?`, 'y');
+// ---- offsets: +2ζ 3η, +4 Blinks ---------------------------------------------------------------
+const TERM = new RegExp(`\\s*(\\d+(?:\\.\\d+)?)\\s*(${GREEK_ALT})${END}\\s*,?\\s*(?:and\\s+)?`, 'y');
 function parseTerms(s) {
   const out = [];
   let used = 0;
@@ -137,21 +174,20 @@ function parseTerms(s) {
     TERM.lastIndex = used;
     const m = TERM.exec(s);
     if (!m || m.index !== used) break;
-    out.push({ n: Number(m[1]), tok: m[2], half: !!m[3], text: m[0].trim() });
+    out.push({ n: Number(m[1]), tok: m[2], text: m[0].trim() });
     used = TERM.lastIndex;
     if (used >= s.length) break;
   }
   return out.length && used >= s.trimEnd().length ? out : null;
 }
-function unitOfTerm(term) {
-  const level = levelOfToken(term.tok);
-  if (level < 0) return { error: `"${term.tok}" is not a depth letter` };
+/** The unit of a term: every depth from α to ν is a unit; ξ and finer are decimals of a Blink. */
+function unitOfTerm(C, term) {
+  const level = levelOfUnitToken(term.tok);
+  if (level < 0) return { error: `"${term.tok}" is not a unit` };
   const sym = LETTERS[level];
-  if (level === 7 || level === 9) return { error: `${sym} is not counted: the ladder goes ι (4 per θ) and λ (13 per κ)`, detail: 'Count in α β γ δ½ ε½ ζ½ η ι λ μ ν ξ' };
-  const u = UNITS.find((x) => x.level === level && x.half === term.half);
+  const u = UNITS.find((x) => x.level === level);
   if (u) return { unit: u };
-  if (term.half) return { error: `${sym} has no half here`, detail: 'Halves are δ½ ε½ ζ½' };
-  return { error: `${sym} is counted in halves: write ${sym}½`, detail: '1 γ = 10 δ½ · 1 δ½ = 5 ε½ · 1 ε½ = 7 ζ½' };
+  return { error: `${sym} is finer than a Blink: count it as a decimal of ν`, detail: `One ${sym} cycle is ${C.pure.cycleLength(level)}, e.g. +${C.pure.cycleLength(level)}` };
 }
 function recOffset(C) {
   let s = C.lower;
@@ -172,17 +208,17 @@ function recOffset(C) {
     sign = (sign ?? 1) * (lead[1] === '-' ? -1 : 1);
     s = lead[2];
   }
-  if (/^\d+(?:\.\d+)?$/.test(s) && sign !== null && s.replace('.', '').length <= 5) return [err('Add a unit to the offset', 'e.g. +2ζ½ 3η · -1ι · in 5λ · 3η ago')];
+  if (/^\d+(?:\.\d+)?$/.test(s) && sign !== null && s.replace('.', '').length <= 5) return [err('Add a unit to the offset', 'e.g. +2ζ 3η · -1ι · in 5λ · 3η ago · +4 Blinks')];
   const terms = parseTerms(s);
   if (!terms) return null;
   // "3η 17ι 21λ" with no sign is also the clock the header prints: the counters are the first reading, the span the second
   const clockLike = sign === null && isClockChain(C, terms);
-  if (sign === null) sign = 1; // "2ζ½ 3η" is a span as the instrument writes it: read as "after"
+  if (sign === null) sign = 1; // "2ζ 3η" is a span as the instrument writes it: read as "after"
   if (terms.length > 8) return [err('At most 8 terms in an offset')];
   let dpos = 0;
   const shown = [];
   for (const term of terms) {
-    const r = unitOfTerm(term);
+    const r = unitOfTerm(C, term);
     if (r.error) return [err(r.error, r.detail ?? '')];
     dpos += term.n * C.pure.unitPos(r.unit);
     shown.push(`${term.n}${r.unit.sym}`);
@@ -202,8 +238,7 @@ function isClockChain(C, terms) {
   const ids = ['eta', 'iota', 'lambda'];
   const R = ladderRanges(C.model, C.pure);
   return terms.every((t, i) => {
-    const level = levelOfToken(t.tok);
-    const u = UNITS.find((x) => x.level === level && x.half === t.half);
+    const u = UNITS.find((x) => x.level === levelOfUnitToken(t.tok));
     return !!u && u.id === ids[i] && Number.isInteger(t.n) && t.n <= R[u.id].max;
   });
 }
@@ -226,7 +261,7 @@ function levelOfDepthToken(tok) {
     const d = Number(m[1]);
     return d >= 1 && d <= 14 ? d - 1 : -2;
   }
-  return levelOfToken(tok);
+  return levelOfUnitToken(tok);
 }
 function recState(C) {
   const st = parseState(C);
@@ -293,10 +328,10 @@ export function namesToAddress(lower) {
   return { text: s, had };
 }
 
-// "δ½#3" "ζ½ 5" "η 3" "ε#5": the letter first (an ordinal, or an old-style counter)
-const STAMP_LETTER = new RegExp(`\\s*(${GREEK_ALT})${HALF_ALT}?\\s*(#?)\\s*(\\d+)`, 'y');
-// "3η" "17ι" "0η29ι21λ": the count first (the clock counters as the header prints them)
-const STAMP_COUNT = new RegExp(`\\s*(\\d+)\\s*(${GREEK_ALT})${HALF_ALT}?`, 'y');
+// "δ#3" "ζ 5" "η 3" "ε#5": the letter first (an ordinal, or an old-style counter)
+const STAMP_LETTER = new RegExp(`\\s*(${LEVEL_WORD_ALT}|[α-ξ])${END}\\s*(#?)\\s*(\\d+)`, 'y');
+// "3η" "17ι" "0η29ι21λ" "3 Helions": the count first (the clock counters as the header prints them)
+const STAMP_COUNT = new RegExp(`\\s*(\\d+)\\s*(${GREEK_ALT})${END}`, 'y');
 /** Tokens of a stamp / address text, or null when something else is in it. */
 function tokenizeStamp(s) {
   const body = s.replace(/[›»>·|,]/g, ' ').replace(/\s+/g, ' ').trim();
@@ -308,45 +343,43 @@ function tokenizeStamp(s) {
     if (m && m.index === pos) {
       const level = levelOfToken(m[1]);
       if (level < 0) return null;
-      toks.push({ level, half: !!m[2], hashed: m[3] === '#', n: Number(m[4]), count: false });
+      toks.push({ level, hashed: m[2] === '#', n: Number(m[3]), count: false });
       pos = STAMP_LETTER.lastIndex;
       continue;
     }
     STAMP_COUNT.lastIndex = pos;
     m = STAMP_COUNT.exec(body);
     if (!m || m.index !== pos) return null;
-    const level = levelOfToken(m[2]);
+    const level = levelOfUnitToken(m[2]);
     if (level < 0) return null;
-    toks.push({ level, half: !!m[3], hashed: false, n: Number(m[1]), count: true });
+    toks.push({ level, hashed: false, n: Number(m[1]), count: true });
     pos = STAMP_COUNT.lastIndex;
   }
   return toks.length ? toks : null;
 }
+/** The clock counters (depth levels of η ι λ) and the date ordinals (α … ζ) a stamp is made of. */
 const COUNTER_LEVELS = { 6: 'eta', 8: 'iota', 10: 'lambda' };
-const HALF_LEVELS = { 3: 'delta-half', 4: 'epsilon-half', 5: 'zeta-half' };
-const CYCLE_LEVELS = { 0: 'alpha', 1: 'beta', 2: 'gamma' };
+const DATE_LEVELS = { 0: 'alpha', 1: 'beta', 2: 'gamma', 3: 'delta', 4: 'epsilon', 5: 'zeta' };
 
-/** Stamp tokens -> LADDER parts, or {error}; null when the tokens are an ordinary cycle address. */
+/** Stamp tokens -> LADDER parts, or {error}; null when the tokens are an ordinary cycle address (no counters). */
 function stampParts(toks) {
-  // a count-first token ("3η") is a clock counter; "δ½#3" / "δ½ 3" is the ordinal; "η 3" (old) is a counter, "η#4" the 4th η
-  const kinds = toks.map((t) => (t.count ? 'count' : t.half ? 'half' : !t.hashed && COUNTER_LEVELS[t.level] ? 'counter' : 'ord'));
-  if (!kinds.includes('half') && !kinds.includes('counter') && !kinds.includes('count')) return null;
+  // a count-first token ("3η") is a clock counter; "ζ#5" / "ζ 5" is the ordinal; "η 3" (old) is a counter, "η#4" the 4th η
+  const kinds = toks.map((t) => (t.count ? 'count' : !t.hashed && COUNTER_LEVELS[t.level] ? 'counter' : 'ord'));
+  if (!kinds.includes('counter') && !kinds.includes('count')) return null;
   const parts = [];
   for (const [i, t] of toks.entries()) {
-    const sym = LETTERS[t.level] + (t.half ? '½' : '');
+    const sym = LETTERS[t.level];
     if (kinds[i] === 'count') {
-      if (!COUNTER_LEVELS[t.level] || t.half) return { error: `${t.n}${sym} is a count of units, not a stamp entry`, detail: `A stamp writes an ordinal as ${sym}#${t.n}; counts are η ι λ: 3η 17ι 21λ. A span after the shown moment starts with + : +${t.n}${sym}` };
+      if (!COUNTER_LEVELS[t.level]) return { error: `${t.n}${sym} is a count of units, not a stamp entry`, detail: `A stamp writes an ordinal as ${sym}#${t.n}; the clock counts η ι λ: 3η 17ι 21λ. A span after the shown moment starts with + : +${t.n}${sym}` };
       parts.push({ id: COUNTER_LEVELS[t.level], n: t.n });
-    } else if (kinds[i] === 'half') {
-      if (!HALF_LEVELS[t.level]) return { error: `${LETTERS[t.level]} has no half here`, detail: 'Halves are δ½ ε½ ζ½' };
-      if (t.n < 1) return { error: `${sym}# numbers start at 1`, detail: `${sym}#1 is the first` };
-      parts.push({ id: HALF_LEVELS[t.level], n: t.n });
     } else if (kinds[i] === 'counter') parts.push({ id: COUNTER_LEVELS[t.level], n: t.n });
     else if (COUNTER_LEVELS[t.level]) {
       if (t.n < 1) return { error: `${sym}# numbers start at 1`, detail: `${sym}#1 is the first; the clock counts completed units from 0: 0${sym}` };
       parts.push({ id: COUNTER_LEVELS[t.level], n: t.n - 1 }); // η#4 is the 4th η, the counter 3
-    } else if (CYCLE_LEVELS[t.level]) parts.push({ id: CYCLE_LEVELS[t.level], n: t.n });
-    else return { error: `${sym}#${t.n} cannot be mixed with half-cycle counters`, detail: 'Write cycles as α#6 β#4 γ#9 δ#3, the date as δ½#3 · ε½#2 · ζ½#5, the clock as 3η 17ι 21λ' };
+    } else if (DATE_LEVELS[t.level]) {
+      if (t.n < 1) return { error: `${sym}# numbers start at 1`, detail: `${sym}#1 is the first` };
+      parts.push({ id: DATE_LEVELS[t.level], n: t.n });
+    } else return { error: `${sym}#${t.n} is not part of a stamp: the clock counts η, ι and λ`, detail: 'Write cycles as α#6 β#4 γ#9 δ#3, the date as δ#3 · ε#2 · ζ#5, the clock as 3η 17ι 21λ' };
   }
   return { parts };
 }
@@ -355,7 +388,7 @@ function recStamp(C, parts) {
   if (r.error) return [err(r.error, r.detail ?? '')];
   const finestIdx = LADDER.indexOf(parts[parts.length - 1].id);
   const firstIdx = LADDER.indexOf(parts[0].id);
-  const upTo = ['alpha', 'beta', 'gamma', 'delta', 'epsilon', 'zeta', 'eta', 'iota', 'lambda'][finestIdx];
+  const upTo = LADDER[finestIdx]; // (the ids of the ladder are the level names pure.stamp takes)
   const full = C.pure.stamp(r.t, upTo);
   const given = entriesText(parts);
   const parent = firstIdx === LADDER.indexOf('eta') ? 'ζ' : stampSym(LADDER[firstIdx - 1]);
@@ -490,22 +523,15 @@ function recPosition(C) {
   return [make(C, 'position', `Saros position ${k}${f ? frac.slice(1) : ''}`, r3(t), { extra: `eclipse ${C.pure.eclipseName(k)} + ${frac}`, upTo: 'iota' })];
 }
 
-// ---- boundaries: next ε, prev ζ½ ---------------------------------------------------------------
-/** Boundaries of a half-unit: the cycle start (phase 0) and its middle (phase 0.5), merged in time order. */
-function halfEvents(model, now, level, dir, count) {
-  const a = eventsAround(model, now, level, dir, count + 1, 0);
-  const b = eventsAround(model, now, level, dir, count + 1, 0.5);
-  const all = [...a.map((e) => ({ ...e, half: 0 })), ...b.map((e) => ({ ...e, half: 1 }))].sort((x, y) => (dir > 0 ? x.t - y.t : y.t - x.t));
-  return all.slice(0, count);
-}
+// ---- boundaries: next ε, prev ζ, next Helion ---------------------------------------------------
 function recBoundary(C) {
   const bare = new RegExp(`^(next|prev|previous|last|after|before)\\s*(\\d+)?\\s*(${POINT_WORDS})$`).exec(C.lower);
   if (bare) {
     if (C.level === undefined) return [err(`"${clip(C.text)}" needs a level`, 'Name it: next peak η · next node ζ · next end of δ')];
     const dir0 = bare[1] === 'next' || bare[1] === 'after' ? 1 : -1;
-    return boundaryCandidates(C, C.level, false, dir0, bare[2] ? Math.max(1, Math.min(500, Number(bare[2]))) : 1, pointId(bare[3]));
+    return boundaryCandidates(C, C.level, dir0, bare[2] ? Math.max(1, Math.min(500, Number(bare[2]))) : 1, pointId(bare[3]));
   }
-  const re = new RegExp(`^(next|prev|previous|last|after|before)\\s*(\\d+)?\\s*(?:(${POINT_WORDS})\\s*(?:of\\s*)?)?(${DEPTH_ALT}|${GREEK_ALT}|[a-z])${HALF_ALT}?\\s*(?:(${POINT_WORDS}))?$`);
+  const re = new RegExp(`^(next|prev|previous|last|after|before)\\s*(\\d+)?\\s*(?:(${POINT_WORDS})\\s*(?:of\\s*)?)?(${DEPTH_ALT}|${GREEK_ALT}|[a-z])${END}\\s*(?:(${POINT_WORDS}))?$`);
   const m = re.exec(C.lower);
   if (!m) return null;
   const level = levelOfDepthToken(m[4]);
@@ -513,28 +539,25 @@ function recBoundary(C) {
   if (level < 0) return null;
   const dir = m[1] === 'next' || m[1] === 'after' ? 1 : -1;
   const count = m[2] ? Math.max(1, Math.min(500, Number(m[2]))) : 1;
-  const word = m[3] ?? m[6] ?? null;
-  return boundaryCandidates(C, level, !!m[5], dir, count, word ? pointId(word) : 'end');
+  const word = m[3] ?? m[5] ?? null;
+  return boundaryCandidates(C, level, dir, count, word ? pointId(word) : 'end');
 }
-function boundaryCandidates(C, level, half, dir, count, pid) {
+function boundaryCandidates(C, level, dir, count, pid) {
   const { model, pure } = C;
   if (!model.inRange(C.now)) return [err('The shown moment is outside the catalogue, so there is no next or previous cycle', outsideNote(C))];
-  const letter = LETTERS[level] + (half ? '½' : '');
-  if (half && !HALF_LEVELS[level]) return [err(`${LETTERS[level]} has no half here`, 'Halves are δ½ ε½ ζ½')];
-  if (half && pid !== 'end' && pid !== 'begin') return [err(`A half has no ${pointLabel(pid)}`, 'Peak, node and valley belong to whole cycles: next peak ε')];
+  const letter = LETTERS[level];
   const phase = pid === 'end' ? 1 : pid === 'begin' ? 0 : phaseOfPoint(pid);
-  const ev = half ? halfEvents(model, C.now, level, dir, count) : eventsAround(model, C.now, level, dir, count, phase);
+  const ev = eventsAround(model, C.now, level, dir, count, phase);
   const what = pid === 'end' || pid === 'begin' ? 'boundary' : pointLabel(pid);
   const label = `${dir > 0 ? 'Next' : 'Previous'}${count > 1 ? ' ' + ordinal(count) : ''} ${letter} ${what}`;
   if (ev.length < count) return [err(`${label}: ${dir > 0 ? 'the catalogue ends before it' : 'it would be before the catalogue starts'}`)];
   const last = ev[ev.length - 1];
-  const isBoundary = half || phase === 0 || phase === 1;
+  const isBoundary = phase === 0 || phase === 1;
   const total = Number(model.clock.count(level));
-  // the first millisecond that shows it (a half is the start or the middle of a cycle, the event says which)
-  const t = landPoint(model, level, last.idx, half ? (last.half ? 0.5 : 0) : phase === 1 ? 0 : phase);
+  // the first millisecond that shows it
+  const t = landPoint(model, level, last.idx, phase === 1 ? 0 : phase);
   let extra;
-  if (half) extra = `${pure.stamp(t, STAMP_UPTO[level]).split(' · ').pop()} begins`;
-  else if (isBoundary) {
+  if (isBoundary) {
     const ord = (i) => cycleLabel(level, model.cycleToPath(level, BigInt(i)).at(-1));
     const ends = last.idx >= 1 && last.idx <= total ? `${ord(last.idx - 1)} ends` : '';
     const starts = last.idx < total ? `${pure.cycleName(level, last.idx)} begins` : 'the catalogue ends';
@@ -542,12 +565,12 @@ function boundaryCandidates(C, level, half, dir, count, pid) {
   } else extra = last.idx < total ? `in ${pure.cycleName(level, last.idx)}` : '';
   return [make(C, 'boundary', label, t, { extra, upTo: STAMP_UPTO[level] })];
 }
-/** A lone Greek letter / level name: offer its next and previous boundary. */
+/** A lone depth letter, level name or unit name ("ε", "Helion"): offer its next and previous boundary. */
 function recLevelOnly(C) {
   const m = new RegExp(`^(${GREEK_ALT})$`).exec(C.lower);
   if (!m) return null;
-  const level = levelOfToken(m[1]);
-  return [...boundaryCandidates(C, level, false, 1, 1, 'end'), ...boundaryCandidates(C, level, false, -1, 1, 'end')];
+  const level = levelOfUnitToken(m[1]);
+  return [...boundaryCandidates(C, level, 1, 1, 'end'), ...boundaryCandidates(C, level, -1, 1, 'end')];
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -569,6 +592,9 @@ export function parsePure(text, opts = {}) {
   }
   const raw = normalizePure(s);
   if (!raw) return [];
+  // the half-cycle units are gone: one pointer to whole cycles, whatever else the text says
+  if (HALF_RE.test(raw.toLowerCase())) return [err(HALF_ANSWER[0], HALF_ANSWER[1])];
+  if (RETIRED_RE.test(raw.toLowerCase())) return [err(RETIRED_ANSWER[0], RETIRED_ANSWER[1])];
   const now = r3(opts.now ?? opts.real ?? 0);
   const C = {
     model: opts.model,

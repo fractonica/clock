@@ -56,8 +56,63 @@ that day?" is answered by looking.
 - Provide small pure helpers (tick generator, nice-step picker, time↔x mapping) in `src/ui/timeline/helpers.js` with tests,
   including DST (e.g. zone `Europe/Berlin` around 2026-03-29 and 2026-10-25) and a century-scale tick case.
 
-## Pure mode
-The Gregorian axis becomes a **pure ruler** (`src/ui/timeline/ruler.js`, `words.js`, `tips.js`): ticks at unit boundaries of the
-ladder α β γ δ½ ε½ ζ½ η ι λ μ ν ξ with 4–12 labelled ticks at every zoom; ordinal ticks `ζ½#3`, count ticks `9η`, `17ι`; a context row
-names the larger unit (`ε½#4 · ζ½#6`). Eclipses are numbered `#k` like the position (`#0 … #69`); the overview is labelled with
-them; hover tooltips give the stamp, `pos` and the cycle names; the status line measures the span in position.
+## Pure mode (revision 2 of docs/design/80-pure.md: whole cycles, named units, the Blink)
+
+The Gregorian axis becomes a **pure ruler** (`src/ui/timeline/ruler.js`, wording in `words.js`, tooltips in `tips.js`).
+Nothing Earth-ish is drawn or said; the mode switches live (`applyMode`), in both directions.
+
+**The ladder** is `pure.UNITS`: one unit per depth, whole cycles only, **α β γ δ ε ζ η θ ι κ λ μ ν** (depth 1 … 13; the
+Blink ν is the finest, there are no halves and ξ is a level, not a unit). Ticks are the unit boundaries:
+
+| unit | per parent | tick label | notes |
+|---|---|---|---|
+| α β γ δ ε ζ | catalogue 18 · 5 · 13 · 5 · 5 · 7 | ordinal `ζ#3` (from 1) | the date `α#6 β#4 γ#9 · δ#3 · ε#2 · ζ#5` |
+| η | 11 in ζ | count `9η` (from 0) | clock counter |
+| θ | 9 in η | count `5θ` | rides along with ι |
+| ι | 36 in η | count `17ι` | clock counter (η ι λ read like the header) |
+| κ | 5 in ι | count `3κ` | rides along with λ |
+| λ | 65 in ι | count `42λ` | clock counter |
+| μ | 5 in λ | count `2μ` | rides along with ν |
+| ν | 25 in λ | count `12ν` | the Blink |
+
+**What a count is counted inside** (one rule): the atomic cadence ν -25→ λ -65→ ι -36→ η keeps the header clock's counters
+(ι inside η 0–35, λ inside ι 0–64, ν inside λ 0–24); the in-between units θ κ μ are counted inside the same parent as the unit
+that follows them (θ 0–8 inside η, κ 0–4 inside ι, μ 0–4 inside λ). A count runs on across them: the four ι of `5θ` are
+`20ι 21ι 22ι 23ι`. `ruler.per` / `ruler.countedIn` hold the table; the ruler tip says it per step ("Here ι is counted inside
+η, from 0 to 35, like the clock in the header").
+
+**Addresses** are written along the main chain α β γ δ ε ζ η ι λ ν exactly like `pure.stamp` (`… · 3η 17ι 21λ`); an
+in-between unit is inserted at its place only when it is the tick unit (`… · 3η 5θ`). `ruler.stampText(t, to)` equals
+`pure.stamp` for every stamp level (tested). The cursor / now / hover **flag** is the tick unit with the chain unit above and
+the one below: ι ticks → `3η 17ι 21λ` (the header), θ → `3η 5θ 17ι`, κ → `17ι 3κ 21λ`, λ and ν → `17ι 21λ 4ν`, ε → `δ#3 · ε#2 · ζ#5`.
+The tooltip head runs on two chain units below the tick unit.
+
+**Zoom ladder.** Steps = a whole unit or a multiple m of it (labels every m-th unit of each counting parent while a full step
+fits, 2·m ≤ count): ν ×1 ×2 · μ ×1 ×2 · λ ×1 ×2 ×5 · κ ×1 ×2 · ι ×1 ×2 · θ ×1 ×2 ×3 ×4 · η ×1 ×2 ×3 ×5 · ζ ×1 ×2 ×3 ·
+ε ×1 ×2 · δ ×1 ×2 · γ ×1 ×2 ×3 ×6 · β ×1 ×2 · α ×1 ×2. Neighbours are at most 2.6 apart, so a plot of 520 px or more
+shows **4–12 labelled ticks at every zoom** (including γ and β multiples). The **context row** names the next coarser unit
+(`ε#2 · ζ#5` over ζ ticks; `5θ` over ι ticks). Minor (unlabelled) ticks are the next finer unit; the Blink has none, so its
+minors are **tenths of a Blink** (`nu/10`, `step.div`). The key in the gutter shows the context unit above and the tick unit
+(with its multiple, `ι ×2`) below.
+
+**Presets**: `ν λ ι η ζ ε δ γ β α All`. Each is one unit across **in position** (the status line reads `1η across`); their
+titles name the unit ("Show about one Helion (η) across: a depth-7 cycle"). **ν is the deepest zoom**: the narrowest
+window (`MIN_SPAN`, a few Blinks across; it reads `1μ 1ν across`), because a single Blink is narrower than the 2 s limit
+shared with normal mode. At that scale the ticks are Blinks (6–7 of them, `12ν 13ν …`), the context row is the Somon spans, and
+the ticks stay exact (checked against the clock 1 ms after each boundary, also at the catalogue ends).
+
+**Wording** (all in `words.js`; the glossary rule: compact text keeps symbols, names are for prose):
+- spans, countdowns, pointers: `ε ends in 1ε 2ζ ▸`, `4η 8θ ago`, status `… · 1η 1θ across`, all counted in every unit with
+  zero parts skipped (`pure.duration*`); real-time spans below one Blink are decimals: `0.4ν`, `in 0.32ν`, `<0.001ν`.
+  `spanText(t0, t1, parts, slack)` writes the fewest leading parts that come within half a pixel of the window, so a
+  window that is a unit across to the pixel reads `1α`, not `1α 5ζ`. `relText` is `now` only within the same millisecond.
+- lane heads: letter, `depth n`, and **how many cycles of the next depth make one** (`= 9θ` for η; every lane is itself one
+  whole unit, so its length "1η" would only repeat the letter); the tooltip names the unit: "A Helion (η) is one depth-7
+  cycle: 11 of them make a ζ. It splits into 9 θ." The plot tooltip adds `lasts 0.14ν` only for a depth finer than the Blink.
+- dense lane note: `ε cycles · zoom in`; blocks, eclipses (`#k`), overview labels (`α#n`, `#10`) are unchanged.
+- no half units (`[α-ω]½`), no "beat" (real time is Blinks; the scanner flags both as hard leaks).
+
+Verification: `test/timeline.test.js` (the pure section covers the 13-unit ladder, counts per parent, ticks
+of every step against the lanes and the clock, the 4–12 label rule, presets, the deepest zoom, wording and tooltips) and
+`tools/checks/check-timeline-pure.mjs` (browser: every preset, window edges, drags, keyboard, phone long press, live
+switching, leak scan).

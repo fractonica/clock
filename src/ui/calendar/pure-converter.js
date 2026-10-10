@@ -11,12 +11,14 @@
  *             at every depth with a picker for "when does depth d show this pair", the solar sync
  *
  * Nothing here prints a Gregorian date, a zone, an Earth unit or a percentage: durations are counted in the ladder
- * α β γ δ½ ε½ ζ½ η ι λ, phases are two 2-stroke glyphs (src/core/pure.js), distances are exact position spans.
+ * α β γ δ ε ζ η θ ι κ λ μ ν (src/core/pure.js, one whole cycle per depth), phases are two 2-stroke glyphs, distances are
+ * exact position spans. Offsets typed into the stamp field may use any unit, Blinks included (+4 Blinks, +0.5ν).
  *
- * Notation (core/pure.js): X#n is an ordinal counted from 1 (δ½#6, the names and addresses), nX a count of completed
- * units counted from 0 (the clock counters 3η 17ι 21λ, spans 6ι 43λ). The counters of the Counters section are written
- * exactly like that: "δ½#" before the number box for the date, the unit after it for the clock. Eclipses are named like
- * positions, #22 for the one at position 22; the drift of a sync is pure.driftText.
+ * Notation (core/pure.js): X#n is an ordinal counted from 1 (δ#6, the names and addresses), nX a count of completed
+ * units counted from 0 (the clock counters 3η 17ι 21λ, spans 6ι 3κ). The counters of the Counters section are written
+ * exactly like that: "δ#" before the number box for the date (δ 1–5 in γ, ε 1–5 in δ, ζ 1–7 in ε), the unit after it
+ * for the clock (η 0–10 in ζ, ι 0–35 in η, λ 0–64 in ι). Eclipses are named like positions, #22 for the one at
+ * position 22; the drift of a sync is pure.driftText. Unit names (Atom, Helion …) appear in tooltips and hints.
  */
 import { h, ICONS, esc, setText, setHtml, setStyle, setAttr, toggleClass, copyText, prefersReducedMotion, hasSound, hearMoment } from './dom.js';
 import { levelColor, GOLD } from '../../core/theme.js';
@@ -24,6 +26,7 @@ import { LEVEL_NAMES } from '../../core/pure.js';
 import {
   LETTERS,
   MAX_DEPTH,
+  an,
   POINTS,
   chainText,
   childCount,
@@ -44,11 +47,10 @@ import {
   timeOfPositionText,
 } from './convert.js';
 import { parsePure } from './pure-parse.js';
-import { COUNTERS, countersAt, firstMs, landCycleAt, landPath, pureEclipseContext, pureShareQuery, pureSolarInfo, setCounter, shiftUnits, spanText } from './pure-conv.js';
+import { COUNTERS, LEVEL_OF, countersAt, firstMs, landCycleAt, landPath, madeOf, pureEclipseContext, pureShareQuery, pureSolarInfo, setCounter, shiftUnits, spanText } from './pure-conv.js';
 
 const FOLLOW_MS = 100; // repaint interval while following a moving clock
 const PURE_POINTS = POINTS.map((p) => (p.id === 'phase' ? { ...p, label: 'Same phase as this moment' } : p));
-const COUNTER_LEVEL = { 'delta-half': 3, 'epsilon-half': 4, 'zeta-half': 5, eta: 6, iota: 8, lambda: 10 };
 
 export function createPureConverter(ctx, { tip }) {
   const { model, store, pure } = ctx;
@@ -77,9 +79,9 @@ export function createPureConverter(ctx, { tip }) {
   let nextId = 0;
   const uid = (p) => `cal-pc-${p}-${++nextId}`;
   const catalogue = () => pure.catalogueText();
-  /** "in 2ζ½ 3η" / "5λ ago" between the converter's moment and t. */
+  /** "in 2ζ 3η" / "5λ ago" between the converter's moment and t. */
   const relTo = (t) => {
-    if (Math.abs(t - S.T) < 0.5) return 'at this moment';
+    if (Math.abs(t - S.T) < 0.0005) return 'at this moment';
     const text = spanText(model, pure, Math.min(S.T, t), Math.max(S.T, t));
     return t > S.T ? `in ${text}` : `${text} ago`;
   };
@@ -224,8 +226,8 @@ export function createPureConverter(ctx, { tip }) {
   // ---- stamp / name / offset field
   const fStamp = field({
     label: 'Stamp or name',
-    placeholder: 'Gamma Difracton · α#6 β#4 γ#9 · ζ½ 5 · η 3',
-    hint: 'A name, an address, a stamp or an offset such as +2ζ½ 3η',
+    placeholder: 'Gamma Difracton · α#6 β#4 γ#9 · ζ#5 · 3η',
+    hint: 'A name, an address, a stamp or an offset such as +2ζ 3η or +4 Blinks',
     copy: () => stampOf(S.T),
     multiline: true,
     parse: (txt) => {
@@ -237,17 +239,25 @@ export function createPureConverter(ctx, { tip }) {
     apply: ({ t }) => setT(t, 'stamp'),
   });
 
-  // ---- odometer counters: δ½ ε½ ζ½ · η ι λ
+  /** "Helion: one η cycle, 11 in a ζ, lasts 36ι": what a unit letter stands for (tooltips on the counters and depth chips). */
+  const unitTip = (level) => {
+    const sym = LETTERS[level];
+    const made = madeOf(model, pure, level);
+    const per = level > 0 ? `, ${model.levelInfo(level).siblings} in ${an(LEVEL_NAMES[level - 1])} ${LETTERS[level - 1]}` : '';
+    return `${pure.unitName(sym)} · ${sym}: one whole cycle of depth ${level + 1}${per}${made ? `, lasts ${made}` : ''}`;
+  };
+
+  // ---- odometer counters: δ ε ζ · η ι λ
   function makeCounter(spec) {
-    const level = COUNTER_LEVEL[spec.id];
-    // the date entries are ordinals ("δ½#" + the number box, from 1), the clock entries counts (the number box + "η", from 0)
+    const level = LEVEL_OF[spec.id];
+    // the date entries are ordinals ("δ#" + the number box, from 1), the clock entries counts (the number box + "η", from 0)
     const kind = spec.ordinal ? 'number' : 'counter';
     const input = h('input.cal-sv.mono', { type: 'text', inputmode: 'numeric', autocomplete: 'off', 'aria-label': `${spec.sym} ${kind}, ${spec.min} to ${spec.max}`, size: 3 });
     const dec = h('button.cal-sb', { type: 'button', html: '−', title: `One ${spec.sym} back`, 'aria-label': `One ${spec.sym} back` });
     const inc = h('button.cal-sb', { type: 'button', html: '+', title: `One ${spec.sym} forward`, 'aria-label': `One ${spec.sym} forward` });
     const err = h('div.cal-serr', { role: 'alert', hidden: true });
     const range = h('span.cal-so', null, h('span.cal-sn', { text: `${spec.min}–${spec.max}` }));
-    const lab = h('span.cal-sl', { text: spec.ordinal ? `${spec.sym}#` : spec.sym, 'aria-hidden': 'true' });
+    const lab = h('span.cal-sl', { text: spec.ordinal ? `${spec.sym}#` : spec.sym, title: unitTip(level), 'aria-hidden': 'true' });
     const box = h('div.cal-sbox', null, dec, input, inc);
     const el = h('div.cal-step.cal-cstep' + (spec.ordinal ? '.is-ord' : '.is-count'), { style: `--lv:${levelColor(level)}` }, ...(spec.ordinal ? [lab, box] : [box, lab]), range, err);
     const api = { spec, el, input, value: spec.min };
@@ -356,7 +366,7 @@ export function createPureConverter(ctx, { tip }) {
     const b = h('button.cal-dchip', {
       type: 'button',
       'aria-pressed': 'false',
-      title: `Depth ${d} · ${LEVEL_NAMES[d - 1]} · a cycle lasts ${pure.cycleLength(d - 1)}`,
+      title: `Depth ${d} · ${LEVEL_NAMES[d - 1]} · ${unitTip(d - 1)}`,
       'aria-label': `Depth ${d}, ${LEVEL_NAMES[d - 1]} ${LETTERS[d - 1]}`,
       style: `--lv:${levelColor(d - 1)}`,
     });
@@ -527,7 +537,7 @@ export function createPureConverter(ctx, { tip }) {
       `<div class="cal-tt-pair">${pure.pairHTML(r.phase, { label: `${LETTERS[L]} phase` })}<span class="mono">${esc(pure.pairText(r.phase))}</span></div>` +
       `<div>Coarse glyph: state <b>${r.index}</b> of ${r.states} · ${esc(m.text)} ${m.arrow}${r.dotted ? ' <span class="dim">(dot = falling branch)</span>' : ''}</div>` +
       `<div class="dim">${esc(pure.cycleName(L, r.cycle))} · ${esc(cycleLabel(L, r.local))} of ${r.siblings}${L ? ' in ' + esc(cycleLabel(L - 1, lastRows[L - 1]?.local ?? '')) : ''}</div>` +
-      `<dl class="cal-tt-dl"><dt>cycle</dt><dd>${esc(pure.stamp(r.start, 'lambda'))} → ${esc(pure.stamp(r.end, 'lambda'))} (${esc(pure.cycleLength(L))})</dd>`;
+      `<dl class="cal-tt-dl"><dt>cycle</dt><dd>${esc(pure.stamp(r.start, 'lambda'))} → ${esc(pure.stamp(r.end, 'lambda'))}${madeOf(model, pure, L) ? ` (lasts ${esc(madeOf(model, pure, L))})` : ''}</dd>`;
     html += `<dt>trits</dt><dd class="mono">${esc(trits)} <span class="dim">(msb first)</span></dd>`;
     if (od) html += `<dt>odometer</dt><dd class="mono">[${od.digits.join(', ')}] <span class="dim">coarse · fine</span></dd>`;
     if (next) html += `<dt>pair changes</dt><dd>${esc(relTo(next))}</dd>`;
@@ -932,8 +942,8 @@ export function createPureConverter(ctx, { tip }) {
       addrTextNow = '';
     } else {
       const pos = model.positionOf(addrTimeNow);
-      const span = pure.cycleLength(level);
-      const lasts = span === `1${LETTERS[level]}` ? '' : `<span class="chip cal-chip" style="--lv:${levelColor(level)}">${LETTERS[level]} lasts ${esc(span)}${cyc?.clipped ? ' (clipped)' : ''}</span>`;
+      const made = madeOf(model, pure, level);
+      const lasts = made || cyc?.clipped ? `<span class="chip cal-chip" style="--lv:${levelColor(level)}">${LETTERS[level]} lasts ${esc(made || '1' + LETTERS[level])}${cyc?.clipped ? ' (clipped)' : ''}</span>` : '';
       setHtml(
         addrResult,
         `<div class="cal-rline"><span class="cal-rlab">${label} <b style="color:${levelColor(level)}">${esc(chainText(path))}</b></span></div>` +
@@ -1082,7 +1092,7 @@ export function createPureConverter(ctx, { tip }) {
     const row = (lab, t, level) => timeRow(lab, t, null, { copyText: pure.stamp(landedT(t, level), 'iota'), goT: landedT(t, level), what: `${lab} of sync ${n}`, upTo: 'iota', level });
     let html = '<div class="cal-phase cal-pphase" title="Where this moment sits inside the sync" hidden><i></i><span class="cal-pphase-pair"></span></div>';
     html += row('start', info.start, 6) + row('end', info.end, 6);
-    html += `<div class="cal-kv"><span class="cal-k">Length</span><span class="mono">19η</span><span class="dim">19 η cycles</span></div>`;
+    html += `<div class="cal-kv"><span class="cal-k">Length</span><span class="mono">19η</span><span class="dim">19 Helions</span></div>`;
     html += `<div class="cal-kv"><span class="cal-k">Drift</span><span class="mono" style="color:var(--gold)">${esc(driftTxt)}</span><span class="dim">start against the solar rhythm</span></div>`;
     html += '<div class="cal-qh">Quarter thresholds</div>';
     for (const q of info.quarters) html += row(q.name, q.time, q.name === 'end' ? 6 : undefined);

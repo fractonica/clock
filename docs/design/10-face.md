@@ -58,8 +58,20 @@ Update only glyph groups whose digits changed (compare a signature string per od
 - Depth ≥ 11 changes faster than ~50 ms: that is expected (SPEC §10); do not throttle, but never let it freeze the page.
 - Put pure helpers (counter arc positions, hit-region mapping, label text) in `src/ui/face/helpers.js` and unit-test them.
 
-## Pure mode
-Letters overlay: the running cycles' names under their letters. Info labels: `NEXT END in 6ι 43λ`, `NEXT NODE in 2η 24ι`,
-`SYNC 4820 · drift −6 236λ`. Tooltips: cycle name, `η#1 of 11 in its ζ`, `one cycle = 1η`, `ends → Eta Difracton begins`, the
-solar phase as a glyph pair. Caption: the pure stamp. How-to: six lines incl. "counters from 0, names from 1" and the
-glossary pointer. Out of range: "outside the catalogue, from α#1 to α#18". Strings live in `src/ui/face/pure.js`.
+## Pure mode (revision 2: whole cycles, named units, the Blink)
+One unit per depth, no half units (docs/design/80-pure.md, REVISION 2). The face says:
+
+- **Caption** (time not live): `α#6 β#4 γ#9 · δ#3 ε#5 ζ#4 · 0η 29ι 21λ`: ordinals with a `#` from 1, the clock counters from 0 (η ι λ); its
+  hover text says which is which and points to the glossary.
+- **Letters overlay**: the running cycles' names under their letters ("Eta Monofracton", "Theta Octafracton").
+- **Info labels**: `NEXT END in 1θ 2ι`, `NEXT NODE in 2η 6θ`, `SYNC 4820 · drift −6 236λ`. Spans are the core's (`ctx.pure.between`): up to two
+  non-zero counts, zero units skipped; the drift is `ctx.pure.driftText`, counted in λ.
+- **Tooltips**: `Eta Monofracton · η#1 of 11 in its ζ`, `one cycle = 1η (Helion)` (a depth is its own unit: the unit's name follows where it
+  has one, α β γ read as their level names), `Ends in 1θ 2ι → Eta Difracton begins`; the solar tooltip says `one sync = 19η (19 Helions)`,
+  the phase as a glyph pair, `Drift −6 236λ against the solar rhythm`.
+- **How to read**: the five lines of normal mode plus *Counters from 0, names from 1* (the clock `0η 29ι 21λ` counts completed units from 0:
+  η is a Helion, ι a Preon, λ a Flavon; an ordinal such as `δ#6` or Eta Monofracton counts from 1) and the glossary pointer.
+- **Out of range**: "outside the catalogue", from `α#1` to `α#18`.
+
+Strings live in `src/ui/face/pure.js`; nothing there measures a duration or a drift itself. Real time never appears on the face (it has no
+real-time spans), so no Blinks are counted here.

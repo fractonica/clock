@@ -95,8 +95,8 @@ await withApp(async ({ page, url, errors, context }) => {
     rate: [...document.querySelectorAll('#tp-rate option')].map((o) => o.textContent),
   }));
   ok('?pure=1 switches the shell', pureState.flag && pureState.attr === '1' && pureState.zoneHidden && pureState.glossaryBtn, JSON.stringify(pureState));
-  ok('pure header clock counts η ι λ and the date is an address', /^\d+η\d+ι\d+λ$/.test(pureState.clock.replace(/\s/g, '')) && /^α#6 β#4 γ#9 · δ½#\d+ · ε½#\d · ζ½#\d$/.test(pureState.date), pureState.clock + ' | ' + pureState.date);
-  ok('speed select is in units per beat', pureState.rate.some((r) => r === 'η per beat') && !pureState.rate.some((r) => /\b(s|min|h|d)\b|\/s|×\d/.test(r)), pureState.rate.join(' | '));
+  ok('pure header clock counts η ι λ and the date is an address', /^\d+η\d+ι\d+λ$/.test(pureState.clock.replace(/\s/g, '')) && /^α#6 β#4 γ#9 · δ#\d · ε#\d · ζ#\d$/.test(pureState.date), pureState.clock + ' | ' + pureState.date);
+  ok('speed select is in units per Blink', pureState.rate.some((r) => r === 'η per Blink') && pureState.rate.some((r) => r === 'real time') && !pureState.rate.some((r) => /\b(s|min|h|d|beat)\b|\/s|×\d/.test(r)), pureState.rate.join(' | '));
   await page.keyboard.press('?');
   await page.waitForTimeout(150);
   ok('? opens the glossary and Esc closes it', (await page.evaluate(() => !document.querySelector('#glossary').hidden)) && (await page.keyboard.press('Escape'), await page.waitForTimeout(100), await page.evaluate(() => document.querySelector('#glossary').hidden)));

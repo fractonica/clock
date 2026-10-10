@@ -26,6 +26,17 @@ function text(g, s, x, y, font, color, align = 'left') {
   g.textBaseline = 'middle';
   g.fillText(s, x, y);
 }
+/**
+ * A pure-mode count tick ("5θ", "17ι"): the number in `color`, the unit symbol in `symColor` (the unit's lane colour).
+ * At 11 px a mono θ is hard to tell from a 0 ("0θ" reads "00"); the colour keeps the two apart. Anything that is not
+ * a count (an ordinal "ζ#5") is drawn as one piece.
+ */
+function countText(g, s, x, y, font, color, symColor) {
+  const m = symColor ? /^(\d+)(\p{L})$/u.exec(s) : null;
+  if (!m) return text(g, s, x, y, font, color);
+  text(g, m[1], x, y, font, color);
+  text(g, m[2], x + tw(g, font, m[1]), y, font, symColor);
+}
 /** Longest variant that fits in `room` px (or null). */
 function fit(g, font, variants, room) {
   for (const v of variants) if (v && tw(g, font, v) <= room) return v;
@@ -578,6 +589,7 @@ function paintOutOfRange(S) {
 // ---- axis ---------------------------------------------------------------------------------------------
 function paintAxis(S) {
   const { g, L, X, t0, t1, data, fonts, step, dpr } = S;
+  const symColor = S.isPure && step.pure ? laneStyle(S.theme, step.u).text : null; // pure: the unit symbol in its lane colour
   const px0 = L.px0;
   const px1 = L.px1;
   const ay = L.axis.y;
@@ -669,7 +681,7 @@ function paintAxis(S) {
     const font = tk.major ? fMajor : fTick;
     const lab = tk.labels[Math.min(variant, tk.labels.length - 1)];
     if (tw(g, font, lab) <= room + 4 && x + 4 + tw(g, font, lab) <= px1 + 40) {
-      text(g, lab, x + 4, yTick + 8, font, tk.major ? 'rgba(231,237,243,0.95)' : 'rgba(163,177,191,0.95)');
+      countText(g, lab, x + 4, yTick + 8, font, tk.major ? 'rgba(231,237,243,0.95)' : 'rgba(163,177,191,0.95)', symColor);
       S.axisLabels.push(lab);
     }
   }
@@ -818,15 +830,18 @@ function paintGutters(S) {
     const depthRoom = x1 - 8 - (11 + lw + 4);
     const depth = fit(g, fDepth, depthHeadVariants(info), depthRoom) ?? String(info.depth);
     text(g, depth, 11 + lw + 4, ly + 1, fDepth, sel ? 'rgba(231,237,243,0.95)' : 'rgba(163,177,191,0.8)');
-    const len = S.isPure ? S.words.cycleLength(level) : data.lengthLabel(level);
+    // pure: how many cycles of the next depth make one of this ("= 9θ" for η; every lane is itself a whole unit, so its
+    // length would only repeat its letter); normal: the mean length
+    const len = S.isPure ? S.words.laneSplit(level) : data.lengthLabel(level);
+    const lenFull = S.isPure ? len : `≈ ${len}`;
     if (two) {
       // the compact gutter is 56 px: a smaller mono font keeps "33.7 min" clear of the divider
       const fLen = L.compact ? fonts.mono(400, 9) : fSmall;
-      text(g, L.compact ? len : `${S.isPure ? '=' : '≈'} ${len}`, L.compact ? 8 : 11, y + L.laneH * (snug ? 0.8 : 0.74) + 0.5, fLen, MUTED);
+      text(g, L.compact && !S.isPure ? len : lenFull, L.compact ? 8 : 11, y + L.laneH * (snug ? 0.8 : 0.74) + 0.5, fLen, MUTED);
     } else if (!L.compact) {
       // one line (never at the standard lane heights): the length only if it clears the depth number
       const room = x1 - 8 - (11 + lw + 4 + tw(g, fDepth, depth) + 8);
-      const lab = fit(g, fSmall, [`${S.isPure ? '=' : '≈'} ${len}`, len], room);
+      const lab = fit(g, fSmall, [lenFull, len], room);
       if (lab) text(g, lab, x1 - 8, ly, fSmall, MUTED, 'right');
     }
   }

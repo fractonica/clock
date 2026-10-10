@@ -4,7 +4,8 @@
  * so the picture reads "which cycles are sounding, where, and how much" even before any sound plays.
  *
  * Pure mode: the frequency axis is unchanged, but its labels are no longer Hz and keyboard notes: the vertical lines are
- * the octaves of the ground (the base pitch), named by their ratio (`×2`) and their offset (`+1`).
+ * the octaves of the ground (the base pitch), named by their pitch in pB (cycles per Blink; the unit is written once, on
+ * the ground's own line) over their ratio (`×2`).
  */
 import { createCanvasView } from './canvas.js';
 import { LINE, TEAL, levelColor } from '../../core/theme.js';
@@ -56,7 +57,8 @@ export function createScope(canvas) {
    * @param {{level:number, letter:string, hz:number, loud:number, on:boolean, flash?:boolean}[]} s.voices
    * @param {boolean} s.enabled
    * @param {string} s.hint  text shown when nothing is audible
-   * @param {boolean} [s.pure]    label the octave lines of the ground instead of Hz and note names
+   * @param {boolean|{pb:(hz:number)=>string}} [s.pure]  label the octave lines of the ground instead of Hz and note names;
+   *   an object with `pb(hz)` (words.pbOf) adds the pitch of every line in pB
    * @param {number} [s.baseHz]   the ground (needed in pure mode)
    */
   function draw({ analyser, voices, enabled, hint, pure = false, baseHz = 110 }) {
@@ -70,12 +72,15 @@ export function createScope(canvas) {
     const pw = w - padL - padR;
     const xOf = (f) => padL + (Math.log(f / F_MIN) / logSpan) * pw;
 
-    // grid: the A's of the keyboard, labelled where there is room (pure: the octaves of the ground, ratio over offset)
+    // grid: the A's of the keyboard, labelled where there is room (pure: the octaves of the ground, pB over ratio)
     g.lineWidth = 1;
     g.font = '10px ui-sans-serif, system-ui, sans-serif';
     g.textBaseline = 'alphabetic';
+    const pbOf = typeof pure?.pb === 'function' ? pure.pb : null;
+    // the pitch of a line in pB: the unit stands once, on the ground (neighbours are about 40 px apart on a phone)
+    const pbLabel = (o) => (o.k === 0 ? o.pb : o.pb.replace(/ pB$/, ''));
     const lines = pure
-      ? octaveGrid(baseHz, F_MIN, F_MAX).map((o) => ({ f: o.f, main: o.ratio, sub: o.k === 0 ? 'ground' : o.offset }))
+      ? octaveGrid(baseHz, F_MIN, F_MAX, pbOf).map((o) => (pbOf ? { f: o.f, main: pbLabel(o), sub: o.k === 0 ? 'ground' : o.ratio } : { f: o.f, main: o.ratio, sub: o.k === 0 ? 'ground' : o.offset }))
       : GRID.map(([f, name]) => ({ f, main: f >= 1000 ? `${f / 1000}k` : String(f), sub: name }));
     for (const { f, main, sub } of lines) {
       const x = Math.round(xOf(f)) + 0.5;

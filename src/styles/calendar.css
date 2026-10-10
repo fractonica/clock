@@ -383,7 +383,7 @@
 .jump-foot { padding: 6px 10px 3px; font-size: 11px; color: var(--ink-2); border-top: 1px solid var(--line); margin-top: 4px; }
 
 /* ============================================================================================
-   pure mode: the converter between Fractonica forms and the page of one δ½ (docs/design/80-pure.md)
+   pure mode: the converter between Fractonica forms and the page of one δ (docs/design/80-pure.md, revision 2)
    Same cards, same frame; every class below belongs to the pure views (cal-pc-*, cal-pm-*, cal-p*).
    ========================================================================================== */
 /* ---- converter: moment readout, counters ---- */
@@ -398,7 +398,7 @@
 .cal-clab { flex: 0 0 100%; font-size: 11px; letter-spacing: 0.03em; color: var(--ink-3); }
 .cal-cstep { grid-template-columns: auto auto; }
 .cal-cstep .cal-sl { font-size: 15px; text-align: left; white-space: nowrap; }
-/* a count is written number first ("3η"): the unit follows the box; an ordinal has its hash first ("δ½#3") */
+/* a count is written number first ("3η"): the unit follows the box; an ordinal has its hash first ("δ#3") */
 .cal-cstep.is-count .cal-so { grid-column: 1; }
 .cal-cstep.is-count .cal-sl { padding-left: 1px; }
 .cal-cstep .cal-sv { width: 40px; }
@@ -429,7 +429,7 @@
 .cal-pphase .cal-pphase-pair { position: absolute; right: 8px; top: 3px; line-height: 1; font-size: 11px; color: var(--gold); }
 .cal-pphase .pure-pair svg { height: 28px; }
 
-/* ---- the page of one δ½ ---- */
+/* ---- the page of one δ: 5 rows (ε) x 7 columns (ζ), a cell is one whole ζ with its 11 η ---- */
 .cal-pmonth { --cal-c: var(--lv-6); }
 .cal-pm-hsub { font-size: 11.5px; }
 .cal-pm-nav { flex-wrap: wrap; }
@@ -442,11 +442,11 @@
 .cal-pm-step button { padding: 4px 10px; color: var(--c); }
 .cal-pm-step button[aria-pressed="true"] { color: var(--ink); }
 .cal-pm-addrl { color: var(--lv); font-size: 15px; min-width: 14px; text-align: center; }
-.cal-pm-sel { width: 72px; padding-right: 22px; }
+.cal-pm-sel { width: 62px; padding-right: 20px; }
 .cal-pm-lgs { display: inline-block; width: 7px; height: 7px; background: var(--gold); transform: rotate(45deg); margin: 0 4px 1px 3px; }
 .cal-pm-legend .cal-lg-sw { margin-top: 5px; }
 
-.cal-pm-grid { display: grid; grid-template-columns: 36px repeat(7, minmax(0, 1fr)); gap: 3px; }
+.cal-pm-grid { display: grid; grid-template-columns: 36px repeat(7, minmax(0, 1fr)); gap: 3px; container: pmgrid / inline-size; }
 .cal-pm-ch, .cal-pm-rh { font-size: 10.5px; color: var(--ink-3); text-align: center; letter-spacing: 0.04em; padding: 2px 0; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .cal-pm-ch i, .cal-pm-rh i { font-style: normal; opacity: 0.85; }
 .cal-pm-rh { display: flex; align-items: center; justify-content: center; }
@@ -472,6 +472,8 @@
 .cal-tt-sync { display: flex; align-items: center; gap: 6px; color: var(--gold); font-size: 12px; margin-top: 3px; }
 .cal-pm-ecl { position: absolute; bottom: 25px; width: 14px; height: 14px; color: var(--gold); z-index: 3; pointer-events: none; }
 .cal-pm-ecl svg { width: 100%; height: 100%; }
+/* where the eclipse falls inside its cell (0, 1/4, 1/2, 3/4): a gold hairline from the icon down through the band */
+.cal-pm-eline { position: absolute; bottom: 0; height: 42px; width: 0; border-left: 1px solid color-mix(in srgb, var(--gold) 85%, transparent); z-index: 3; pointer-events: none; }
 .cal-pm-band { position: absolute; left: 0; right: 0; bottom: 0; height: 24px; background: rgb(0 0 0 / 0.18); }
 .cal-pm-seg { position: absolute; top: 0; bottom: 0; display: block; font-style: normal; border-left: 1px solid transparent; background: color-mix(in srgb, var(--cal-c) 26%, transparent); color: color-mix(in srgb, var(--cal-c) 45%, #fff); overflow: hidden; cursor: pointer; transition: background .1s; }
 .cal-pm-seg.is-odd { background: color-mix(in srgb, var(--cal-c) 14%, transparent); }
@@ -482,6 +484,9 @@
 .cal-pm-seg.is-current { background: color-mix(in srgb, var(--cal-c) 46%, transparent); box-shadow: inset 0 -2px 0 var(--cal-c); color: #fff; }
 .cal-pm-seg.is-current.is-hot { background: color-mix(in srgb, var(--cal-c) 58%, transparent); }
 .cal-pm-seg.is-wideseg b { font-size: 11px; }
+/* the 11 η of a cell are narrow: their counters overflow their own segment and thin out with the cell width (below) */
+.cal-pm-seg.is-eta { overflow: visible; }
+.cal-pm-seg.is-eta b { position: relative; z-index: 1; }
 .cal-pm-q { position: absolute; bottom: 0; width: 1px; height: 3px; display: block; text-decoration: none; background: rgb(255 255 255 / 0.3); pointer-events: none; }
 .cal-pm-q.q2 { height: 5px; background: rgb(255 255 255 / 0.42); }
 .cal-pm-s { position: absolute; top: -4px; width: 8px; height: 8px; margin-left: -4px; display: block; text-decoration: none; background: var(--bg-2); border: 1.5px solid var(--gold); transform: rotate(45deg); cursor: pointer; z-index: 2; }
@@ -497,6 +502,24 @@
 .cal-pmonth .cal-ytitle { text-transform: none; letter-spacing: 0.02em; font-size: 13px; }
 .cal-pm-seg.is-wide b { font-size: 8.5px; letter-spacing: -0.08em; }
 .cal-pmonth .cal-rt.is-delta span { top: -2px; }
+/* η counters: all eleven when a cell is wide, every second one (0 2 4 6 8 10) from ~66 px, 0 5 10 below ~50 px; only the node tick of an η */
+.cal-pm-q.q1, .cal-pm-q.q3 { display: none; }
+@container pmgrid (max-width: 980px) {
+  .cal-pm-seg.is-eta:not(.k2) b { visibility: hidden; }
+}
+@container pmgrid (max-width: 560px) {
+  .cal-pm-seg.is-eta b { visibility: hidden; }
+  .cal-pm-seg.is-eta.k5 b { visibility: visible; }
+}
+.cal-pm-seg.is-eta.is-wide b { margin-left: -8px; }
+/* the inspector of a cell in the η band lists 11 η and the syncs: three columns (two on a phone), without the chain text */
+.cal-dd-list.is-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); column-gap: 14px; }
+.cal-dd-list.is-grid .cal-ddr { grid-template-columns: auto minmax(0, 1fr) var(--cal-btn); }
+.cal-dd-list.is-grid .cal-ddr.is-sync { grid-template-columns: auto minmax(0, 1fr) auto var(--cal-btn); }
+.cal-dd-list.is-grid .cal-ddr:not(.is-sync) .cal-ddx { display: none; }
+.cal-dd-list.is-grid .cal-ddl { padding-right: 2px; }
+.cal-dd-list.is-grid.is-syncs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.cal-dd-list + .cal-dd-list { margin-top: 4px; }
 
 /* ============================================================================================
    small screens
@@ -508,6 +531,9 @@
   .cal-pm-band { height: 21px; }
   .cal-pm-seg b { font-size: 9px; line-height: 21px; padding-left: 1px; }
   .cal-pm-ecl { bottom: 22px; width: 12px; height: 12px; }
+  .cal-pm-eline { height: 38px; }
+  .cal-dd-list.is-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .cal-dd-list.is-grid.is-syncs { grid-template-columns: minmax(0, 1fr); }
   .cal-pm-tags { inset: 0 0 21px 0; }
   .cal-pm-tag { right: 3px; top: 5px; font-size: 9px; line-height: 11px; }
   .cal-pm-tag.is-sync { display: none; } /* (it would not fit next to the number: the diamond and the tooltip say it) */

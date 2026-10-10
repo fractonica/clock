@@ -390,11 +390,11 @@ function syncZoneSelect() {
   sel.value = z;
 }
 
-/** The speed Play uses by default: one η per beat in pure mode, one hour per real second otherwise. */
-const ETA_RATE = pure.RATES.find((p) => p.id === 'eta').rate;
+/** The speed Play uses by default: one θ per Blink in pure mode (6 500×), one hour per real second otherwise. */
+const PURE_PLAY_RATE = pure.RATES.find((p) => p.id === 'theta').rate;
 function followModeSpeed() {
-  if (isPure() && chosenRate === 3600) chosenRate = ETA_RATE;
-  else if (!isPure() && Math.abs(chosenRate - ETA_RATE) < 1e-6) chosenRate = 3600;
+  if (isPure() && chosenRate === 3600) chosenRate = PURE_PLAY_RATE;
+  else if (!isPure() && Math.abs(chosenRate - PURE_PLAY_RATE) < 1e-6) chosenRate = 3600;
 }
 
 /**
@@ -428,29 +428,35 @@ function togglePure() {
 // ---------- pure-mode glossary ----------
 function buildGlossary() {
   const el = $('#glossary');
-  const U = Object.fromEntries(pure.UNITS.map((u) => [u.id, u.sym]));
   const row = (sym, text) => `<tr><th scope="row" class="mono">${sym}</th><td>${text}</td></tr>`;
+  // one row per unit of the ladder: symbol, name, depth and how many of the next finer unit make one
+  const units = pure.UNITS.filter((u) => u.named);
+  const finer = (u) => {
+    const next = pure.UNITS[pure.UNITS.indexOf(u) + 1];
+    return next ? `1${u.sym} = ${Math.round(pure.unitPos(u) / pure.unitPos(next))}${next.sym}` : '';
+  };
+  const sun = (u) => (u.id === 'eta' ? ' · 19 of them make one solar sync' : u.id === 'nu' ? ' · the smallest unit, and one tick of real time' : '');
   el.innerHTML = `
     <div class="card-h"><h2>Pure mode glossary</h2><span class="spacer"></span><button class="btn btn-sm" type="button" id="glossary-close" aria-label="Close the glossary">Close</button></div>
     <div class="card-b glossary-b">
-      <p>Everything here is counted in Fractonica periods.</p>
+      <p>Everything here is counted in Fractonica periods. Each depth is one unit: a whole cycle of that depth.</p>
       <h3>Units</h3>
       <table class="glossary-t"><tbody>
-        ${row(`${U.alpha} ${U.beta} ${U.gamma}`, 'one cycle of depth 1, 2, 3')}
-        ${row(`${U['delta-half']} ${U['epsilon-half']} ${U['zeta-half']}`, 'half of a depth-4, depth-5, depth-6 cycle')}
-        ${row(`${U.eta} ${U.iota} ${U.lambda}`, 'one cycle of depth 7, 9, 11 (θ and κ, depths 8 and 10, are skipped)')}
-        ${row(`${U.mu} ${U.nu} ${U.xi}`, 'one cycle of depth 12, 13, 14')}
+        ${row('α β γ', 'one cycle of depth 1, 2, 3: Alpha, Beta, Gamma')}
+        ${units.map((u) => row(u.sym, `<b>${u.name}</b> · one cycle of depth ${u.level + 1}${finer(u) ? ` · ${finer(u)}` : ''}${sun(u)}`)).join('')}
       </tbody></table>
-      <p class="mono glossary-ratio">1γ = 10 δ½ · 1δ½ = 5 ε½ · 1ε½ = 7 ζ½ · 1ζ½ = 5½ η · 1η = 36 ι · 1ι = 65 λ · 1λ = 5 μ · 1μ = 5 ν · 1ν = 7 ξ</p>
+      <p class="mono glossary-ratio">1γ = 5δ · 1δ = 5ε · 1ε = 7ζ · 1ζ = 11η · 1η = 9θ · 1θ = 4ι · 1ι = 5κ · 1κ = 13λ · 1λ = 5μ · 1μ = 5ν</p>
+      <p class="mono glossary-ratio">The atomic steps: 1η = 36ι · 1ι = 65λ · 1λ = 25ν (Helion, Preon, Flavon, Blink).</p>
       <h3>Reading what you see</h3>
       <table class="glossary-t"><tbody>
-        ${row('6ι 43λ', 'a span: six ι and forty-three λ. "in 6ι 43λ" counts down to a moment, "6ι 43λ ago" back from it.')}
-        ${row('0η 29ι 21λ', 'where you are inside the current ζ cycle: completed η, ι, λ, counted from 0.')}
+        ${row('6ι 3κ', 'a span: six Preons and three Chromons. "in 6ι 3κ" counts down to a moment, "6ι 3κ ago" back from it. Finer than one Blink it is a decimal: 0.4ν.')}
+        ${row('0η 29ι 21λ', 'where you are inside the current ζ cycle: completed η, ι, λ, counted from 0 (η in its ζ, ι in its η, λ in its ι; the timeline ruler continues with ν in its λ).')}
         ${row('ζ#5', 'the 5th ζ cycle inside its ε. A # number is an ordinal and counts from 1.')}
         ${row('Zeta Pentafracton', 'the same cycle by name. Monofracton is 1st, Difracton 2nd, Trifracton 3rd … Tridecafracton 13th.')}
-        ${row('α#6 β#4 γ#9', 'an address: the 6th α, its 4th β, its 9th γ. δ½#6 · ε½#4 · ζ½#7 continues it in halves.')}
+        ${row('α#6 β#4 γ#9', 'an address: the 6th α, its 4th β, its 9th γ. δ#3 · ε#2 · ζ#5 continues it: its 3rd δ, 2nd ε, 5th ζ.')}
         ${row(`<span class="glossary-pair">${pure.pairHTML(0.8125 + 0.0156)}</span>`, 'phase through a cycle: two glyphs, 16 × 16 = 256 states. The left glyph is the coarse position, the right glyph the fine one; a dot marks the falling half.')}
-        ${row('η per beat', 'a speed: one η passes per beat. A beat is one tick of real time; "real time" is one beat per beat.')}
+        ${row('η per Blink', 'a speed: one η passes per Blink of real time. A Blink is one ν cycle; "real time" is one Blink per Blink.')}
+        ${row('34 pB', 'cycles per Blink: how often something repeats in real time. 7 pB means seven cycles fit into one Blink.')}
         ${row('→ Eta Difracton begins', 'what starts the moment this cycle ends.')}
         ${row('sync #4820', 'the solar sync: 19 η cycles, counted from the anchor sync (#0). Its yellow glyphs are on the face.')}
         ${row('drift −623λ', 'how far this solar sync\'s start has slipped against the solar rhythm, counted in λ; a minus sign means earlier.')}

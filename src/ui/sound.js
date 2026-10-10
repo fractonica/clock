@@ -7,16 +7,18 @@
  *
  * Exposed on the instance: { enabled, toggle(): Promise<boolean>, setEnabled(on), playMoment(t?), engine }
  *
- * Pure mode (docs/design/80-pure.md): the same panel and the same audio, said in Fractonica terms only. Pitch is a
- * ratio, an octave offset and cents (never Hz or a note name), the base pitch is an offset of the "ground", cycle
- * lengths are `pure.cycleLength(level)` (`2ζ½`), real-time spans are "beats", frequencies "cycles per beat", every speed
- * (chips, buttons, the tempo-lock read-out and toasts) is `pure.rateLabel(rate)` ("η per beat", "9ι per beat": never a
- * bare "×4,547"), and every percentage is a pair of 2-stroke glyphs, spoken as "volume 8 and 0 of 256".
+ * Pure mode (docs/design/80-pure.md, revision 2): the same panel and the same audio, said in Fractonica terms only.
+ * Pitch is a ratio, an octave offset and cents (never a note name), the base pitch is an offset of the "ground", and
+ * absolute pitch is counted in pB, cycles per Blink ("34.2 pB" for the 110 Hz ground; never Hz). Cycle lengths are
+ * `pure.cycleLength(level)` ("1η"), real-time spans are Blinks (the chime floors, the tempo lock's number box:
+ * `pure.blinksToSeconds` / `secondsToBlinks`; the stored settings stay in seconds), every speed (chips, buttons, the
+ * tempo-lock read-out and toasts) is `pure.rateLabel(rate)` ("η per Blink", "3ι per Blink": never a bare "×4,547"),
+ * and every percentage is a pair of 2-stroke glyphs, spoken as "volume 8 and 0 of 256".
  * `applyMode()` rebuilds everything that is static when the mode changes; the words themselves live in
  * audio/words.js (pure, unit-tested).
  */
 import { createEngine } from '../audio/engine.js';
-import { loadSettings, saveSettings, PRESETS, presetLevels, matchPreset, FLOORS, LIMITS } from '../audio/settings.js';
+import { loadSettings, saveSettings, PRESETS, presetLevels, matchPreset, FLOORS, LIMITS, DEFAULT_SETTINGS } from '../audio/settings.js';
 import { phaseOf, voiceLoudness, cycleHz, tempoRate, tempoInfo, chimeMode, amZone } from '../audio/schedule.js';
 import { physicalLevels, noteOf } from '../audio/tuning.js';
 import { fmtHz, fmtRate, fmtSeconds, fmtSecondsShort, fmtDb, fmtOct, fmtPeriod } from '../audio/format.js';
@@ -240,11 +242,16 @@ export function mount(root, ctx) {
   // what differs between the two vocabularies and is built once per mode: lists, options, buttons, legends
   const buildHow = (pu) => (pu ? W.HOW : HOW).map(([h, p]) => `<li><b>${h}</b> ${p}</li>`).join('');
   const buildFloors = (pu) =>
-    FLOORS.map((f) => `<option value="${f}">${pu ? W.floorLabel(f, FLOOR_LABEL[f]) : `${f} s${FLOOR_LABEL[f] ? ' · ' + FLOOR_LABEL[f] : ''}`}</option>`).join('');
+    FLOORS.map((f) => `<option value="${f}">${pu ? W.floorLabel(pu, f, FLOOR_LABEL[f]) : `${f} s${FLOOR_LABEL[f] ? ' · ' + FLOOR_LABEL[f] : ''}`}</option>`).join('');
+  // pure: every depth is a unit, so its own length is always "1η"; only a cycle finer than a Blink says more (ξ: 0.14ν)
+  const depthLength = (pu, r) => {
+    const len = pu.cycleLength(r.level);
+    return len === `1${r.letter}` ? '' : ` (${len})`;
+  };
   const buildDepths = (pu) =>
     rows
       .slice(1)
-      .map((r) => `<option value="${r.depth}">${r.depth} · ${r.letter} (${pu ? pu.cycleLength(r.level) : fmtPeriod(r.cycleSeconds)})</option>`)
+      .map((r) => `<option value="${r.depth}">${r.depth} · ${r.letter}${pu ? depthLength(pu, r) : ` (${fmtPeriod(r.cycleSeconds)})`}</option>`)
       .join('');
   const buildRates = (pu) =>
     (pu ? W.rateButtons(pu).map((b) => [b.key, b.label, b.unit, b.tip]) : RATE_PRESETS)
@@ -257,8 +264,16 @@ export function mount(root, ctx) {
     rhLegend: els.legend.innerHTML,
     unit: secsUnit.textContent,
     secsLabel: els.secs.getAttribute('aria-label'),
+    secsMin: els.secs.getAttribute('min'),
+    secsMax: els.secs.getAttribute('max'),
+    secsStep: els.secs.getAttribute('step'),
     auto: $('.snd-auto').textContent,
   };
+  // The tempo lock is stored in real seconds (settings, audio, normal mode); pure mode counts it in Blinks. These two
+  // are the whole bridge: the number box <-> the stored seconds. Normal mode shows at most three decimals (a lock made
+  // in pure mode, 12 Blinks = 3.732254… s, must not print its float tail).
+  const boxText = () => (curPure ? String(W.tempoBlinks(curPure, S.tempo.seconds, DEFAULT_SETTINGS.tempo.seconds)) : String(Number(S.tempo.seconds.toFixed(3))));
+  const boxSeconds = (v) => (curPure ? curPure.blinksToSeconds(v) : v);
 
   // ---------------------------------------------------------------------------------------------
   // tooltips that teach
@@ -272,19 +287,19 @@ export function mount(root, ctx) {
     chimes: () => '<b>Chimes</b><br>A bell at every peak, node, valley and end. A cycle end strums all finer cycles that end with it: a major turnover rings as a big chord.',
     physical: () =>
       curPure
-        ? W.physicalTip([13, 14, 15, 16].map((L) => [model.levelInfo(L).letter, 1 / model.levelInfo(L).meanSeconds]))
+        ? W.physicalTip(curPure, [13, 14, 15, 16].map((L) => [model.levelInfo(L).letter, 1 / model.levelInfo(L).meanSeconds]))
         : '<b>Physical register</b><br>The true oscillation of the deepest cycles (ξ 22.5 Hz, ο 247.7 Hz, π 2.23 kHz, ρ 8.92 kHz) as triangle waves, the glyph wave itself, transposed by whole octaves.',
     floor: () =>
-      `<b>Chime floor</b><br>A cycle rings a bell on every quarter only while its quarters are at least this far apart in real time. A cycle whose quarters come faster rings only its end, and one shorter than the floor in total rings nothing: up to about 30 ${curPure ? 'cycles per beat' : 'Hz'} it is still heard as the drone’s modulation, faster ones rest at their mean loudness. Protects you from a rattle in a fast time-lapse.`,
+      `<b>Chime floor</b><br>A cycle rings a bell on every quarter only while its quarters are at least this far apart in real time. A cycle whose quarters come faster rings only its end, and one shorter than the floor in total rings nothing: up to about ${curPure ? '9 pB' : '30 Hz'} it is still heard as the drone’s modulation, faster ones rest at their mean loudness. Protects you from a rattle in a fast time-lapse.`,
     base: () =>
       curPure
-        ? '<b>Base pitch</b><br>The ground of the chord: α stands on it as 1/1 and every other voice is an exact ratio above it. The slider moves the whole chord up or down in steps of 100 cents, an octave at either end.'
+        ? '<b>Base pitch</b><br>The ground of the chord: α stands on it as 1/1 and every other voice is an exact ratio above it. Its pitch is counted in pB, cycles per Blink of real time. The slider moves the whole chord up or down in steps of 100 cents, an octave at either end.'
         : '<b>Base pitch</b><br>The note of α, the 1/1 of the chord. Every other voice is an exact ratio above it.',
     lock: () =>
       lock
-        ? `<b>Unlock tempo</b><br>Releases the lock. The speed stays as it is until you change it; editing the depth or the ${curPure ? 'beats' : 'seconds'} no longer re-tunes it.`
+        ? `<b>Unlock tempo</b><br>Releases the lock. The speed stays as it is until you change it; editing the depth or the ${curPure ? 'Blinks' : 'seconds'} no longer re-tunes it.`
         : curPure
-          ? '<b>Tempo lock</b><br>Sets the time-lapse so that one cycle of the chosen depth lasts the given number of beats. Its quarters become pulses; finer cycles become subdivisions. The lock holds while the speed is not changed elsewhere (header, Space, a link); until then, editing the depth or the beats re-tunes it.'
+          ? '<b>Tempo lock</b><br>Sets the time-lapse so that one cycle of the chosen depth lasts the given number of Blinks. Its quarters become pulses; finer cycles become subdivisions. The lock holds while the speed is not changed elsewhere (header, Space, a link); until then, editing the depth or the Blinks re-tunes it.'
           : '<b>Tempo lock</b><br>Sets the time-lapse so that one cycle of the chosen depth lasts the given real seconds. Its quarters become beats; finer cycles become subdivisions. The lock holds while the speed is not changed elsewhere (header, Space, a link); until then, editing the depth or the seconds re-tunes it.',
   };
   tooltip.bind(els.power, tipFor.power, { touch: false });
@@ -308,8 +323,8 @@ export function mount(root, ctx) {
     if (on) {
       const row = rows[lock.depth - 1];
       if (curPure) {
-        text(els.lockTxt, `Locked: one ${row.letter} = ${W.fmtBeats(lock.seconds)}`);
-        attr(els.lockChip, 'title', `Tempo lock: one ${row.letter} cycle lasts ${W.fmtBeats(lock.seconds)} of real time at ${curPure.rateLabel(lock.rate)}. It holds until the speed is changed.`);
+        text(els.lockTxt, `Locked: one ${row.letter} = ${W.blinkSpan(curPure, lock.seconds)}`);
+        attr(els.lockChip, 'title', `Tempo lock: one ${row.letter} cycle lasts ${W.blinkSpan(curPure, lock.seconds)} of real time at ${curPure.rateLabel(lock.rate)}. It holds until the speed is changed.`);
       } else {
         text(els.lockTxt, `Locked: one ${row.letter} = ${fmtSecondsShort(lock.seconds)}`);
         attr(els.lockChip, 'title', `Tempo lock: one ${row.letter} cycle lasts ${fmtSecondsShort(lock.seconds)} of real time at ${fmtRate(lock.rate)}. It holds until the speed is changed.`);
@@ -339,15 +354,15 @@ export function mount(root, ctx) {
     syncLock();
     ctx.requestRender();
     if (announce) {
-      const how = curPure ? `${W.fmtBeats(seconds)} (${curPure.rateLabel(rate)})` : `${fmtSeconds(seconds)} (${fmtRate(rate)})`;
+      const how = curPure ? `${W.blinkSpan(curPure, seconds)} (${curPure.rateLabel(rate)})` : `${fmtSeconds(seconds)} (${fmtRate(rate)})`;
       ctx.toast(`Tempo locked: one ${rows[depth - 1].letter} cycle = ${how}`);
     }
   }
   /** Lock with the numbers in the controls. */
   function lockTempo() {
     const v = Number(els.secs.value);
-    if (Number.isFinite(v) && v > 0) commit({ tempo: { seconds: v } });
-    els.secs.value = String(S.tempo.seconds); // show what was accepted (clamped or reverted)
+    if (Number.isFinite(v) && v > 0) commit({ tempo: { seconds: boxSeconds(v) } });
+    els.secs.value = boxText(); // show what was accepted (clamped or reverted)
     applyLock({ announce: true });
   }
   function unlockTempo() {
@@ -432,7 +447,8 @@ export function mount(root, ctx) {
     else text(outFor(els.rev), `${Math.round(S.reverb * 100)} %`);
     const k = semitonesOf(S.baseHz);
     els.base.value = String(k);
-    if (curPure) text(outFor(els.base), W.groundText(k));
+    // pure: the ratio on the first line, the ground's pitch in pB under it
+    if (curPure) html(outFor(els.base), `<span>${W.groundText(k)}</span> <span class="snd-out-sub">${W.pbOf(curPure, hzOfSemitones(k))}</span>`);
     else text(outFor(els.base), `${hzOfSemitones(k).toFixed(hzOfSemitones(k) < 100 ? 1 : 0)} Hz · ${noteOf(S.baseHz).name}`);
     for (const input of [els.vol, els.rev, els.base]) fill(input);
     // pure mode: what a screen reader says for a slider is the pair ("volume 10 and 10 of 256") or the ground, not the bare number
@@ -440,7 +456,7 @@ export function mount(root, ctx) {
     const range = (v, [lo, hi]) => (v - lo) / (hi - lo);
     say(els.vol, curPure ? W.pairSay(curPure, range(S.volumeDb, LIMITS.volumeDb), 'volume') : null);
     say(els.rev, curPure ? W.pairSay(curPure, S.reverb, 'reverb') : null);
-    say(els.base, curPure ? W.groundText(k) : null);
+    say(els.base, curPure ? `${W.groundText(k)}, ${W.pbOf(curPure, hzOfSemitones(k))}` : null);
     for (const b of els.layers) b.setAttribute('aria-pressed', String(!!S[b.dataset.layer]));
     const nearest = FLOORS.reduce((a, b) => (Math.abs(b - S.floor) < Math.abs(a - S.floor) ? b : a));
     els.floor.value = String(nearest);
@@ -450,13 +466,13 @@ export function mount(root, ctx) {
     text(
       els.physList,
       audible.length
-        ? audible.map((p) => `${p.letter} ${curPure ? W.fmtRatePlain(p.hz) : fmtHz(p.hz)}`).join('  ·  ') + (curPure ? ' cycles per beat' : '')
+        ? audible.map((p) => `${p.letter} ${curPure ? W.pbOf(curPure, p.hz) : fmtHz(p.hz)}`).join('  ·  ')
         : 'No cycle falls into the audible band at this transposition.',
     );
     const preset = matchPreset(S.levels);
     for (const b of els.presets.children) b.setAttribute('aria-pressed', String(b.dataset.preset === preset));
     els.depth.value = String(S.tempo.depth);
-    if (document.activeElement !== els.secs) els.secs.value = String(S.tempo.seconds);
+    if (document.activeElement !== els.secs) els.secs.value = boxText();
   }
 
   els.vol.addEventListener('input', () => commit({ volumeDb: Number(els.vol.value) }));
@@ -477,8 +493,8 @@ export function mount(root, ctx) {
   });
   els.secs.addEventListener('change', () => {
     const v = Number(els.secs.value);
-    commit({ tempo: { seconds: Number.isFinite(v) && v > 0 ? v : S.tempo.seconds } });
-    els.secs.value = String(S.tempo.seconds); // show what was accepted (clamped or reverted)
+    commit({ tempo: { seconds: Number.isFinite(v) && v > 0 ? boxSeconds(v) : S.tempo.seconds } });
+    els.secs.value = boxText(); // show what was accepted (clamped or reverted)
     if (lock) applyLock();
   });
   els.secs.addEventListener('keydown', (e) => {
@@ -600,10 +616,10 @@ export function mount(root, ctx) {
     const rate = store.rate;
     const L = S.tempo.depth - 1;
     const row = rows[L];
-    if (rate === 0) return { read: `Paused: the drone holds and the bells wait. Pick a tempo to start the time-lapse: the cycle you choose will last the ${curPure ? 'beats' : 'seconds'} you enter.`, rhythm: '' };
+    if (rate === 0) return { read: `Paused: the drone holds and the bells wait. Pick a tempo to start the time-lapse: the cycle you choose will last the ${curPure ? 'Blinks' : 'seconds'} you enter.`, rhythm: '' };
     const ti = tempoInfo(model, S.tempo.depth, rate);
     const read = curPure
-      ? `${curPure.rateLabel(rate)}: one ${row.letter} cycle lasts ${W.fmtBeats(ti.cycle)}; a quarter lasts ${W.fmtBeats(ti.beat)}.`
+      ? `${curPure.rateLabel(rate)}: one ${row.letter} cycle lasts ${W.blinkSpan(curPure, ti.cycle)}; a quarter lasts ${W.blinkSpan(curPure, ti.beat)}.`
       : `${fmtRate(rate)}: one ${row.letter} cycle lasts ${fmtSeconds(ti.cycle)}; a quarter (the beat) ${fmtSeconds(ti.beat)}${ti.beat < 20 ? ` = ${ti.bpm.toFixed(ti.bpm < 100 ? 1 : 0)} BPM` : ''}.`;
     const parts = [];
     let cycle = ti.cycle;
@@ -615,7 +631,7 @@ export function mount(root, ctx) {
       const mark = mode === 'quarters' ? ' <i>♪</i>' : mode === 'ends' ? ' <i>♪ end</i>' : '';
       const hz = 1 / cycle; // this cycle's rate in real time
       const zone = amZone(hz);
-      const hzText = curPure ? W.fmtPerBeat(hz) : fmtHz(hz);
+      const hzText = curPure ? W.pbOf(curPure, hz) : fmtHz(hz);
       let title;
       if (off) title = 'switched off in the Depth mixer: silent';
       else if (mode === 'quarters') title = 'rings on every quarter';
@@ -625,7 +641,7 @@ export function mount(root, ctx) {
       else if (zone === 'fade') title = `${S.chimes ? 'too fast to ring: ' : 'chimes are off: '}its modulation of the drone is fading out here (${hzText})`;
       else title = `${S.chimes ? 'too fast to ring and too fast to follow' : 'chimes are off'} (${hzText}): the voice rests at its mean loudness`;
       const cls = `snd-rh${mode ? ' is-bell' : ''}${off ? ' is-off' : ''}`;
-      parts.push(`<span class="${cls}" style="--lv:${theme.levelColor(d - 1, 1, 66)}" title="${title}"><b>${r.letter}</b> ${curPure ? W.fmtBeats(cycle) : fmtSeconds(cycle)}${mark}</span>`);
+      parts.push(`<span class="${cls}" style="--lv:${theme.levelColor(d - 1, 1, 66)}" title="${title}"><b>${r.letter}</b> ${curPure ? W.blinkSpan(curPure, cycle) : fmtSeconds(cycle)}${mark}</span>`);
       const next = cycle / info.factor;
       if (d >= rows.length || d >= S.tempo.depth + 4 || next < 0.004) break; // the multiplier only appears before a next chip
       parts.push(`<span class="snd-rh-x">×${info.factor}</span>`);
@@ -650,7 +666,7 @@ export function mount(root, ctx) {
       .sort((a, b) => loud[b.level] - loud[a.level])
       .slice(0, 3)
       .map((r) => (curPure ? `${r.letter} ${W.pairSay(curPure, loud[r.level], 'loudness')}` : `${r.letter} ${Math.round(loud[r.level] * 100)} %`));
-    const base = curPure ? W.groundPhrase(semitonesOf(S.baseHz)) : `base pitch ${noteOf(S.baseHz).name}`;
+    const base = curPure ? W.groundPhrase(semitonesOf(S.baseHz), W.pbOf(curPure, S.baseHz)) : `base pitch ${noteOf(S.baseHz).name}`;
     attr(
       els.scope,
       'aria-label',
@@ -685,8 +701,13 @@ export function mount(root, ctx) {
     $('.snd-legend').innerHTML = pu ? W.LEGEND_MIXER : normalTexts.mixLegend;
     els.legend.innerHTML = pu ? W.LEGEND_RHYTHM : normalTexts.rhLegend;
     $('.snd-auto').textContent = pu ? `${normalTexts.auto} ${W.GLOSSARY_HINT}` : normalTexts.auto;
-    secsUnit.textContent = pu ? 'beats' : normalTexts.unit;
-    els.secs.setAttribute('aria-label', pu ? 'Beats per cycle' : normalTexts.secsLabel);
+    secsUnit.textContent = pu ? 'Blinks' : normalTexts.unit;
+    els.secs.setAttribute('aria-label', pu ? 'Blinks per cycle' : normalTexts.secsLabel);
+    // the number box counts Blinks in pure mode: the same limits as the stored seconds, any step (the spinner moves by 1)
+    const [bMin, bMax] = pu ? W.tempoBlinkLimits(pu, LIMITS.tempoSeconds) : [normalTexts.secsMin, normalTexts.secsMax];
+    els.secs.setAttribute('min', String(bMin));
+    els.secs.setAttribute('max', String(bMax));
+    els.secs.setAttribute('step', pu ? 'any' : normalTexts.secsStep);
     mixer.setPure(pu);
     tempoKey = ''; // the tempo read-out and the rhythm chips are rebuilt on the next frame
     lastSummary = -1e9; // so are the screen-reader summaries of the canvases
@@ -762,7 +783,14 @@ export function mount(root, ctx) {
         on: !!S.levels[r.level] && S.chord,
         flash: flash.has(r.level),
       }));
-      scope.draw({ analyser: engine.analyser, voices, enabled: on, hint: on ? '' : 'Press the speaker to listen', pure: !!curPure, baseHz: S.baseHz });
+      scope.draw({
+        analyser: engine.analyser,
+        voices,
+        enabled: on,
+        hint: on ? '' : 'Press the speaker to listen',
+        pure: curPure ? { pb: (hz) => W.pbOf(curPure, hz) } : false,
+        baseHz: S.baseHz,
+      });
       ring.draw({
         rows,
         on: S.levels,
@@ -772,7 +800,7 @@ export function mount(root, ctx) {
         baseHz: S.baseHz,
         reduced,
         flash,
-        pure: curPure ? { ground: W.groundWords(semitonesOf(S.baseHz)) } : null,
+        pure: curPure ? { ground: W.groundWords(semitonesOf(S.baseHz)), pb: W.pbOf(curPure, S.baseHz) } : null,
       });
     }
     if (now - lastSummary > 1000) {

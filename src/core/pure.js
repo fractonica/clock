@@ -9,20 +9,34 @@
  *   - "dates" and "clocks" are cycle addresses and odometer counters.
  *
  * NOTATION (one rule, used everywhere):
- *   X#n   the n-th cycle / half-cycle named X inside its parent, 1-based: ζ#5, δ½#6, α#6 (an ordinal, an identity)
- *   nX    a count of units X: durations "6ι 43λ", clock counters "0η 29ι 21λ" (elapsed since the parent began,
- *         0-based), ruler ticks "9η", speeds "9ι per beat"
+ *   X#n   the n-th cycle named X inside its parent, 1-based: ζ#5, δ#6, α#6 (an ordinal, an identity)
+ *   nX    a count of units X: durations "6ι 3κ", clock counters "0η 29ι 21λ" (elapsed since the parent began,
+ *         0-based), ruler ticks "9η", speeds "9ι per Blink"
  *   X d   a depth chip: the letter and its depth number, only on level chips ("η 7")
  *
  * Everything here is presentation only: the clock itself still runs on Unix seconds (model.js).
  * All functions are pure with respect to (model, t); `createPure(model, {now})` binds the model.
  *
- * UNIT LADDER (positions in Saros units; a cycle of depth d spans 4 / P(d-1), a half 2 / P(d-1)):
- *   α β γ  δ½ ε½ ζ½  η ι λ  μ ν ξ
- *   δ½ = half of a depth-4 cycle  ("month"-like, = 5 ε½)      ε½ = half of depth 5 ("week"-like, = 7 ζ½)
- *   ζ½ = half of a depth-6 cycle  ("day"-like,   = 5.5 η)      η = depth 7 ("hour"-like, = 36 ι)
- *   ι  = depth 9 ("minute"-like, = 65 λ)                        λ = depth 11 ("second"-like)
- * γ (depth 3) = 10 δ½.  θ and κ (depths 8, 10) are skipped on purpose.
+ * UNIT LADDER: one unit per depth, whole cycles only (no halves). A cycle of depth d spans 4 / P(d-1) Saros units.
+ *
+ *   depth  sym  unit      per parent   mean length
+ *      1    α    (Alpha)       –        72 y
+ *      2    β    (Beta)        5        14.4 y
+ *      3    γ    (Gamma)      13        1.1 y
+ *      4    δ    Atom          5        81 d
+ *      5    ε    Nuclide       5        16.2 d
+ *      6    ζ    Hadron        7        2.3 d
+ *      7    η    Helion       11        5.05 h      <- 19 of them lock to the sun (one solar sync, ~4 d)
+ *      8    θ    Quark         9        33.7 min
+ *      9    ι    Preon         4        8.42 min
+ *     10    κ    Chromon       5        1.68 min
+ *     11    λ    Flavon       13        7.77 s
+ *     12    μ    Somon         5        1.55 s
+ *     13    ν    Blink         5        0.311 s     <- the atomic unit and the device's real-time tick
+ *
+ * The "atomic" cadence is ν -25-> λ -65-> ι -36-> η (Blink, Flavon, Preon, Helion); μ, κ, θ sit between them.
+ * Spans finer than one Blink are written as a decimal count of it ("0.14ν"). Real time is counted in Blinks and a
+ * real frequency in cycles per Blink ("34 pB"), never in seconds or Hz.
  */
 
 const F = globalThis.Fractonica;
@@ -54,34 +68,66 @@ export function shortName(level, ordinal) {
   return `${LEVEL_LETTERS[level] ?? '?'}#${ordinal}`;
 }
 
-/** The ladder durations are counted in, longest first. `half` units are half a cycle. */
-export const UNITS = Object.freeze([
-  { id: 'alpha', sym: 'α', level: 0, half: false },
-  { id: 'beta', sym: 'β', level: 1, half: false },
-  { id: 'gamma', sym: 'γ', level: 2, half: false },
-  { id: 'delta-half', sym: 'δ½', level: 3, half: true },
-  { id: 'epsilon-half', sym: 'ε½', level: 4, half: true },
-  { id: 'zeta-half', sym: 'ζ½', level: 5, half: true },
-  { id: 'eta', sym: 'η', level: 6, half: false },
-  { id: 'iota', sym: 'ι', level: 8, half: false },
-  { id: 'lambda', sym: 'λ', level: 10, half: false },
-  { id: 'mu', sym: 'μ', level: 11, half: false },
-  { id: 'nu', sym: 'ν', level: 12, half: false },
-  { id: 'xi', sym: 'ξ', level: 13, half: false },
-]);
+/**
+ * The ladder durations are counted in, longest first: one unit per depth. `name` is the unit's own word (α β γ have
+ * no particle name yet and read as their level name: edit this table to rename any of them; `named` marks the ten
+ * that do).
+ */
+export const UNITS = Object.freeze(
+  [
+    ['alpha', 'α', 0, null],
+    ['beta', 'β', 1, null],
+    ['gamma', 'γ', 2, null],
+    ['delta', 'δ', 3, 'Atom'],
+    ['epsilon', 'ε', 4, 'Nuclide'],
+    ['zeta', 'ζ', 5, 'Hadron'],
+    ['eta', 'η', 6, 'Helion'],
+    ['theta', 'θ', 7, 'Quark'],
+    ['iota', 'ι', 8, 'Preon'],
+    ['kappa', 'κ', 9, 'Chromon'],
+    ['lambda', 'λ', 10, 'Flavon'],
+    ['mu', 'μ', 11, 'Somon'],
+    ['nu', 'ν', 12, 'Blink'],
+  ].map(([id, sym, level, name]) =>
+    Object.freeze({ id, sym, level, name: name ?? LEVEL_NAMES[level], named: name !== null }),
+  ),
+);
 
-/** One "beat" is one tick of the device's real time: speeds are "units per beat". */
-export const BEAT = 'beat';
+/** The unit of a symbol ("η") or id ("eta"); undefined when it is not on the ladder. */
+export const unitOf = (key) => UNITS.find((u) => u.sym === key || u.id === key);
+/** "Helion" / "Helions" for a symbol or id; `n` = 1 gives the singular. */
+export function unitName(key, n = 1) {
+  const u = unitOf(key);
+  if (!u) return String(key);
+  return n === 1 || u.named === false ? u.name : `${u.name}s`;
+}
+
+/** Ids of the units durations are counted in (all thirteen; see `COUNTED` in createPure). */
+const DURATION_UNITS = UNITS.map((u) => u.id);
+
+/** The word for one tick of the device's real time: speeds are "units per Blink", frequencies "cycles per Blink". */
+export const BLINK = 'Blink';
+/** Compact form of "cycles per Blink": the replacement of Hz. */
+export const PER_BLINK = 'pB';
 
 export function createPure(model, { now = () => model.tMin } = {}) {
   const P = (level) => model.levelInfo(level).prefixNum;
-  /** Length of a unit in Saros position units. */
-  const unitPos = (u) => (u.half ? 2 : 4) / P(u.level);
+  /** Length of a unit (one whole cycle of its depth) in Saros position units. */
+  const unitPos = (u) => 4 / P(u.level);
   /** Length of a whole cycle of `level` in Saros position units (4 / P). */
   const cyclePos = (level) => 4 / P(level);
-  const LENGTHS = UNITS.map(unitPos);
+  /**
+   * The units durations are counted in. Every depth is a unit; to count in the four "atomic" steps only
+   * (ν λ ι η and above) drop 'mu', 'kappa' and 'theta' from this list: nothing else changes.
+   */
+  const COUNTED = UNITS.filter((u) => DURATION_UNITS.includes(u.id));
+  const LENGTHS = COUNTED.map(unitPos);
   /** Mean seconds of a unit (only used for rate presets). */
-  const unitSeconds = (u) => model.levelInfo(u.level).meanSeconds / (u.half ? 2 : 1);
+  const unitSeconds = (u) => model.levelInfo(u.level).meanSeconds;
+  const NU = UNITS.at(-1);
+  const FINEST = UNITS.length - 1; // the Blink is always the last counted unit
+  /** Mean device seconds in one Blink: the bridge between real time and the ladder (rates, tempo lock, pB). */
+  const blinkSeconds = () => unitSeconds(NU);
 
   /** Seconds per Saros position unit around time `at` (the catalogue interval it falls in). */
   function secondsPerPosition(at = now()) {
@@ -92,47 +138,60 @@ export function createPure(model, { now = () => model.tMin } = {}) {
 
   // ---- durations --------------------------------------------------------
   /**
-   * Break a position span (Saros units, >= 0) into counts of consecutive ladder units, starting from the
-   * largest unit that fits. `parts` = how many consecutive units to return.
+   * Break a position span (Saros units, >= 0) into counts of ladder units, starting from the largest unit that fits.
+   * Returns up to `parts` NON-ZERO counts, longest first, skipping units whose count is zero ("3η 2ι", never
+   * "3η 0θ 2ι": every count carries its own symbol, so a skipped unit loses nothing). With `keepZeros` the parts are
+   * the next `parts` consecutive units instead, zeros included ("1ζ 0η").
    * @returns {{unit: object, count: number}[]}
    */
-  // Float positions carry ~1e-14 Saros of error (position ~ 70, double precision), which is more than a whole ξ
-  // (7.8e-11) times 1e-4: counting units with only a relative fudge reads exact cycle lengths one small unit short.
-  // 1e-12 Saros is 0.6 ms: negligible for every unit down to ξ (44 ms).
+  // Float positions carry ~1e-14 Saros of error (position ~ 70, double precision), which is more than a whole ν
+  // (5.5e-10) times 1e-4: counting units with only a relative fudge reads exact cycle lengths one small unit short.
+  // 1e-12 Saros is 0.6 ms: negligible next to the finest unit, the Blink (311 ms).
   const EPS_POS = 1e-12;
-  function decompose(dpos, parts = 2) {
+  function decompose(dpos, parts = 2, keepZeros = false) {
     let rem = Math.abs(dpos) + EPS_POS;
     let first = LENGTHS.findIndex((len) => len <= rem);
-    if (first < 0) first = UNITS.length - 1;
+    if (first < 0) first = FINEST; // finer than a Blink: count 0 (durationPos writes it as a decimal)
     const out = [];
-    for (let i = first; i < UNITS.length && out.length < parts; i++) {
+    for (let i = first; i < COUNTED.length && out.length < parts; i++) {
       const count = Math.floor(rem / LENGTHS[i]);
-      out.push({ unit: UNITS[i], count });
       rem -= count * LENGTHS[i];
       if (rem < 0) rem = 0;
+      if (count > 0 || keepZeros || out.length === 0) out.push({ unit: COUNTED[i], count });
     }
     return out;
   }
-  /**
-   * "2ζ½ 4η". Trailing zero parts are dropped ("1η", not "1η 0ι") unless `keepZeros`: a zero never adds information
-   * and makes exact lengths read oddly.
-   */
-  const join = (cs, keepZeros = false) => {
-    const kept = [...cs];
-    while (!keepZeros && kept.length > 1 && kept.at(-1).count === 0) kept.pop();
-    return kept.map(({ unit, count }) => `${count}${unit.sym}`).join(' ');
-  };
+  /** "2ζ 4η". With `keepZeros` trailing zero parts stay ("1ζ 0η"); otherwise zero parts are never printed. */
+  const join = (cs) => cs.map(({ unit, count }) => `${count}${unit.sym}`).join(' ');
 
-  /** "2ζ½ 4η" for a span of `dpos` Saros units (see `join` for trailing zeros). */
+  /**
+   * A count of Blinks with a decimal part: "0.14", "2.6", "4" (two significant digits below one, one decimal above).
+   * Used where the ladder runs out: a span finer than a Blink, or one that is only a few Blinks long.
+   */
+  function blinkCount(x) {
+    if (x < 1e-4) return '0';
+    if (x < 0.001) return '<0.001';
+    if (x < 1) return String(Number(x.toPrecision(2)));
+    const r = Math.round(x * 10) / 10;
+    return String(r);
+  }
+  /**
+   * "2ζ 4η" for a span of `dpos` Saros units (see `decompose` for zeros). The ladder ends at the Blink: a span
+   * shorter than five Blinks (its leading unit is ν itself) keeps a decimal, "2.6ν", "0.14ν".
+   */
   function durationPos(dpos, { parts = 2, keepZeros = false } = {}) {
-    const text = join(decompose(dpos, parts), keepZeros);
+    const span = Math.abs(dpos);
+    const cs = decompose(dpos, parts, keepZeros);
+    let text;
+    if (cs[0].unit === NU) text = `${blinkCount(span / LENGTHS[FINEST])}${NU.sym}`;
+    else text = join(cs);
     return dpos < 0 && /[1-9]/.test(text) ? '−' + text : text;
   }
   /** Same for a number of device seconds around time `at` (default: the displayed time). */
   function duration(seconds, { parts = 2, at, keepZeros = false } = {}) {
     return durationPos(seconds / secondsPerPosition(at), { parts, keepZeros });
   }
-  /** "in 2ζ½ 4η" / "2ζ½ 4η ago". */
+  /** "in 2ζ 4η" / "2ζ 4η ago". */
   function countdown(seconds, { parts = 2, at, keepZeros = false } = {}) {
     const d = Math.abs(seconds);
     const text = duration(d, { parts, at, keepZeros });
@@ -237,7 +296,7 @@ export function createPure(model, { now = () => model.tMin } = {}) {
 
   // ---- clocks, dates, stamps ---------------------------------------------
   /**
-   * The pure "clock": odometer counters inside the current depth-6 cycle (the two-"day" cycle):
+   * The pure "clock": odometer counters inside the current ζ cycle (depth 6, one Hadron):
    * eta 0..10 (depth 7 within ζ), iota 0..35 (depth 9 within η), lambda 0..64 (depth 11 within ι).
    * @returns {null | {eta:number, iota:number, lambda:number}}
    */
@@ -256,31 +315,29 @@ export function createPure(model, { now = () => model.tMin } = {}) {
     return c ? `${c.eta}·${c.iota}·${c.lambda}` : '—';
   }
   /**
-   * The pure "date": α (1..18) β (1..5 in α) γ (1..13 in β) then half-cycles: month-like δ½ (1..10 in γ),
-   * week-like ε½ (1..5 in δ½), day-like ζ½ (1..7 in ε½) – all 1-based. ζ½ boundaries are the start and the
-   * middle of every depth-6 cycle.
+   * The pure "date": the ordinal of the running cycle inside its parent for the six longest depths, all 1-based:
+   * α (1..18) β (1..5 in α) γ (1..13 in β) δ (1..5 in γ) ε (1..5 in δ) ζ (1..7 in ε). Whole cycles only.
    * @returns {null | {alpha:number, beta:number, gamma:number, delta:number, epsilon:number, zeta:number}}
    */
   function date(t) {
     const l = [0, 1, 2, 3, 4, 5].map((L) => model.levelAt(t, L));
     if (l.some((x) => !x)) return null;
-    const half = (x) => 2 * x.cycle + (x.phase >= 0.5 ? 1 : 0);
     return {
       alpha: l[0].cycle + 1,
       beta: l[1].local + 1,
       gamma: l[2].local + 1,
-      delta: (half(l[3]) % 10) + 1,
-      epsilon: (half(l[4]) % 5) + 1,
-      zeta: (half(l[5]) % 7) + 1,
+      delta: l[3].local + 1,
+      epsilon: l[4].local + 1,
+      zeta: l[5].local + 1,
     };
   }
-  /** "α#6 β#4 γ#9 · δ½#3 · ε½#2 · ζ½#5": every part is an ordinal (see NOTATION). */
+  /** "α#6 β#4 γ#9 · δ#3 · ε#2 · ζ#5": every part is an ordinal (see NOTATION). */
   function dateText(t) {
     const d = date(t);
     if (!d) return '—';
-    return `α#${d.alpha} β#${d.beta} γ#${d.gamma} · δ½#${d.delta} · ε½#${d.epsilon} · ζ½#${d.zeta}`;
+    return `α#${d.alpha} β#${d.beta} γ#${d.gamma} · δ#${d.delta} · ε#${d.epsilon} · ζ#${d.zeta}`;
   }
-  /** Compact date for tight spaces: "6·4·9 · 3·2·5" (α β γ · δ½ ε½ ζ½). */
+  /** Compact date for tight spaces: "6·4·9 · 3·2·5" (α β γ · δ ε ζ). */
   function dateCompact(t) {
     const d = date(t);
     return d ? `${d.alpha}·${d.beta}·${d.gamma} · ${d.delta}·${d.epsilon}·${d.zeta}` : '—';
@@ -289,7 +346,7 @@ export function createPure(model, { now = () => model.tMin } = {}) {
   /**
    * An instant written as a pure address down to a resolution: upTo = 'beta'|'gamma'|'delta'|'epsilon'|'zeta'
    * (ordinals) or 'eta'|'iota'|'lambda' (adds the elapsed counters). Default 'iota'.
-   * "α#6 β#4 γ#9 · δ½#3 · ε½#2 · ζ½#5 · 3η 17ι"
+   * "α#6 β#4 γ#9 · δ#3 · ε#2 · ζ#5 · 3η 17ι"
    */
   function stamp(t, upTo = 'iota') {
     const d = date(t);
@@ -300,9 +357,9 @@ export function createPure(model, { now = () => model.tMin } = {}) {
     if (k >= 1) head.push(`β#${d.beta}`);
     if (k >= 2) head.push(`γ#${d.gamma}`);
     parts.push(head.join(' '));
-    if (k >= 3) parts.push(`δ½#${d.delta}`);
-    if (k >= 4) parts.push(`ε½#${d.epsilon}`);
-    if (k >= 5) parts.push(`ζ½#${d.zeta}`);
+    if (k >= 3) parts.push(`δ#${d.delta}`);
+    if (k >= 4) parts.push(`ε#${d.epsilon}`);
+    if (k >= 5) parts.push(`ζ#${d.zeta}`);
     if (k >= 6) {
       const c = clock(t);
       const counters = [`${c.eta}η`];
@@ -372,19 +429,23 @@ export function createPure(model, { now = () => model.tMin } = {}) {
   /** The catalogue's extent in pure terms: "α#1 – α#18". */
   const catalogueText = () => `${shortName(0, 1)} – ${shortName(0, Number(model.clock.count(0)))}`;
 
-  // ---- speeds -------------------------------------------------------------
-  /** Time-lapse presets: how many Fractonica units pass per beat (rate = unit mean seconds). */
-  const RATE_UNITS = ['xi', 'nu', 'mu', 'lambda', 'iota', 'eta', 'zeta-half', 'epsilon-half', 'delta-half', 'gamma'];
+  // ---- speeds and real time ------------------------------------------------
+  /**
+   * Time-lapse presets: how many whole cycles of a unit pass per Blink of real time. "ν per Blink" is real time
+   * itself (one Blink of clock per Blink of device time); the others are exact integers (μ 5, λ 25, κ 325, ι 1625,
+   * θ 6 500, η 58 500 ...) because the ladder is a product of whole factors.
+   */
+  const RATE_UNITS = ['mu', 'lambda', 'kappa', 'iota', 'theta', 'eta', 'zeta', 'epsilon', 'delta', 'gamma'];
   const RATES = Object.freeze([
     { id: 'real', rate: 1, label: 'real time' },
     ...RATE_UNITS.map((id) => {
-      const u = UNITS.find((x) => x.id === id);
-      return { id, rate: unitSeconds(u), label: `${u.sym} per ${BEAT}` };
+      const u = unitOf(id);
+      return { id, rate: Number((unitSeconds(u) / blinkSeconds()).toPrecision(12)), label: `${u.sym} per ${BLINK}` };
     }),
   ]);
   /**
-   * "η per beat" for a preset, "9ι per beat" for any other rate (the largest unit that passes at least once per
-   * beat, counted: the tempo lock of one η in 4 beats reads "9ι per beat"). Negative rates read "backward".
+   * "η per Blink" for a preset; any other rate is counted in the largest unit that passes at least once per Blink:
+   * "3.6η per Blink". Slower than real time it reads "0.5ν per Blink". Negative rates read "… backward".
    */
   function rateLabel(rate) {
     const r = Math.abs(rate);
@@ -392,27 +453,54 @@ export function createPure(model, { now = () => model.tMin } = {}) {
     let base;
     if (hit) base = hit.label;
     else {
-      const ladder = [...UNITS].sort((a, b) => unitSeconds(b) - unitSeconds(a));
-      const u = ladder.find((x) => unitSeconds(x) <= r * 1.0000001) ?? ladder.at(-1);
-      const k = r / unitSeconds(u);
+      const per = r * blinkSeconds(); // clock seconds per Blink of real time
+      const u = UNITS.find((x) => unitSeconds(x) <= per * 1.0000001) ?? NU;
+      const k = per / unitSeconds(u);
       const near = Math.round(k);
       const text = Math.abs(k - near) / near < 0.005 && near >= 1 ? String(near) : String(Number(k.toPrecision(3)));
-      base = `${text}${u.sym} per ${BEAT}`;
+      base = `${text}${u.sym} per ${BLINK}`;
     }
     return rate < 0 ? `${base} backward` : base;
   }
-  /** "3.5 beats" – a span of device seconds counted in beats (tempo lock, scrub lengths). */
-  const beats = (seconds) => `${Number(seconds.toPrecision(3))} ${BEAT}${Math.abs(seconds - 1) < 1e-9 ? '' : 's'}`;
+  /** "3.5 Blinks": a span of device (real) seconds counted in Blinks (tempo lock, scrub lengths, leads). */
+  function blinks(seconds) {
+    const n = seconds / blinkSeconds();
+    if (n > 0 && n < 0.001) return `<0.001 ${BLINK}s`;
+    const rounded = Number(n.toPrecision(3));
+    const text = rounded >= 1000 ? groupDigits(rounded) : String(rounded);
+    return `${text} ${BLINK}${text === '1' ? '' : 's'}`;
+  }
+  /** Device seconds of a count of Blinks (the inverse of `blinks`, for number boxes). */
+  const blinksToSeconds = (n) => n * blinkSeconds();
+  const secondsToBlinks = (s) => s / blinkSeconds();
+  /**
+   * A real frequency (cycles per device second, "Hz") as cycles per Blink: the replacement of Hz. 22.5 Hz -> 7.
+   * The true rates of the deepest cycles are whole numbers of it (ξ 7, ο 77, π 693, ρ 2 772).
+   */
+  const perBlink = (hz) => hz * blinkSeconds();
+  /**
+   * "34.2 pB", "2 772 pB", "0.2 pB"; slower than one cycle per 25 Blinks it reads "1 per 190 Blinks" (a cycle
+   * length is better said in units: use `cycleLength`).
+   */
+  function pbText(pb) {
+    if (!(pb > 0) || !Number.isFinite(pb)) return '—';
+    if (pb < 0.04 - 1e-9) {
+      const every = 1 / pb;
+      return `1 per ${groupDigits(Math.round(every))} ${BLINK}s`;
+    }
+    const v = pb >= 999.5 ? groupDigits(Math.round(pb)) : pb >= 99.95 ? String(Number(pb.toFixed(1))) : String(Number(pb.toPrecision(3)));
+    return `${v} ${PER_BLINK}`;
+  }
 
   return Object.freeze({
-    LEVEL_NAMES, ORDINAL_NAMES, UNITS, RATES, BEAT,
+    LEVEL_NAMES, ORDINAL_NAMES, UNITS, RATES, BLINK, PER_BLINK, unitOf, unitName,
     ordinalName, periodName, shortName,
-    unitPos, cyclePos, unitSeconds, secondsPerPosition, EPS_POS,
+    unitPos, cyclePos, unitSeconds, blinkSeconds, secondsPerPosition, EPS_POS,
     decompose, durationPos, duration, countdown, between,
     pair, pairText, pairLabel, pairHTML, drawPair, pairWidth,
     clock, clockText, date, dateText, dateCompact, stamp, eclipseName, cycleLength,
     groupDigits, driftLambda, driftText,
     ordinalOf, cycleName, cycleShort, nameAt, addressAt, catalogueText,
-    rateLabel, beats,
+    rateLabel, blinks, blinksToSeconds, secondsToBlinks, perBlink, pbText,
   });
 }

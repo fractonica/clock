@@ -10,12 +10,13 @@
  * start / end, its Saros-position span and the facts the hover tooltip tells (so touch has them too).
  * Rows go "Just after" the end of their cycle with double-click / Enter, "Just before" it with Shift+Enter.
  *
- * Pure mode (docs/design/80-pure.md): the same ladder in Fractonica terms only. Counters are cycle names
- * (Pentafracton), the time left is counted in ladder units (6ι 43λ), the percentage and the phase glyph are one
- * pair of 2-stroke glyphs (256 states, pure.pairHTML), the end of a cycle is "→ Eta Difracton begins", real-time
- * leads are beats. Notation as in src/core/pure.js: X#n ordinal (ζ#5), nX count (6ι 43λ, clock 3η 17ι), "η 7" only on
- * chips. The pair is always the odometer of its cycle at the displayed instant (every row, every frame it changes).
- * The mode switches live: render() notices ctx.isPure() changing and rebuilds every label.
+ * Pure mode (docs/design/80-pure.md, revision 2): the same ladder in Fractonica terms only. Counters are cycle names
+ * (Pentafracton), the time left is counted in ladder units, one per depth and whole cycles only (6ι 3κ, 0.14ν), the
+ * percentage and the phase glyph are one pair of 2-stroke glyphs (256 states, pure.pairHTML), the end of a cycle is
+ * "→ Eta Difracton begins", real-time leads are counted in Blinks (6.43 Blinks). Notation as in src/core/pure.js:
+ * X#n ordinal (ζ#5), nX count (6ι 3κ, clock 3η 17ι), "η 7" only on chips; unit names (Hadron, Helion) only in
+ * tooltips that explain a unit. The pair is always the odometer of its cycle at the displayed instant (every row,
+ * every frame it changes). The mode switches live: render() notices ctx.isPure() changing and rebuilds every label.
  *
  * Contract: export mount(el, ctx) -> { render, alwaysOn, destroy } (docs/ARCHITECTURE.md).
  */
@@ -51,16 +52,18 @@ import {
   cycleWords,
   depthWords,
   endsText,
-  leadBeats,
+  leadBlinks,
   leftText,
   lengthText,
   levelWord,
   nextCycle,
   pathText,
-  periodBeats,
+  periodBlinks,
   phaseWords,
   quarterWhere,
   sectorName,
+  unitSentence,
+  unitWord,
 } from './ladder/pure-text.js';
 import { attrCell, classCell, createTip, esc, glyphFactory, icons, levelVars, pairCell, reducedMotion, textCell } from './ladder/dom.js';
 
@@ -77,7 +80,7 @@ const ROW_ID = (L) => `ladder-opt-${L}`;
 /** Two clicks closer than this (ms) on the same spot are one double-click, even when the layout moved in between. */
 const DOUBLE_CLICK_MS = 450;
 
-/** The caption under the title and the screen-reader hint, per mode (pure: glyph pair, beats, no Earth word). */
+/** The caption under the title and the screen-reader hint, per mode (pure: glyph pair, Blinks, no Earth word). */
 const CAPTION = { normal: '% through · time left · bars show the sub-cycles', pure: 'phase glyphs · time left · bars show the sub-cycles' };
 
 /** The child level a cycle's bar segments stand for, as "γ 3 " (the finest level has no named child). */
@@ -321,6 +324,7 @@ export function mount(el, ctx) {
   D.setThroughHidden = attrCell(D.throughT, 'aria-hidden'); // the pair next to it carries the name; its digits are not read twice
   D.setStarted = textCell(D.started);
   D.setLength = textCell(D.length);
+  D.setLengthTip = attrCell(D.length, 'title'); // pure: which unit a whole cycle of this depth is
   D.setSaros = textCell(D.saros);
   D.q.forEach((q) => {
     q.setTime = textCell(q.time);
@@ -330,7 +334,7 @@ export function mount(el, ctx) {
   /** Every write-only-on-change cell of the detail: a mode switch empties their memory so nothing stale survives. */
   const detailCells = [
     D.setEndK, D.setEndV, D.setEndZ, D.setThrough, D.setSector, D.setCycN, D.setCycA, D.setBeforeTip, D.setBeforeName,
-    D.setAfterTip, D.setAfterName, D.setThroughHidden, D.setStarted, D.setLength, D.setSaros, ...D.q.flatMap((q) => [q.setTime, q.setRel]),
+    D.setAfterTip, D.setAfterName, D.setThroughHidden, D.setStarted, D.setLength, D.setLengthTip, D.setSaros, ...D.q.flatMap((q) => [q.setTime, q.setRel]),
   ];
 
   function applySelection(sel) {
@@ -432,9 +436,10 @@ export function mount(el, ctx) {
       D.setCycN(cycleWords(pure, lv.level, lv.local));
       D.setCycA(pathText(pure, model.cycleToPath(lv.level, lv.cycleBig)));
       D.setLength(lengthText(model, pure, lv) + (lv.clipped ? ' · clipped' : ''));
+      D.setLengthTip(unitSentence(model, pure, lv.level));
       const name = levelWord(pure, lv.level);
-      const before = `Just before: jump to ${leadBeats(pure, justBeforeLead(lv.duration))} before this ${name} cycle ends and watch it turn over (Shift+Enter)`;
-      const after = `Just after: jump to ${leadBeats(pure, JUST_AFTER_S)} into the next ${name} cycle (Enter, or double-click the row)`;
+      const before = `Just before: jump to ${leadBlinks(pure, justBeforeLead(lv.duration))} before this ${name} cycle ends and watch it turn over (Shift+Enter)`;
+      const after = `Just after: jump to ${leadBlinks(pure, JUST_AFTER_S)} into the next ${name} cycle (Enter, or double-click the row)`;
       D.setBeforeTip(before);
       D.setBeforeName(before);
       D.setAfterTip(after);
@@ -471,7 +476,7 @@ export function mount(el, ctx) {
         q.state = state;
       }
       const when = lv.thresholds[i + 1]?.time;
-      if (still) q.setRel(when == null ? '—' : `+${periodBeats(when - lv.start)}`);
+      if (still) q.setRel(when == null ? '—' : `+${periodBlinks(pure, when - lv.start)}`);
       else q.setRel(state === 'past' ? 'passed' : when == null ? 'after the end' : leftText(model, pure, t, when));
     }
   }
@@ -518,7 +523,7 @@ export function mount(el, ctx) {
 
   /**
    * A row in pure mode: the ordinal name of the cycle, the time left counted in ladder units (or, for cycles too
-   * fast to count down, how long one lasts in beats), the bar, and the phase as a pair of glyphs at the right
+   * fast to count down, how long one lasts in Blinks), the bar, and the phase as a pair of glyphs at the right
    * (the high digit is the glyph normal mode shows). The pair is the odometer of the cycle at the displayed
    * instant, always: it is rewritten whenever its state changes (a time jump, a fast row), never only with the
    * countdown's last digit, which would leave it a few states behind after a jump with the same countdown text.
@@ -529,7 +534,7 @@ export function mount(el, ctx) {
     r.setClipped(lv.clipped);
     updateBar(r, lv);
 
-    r.setLeft(r.still ? periodBeats(r.info.meanSeconds) : leftText(model, pure, t, lv.end));
+    r.setLeft(r.still ? periodBlinks(pure, r.info.meanSeconds) : leftText(model, pure, t, lv.end));
     r.setPct('');
 
     r.pct = lv.phase;
@@ -542,7 +547,7 @@ export function mount(el, ctx) {
     if (labelKey !== r.labelKey) {
       r.labelKey = labelKey;
       const head = depthWords(pure, r.L);
-      if (r.still) r.setLabel(`${head}: too fast to follow, one cycle lasts ${periodBeats(r.info.meanSeconds)}`);
+      if (r.still) r.setLabel(`${head}: too fast to follow, one cycle lasts ${periodBlinks(pure, r.info.meanSeconds)}`);
       else {
         if (r.nextFor !== lv.cycle) {
           // what begins at the end of this cycle: once per cycle (an exact BigInt path, too dear to redo for every phase step of a fast row)
@@ -741,9 +746,10 @@ export function mount(el, ctx) {
     const parent = L === 0 ? 'the catalogue' : `its ${levelWord(pure, L - 1)}`;
     const color = theme.levelColor(L);
     const ends = endsText(nextCycle(model, pure, L, lv.cycleBig));
+    const unit = unitWord(pure, L);
     const left = r.still
-      ? `Too fast to count down: one cycle lasts ${periodBeats(info.meanSeconds)}.`
-      : `${leftText(model, pure, t, lv.end)} left · cycle ${lengthText(model, pure, lv)}${lv.clipped ? ' (clipped: the catalogue ends first)' : ''}`;
+      ? `Too fast to count down: one cycle lasts ${periodBlinks(pure, info.meanSeconds)}.`
+      : `${leftText(model, pure, t, lv.end)} left · cycle ${lengthText(model, pure, lv)}${unit ? ` (a ${unit})` : ''}${lv.clipped ? ' (clipped: the catalogue ends first)' : ''}`;
     const through = r.still ? '' : `<div class="ladder-tip-ph">${pure.pairHTML(lv.phase)}<span><b>${pure.pairText(lv.phase)}</b> of 256 through this cycle</span></div>`;
     const sector = `The bar has one sector per ${childWord(pure, L)}cycle: now in <b>${esc(sectorName(pure, L, seg.index))}</b> (${seg.index + 1} of ${lv.factor}), ${pure.pairHTML(seg.frac, { label: 'sector phase' })} through it.`;
     return `<div class="ladder-tip-h"><b style="color:${color}">${esc(info.letter)} ${info.depth}</b><span>${esc(cycleWords(pure, L, lv.local))} · ${lv.local + 1} of ${lv.siblings} in ${esc(parent)}</span></div>
@@ -837,11 +843,12 @@ export function mount(el, ctx) {
     el.classList.toggle('is-pure', next);
     capEl.textContent = next ? CAPTION.pure : CAPTION.normal;
     hintEl.textContent = next
-      ? `Up and down arrows choose a depth. Enter is Just after the end of the selected cycle (${leadBeats(pure, JUST_AFTER_S)} into the next one), Shift plus Enter is Just before it (${leadBeats(pure, JUST_BEFORE_S)} ahead, or a quarter of a shorter cycle), and the open bracket key goes to its start. Press ? for the glossary.`
+      ? `Up and down arrows choose a depth. Enter is Just after the end of the selected cycle (${leadBlinks(pure, JUST_AFTER_S)} into the next one), Shift plus Enter is Just before it (${leadBlinks(pure, JUST_BEFORE_S)} ahead, or a quarter of a shorter cycle), and the open bracket key goes to its start. A Blink is the clock's real-time tick. Press ? for the glossary.`
       : 'Up and down arrows choose a depth. Enter is Just after the end of the selected cycle (1 ms into the next one), Shift plus Enter is Just before it (two seconds ahead, or a quarter of a shorter cycle), and the open bracket key goes to its start.';
     D.throughK.textContent = next ? 'Phase' : 'Through';
     D.sarosK.textContent = next ? 'Position' : 'Saros span';
     for (const c of detailCells) c.reset();
+    D.length.removeAttribute('title'); // the unit sentence of pure mode
     for (const [view, cell] of [[D.pairThrough, D.throughP], [D.pairSector, D.sectorP]]) {
       view?.reset();
       cell.replaceChildren();

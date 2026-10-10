@@ -9,10 +9,12 @@
  *   strip  next quarter threshold of the level selected in the ladder
  *   list   the following turnovers, grouped by civil day
  *
- * Pure mode (docs/design/80-pure.md): the hero says what begins ("→ Zeta Pentafracton begins", with its address
- * chain) instead of a date, every countdown is counted in ladder units (1ζ½ 4η 12ι: two parts in the list, three
- * at most in the hero), the phase is a pair of glyphs (pure.pairHTML), real-time leads are beats and the list is
- * grouped by ζ½ instead of by civil day, its date counters written δ½#6 · ε½#5 · ζ½#4. It switches live.
+ * Pure mode (docs/design/80-pure.md, revision 2): the hero says what begins ("→ Zeta Pentafracton begins", with its
+ * address chain) instead of a date, every countdown is counted in ladder units, one per depth and whole cycles only
+ * (1ζ 4η 3θ: two non-zero parts in the list, three at most in the hero, zero parts skipped), the phase is a pair of
+ * glyphs (pure.pairHTML), real-time leads are counted in Blinks (6.43 Blinks) and the list is grouped by the ζ (one
+ * Hadron) an event falls in instead of by civil day, its date counters written δ#6 · ε#5 · ζ#4 (wide cards on every
+ * row, narrow ones as the heading of a group of several events). It switches live.
  *
  * Contract: export mount(el, ctx) -> { render, alwaysOn, destroy } (docs/ARCHITECTURE.md).
  */
@@ -44,15 +46,17 @@ import {
 } from './ladder/lib.js';
 import {
   depthWords,
-  groupByHalf,
+  groupByZeta,
   heroLeft,
-  leadBeats,
+  leadBlinks,
   leftText,
   levelWord,
   phaseWords,
   quarterWhere,
   turnoverInfo,
   turnoverWords,
+  unitClause,
+  unitSentence,
 } from './ladder/pure-text.js';
 import { attrCell, classCell, createTip, esc, icons, levelVars, pairCell, reducedMotion, textCell } from './ladder/dom.js';
 
@@ -74,9 +78,9 @@ const writePref = (v) => {
   }
 };
 
-/** The note under the list, per mode (pure: leads in beats, no Earth unit, a pointer to the glossary). */
+/** The note under the list, per mode (pure: leads in Blinks, no Earth unit, a pointer to the glossary). */
 const noteText = (pure) =>
-  `A turnover is the instant a cycle ends and the next one begins; every finer cycle ends with it. Click a row for Just after (${pure ? `${leadBeats(pure, JUST_AFTER_S)} into the next cycle` : '1 ms into the next cycle'}), or its arrow for Just before (${pure ? leadBeats(pure, JUST_BEFORE_S) : '2 s'} ahead, then real time).${pure ? ' Press ? for the glossary.' : ''}`;
+  `A turnover is the instant a cycle ends and the next one begins; every finer cycle ends with it. Click a row for Just after (${pure ? `${leadBlinks(pure, JUST_AFTER_S)} into the next cycle` : '1 ms into the next cycle'}), or its arrow for Just before (${pure ? leadBlinks(pure, JUST_BEFORE_S) : '2 s'} ahead, then real time).${pure ? ' A Blink is the clock’s real-time tick. Press ? for the glossary.' : ''}`;
 
 export function mount(el, ctx) {
   const { model, store, fmt, theme } = ctx;
@@ -173,7 +177,7 @@ export function mount(el, ctx) {
   // importance control ------------------------------------------------------
   const impTitle = (imp) =>
     pureMode
-      ? `Turnovers of cycles down to ${imp.id}, depth ${imp.top + 1} (${pure.cycleLength(imp.top)} each)`
+      ? `Turnovers of cycles down to ${imp.id}, depth ${imp.top + 1}. ${unitSentence(model, pure, imp.top)}`
       : `Turnovers of cycles down to ${imp.id}, depth ${imp.top + 1} (about ${fmt.duration(model.levelInfo(imp.top).meanSeconds)} each)`;
   for (const imp of IMPORTANCE) {
     const b = document.createElement('button');
@@ -197,7 +201,7 @@ export function mount(el, ctx) {
       b.title = impTitle(importanceById(b.dataset.id));
     }
     if (pureMode) {
-      setCap(`Counting ${importance.label} turnovers · ${importance.id} cycles last ${pure.cycleLength(importance.top)}`);
+      setCap(`Counting ${importance.label} turnovers · ${unitClause(model, pure, importance.top)}`);
       listEl.style.setProperty('--in-w', '64px'); // ladder-unit countdowns are short: the name of what begins gets the room
     } else {
       setCap(`Counting ${importance.label} turnovers · ${importance.id} cycles last about ${fmt.duration(model.levelInfo(importance.top).meanSeconds)}`);
@@ -260,6 +264,7 @@ export function mount(el, ctx) {
     li.className = 'upnext-item';
     li.style.cssText = levelVars(theme, ev.top);
     li.innerHTML = `
+      <span class="upnext-grp mono" hidden></span>
       <button class="upnext-go" type="button">
         <span class="upnext-chip" role="img" aria-label="${esc(depthName(ev.top))}"><b>${esc(info.letter)}</b><span class="mono">${info.depth}</span></span>
         <span class="upnext-in-s mono"></span>
@@ -275,6 +280,8 @@ export function mount(el, ctx) {
       go,
       pre,
       ev,
+      grp: li.querySelector('.upnext-grp'),
+      setHead: textCell(li.querySelector('.upnext-grp')),
       setIn: textCell(li.querySelector('.upnext-in-s')),
       setDay: textCell(li.querySelector('.upnext-day')),
       setClock: textCell(li.querySelector('.upnext-clock')),
@@ -289,13 +296,13 @@ export function mount(el, ctx) {
 
   /** "ζ, depth 6" ("Zeta, depth 6" in pure mode): the letter and the depth number a chip shows, spelled out. */
   const depthName = (top) => (pureMode ? depthWords(pure, top) : `${letterOf(top)}, depth ${top + 1}`);
-  /** How far ahead "Just before" stops, as text ("2 s", "2 beats"); the cycles listed here are hours long, so it is always the full 2 s. */
+  /** How far ahead "Just before" stops, as text ("2 s", "6.43 Blinks"); the cycles listed here are long, so it is always the full 2 s. */
   const leadOf = (top) => {
     const lead = justBeforeLead(model.levelInfo(top).meanSeconds);
-    return pureMode ? leadBeats(pure, lead) : leadText(lead);
+    return pureMode ? leadBlinks(pure, lead) : leadText(lead);
   };
-  /** The same moment as text: "1 ms into" / "0.001 beats into" the next cycle. */
-  const afterLead = () => (pureMode ? leadBeats(pure, JUST_AFTER_S) : '1 ms');
+  /** The same moment as text: "1 ms into" / "0.00322 Blinks into" the next cycle. */
+  const afterLead = () => (pureMode ? leadBlinks(pure, JUST_AFTER_S) : '1 ms');
 
   function itemLabels(ev) {
     const name = depthName(ev.top);
@@ -342,6 +349,9 @@ export function mount(el, ctx) {
       } else {
         r.setDay(ev.day ?? '');
       }
+      // pure: the date counters head a group of several events (narrow cards); nothing in normal mode
+      r.setHead(pureMode ? (ev.head ?? '') : '');
+      r.grp.hidden = !(pureMode && ev.head);
       r.setClock(ev.clock);
       r.setFin(ev.finer > 0 ? `+${ev.finer}` : '');
       r.setSep(ev.newDay);
@@ -412,7 +422,7 @@ export function mount(el, ctx) {
     const t = frame.t;
     const prevKeys = events.length ? events : [];
     const built = buildEvents(model, t, { importance, maxLevel: maxLevel(), count: COUNT });
-    const grouped = pureMode ? groupByHalf(model, pure, built.slice(1)) : groupByDay(built.slice(1), fmt, t);
+    const grouped = pureMode ? groupByZeta(model, pure, built.slice(1)) : groupByDay(built.slice(1), fmt, t);
     const fin = frame.level(importance.top);
     validFrom = fin ? fin.start : -Infinity;
     validUntil = built.length ? built[0].time : Infinity;

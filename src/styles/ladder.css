@@ -435,9 +435,19 @@
   .upnext.is-pure .upnext-dt { justify-content: flex-start; }
   .upnext.is-pure .upnext-day { min-width: 0; overflow: visible; }
 }
-/* the date counters of a turnover (δ½ 6 · ε½ 5 · ζ½ 4) need the room of a full-width card */
+/* the date counters of a turnover (δ#6 · ε#5 · ζ#4) need the room of a full-width card: wide rows carry them on
+   every row; narrow cards (the 340 px column, phones) head a group of several events with them instead */
 @container upnext (min-width: 640px) {
   .upnext.is-pure .upnext-dt { justify-content: space-between; gap: 12px; }
   .upnext.is-pure .upnext-day { flex: none; }
   .upnext.is-pure .upnext-clock { display: block; min-width: 0; margin-left: auto; overflow: hidden; text-overflow: ellipsis; }
+  .upnext.is-pure .upnext-grp { display: none; }
+}
+
+/* group heading (pure, a ζ that holds two or more of the listed events): its own line above the first row */
+.upnext.is-pure .upnext-item { flex-wrap: wrap; }
+.upnext.is-pure .upnext-go { flex: 1 1 0; }
+.upnext-grp {
+  flex: 0 0 100%; margin: 0; padding: 1px 6px 0; font-size: 10.5px; line-height: 1.5;
+  letter-spacing: 0.02em; color: var(--mute); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
