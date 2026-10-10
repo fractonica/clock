@@ -1,7 +1,8 @@
 /**
  * Teaching tooltip for the face. Reuses the shared `.tip` look from app.css; content is a
  * small model {title, aside, lines[], hint, swatch?} so it can be built by pure helpers
- * (`swatch: false` drops the colour dot, used for plain gesture hints).
+ * (`swatch: false` drops the colour dot, used for plain gesture hints). A line is a string or,
+ * where it needs graphics (the phase glyph pair of pure mode), `{html}` built by our own helpers.
  */
 import { clamp } from './helpers.js';
 
@@ -9,6 +10,12 @@ const div = (cls, text) => {
   const d = document.createElement('div');
   d.className = cls;
   if (text !== undefined) d.textContent = text;
+  return d;
+};
+const line = (l) => {
+  if (typeof l === 'string') return div('face-tip-l', l);
+  const d = div('face-tip-l');
+  d.innerHTML = l.html;
   return d;
 };
 
@@ -40,7 +47,7 @@ export function createTooltip(parent, { id = '' } = {}) {
     aside.textContent = model.aside ?? '';
     swatch.style.background = accent || 'var(--teal)';
     swatch.hidden = model.swatch === false; // plain gesture hints carry no colour dot
-    body.replaceChildren(...model.lines.map((l) => div('face-tip-l', l)));
+    body.replaceChildren(...model.lines.map(line));
     hint.textContent = model.hint ?? '';
     hint.hidden = !model.hint;
   }
@@ -88,6 +95,16 @@ export function createTooltip(parent, { id = '' } = {}) {
       if (!visible) return;
       visible = false;
       root.hidden = true;
+    },
+    /** Hide and forget the text too (the wording changed: nothing of the old mode may wait in the hidden tooltip). */
+    clear() {
+      visible = false;
+      root.hidden = true;
+      sig = '';
+      title.textContent = '';
+      aside.textContent = '';
+      body.replaceChildren();
+      hint.textContent = '';
     },
     destroy() {
       root.remove();

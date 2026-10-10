@@ -6,10 +6,14 @@ import { createFormatter } from '../src/core/format.js';
 import * as theme from '../src/core/theme.js';
 import * as G from '../src/ui/wave/geometry.js';
 import { createEngine, LAND } from '../src/ui/wave/scene.js';
-import { createPainter, drawFocus, placeLabel } from '../src/ui/wave/draw.js';
-import { followableLevel, sanitizeLevel, throughOf, zoomEnabled, zoomPlan } from '../src/ui/wave/nav.js';
+import { createPainter, drawFocus, placeLabel, REST_ALPHA } from '../src/ui/wave/draw.js';
+import { followableLevel, parseFlag, sanitizeLevel, solarAtLoad, storedSettings, throughOf, zoomEnabled, zoomPlan } from '../src/ui/wave/nav.js';
 import { countdownText, cycleText, floorPercent, glyphState, instantText, loopHint, loopText, nextLines, roundMs, spanText, tipHTML, whenText } from '../src/ui/wave/tooltip.js';
 import fs from 'node:fs';
+import { createPure } from '../src/core/pure.js';
+import { RULES } from '../tools/pure-scan.mjs';
+import * as SUN from '../src/ui/wave/solar.js';
+import { chainText, cyclePure, createWords, eclipseLabels, halfLengthPure, nextLinesPure, nowLabelPure, pairSpoken, pureCountdown, pureSpan, tipHTMLPure, whenPure } from '../src/ui/wave/words.js';
 
 const model = createModel();
 const clock = model.clock;
@@ -1193,7 +1197,7 @@ function visibleText(lit) {
 }
 
 test('visible strings say "depth", never "level" (the level number is internal)', () => {
-  const files = ['src/ui/wave.js', 'src/ui/wave/nav.js', 'src/ui/wave/tooltip.js', 'src/ui/wave/draw.js', 'src/ui/wave/scene.js', 'src/ui/wave/geometry.js'];
+  const files = ['src/ui/wave.js', 'src/ui/wave/nav.js', 'src/ui/wave/tooltip.js', 'src/ui/wave/draw.js', 'src/ui/wave/scene.js', 'src/ui/wave/geometry.js', 'src/ui/wave/words.js', 'src/ui/wave/solar.js', 'src/ui/wave/sun.js'];
   let total = 0;
   for (const f of files) {
     const lits = literalsOf(fs.readFileSync(new URL('../' + f, import.meta.url), 'utf8'));
@@ -1213,4 +1217,928 @@ test('the zoom limit says "depth"', () => {
   assert.equal(plan.kind, 'toast');
   assert.match(plan.msg, /Depth 14/);
   assert.doesNotMatch(plan.msg, /level/i);
+});
+
+// ================================================================== the solar wave ====
+
+const grid = SUN.syncGrid(model.levelInfo(6).prefixNum);
+const prefixOf = (l) => model.levelInfo(l).prefixNum;
+
+test('solar grid: sync number and phase from a Saros position agree with the model (SPEC §7)', () => {
+  assert.equal(grid.P6, 125125);
+  assert.equal(grid.anchor, 625625, 'anchor = A * P6 / 4 η cycles, A = 20');
+  for (const t of [TIMES.A, TIMES.B, TIMES.C, TIMES.mid, 1e9, 1.5e9, 2e9, 125593320, model.tMin + 3e6, model.tMax - 3e6]) {
+    const s = model.solarAt(t);
+    const a = SUN.syncAt(model.positionOf(t), grid);
+    assert.equal(a.sync, s.sync, `sync at ${t}`);
+    near(a.phase, s.phase, 1e-8, `phase at ${t}`);
+    assert.ok(a.phase >= 0 && a.phase < 1);
+  }
+});
+
+test('solar grid: sync boundaries are η cycle boundaries and match the model', () => {
+  for (const n of [-30000, 0, 1, 4820, 4821, 9999, 70000]) {
+    const pos = SUN.positionOfCoord(n, grid);
+    const cyc = (pos * grid.P6) / 4;
+    near(cyc, Math.round(cyc), 1e-6 * Math.max(1, Math.abs(cyc)), `sync ${n} starts on an η cycle boundary`);
+    const m = model.solarSyncByNumber(n);
+    if (m) near(model.timeOfPosition(pos), m.start, 1e-3, `sync ${n} start time`);
+  }
+  near(SUN.syncCoord(SUN.positionOfCoord(4820.37, grid), grid), 4820.37, 1e-9, 'the two maps are inverse');
+  near(grid.length, 19 * 4 / 125125, 1e-15);
+  // 19 η cycles = 38 η half-arcs
+  near(SUN.syncsOnArc(prefixOf(6), 1, grid), 1 / 38, 1e-12);
+});
+
+test('syncsOnArc: about 10 syncs on a δ half-arc, 2 on an ε half-arc, a third of one on a ζ half-arc', () => {
+  near(SUN.syncsOnArc(prefixOf(3), 1, grid), 10.13, 0.01);
+  near(SUN.syncsOnArc(prefixOf(4), 1, grid), 2.026, 0.001);
+  near(SUN.syncsOnArc(prefixOf(5), 1, grid), 0.289, 0.001);
+  near(SUN.syncsOnArc(prefixOf(4), 0.5, grid), 1.013, 0.001, 'a clipped arc carries fewer');
+  // the same count from the model: a half-arc lasts half a cycle, a sync lasts 19 η cycles
+  const d = eng.describe(4, 18628);
+  const sync = model.solarSyncByNumber(4820);
+  near(SUN.syncsOnArc(prefixOf(4), 1, grid), d.duration / (sync.end - sync.start), 0.01);
+});
+
+test('rippleFit: at least 1.5 syncs on the arc and a wavelength of at least 26 px, fading in to full strength at 40 px', () => {
+  assert.equal(SUN.MIN_SYNCS, 1.5);
+  assert.equal(SUN.MIN_WAVELENGTH, 26);
+  assert.equal(SUN.FULL_WAVELENGTH, 40);
+  assert.equal(SUN.rippleFit(2.03, 600).visible, true);
+  assert.equal(SUN.rippleFit(2.03, 600).why, 'ok');
+  assert.equal(SUN.rippleFit(1.4, 600).why, 'coarse', 'fewer than 1.5 syncs: the arc is too short for a ripple');
+  assert.equal(SUN.rippleFit(1.5, 600).visible, true);
+  assert.equal(SUN.rippleFit(50, 600).why, 'fine', '12 px wavelength: too tight');
+  assert.equal(SUN.rippleFit(10, 259).visible, false, '25.9 px');
+  assert.equal(SUN.rippleFit(10, 260).visible, true, '26 px');
+  const f = SUN.rippleFit(10, 400);
+  near(f.wavelength, 40, 1e-9);
+  assert.equal(f.strength, 1, 'a comfortable wavelength is drawn at full strength');
+  near(SUN.rippleFit(10, 260).strength, 0.5, 1e-9, 'it fades in from half strength at the minimum');
+  near(SUN.rippleFit(10, 330).strength, 0.75, 1e-9, 'half way between the two');
+  assert.equal(SUN.rippleFit(10, 5000).strength, 1);
+  assert.equal(SUN.rippleFit(0, 600).visible, false);
+  // the ripple reads as a wave at every wavelength it is drawn at: a few pixels at the tightest, up to 20 on a wide one
+  assert.equal(SUN.rippleAmp(26), 3, 'never below 3 px: a fuzz on a 3 px arc is not a wave');
+  near(SUN.rippleAmp(90), 5.4, 1e-9);
+  near(SUN.rippleAmp(300), 18, 1e-9);
+  assert.equal(SUN.rippleAmp(600), 20, 'a wide wave (ε at a normal stage) gets 20 px, not 12');
+  assert.ok(SUN.rippleAmp(500) / 500 >= 1 / 25, 'ε at 1440 x 900 (a 500 px wave): no longer 40 wavelengths to one amplitude (12 / 500)');
+});
+
+test('rippleDepths: the depths whose arcs carry a ripple, asking for pixels only where one is possible', () => {
+  const asked = [];
+  const syncs = [660, 50.7, 10.13, 2.026, 0.29];
+  const px = [1300, 1100, 900, 700, 600];
+  const got = SUN.rippleDepths(5, (l) => syncs[l], (l) => { asked.push(l); return px[l]; }, 1600);
+  assert.deepEqual(got, [2, 3], 'δ (90 px a wave) and ε; γ is 22 px a wave, β and α far less');
+  assert.deepEqual(asked, [1, 2, 3], 'α is never measured (at least 26 px a wave would need 17 000 px), nor ζ (0.29 syncs)');
+  assert.deepEqual(SUN.rippleDepths(5, (l) => syncs[l], () => 1400, 1600), [1, 2, 3].filter((l) => 1400 / syncs[l] >= 26 && syncs[l] * 26 <= 1600), 'a large arc reaches γ');
+  assert.deepEqual(SUN.rippleDepths(5, (l) => [0.5, 0.5, 0.5, 1.01, 0.3][l], () => 700, 1600), [], 'a clipped last arc carries 1.01 syncs: no ripple at all');
+});
+
+test('hintDepths: the depths the hint under the dial lists are the depths whose arc really carries the ripple on that stage', () => {
+  const PAD = { l: 46, r: 46, t: 44, b: 40 }; // the focus padding of wave.js
+  /** Which depths draw a ripple when they are the focus: each level's own scene, fitted to the stage. */
+  const drawn = (t, W, H) => {
+    const cur = eng.readHalves(model.frame(t));
+    const out = [];
+    for (let L = 0; L <= 13; L++) {
+      const sc = eng.buildFocus(L, cur[L].idx);
+      const fit = SUN.rippleFit(SUN.syncsOnArc(prefixOf(L), sc.fraction, grid), G.focusArcLength(sc, W, H, PAD));
+      if (fit.visible) out.push(L);
+    }
+    return out;
+  };
+  const hint = (t, W, H) => SUN.hintDepths(eng, grid, eng.readHalves(model.frame(t)), W, H, PAD);
+  const cases = [
+    [TIMES.A, 1190, 506, 'a 1440 x 900 window'],
+    [TIMES.A, 966, 604, 'a 1300 x 1000 window (a stage shaped differently: its arcs are fitted larger than on the usual one)'],
+    [TIMES.A, 1222, 684, 'a 1920 x 1080 window'],
+    [TIMES.A, 358, 420, 'a phone'],
+    [TIMES.A, 200, 160, 'a tiny stage'],
+    [TIMES.A, 1600, 820, 'the largest stage the page makes'],
+    [TIMES.B, 966, 604, 'the year 2000'],
+    [TIMES.C, 1190, 506, 'the year 2061'],
+    [model.tMax - 3 * 86400, 1190, 506, 'three days before the end: the last ε half-arc is clipped'],
+    [model.tMax - 3 * 86400, 966, 604, 'the end, on another stage'],
+    [model.tMax - 40 * 86400, 1190, 506, 'forty days before the end'],
+    [model.tMin + 2 * 86400, 1190, 506, 'the first days'],
+  ];
+  for (const [t, W, H, what] of cases) assert.deepEqual(hint(t, W, H), drawn(t, W, H), `${what}`);
+  // the two situations of the audit
+  assert.deepEqual(hint(TIMES.A, 1190, 506), [3, 4]);
+  assert.deepEqual(hint(model.tMax - 3 * 86400, 1190, 506).includes(4), false, 'a clipped ε arc (1.01 syncs) does not claim a ripple at depth 5');
+  assert.ok(hint(model.tMax - 3 * 86400, 1190, 506).includes(3), 'δ still does');
+  assert.deepEqual(hint(TIMES.A, 1600, 820), [2, 3, 4], 'γ appears only on a genuinely large stage');
+  assert.deepEqual(hint(TIMES.A, 1222, 684), [3, 4], 'γ is 21-24 px a wave on a 1920 x 1080 window: not drawn');
+  assert.deepEqual(hint(TIMES.A, 200, 160), [4]);
+  // the half-arcs of one depth are not alike (their sweeps differ): each is measured for itself, and remembered
+  const cur = eng.readHalves(model.frame(TIMES.A));
+  const sizes = new Set();
+  for (const L of [2, 3, 4]) {
+    for (const idx of [cur[L].idx, cur[L].idx + 1, cur[L].idx + 2]) {
+      const px = G.focusArcLength(eng.buildFocus(L, idx), 1190, 506, PAD);
+      sizes.add(px.toFixed(1));
+      near(eng.arcPixels(L, idx, 1190, 506, PAD), px, 1e-9, `depth ${L + 1} half-arc ${idx}`);
+      near(eng.arcPixels(L, idx, 1190, 506, PAD), px, 1e-9, 'the second time it comes from the memo');
+    }
+  }
+  assert.ok(sizes.size >= 6, `the neighbours differ in size (${sizes.size} distinct lengths of 9)`);
+  const last = eng.halfCount(4) - 1;
+  assert.ok(eng.fractionOf(4, last) < 1);
+  near(eng.arcPixels(4, last, 1190, 506, PAD), G.focusArcLength(eng.buildFocus(4, last), 1190, 506, PAD), 1e-9);
+  assert.notEqual(eng.arcPixels(4, last, 1190, 506, PAD), eng.arcPixels(4, last, 966, 604, PAD), 'another stage, another size');
+});
+
+test('ripplePoints: the ripple is the sync phase as a sine riding the arc (peak at 1/4, node at 1/2, valley at 3/4)', () => {
+  const idx = 18628;
+  const spec = SUN.arcSpec(idx, prefixOf(4), 1);
+  const sa = { x: 300, y: 400, r: 200, a0: -Math.PI, sweep: Math.PI };
+  const amp = 8;
+  const { xs, ys, n } = SUN.ripplePoints(sa, spec, grid, { amp });
+  assert.ok(n >= 300 && n <= 1600 && xs.length === n + 1);
+  let maxOut = 0;
+  let maxIn = 0;
+  for (let i = 0; i <= n; i++) {
+    const p = i / n;
+    const radial = Math.hypot(xs[i] - sa.x, ys[i] - sa.y) - sa.r;
+    const phase = SUN.syncAt(spec.pos0 + p * spec.span, grid).phase;
+    near(radial, amp * Math.sin(2 * Math.PI * phase), 1e-6, `point ${i}`);
+    maxOut = Math.max(maxOut, radial);
+    maxIn = Math.min(maxIn, radial);
+    // the angle is that of the carrier arc at the same progress
+    const ang = Math.atan2(ys[i] - sa.y, xs[i] - sa.x);
+    near(Math.cos(ang), Math.cos(sa.a0 + sa.sweep * p), 1e-9);
+  }
+  near(maxOut, amp, 0.02, 'crest');
+  near(maxIn, -amp, 0.02, 'trough');
+  // the quarter marks sit where the glyph wave has its thresholds
+  const marks = SUN.quarterMarks(spec, grid);
+  assert.ok(marks.length >= 6 && marks.length <= 10, `two syncs on the arc: ${marks.length} quarter marks`);
+  for (const m of marks) {
+    const phase = (m.k / 4) % 1;
+    const radial = amp * Math.sin(2 * Math.PI * phase);
+    const pt = SUN.ripplePointAt(sa, spec, grid, m.p, amp);
+    near(Math.hypot(pt.x - sa.x, pt.y - sa.y) - sa.r, radial, 1e-6, `${m.name} of sync ${m.sync}`);
+    assert.equal(m.name, ['peak', 'node', 'valley', 'end'][m.k - 1]);
+    assert.ok(m.p >= 0 && m.p <= 1);
+  }
+});
+
+test('quarterMarks: the quarters fall at the instants the model names (peak, node, valley, end of the sync)', () => {
+  for (const [L, idx, t] of [[4, 18628, TIMES.A], [3, 3725, 2e9], [4, 1000, TIMES.B]]) {
+    const cur = eng.readHalves(model.frame(t));
+    const i = cur[L].idx;
+    const spec = SUN.arcSpec(i, prefixOf(L), eng.fractionOf(L, i));
+    const marks = SUN.quarterMarks(spec, grid);
+    assert.ok(marks.length > 0);
+    for (const m of marks) {
+      const at = eng.timeAt(L, i, m.p);
+      const s = model.solarSyncByNumber(m.sync);
+      const expect = s.start + (m.k / 4) * (s.end - s.start);
+      near(at, expect, 0.05, `${m.name} of sync ${m.sync} on ${L}:${i}`);
+    }
+    // only the sync of the displayed time
+    const here = SUN.syncAt(model.positionOf(t), grid).sync;
+    const mine = SUN.quarterMarks(spec, grid, here);
+    assert.ok(mine.every((m) => m.sync === here));
+    // the next threshold of the model is the first mark after the displayed time
+    const s = model.solarAt(t);
+    const next = mine.find((m) => eng.timeAt(L, i, m.p) > t);
+    if (next) assert.equal(next.name, s.threshold.name);
+  }
+});
+
+test('quarterMarks: marks beyond the clipped end of the catalogue are left out', () => {
+  const last = eng.halfCount(4) - 1;
+  const frac = eng.fractionOf(4, last);
+  const spec = SUN.arcSpec(last, prefixOf(4), frac);
+  for (const m of SUN.quarterMarks(spec, grid)) assert.ok(m.p <= frac + 1e-9, `${m.p} <= ${frac}`);
+});
+
+test('dialShape: one sync as a sine with the quarter points on it', () => {
+  const d = SUN.dialShape(200, 30);
+  near(d.at(0).y, d.cy, 1e-9);
+  near(d.at(0.25).y, d.cy - d.A, 1e-9);
+  near(d.at(0.5).y, d.cy, 1e-9);
+  near(d.at(0.75).y, d.cy + d.A, 1e-9);
+  near(d.at(1).x, 200 - d.padX, 1e-9);
+  assert.deepEqual(d.quarters.map((q) => q.name), ['peak', 'node', 'valley', 'end']);
+  assert.match(d.path, /^M[\d.]+ [\d.]+L/);
+  assert.equal(d.path.match(/L/g).length, 64);
+});
+
+test('drawFocus: the solar ripple, quarter labels and pin appear on an ε arc and stay away from the others', () => {
+  const W = 742;
+  const H = 526;
+  const t = TIMES.A;
+  const cur = eng.readHalves(model.frame(t));
+  const sy = SUN.syncAt(model.positionOf(t), grid);
+  const sunFor = (scene) => ({
+    grid,
+    spec: SUN.arcSpec(scene.idx, prefixOf(scene.level), scene.fraction),
+    sync: sy.sync,
+    quarter: Math.floor(sy.phase * 4),
+    here: cur[scene.level].idx === scene.idx,
+    pNow: cur[scene.level].local,
+    label: `#${sy.sync}`,
+  });
+  const run = (L, sun = true) => {
+    const scene = eng.buildFocus(L, cur[L].idx);
+    const cam = G.fitCamera(scene.samples, scene.rot, W, H, { l: 46, r: 46, t: 44, b: 40 });
+    const view = G.makeView(cam, W, H);
+    const { P, texts } = makePainter(W, H);
+    const hits = { arcs: [], markers: [], sun: null };
+    P.begin();
+    drawFocus(P, scene, view, { alpha: 1, cur, markers: eng.markersFor(scene, cur), hover: null, hits, grey: false, eventLabels: scene.desc.marks, letters: LETTERS, quiet: false, avoid: null, nowLabel: 'x', sun: sun ? sunFor(scene) : null });
+    return { hits, texts, view, scene };
+  };
+  const eps = run(4);
+  assert.ok(eps.hits.sun, 'the pin of the solar marker is a hover target');
+  assert.ok(eps.hits.sun.x > 9 && eps.hits.sun.x < W - 9 && eps.hits.sun.y > 9 && eps.hits.sun.y < H - 9);
+  assert.ok(eps.texts.some((x) => x.str === `#${sy.sync}`), 'the pin carries the sync number');
+  assert.ok(eps.texts.some((x) => x.str === 'node' || x.str === 'peak'), 'the quarters of the sync are named');
+  // the pin stands beside the focus marker, not on it
+  const fm = eng.markersFor(eps.scene, cur).find((m) => m.level === 4);
+  const fp = eps.view.point(fm.x, fm.y);
+  assert.ok(Math.hypot(eps.hits.sun.x - fp.x, eps.hits.sun.y - fp.y) > 9, 'the pin does not hide the dot of the focused depth');
+  for (const L of [0, 1, 2, 5, 6, 9, 13]) {
+    assert.equal(run(L).hits.sun, null, `depth ${L + 1}: no ripple, no pin (the dial carries the sync there)`);
+  }
+  assert.equal(run(4, false).hits.sun, null, 'solar wave off: nothing drawn');
+  // and a drawing with no solar option is the drawing it was
+  assert.ok(!run(4, false).texts.some((x) => /^#\d+$/.test(x.str)));
+});
+
+test('drawFocus: a quiet (outgoing) scene draws the ripple without its text', () => {
+  const W = 742;
+  const H = 526;
+  const cur = eng.readHalves(model.frame(TIMES.A));
+  const scene = eng.buildFocus(4, cur[4].idx);
+  const cam = G.fitCamera(scene.samples, scene.rot, W, H, { l: 46, r: 46, t: 44, b: 40 });
+  const view = G.makeView(cam, W, H);
+  const { P, texts } = makePainter(W, H);
+  const sy = SUN.syncAt(model.positionOf(TIMES.A), grid);
+  P.begin();
+  drawFocus(P, scene, view, {
+    alpha: 0.5, cur, markers: [], hover: null, hits: null, grey: false, eventLabels: null, letters: LETTERS, quiet: true, avoid: null, nowLabel: '',
+    sun: { grid, spec: SUN.arcSpec(scene.idx, prefixOf(4), scene.fraction), sync: sy.sync, quarter: 1, here: true, pNow: cur[4].local, label: `#${sy.sync}` },
+  });
+  assert.equal(texts.length, 0);
+});
+
+// ---- the drawing, the pin and the dial: what is actually put on the canvas ----
+
+const FOCUS_PAD = { l: 46, r: 46, t: 44, b: 40 }; // the focus padding of wave.js
+const GOLD = (a) => `rgba(255, 214, 10, ${a})`;
+
+/** A 2D context that records every stroke, fill and text with the state it was drawn in (style, width, alpha, path). */
+function tracingContext() {
+  const ops = [];
+  const stack = [];
+  const st = { strokeStyle: '', fillStyle: '', lineWidth: 1, globalAlpha: 1 };
+  let path = [];
+  const g = new Proxy(
+    {},
+    {
+      get(o, k) {
+        if (k in st) return st[k];
+        switch (k) {
+          case 'save': return () => stack.push({ ...st });
+          case 'restore': return () => Object.assign(st, stack.pop());
+          case 'beginPath': return () => { path = []; };
+          case 'moveTo': return (x, y) => path.push({ t: 'M', x, y });
+          case 'lineTo': return (x, y) => path.push({ t: 'L', x, y });
+          case 'arc': return (x, y, r, a0, a1) => path.push({ t: 'A', x, y, r, a0, a1 });
+          case 'stroke': return () => ops.push({ op: 'stroke', style: st.strokeStyle, width: st.lineWidth, alpha: st.globalAlpha, path: [...path] });
+          case 'fill': return () => ops.push({ op: 'fill', style: typeof st.fillStyle === 'string' ? st.fillStyle : 'gradient', alpha: st.globalAlpha, path: [...path] });
+          case 'fillText': return (str, x, y) => ops.push({ op: 'text', str, x, y, style: st.fillStyle, alpha: st.globalAlpha });
+          case 'measureText': return (str) => ({ width: String(str).length * 6.5 });
+          case 'createRadialGradient': return () => ({ addColorStop() {} });
+          default: return () => {};
+        }
+      },
+      set(o, k, v) {
+        st[k] = v;
+        return true;
+      },
+    },
+  );
+  return { g, ops };
+}
+
+/** Draw the focus scene of depth `L` (0-based) at time t on a W x H stage with the solar wave on and return what was drawn. */
+function paintFocus(L, t, W, H, { camera = null, quiet = false } = {}) {
+  const cur = eng.readHalves(model.frame(t));
+  const scene = eng.buildFocus(L, cur[L].idx);
+  const view = G.makeView(camera ?? G.fitCamera(scene.samples, scene.rot, W, H, FOCUS_PAD), W, H);
+  const rec = tracingContext();
+  const P = createPainter({ getContext: () => rec.g, width: 0, height: 0 }, { theme, fonts: { label: '11px x', labelBold: 'bold 12px x', small: '10px x' } });
+  P.resize(W, H, 1);
+  const sy = SUN.syncAt(model.positionOf(t), grid);
+  const spec = SUN.arcSpec(scene.idx, prefixOf(L), scene.fraction);
+  const sun = { grid, spec, sync: sy.sync, quarter: SUN.quarterOf(sy.phase), here: cur[L].idx === scene.idx, pNow: cur[L].local, label: `#${sy.sync}` };
+  const hits = { arcs: [], markers: [], sun: null };
+  P.begin();
+  drawFocus(P, scene, view, { alpha: 1, cur, markers: eng.markersFor(scene, cur), hover: null, hits, grey: false, eventLabels: scene.desc.marks, letters: LETTERS, quiet, avoid: null, nowLabel: 'x', sun });
+  const sa = view.arc(scene.focus, {});
+  const fit = SUN.rippleFit(SUN.syncsOnArc(prefixOf(L), scene.fraction, grid), sa.r * Math.abs(sa.sweep) * scene.fraction);
+  return { ops: rec.ops, hits, scene, view, sa, fit, cur, spec, sun, amp: SUN.rippleAmp(fit.wavelength), sy, travelled: Math.min(scene.fraction, G.travelled(scene.idx, cur[L])) };
+}
+const isPinStem = (o) => o.op === 'stroke' && o.style === GOLD(0.85) && o.width === 1.3 && o.path.length === 2;
+const isDot = (o) => o.op === 'fill' && o.path.length === 1 && o.path[0].t === 'A' && (o.path[0].r === 2.2 || o.path[0].r === 3.2) && (o.style === GOLD(0.85) || o.style === 'rgba(11, 16, 21, 0.9)');
+const at = (a, b) => Math.hypot(a.x - b.x, a.y - b.y) < 1e-6;
+
+test('drawFocus: the pin stands on the ripple at the displayed time (its angle, its height), its head floats beyond it', () => {
+  let offCentre = 0;
+  for (const t of [TIMES.A, TIMES.B, TIMES.C, 125593320.5 + 40000]) {
+    const r = paintFocus(4, t, 742, 526);
+    assert.ok(r.fit.visible, 'ε carries a ripple on this stage');
+    const stems = r.ops.filter(isPinStem);
+    assert.equal(stems.length, 1, 'one pin');
+    const [foot, headEnd] = stems[0].path;
+    const local = r.cur[4].local;
+    if (Math.abs(local - 0.5) > 0.03) offCentre++;
+    // the angle is the carrier's at the progress of the displayed time on the arc (not mirrored, not the middle) ...
+    const ang = r.sa.a0 + r.sa.sweep * local;
+    near(Math.atan2(foot.y - r.sa.y, foot.x - r.sa.x), Math.atan2(Math.sin(ang), Math.cos(ang)), 1e-9, `angle @ ${t}`);
+    // ... and the height is the ripple's: amplitude x sin of the model's own sync phase
+    const phase = model.solarAt(t).phase;
+    const d = Math.hypot(foot.x - r.sa.x, foot.y - r.sa.y) - r.sa.r;
+    near(d, r.amp * Math.sin(2 * Math.PI * phase), 1e-6, `height @ ${t}`);
+    // the head stands 17 px beyond the carrier (beyond the ripple when that is outward), on the same normal
+    const head = r.hits.sun;
+    near(Math.hypot(head.x - r.sa.x, head.y - r.sa.y), r.sa.r + 17 + Math.max(0, d), 1e-6);
+    near(Math.atan2(head.y - r.sa.y, head.x - r.sa.x), Math.atan2(foot.y - r.sa.y, foot.x - r.sa.x), 1e-9);
+    near(Math.hypot(headEnd.x - head.x, headEnd.y - head.y), 4, 1e-9, 'the stem ends 4 px short of the head');
+    // the library of geometry says the same
+    const pin = SUN.pinGeometry(r.sa, r.spec, grid, local, r.amp);
+    assert.ok(at(pin.foot, foot) && at(pin.head, head));
+  }
+  assert.ok(offCentre >= 3, 'the instants are not all at the middle of their arc, where a mirrored pin would look right');
+});
+
+test('drawFocus: the ripple is bright up to the displayed time and dimmer (at least 3:1) after it', () => {
+  for (const t of [TIMES.A, TIMES.B]) {
+    const r = paintFocus(4, t, 742, 526);
+    const { n } = SUN.ripplePoints(r.sa, r.spec, grid, { amp: r.amp });
+    const split = SUN.rippleSplit(n, r.travelled, r.scene.fraction);
+    assert.ok(split > n * 0.05 && split < n * 0.95, 'the displayed time is inside the arc');
+    const bright = r.ops.find((o) => o.op === 'stroke' && o.style === GOLD(0.92));
+    const rest = r.ops.find((o) => o.op === 'stroke' && o.style === GOLD(REST_ALPHA));
+    assert.ok(bright && rest, 'both stretches are drawn');
+    assert.equal(bright.path.length, split + 1, 'bright: from the start of the arc to the displayed time');
+    assert.equal(rest.path.length, n - split + 1, 'dim: the rest');
+    assert.ok(at(bright.path.at(-1), rest.path[0]), 'they meet');
+    const pts = SUN.ripplePoints(r.sa, r.spec, grid, { amp: r.amp });
+    assert.ok(Math.hypot(bright.path[0].x - pts.xs[0], bright.path[0].y - pts.ys[0]) < 1e-6 && Math.hypot(rest.path.at(-1).x - pts.xs[n], rest.path.at(-1).y - pts.ys[n]) < 1e-6);
+    const foot = r.ops.find(isPinStem).path[0];
+    assert.ok(Math.hypot(bright.path.at(-1).x - foot.x, bright.path.at(-1).y - foot.y) < 3, 'the bright part ends at the pin (to a polyline step)');
+    assert.equal(bright.alpha, 1);
+  }
+});
+
+/** WCAG relative luminance and contrast of sRGB colours. */
+const lum = ([r, g, b]) => [r, g, b].map((c) => { const v = c / 255; return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }).reduce((a, v, i) => a + v * [0.2126, 0.7152, 0.0722][i], 0);
+const contrast = (a, b) => (Math.max(lum(a), lum(b)) + 0.05) / (Math.min(lum(a), lum(b)) + 0.05);
+const over = (fg, bg, a) => fg.map((c, i) => c * a + bg[i] * (1 - a));
+
+test('contrast: the not-yet-travelled parts of the yellow wave are at least 3:1 on the dark panel (WCAG 1.4.11)', () => {
+  const gold = [255, 214, 10];
+  // the darkest and the lightest the canvas and the dial strip are behind the wave
+  const backgrounds = [[11, 16, 21], [14.7, 26.6, 30.7], [21, 29, 38], over(gold, [21, 29, 38], 0.035)];
+  for (const bg of backgrounds) {
+    assert.ok(contrast(over(gold, bg, REST_ALPHA), bg) >= 3, `the rest of the ripple (alpha ${REST_ALPHA}) on ${bg.map(Math.round)}: ${contrast(over(gold, bg, REST_ALPHA), bg).toFixed(2)}`);
+    assert.ok(contrast(over(gold, bg, 0.36), bg) < 3, 'and the old 0.36 was below the floor, so the test does measure');
+  }
+  const css = fs.readFileSync(new URL('../src/styles/wave.css', import.meta.url), 'utf8');
+  const base = /\.wave-sun-base \{[^}]*stroke: rgb\(255 214 10 \/ ([\d.]+)\)/.exec(css);
+  assert.ok(base, 'the dial wave to come has a gold stroke');
+  for (const bg of backgrounds) assert.ok(contrast(over(gold, bg, Number(base[1])), bg) >= 3, `the dial wave to come (alpha ${base[1]}) on ${bg.map(Math.round)}`);
+  const quarter = /\.wave-sun-q \{[^}]*stroke: rgb\(255 214 10 \/ ([\d.]+)\)/.exec(css);
+  for (const bg of backgrounds) assert.ok(contrast(over(gold, bg, Number(quarter[1])), bg) >= 3, 'the quarter points still to come');
+});
+
+test('drawFocus: quarter dots are filled once passed, ringed while coming, and the next one is larger', () => {
+  for (const t of [TIMES.A, TIMES.B, TIMES.C]) {
+    const r = paintFocus(4, t, 742, 526);
+    const marks = SUN.quarterMarks(r.spec, grid);
+    assert.ok(marks.length >= 6);
+    const dots = r.ops.filter(isDot);
+    assert.equal(dots.length, marks.length, 'a wide wave (a quarter of it 40 px or more) marks every sync on the arc');
+    let passedN = 0;
+    for (const m of marks) {
+      const pt = SUN.ripplePointAt(r.sa, r.spec, grid, Math.min(r.scene.fraction, Math.max(0, m.p)), r.amp);
+      const dot = dots.find((o) => at(o.path[0], pt));
+      assert.ok(dot, `${m.name} of sync ${m.sync}`);
+      const passed = m.sync < r.sy.sync || (m.sync === r.sy.sync && m.k <= r.sun.quarter);
+      const next = m.sync === r.sy.sync && m.k === r.sun.quarter + 1;
+      assert.equal(dot.path[0].r, next ? 3.2 : 2.2, `${m.name} of sync ${m.sync}: the coming one is larger`);
+      const ring = r.ops.find((o) => o.op === 'stroke' && o.path.length === 1 && at(o.path[0], pt));
+      if (passed) {
+        passedN++;
+        assert.equal(dot.style, GOLD(0.85), `${m.name} of sync ${m.sync} is filled`);
+        assert.equal(ring, undefined, 'and has no ring');
+      } else {
+        assert.equal(dot.style, 'rgba(11, 16, 21, 0.9)', `${m.name} of sync ${m.sync} is hollow`);
+        assert.ok(ring, 'and ringed');
+        assert.equal(ring.style, GOLD(next ? 1 : 0.6));
+        assert.equal(ring.width, next ? 1.6 : 1.1);
+      }
+    }
+    assert.ok(passedN >= 1 && passedN < marks.length, 'some passed, some to come');
+  }
+});
+
+test('drawFocus: a tight wave marks only the sync of the displayed time; a pin and its label fade together with the ripple', () => {
+  // a stage on which the wave at δ is between the minimum and full strength
+  let r = null;
+  for (let W = 330; W <= 460 && !r; W += 5) {
+    const c = paintFocus(3, TIMES.A, W, Math.round(W * 1.17));
+    if (c.fit.visible && c.fit.strength > 0.5 && c.fit.strength < 0.95 && c.fit.wavelength / 4 < 40) r = c;
+  }
+  assert.ok(r, 'a phone-sized stage with a faint δ ripple exists');
+  const dots = r.ops.filter(isDot);
+  const mine = SUN.quarterMarks(r.spec, grid, r.sy.sync);
+  assert.equal(dots.length, mine.length, 'only the sync of the displayed time');
+  assert.ok(mine.length >= 3 && mine.length <= 4);
+  assert.ok(SUN.quarterMarks(r.spec, grid).length > 8, 'and the arc carries many more');
+  // everything of the solar wave is drawn at the fit strength: the ripple, the stem, the dots and the label
+  const s = r.fit.strength;
+  assert.ok(r.ops.filter((o) => o.op === 'stroke' && (o.style === GOLD(0.92) || o.style === GOLD(REST_ALPHA) || isPinStem(o))).every((o) => Math.abs(o.alpha - s) < 1e-9));
+  assert.ok(dots.every((o) => Math.abs(o.alpha - s) < 1e-9));
+  const label = r.ops.find((o) => o.op === 'text' && o.str === `#${r.sy.sync}`);
+  assert.ok(label, 'the pin carries its number');
+  assert.ok(Math.abs(label.alpha - s) < 1e-9 && label.alpha < 0.95, `the label fades with the pin: ${label.alpha} vs strength ${s}`);
+  // a comfortable wave is drawn at full strength
+  const full = paintFocus(4, TIMES.A, 742, 526);
+  assert.equal(full.fit.strength, 1);
+  assert.equal(full.ops.find((o) => o.op === 'text' && o.str === `#${full.sy.sync}`).alpha, 1);
+});
+
+test('drawFocus: a pin whose head would leave the canvas is not drawn and is not a target', () => {
+  const t = TIMES.A;
+  const scene = eng.buildFocus(4, eng.readHalves(model.frame(t))[4].idx);
+  let inside = 0;
+  let outside = 0;
+  for (let cx = -1.2; cx <= 1.2; cx += 0.2) {
+    for (let cy = -1.2; cy <= 1.2; cy += 0.2) {
+      const r = paintFocus(4, t, 600, 400, { camera: { cx, cy, scale: 260, rot: scene.rot } });
+      const stems = r.ops.filter(isPinStem);
+      if (r.hits.sun) {
+        inside++;
+        assert.equal(stems.length, 1);
+        assert.ok(r.hits.sun.x >= 9 && r.hits.sun.x <= 591 && r.hits.sun.y >= 9 && r.hits.sun.y <= 391, `head at ${r.hits.sun.x},${r.hits.sun.y}`);
+      } else {
+        outside++;
+        assert.equal(stems.length, 0, 'no stem without a head');
+        assert.equal(r.ops.filter((o) => o.op === 'text' && o.str === `#${r.sy.sync}`).length, 0, 'and no label');
+      }
+    }
+  }
+  assert.ok(inside > 5 && outside > 5, `both cases occur (${inside} inside, ${outside} outside)`);
+});
+
+test('ripplePoints and quarterMarks on a clipped arc and a whole sync', () => {
+  const idx = 18628;
+  const sa = { x: 300, y: 400, r: 200, a0: -Math.PI, sweep: Math.PI };
+  const spec = SUN.arcSpec(idx, prefixOf(4), 0.5);
+  const { xs, ys, n } = SUN.ripplePoints(sa, spec, grid, { amp: 8 });
+  assert.equal(n, Math.ceil((sa.r * Math.PI * 0.5) / 2), 'the polyline covers the half of the arc that is inside the catalogue');
+  const end = SUN.ripplePointAt(sa, spec, grid, 0.5, 8);
+  near(xs[n], end.x, 1e-9);
+  near(ys[n], end.y, 1e-9);
+  near(Math.atan2(ys[n] - sa.y, xs[n] - sa.x), sa.a0 + sa.sweep * 0.5, 1e-9, 'it stops at the middle of the arc, not at its end');
+  // a whole sync has exactly its four quarters: peak, node, valley and the end
+  const whole = SUN.arcSpec(idx, prefixOf(4), 1);
+  const c0 = SUN.syncCoord(whole.pos0, grid);
+  const c1 = SUN.syncCoord(whole.pos0 + whole.span, grid);
+  const s = Math.ceil(c0);
+  assert.ok(s + 1 <= c1, 'a whole sync fits on the ε arc');
+  const q = SUN.quarterMarks(whole, grid, s);
+  assert.deepEqual(q.map((m) => [m.k, m.name]), [[1, 'peak'], [2, 'node'], [3, 'valley'], [4, 'end']]);
+  near(q[3].coord, s + 1, 1e-12, 'the end is the start of the next sync');
+  assert.deepEqual(SUN.quarterMarks(whole, grid, s - 1).map((m) => m.k), [1, 2, 3, 4].filter((k) => s - 1 + k / 4 >= c0), 'the sync before has only the quarters that lie on the arc');
+});
+
+test('solar decisions: the quarter, the travel time, the pin drag, the bright stretch', () => {
+  assert.deepEqual([0, 0.2499, 0.25, 0.4999, 0.5, 0.7499, 0.75, 0.9999, 1].map(SUN.quarterOf), [0, 0, 1, 1, 2, 2, 3, 3, 3]);
+  assert.equal(SUN.quarterOf(-0.1), 0);
+  // the dial and the pin travel time-linearly inside the sync, kept a millisecond inside it
+  assert.equal(SUN.travelTime(1000, 2000, 0.5), 1500, 'half way is half the sync, not a quarter, not all of it');
+  assert.equal(SUN.travelTime(1000, 2000, 0.25), 1250);
+  assert.equal(SUN.travelTime(1000, 2000, 0), 1000.001);
+  assert.equal(SUN.travelTime(1000, 2000, 1), 1999.999);
+  assert.equal(SUN.travelTime(1000, 2000, 7), 1999.999);
+  assert.equal(SUN.travelTime(1000, 2000, -3), 1000.001);
+  const s = model.solarAt(TIMES.A);
+  for (const ph of [0.1, 0.5, 0.9]) near(model.solarAt(SUN.travelTime(s.start, s.end, ph)).phase, ph, 1e-6, `phase ${ph} lands on phase ${ph}`);
+  assert.equal(model.solarAt(SUN.travelTime(s.start, s.end, 0)).sync, s.sync, 'the first millisecond is inside the sync');
+  assert.equal(model.solarAt(SUN.travelTime(s.start, s.end, 1)).sync, s.sync, 'and the last');
+  // dragging the pin along the arc: the phase inside the sync of the pin, held at the ends
+  const spec = SUN.arcSpec(18628, prefixOf(4), 1);
+  const c0 = SUN.syncCoord(spec.pos0, grid);
+  const sync = Math.ceil(c0) + 0;
+  const tAt = (coord) => (SUN.positionOfCoord(coord, grid) - spec.pos0) / spec.span;
+  near(SUN.pinPhase(spec, grid, tAt(sync + 0.25), sync), 0.25, 1e-9);
+  near(SUN.pinPhase(spec, grid, tAt(sync + 0.8), sync), 0.8, 1e-9);
+  assert.equal(SUN.pinPhase(spec, grid, tAt(sync - 0.5), sync), 0, 'before the sync: its start');
+  assert.equal(SUN.pinPhase(spec, grid, tAt(sync + 1.5), sync), 1, 'after the sync: its end');
+  // the bright stretch of the ripple ends at the displayed time
+  assert.equal(SUN.rippleSplit(100, 0.5, 1), 50);
+  assert.equal(SUN.rippleSplit(100, 0.25, 0.5), 50, 'a clipped arc counts its progress against the part that exists');
+  assert.equal(SUN.rippleSplit(100, 0, 1), 0);
+  assert.equal(SUN.rippleSplit(100, 2, 1), 100);
+});
+
+test('the dial: the dot, the bright stretch, the passed and the coming quarters, the slider value', () => {
+  const shape = SUN.dialShape(220, 30);
+  const mk = (phase, quarter, name) => ({ phase, quarter, threshold: { name } });
+  const a = SUN.dialState(shape, mk(0.6, 2, 'valley'));
+  near(a.x, shape.at(0.6).x, 1e-12);
+  near(a.y, shape.at(0.6).y, 1e-12);
+  assert.ok(a.x > 110 && a.y > shape.cy, 'past the middle, below the axis (the valley is coming)');
+  assert.equal(a.dash, '0.6000');
+  assert.equal(a.valuenow, 153);
+  assert.deepEqual(a.quarters.map((q) => q.past), [true, true, false, false], 'peak and node are behind');
+  assert.deepEqual(a.quarters.map((q) => q.next), [false, false, true, false], 'the valley is the coming one');
+  assert.deepEqual(a.quarters.map((q) => q.r), [2.2, 2.2, 3.4, 2.2]);
+  assert.deepEqual(a.quarters.map((q) => q.name), ['peak', 'node', 'valley', 'end']);
+  const b = SUN.dialState(shape, mk(0.1, 0, 'peak'));
+  assert.deepEqual(b.quarters.map((q) => [q.past, q.next]), [[false, true], [false, false], [false, false], [false, false]]);
+  assert.equal(b.valuenow, 25);
+  const c = SUN.dialState(shape, mk(0.9999, 3, 'end'));
+  assert.deepEqual(c.quarters.map((q) => [q.past, q.next]), [[true, false], [true, false], [true, false], [false, true]]);
+  assert.equal(c.valuenow, 255);
+  // one tick of the model's own clock reads as the dial does
+  const s = model.solarAt(TIMES.A);
+  const d = SUN.dialState(shape, s);
+  assert.equal(d.quarters.filter((q) => q.past).length, s.quarter);
+  assert.equal(d.quarters.findIndex((q) => q.next), s.quarter);
+  assert.equal(['peak', 'node', 'valley', 'end'][s.quarter], s.threshold.name, 'the coming quarter is the one the model names');
+});
+
+test('parseFlag: only 1 / 0 / true / false are an answer, in any case; everything else says nothing', () => {
+  for (const v of ['1', 'true', 'TRUE', ' True ']) assert.equal(parseFlag(v), true, v);
+  for (const v of ['0', 'false', 'False', ' FALSE ']) assert.equal(parseFlag(v), false, v);
+  for (const v of ['off', 'no', 'yes', 'on', 'banana', '', ' ', '2', '0.0', '%200', 'null']) assert.equal(parseFlag(v), null, `"${v}"`);
+  assert.equal(parseFlag(null), null, 'no parameter at all');
+  assert.equal(parseFlag(undefined), null);
+});
+
+test('a ?solar= link is a per-page override: the remembered setting and what is stored do not follow it', () => {
+  // the link says on, nothing remembered: this page shows it, the memory stays off, and a later write (any unrelated click) keeps it off
+  const a = solarAtLoad('1', {});
+  assert.deepEqual(a, { shown: true, remembered: false });
+  assert.deepEqual(storedSettings({ overview: true, solarRemembered: a.remembered }), { overview: true, solar: false });
+  // the link says off over a remembered on
+  const b = solarAtLoad('0', { solar: true });
+  assert.deepEqual(b, { shown: false, remembered: true });
+  assert.equal(storedSettings({ overview: false, solarRemembered: b.remembered }).solar, true);
+  // no link, or one that says nothing (off, no, banana): the remembered setting
+  for (const v of [null, '', 'off', 'no', 'banana', '2']) {
+    assert.deepEqual(solarAtLoad(v, { solar: true }), { shown: true, remembered: true }, `"${v}"`);
+    assert.deepEqual(solarAtLoad(v, { solar: false }), { shown: false, remembered: false }, `"${v}"`);
+    assert.deepEqual(solarAtLoad(v, null), { shown: false, remembered: false });
+    assert.deepEqual(solarAtLoad(v, { solar: 'yes' }), { shown: false, remembered: false }, 'only a true is on');
+  }
+  assert.deepEqual(storedSettings({ overview: 1, solarRemembered: 0 }), { overview: true, solar: false });
+});
+
+test('the solar wave is not narrated by the module twice: no old thresholds are left in the source', () => {
+  const src = ['src/ui/wave.js', 'src/ui/wave/solar.js', 'src/ui/wave/draw.js', 'src/ui/wave/sun.js', 'src/ui/wave/words.js'].map((f) => fs.readFileSync(new URL('../' + f, import.meta.url), 'utf8')).join('\n');
+  assert.doesNotMatch(src, /\b18 px\b|0\.28 \* S\.w|rippleLevels|at least two/, 'the estimate of the hint and the old wording are gone');
+});
+
+// ================================================================== pure mode wording ====
+
+const pureT = createPure(model, { now: () => TIMES.A });
+const flag = { on: false };
+const words = createWords({ fmt, pure: pureT, model, theme, isPure: () => flag.on });
+const HARD = RULES.filter(([, , sev]) => sev === 'hard');
+/** The text a person sees or hears in an HTML string: its text content and its aria-labels / titles. */
+function seen(html) {
+  const attrs = [...String(html).matchAll(/(?:aria-label|title)="([^"]*)"/g)].map((m) => m[1]);
+  return [String(html).replace(/<[^>]*>/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"'), ...attrs];
+}
+function assertClean(str, where) {
+  for (const text of seen(str)) {
+    for (const [id, re] of HARD) assert.doesNotMatch(text, re, `${where}: ${id} in "${text}"`);
+  }
+}
+
+test('pureSpan counts in ladder units, drops empty trailing parts and says how much of ξ below it', () => {
+  assert.equal(pureSpan(pureT, 2 / 11375), '1ζ½');
+  assert.equal(pureSpan(pureT, (2 / 11375) * 1.5), '1ζ½ 2η');
+  assert.equal(pureSpan(pureT, 4), '1α');
+  assert.equal(pureSpan(pureT, 0), '0α'.replace('α', 'ξ'), 'nothing is nothing');
+  assert.equal(pureSpan(pureT, -(2 / 11375) * 1.5), '−1ζ½ 2η');
+  const xi = pureT.unitPos(pureT.UNITS.at(-1));
+  assert.equal(pureSpan(pureT, 0.5 * xi), '0.5ξ', 'below the finest unit: a share of it, not "0ξ"');
+  assert.equal(pureSpan(pureT, 0.004 * xi), '<0.01ξ');
+  assert.equal(pureSpan(pureT, 3.4 * xi, 1), '3ξ');
+  // a cycle is counted in its own unit: η is 1η, a δ is 2δ½, θ is 4ι
+  assert.deepEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13].map((l) => words.cycleLength(model.levelInfo(l)) && 0), new Array(14).fill(0));
+  flag.on = true;
+  assert.deepEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13].map((l) => words.cycleLength(model.levelInfo(l))), ['1α', '1β', '1γ', '2δ½', '2ε½', '2ζ½', '1η', '4ι', '1ι', '13λ', '1λ', '1μ', '1ν', '1ξ']);
+  flag.on = false;
+});
+
+test('pureCountdown measures in position, so it is exact across eclipse intervals', () => {
+  const cyc = model.levelAt(TIMES.A, 6);
+  assert.equal(pureCountdown(pureT, model, cyc.start, cyc.end, 1), 'in 1η');
+  assert.equal(pureCountdown(pureT, model, cyc.end, cyc.start, 1), '1η ago');
+  assert.match(pureCountdown(pureT, model, TIMES.A, TIMES.A + 3372), /^in 6ι 4\dλ$/);
+  assert.match(pureCountdown(pureT, model, model.tMin - 1e9, model.tMin + 5, 1), /^in \d+[αβγ]/, 'outside the catalogue it still counts');
+});
+
+test('chainText names the address of a cycle, the same chain pure.addressAt gives', () => {
+  for (const L of [0, 2, 4]) {
+    const cur = model.levelAt(TIMES.A, L);
+    assert.equal(chainText(pureT, model, L, cur.cycle, 9), pureT.addressAt(TIMES.A, L), `depth ${L + 1}`);
+  }
+  assert.equal(chainText(pureT, model, 4, model.levelAt(TIMES.A, 4).cycle), 'α#6 β#4 γ#9 δ#3 ε#5');
+  const deep = chainText(pureT, model, 9, model.levelAt(TIMES.A, 9).cycle);
+  assert.match(deep, /^… [α-ω]#\d+ [α-ω]#\d+ [α-ω]#\d+ [α-ω]#\d+ κ#\d+$/, 'a long address keeps its last five links');
+  assert.equal(deep.split(' ').length, 6);
+});
+
+test('nowLabelPure writes three parts of the pure date / clock by the depth of the arc: ordinals X#n, counters nX', () => {
+  // updated deliberately: the old spellings were "δ½ 3" and "η 3 · ι 17"
+  const d = pureT.date(TIMES.A);
+  const c = pureT.clock(TIMES.A);
+  assert.equal(nowLabelPure(pureT, TIMES.A, 0), `α#${d.alpha} β#${d.beta} γ#${d.gamma}`);
+  assert.equal(nowLabelPure(pureT, TIMES.A, 1), `β#${d.beta} γ#${d.gamma} · δ½#${d.delta}`);
+  assert.equal(nowLabelPure(pureT, TIMES.A, 2), `γ#${d.gamma} · δ½#${d.delta} · ε½#${d.epsilon}`);
+  assert.equal(nowLabelPure(pureT, TIMES.A, 3), `δ½#${d.delta} · ε½#${d.epsilon} · ζ½#${d.zeta}`);
+  assert.equal(nowLabelPure(pureT, TIMES.A, 4), `ε½#${d.epsilon} · ζ½#${d.zeta} · ${c.eta}η`);
+  assert.equal(nowLabelPure(pureT, TIMES.A, 5), `ζ½#${d.zeta} · ${c.eta}η ${c.iota}ι`);
+  assert.equal(nowLabelPure(pureT, TIMES.A, 6), `${c.eta}η ${c.iota}ι ${c.lambda}λ`);
+  assert.equal(nowLabelPure(pureT, TIMES.A, 13), nowLabelPure(pureT, TIMES.A, 6), 'the clock for every deeper arc');
+  assert.equal(nowLabelPure(pureT, model.tMax + 10, 6), '—');
+  // it is a piece of the stamp the shell, the face and the calendar write for the same instant
+  for (const L of [0, 1, 2, 3, 4, 5, 6]) {
+    for (const t of [TIMES.A, TIMES.B, TIMES.C, 125593320.5]) {
+      const label = nowLabelPure(pureT, t, L);
+      assert.ok(pureT.stamp(t, 'lambda').includes(label), `depth ${L + 1} @ ${t}: "${label}" in "${pureT.stamp(t, 'lambda')}"`);
+      assert.doesNotMatch(label, /(?<!\d)(?:[δεζ]½|[ηιλ]) \d/, 'no "δ½ 3" or "η 3": an ordinal has a #, a counter has its unit after the number');
+    }
+  }
+});
+
+test('cyclePure and whenPure: opening / closing half, names and countdowns', () => {
+  const plain = (str) => str.replace(/\u00a0/g, ' '); // "6 of 18" never breaks across lines
+  assert.ok(cyclePure(pureT, eng.describe(0, 11)).includes('6\u00a0of\u00a018'));
+  const cur = eng.readHalves(model.frame(TIMES.A));
+  const d = eng.describe(6, cur[6].idx); // the closing (trough) half of the first η cycle of its ζ
+  assert.equal(plain(cyclePure(pureT, d)), 'closing half of Eta Monofracton · 1 of 11 in ζ');
+  const e = eng.describe(4, 18628);
+  assert.equal(plain(cyclePure(pureT, e)), 'opening half of Epsilon Pentafracton · 5 of 5 in δ');
+  assert.equal(plain(cyclePure(pureT, eng.describe(0, 11))), 'closing half of Alpha Hexafracton · 6 of 18');
+  assert.match(whenPure(pureT, model, d, TIMES.A), /^ends in 6ι 4\dλ$/);
+  assert.match(whenPure(pureT, model, d, d.start - 100), /^starts in /);
+  assert.match(whenPure(pureT, model, d, d.end + 100), /^ended .* ago$/);
+  assert.equal(halfLengthPure(pureT, model, d), '18ι', 'half of an η cycle: η = 36 ι');
+  assert.match(halfLengthPure(pureT, model, e), /^1ε½$/);
+});
+
+test('nextLinesPure takes the decisions of nextLines with pure countdowns', () => {
+  const t = TIMES.A;
+  const cur = eng.readHalves(model.frame(t));
+  for (const L of [0, 3, 6, 9, 13]) {
+    const d = eng.describe(L, cur[L].idx);
+    const a = nextLines(fmt, eng, d, cur[L], t);
+    const b = nextLinesPure(pureT, model, eng, d, cur[L], t);
+    assert.deepEqual(b.map((x) => x.dim), a.map((x) => x.dim), `depth ${L + 1}: same lead-in words`);
+    assert.deepEqual(b.map((x) => !!x.text), a.map((x) => !!x.text));
+    for (const x of b) if (/^in /.test(x.text)) assert.match(x.text, /^in [\d<.]+[α-ωζ½ε½δ½]/);
+  }
+  // the last half-arc of the catalogue says so, in pure terms too
+  const lastT = model.tMax - 0.5;
+  const lcur = eng.readHalves(model.frame(lastT));
+  const d = eng.describe(0, lcur[0].idx);
+  assert.equal(nextLinesPure(pureT, model, eng, d, lcur[0], lastT)[1].dim, 'catalogue ends here');
+});
+
+test('eclipse labels: numbered like the position (#0 is the first), years otherwise; the catalogue has 35 α half-arcs on eclipses #0, #2 ... #68', () => {
+  // updated deliberately: the junction of α half-arc i is eclipse #(2i) (it sat at #(2i + 1)), the end of the catalogue #(extent)
+  const e = eclipseLabels(pureT, model, eng.halfCount(0));
+  assert.equal(e.marks.length, 35);
+  assert.deepEqual([e.marks[0], e.marks[1], e.marks[11], e.marks[34], e.end], ['#0', '#2', '#22', '#68', '#69']);
+  assert.equal(model.extent, 69);
+  for (let i = 0; i < 35; i++) assert.equal(e.marks[i], pureT.eclipseName(2 * i), 'the same name every view gives eclipse k');
+  // eclipse k sits at pos k: the junction of half-arc 11 is where the position is 22
+  near(model.positionOf(eng.timeAt(0, 11, 0)), 22, 1e-9);
+  near(model.positionOf(model.tMax), 69, 1e-9);
+  flag.on = true;
+  assert.deepEqual(words.eclipses(35), e);
+  flag.on = false;
+  const y = words.eclipses(35);
+  assert.deepEqual([y.marks[0], y.end], ['1613', '2857']);
+  assert.match(y.marks[10], /^\d{4}$/);
+});
+
+test('pure mode: every text the wave module can produce is free of Gregorian, Earth units, percentages and zones', () => {
+  flag.on = true;
+  let n = 0;
+  const check = (str, where) => {
+    assertClean(str, where);
+    for (const text of seen(str)) assert.doesNotMatch(text, /(?<!\d)(?:[δεζ]½|[ηιλ]) \d/, `${where}: an old-style "δ½ 3" / "η 3" in "${text}"`);
+    n++;
+  };
+  const instants = [TIMES.A, TIMES.B, TIMES.C, TIMES.early, TIMES.late, TIMES.mid, 125593320.5];
+  for (const t of instants) {
+    const frame = model.frame(t);
+    const cur = eng.readHalves(frame);
+    for (let L = 0; L <= 13; L++) {
+      const h = cur[L];
+      const d = eng.describe(L, h.idx);
+      const w = `t=${t} depth ${L + 1}`;
+      check(words.span(d), w + ' span');
+      check(words.loop(d), w + ' loop');
+      check(words.cycle(d), w + ' cycle');
+      check(words.when(d, t), w + ' when');
+      check(words.nowLabel({ t, level: L, duration: d.duration }), w + ' now label');
+      check(words.announce(d, t), w + ' announce');
+      check(words.chipLive('Depth', d, h), w + ' chip');
+      check(words.canvasLabel(d, h.local), w + ' canvas label');
+      check(words.cycleLength(model.levelInfo(L)), w + ' cycle length');
+      check(words.halfLength(model.levelInfo(L)), w + ' half length');
+      for (const x of words.nextLines(eng, d, h, t)) check(`${x.dim} ${x.text}`, w + ' next');
+      for (const marker of [false, true]) check(words.tip({ d, p: h.local, at: marker ? null : eng.timeAt(L, h.idx, 0.4), now: t, marker, action: 'Click to jump here' }), w + ' tip');
+      check(words.share(h.local, 'half-arc phase', 1), w + ' share');
+      check(words.sunNumber({ sync: 4820 }), 'sync number');
+    }
+    check(words.overviewLabel(eng.describe(0, cur[0].idx)), 'overview label');
+    check(words.alphaSpan(eng.describe(0, cur[0].idx)), 'alpha span');
+    const s = model.solarAt(t);
+    if (s) {
+      for (const f of ['sunNext', 'sunDrift', 'sunDriftLine', 'sunAria', 'sunPhaseText']) check(words[f](s, t), f);
+      for (const by of ['pin', 'dial', 'key']) {
+        check(words.sunTip(s, t, { by }), `sun tip ${by}`);
+        check(words.sunTip(s, t, { by, touch: true }), `sun tip ${by} touch`);
+      }
+      check(words.sunEdgeTip(s.sync), 'sun edge tip');
+    }
+  }
+  for (const t of [model.tMin - 5e9, model.tMin - 1, model.tMax + 10, model.tMax + 4e9]) check(words.outOfRange(t), `out of range ${t}`);
+  for (const f of ['catalogueSpan', 'sunDefinition', 'sunToggleTitle', 'sunCaption', 'sunLegend', 'sunEdge', 'sunKeys', 'eclipseLegend', 'glossaryHint']) check(words[f](), f);
+  check(words.catalogueTitle(35), 'catalogue title');
+  check(words.sunAria(null, TIMES.A), 'sun aria at the edge');
+  check(words.sunRange([3, 4]), 'range');
+  check(words.sunRange([2, 4]), 'range with a gap');
+  check(words.sunRange([]), 'empty range');
+  check(words.sunNumber({ sync: -6718 }), 'negative sync');
+  const e = words.eclipses(35);
+  for (const x of [...e.marks, e.end]) check(x, 'eclipse label');
+  flag.on = false;
+  assert.ok(n > 700, `${n} texts checked`);
+});
+
+test('pure mode: the readings are Fractonica names, durations and glyph pairs', () => {
+  flag.on = true;
+  const t = TIMES.A;
+  const cur = eng.readHalves(model.frame(t));
+  const d = eng.describe(4, cur[4].idx);
+  assert.equal(words.span(d), 'α#6 β#4 γ#9 δ#3 ε#5');
+  assert.match(words.share(0.5, 'half-arc phase'), /aria-label="half-arc phase 8 and 0 of 256"/, 'the helper\'s spoken form: updated deliberately (it read "8·0")');
+  assert.doesNotMatch(words.share(0.5, 'x'), /<title>|vector CBT/, 'no native tooltip from the library glyphs');
+  assert.equal((words.share(0.5, 'x').match(/<svg/g) || []).length, 2, 'two glyphs');
+  assert.equal(words.catalogueSpan(), 'α#1 – α#18');
+  assert.equal(words.alphaSpan(eng.describe(0, 11)), 'pos 22 → 24');
+  assert.equal(words.alphaSpan(eng.describe(0, 34)), 'pos 68 → 69');
+  assert.match(words.catalogueTitle(35), /35 α half-arcs, α#1 – α#18$/);
+  assert.match(words.outOfRange(model.tMax + 4e9), /^Outside the Saros 141 catalogue\. The wave exists only between the first eclipse \(#0\) and the last \(#69\); the displayed time is \d+[α-ω][^.;]* after the last, so the catalogue is shown greyed\.$/);
+  const tip = words.tip({ d, p: 0.3, at: eng.timeAt(4, d.idx, 0.3), now: t, marker: false, action: 'Click or drag to travel along this arc' });
+  assert.match(tip, /half-arc \+4/);
+  assert.match(tip, /α#6 β#4 γ#9 δ#3 ε#5/);
+  assert.match(tip, /Epsilon Pentafracton/);
+  assert.match(tip, /1ε½ long/);
+  assert.match(tip, /pure-pair/, 'the share of the half-arc is a pair of glyphs');
+  assert.doesNotMatch(seen(tip).join(' '), /%/);
+  assert.match(tip, /ends in /);
+  assert.match(tip, /glyph index \d+ \(0–15\)/);
+  assert.match(tip, /ε½#\d+ · ζ½#\d+ · \d+η/, 'the instant under the pointer: ordinals with a #, the clock counter with its unit');
+  assert.doesNotMatch(tip, /(?<!\d)(?:[δεζ]½|[ηιλ]) \d/);
+  flag.on = false;
+});
+
+test('normal mode words are the ones tooltip.js always produced', () => {
+  flag.on = false;
+  const t = TIMES.A;
+  const cur = eng.readHalves(model.frame(t));
+  for (const L of [0, 3, 6, 11]) {
+    const d = eng.describe(L, cur[L].idx);
+    assert.equal(words.span(d), spanText(fmt, d.start, d.end) + (d.clipped ? '  (clipped)' : ''));
+    assert.equal(words.cycle(d), cycleText(d));
+    assert.equal(words.loop(d), loopText(d));
+    assert.equal(words.when(d, t), whenText(fmt, d, t));
+    assert.deepEqual(words.nextLines(eng, d, cur[L], t), nextLines(fmt, eng, d, cur[L], t));
+    assert.equal(words.tip({ d, p: 0.4, at: eng.timeAt(L, d.idx, 0.4), now: t, marker: false, action: 'x' }), tipHTML({ d, p: 0.4, at: eng.timeAt(L, d.idx, 0.4), now: t, fmt, model: { F: model.F, glyphSVG: model.glyphSVG }, theme, marker: false, action: 'x' }));
+  }
+  assert.equal(words.share(0.2749), '27 %');
+  assert.equal(words.share(0.1349, 'x', 1), '13.4 %');
+  assert.equal(words.nowLabel({ t, level: 0, overview: true }), '2026-10-08');
+  assert.equal(words.nowLabel({ t, level: 2, duration: 3e7 }), '2026-10-08 12:00');
+  assert.equal(words.nowLabel({ t, level: 6, duration: 9000 }), '12:00:00');
+  assert.equal(words.nowLabel({ t, level: 6, duration: 9000 }), fmt.time(t, { seconds: true, ms: false }));
+  assert.equal(words.cycleLength(model.levelInfo(6)), fmt.duration(model.levelInfo(6).meanSeconds));
+  assert.equal(words.catalogueTitle(35), 'Catalogue: the whole Saros 141 wave, 35 α half-arcs from 1613 to 2857');
+  assert.equal(words.cycle(eng.describe(6, cur[6].idx)), 'second half of η cycle 1 / 11 in ζ');
+  assert.match(words.canvasLabel(eng.describe(6, cur[6].idx), 0.6), /now in the second half of this half-arc\.$/);
+  assert.match(words.chipLive('Depth 7', eng.describe(6, cur[6].idx), cur[6]), /\d+ % through this half-arc\. Second half of η cycle 1 \/ 11 in ζ\.$/);
+  assert.equal(words.eclipseLegend(), 'an eclipse of the series, with its year; the thin loops are β and γ');
+});
+
+test('the vocabulary is asked every time: switching modes changes the next text, nothing is cached', () => {
+  const d = eng.describe(6, eng.readHalves(model.frame(TIMES.A))[6].idx);
+  const seq = [false, true, false, true].map((on) => {
+    flag.on = on;
+    return words.cycle(d) + '|' + words.share(0.5, 'x').length;
+  });
+  assert.equal(seq[0], seq[2]);
+  assert.equal(seq[1], seq[3]);
+  assert.notEqual(seq[0], seq[1]);
+  flag.on = false;
+});
+
+test('solar words: the sync, its phase, the next quarter and the drift in both vocabularies', () => {
+  const s = model.solarAt(TIMES.A);
+  flag.on = false;
+  assert.equal(words.sunNumber(s), '#4820');
+  assert.match(words.sunNext(s, TIMES.A), /^node in \d+ h \d+ min$/);
+  assert.match(words.sunDrift(s, TIMES.A), /^−\d+ h \d+ min$/);
+  assert.match(words.sunTip(s, TIMES.A), /Solar sync #4820/);
+  assert.match(words.sunTip(s, TIMES.A), /Phase 35 % of this 4-day sync/);
+  assert.match(words.sunTip(s, TIMES.A), /Drift against civil days −\d+ h \d+ min/);
+  assert.match(words.sunToggleTitle(), /19 η cycles \(about 4 days\)/);
+  assert.match(words.sunAria(s, TIMES.A), /^Solar sync 4820, phase 35 percent, next node in \d+ h \d+ min, drift against civil days −\d+ h \d+ min\.$/);
+  assert.equal(words.sunPhaseText(s), '35 percent of sync 4820');
+  flag.on = true;
+  assert.match(words.sunNext(s, TIMES.A), /^node in \d+η \d+ι$/);
+  assert.equal(words.sunDrift(s, TIMES.A), pureT.driftText(s), 'the drift is pure.driftText, counted in λ, the same everywhere');
+  assert.match(words.sunDrift(s, TIMES.A), /^−\d{1,3}(\u202f\d{3})*λ$/);
+  assert.equal(words.sunDriftLine(s, TIMES.A), `Drift ${pureT.driftText(s)}`);
+  assert.equal(words.sunDefinition(), '19η', 'a count of η, written nX');
+  const tip = words.sunTip(s, TIMES.A);
+  assert.match(tip, /Solar sync #4820/);
+  assert.match(tip, /pure-pair/);
+  assert.match(tip, /Drift −[\d\u202f]+λ</);
+  assert.doesNotMatch(tip, /civil|day|%|steady|beat/);
+  assert.match(words.sunAria(s, TIMES.A), /^Solar sync 4820, phase 5 and \d+ of 256, next node in \d+η \d+ι, drift −[\d\u202f]+λ\.$/);
+  assert.match(words.sunPhaseText(s), /^sync 4820, phase 5 and \d+ of 256$/);
+  assert.equal(words.sunPhaseText(s), `sync 4820, ${pairSpoken(pureT, s.phase, 'phase')}`);
+  assert.match(words.sunToggleTitle(), /one yellow wave of 19η\./);
+  assert.doesNotMatch(words.sunCaption() + words.sunLegend() + words.sunToggleTitle(), /19 η/, 'pure: 19η, not "19 η"');
+  assert.equal(words.glossaryHint(), 'Press ? for the glossary.');
+  flag.on = false;
+  assert.equal(words.glossaryHint(), '');
+});
+
+test('solar words: the minus of a sync number is the app\'s, and the dial\'s depths read as a list', () => {
+  for (const on of [false, true]) {
+    flag.on = on;
+    assert.equal(words.sunNumber({ sync: -6718 }), '#−6718', 'U+2212, not a hyphen');
+    assert.equal(words.sunNumber({ sync: 0 }), '#0');
+    assert.match(words.sunAria({ ...model.solarAt(TIMES.B), sync: -6718 }, TIMES.B), /^Solar sync −6718,/);
+    assert.match(words.sunTip({ ...model.solarAt(TIMES.B), sync: -6718 }, TIMES.B), /Solar sync #−6718</);
+    assert.match(words.sunEdgeTip(-32928), /Solar sync #−32928</);
+    assert.match(words.sunRange([3, 4]), /^ripple at depths 4–5$/);
+    assert.equal(words.sunRange([4]), 'ripple at depth 5');
+    assert.equal(words.sunRange([2, 3, 4]), 'ripple at depths 3–5');
+    assert.equal(words.sunRange([2, 4]), 'ripple at depths 3, 5', 'a gap is a list, not a range');
+    assert.equal(words.sunRange([]), 'no ripple here: these arcs are too short');
+  }
+  flag.on = false;
+});
+
+test('solar words: the toggle and the caption say one and a half syncs, and the tooltip promises only what the thing hovered does', () => {
+  for (const on of [false, true]) {
+    flag.on = on;
+    assert.match(words.sunToggleTitle(), /where one and a half or more syncs fit/);
+    assert.match(words.sunCaption(), /where one and a half or more fit/);
+    assert.doesNotMatch(words.sunToggleTitle() + words.sunCaption(), /two or more|at least two/);
+    const s = model.solarAt(TIMES.A);
+    assert.match(words.sunTip(s, TIMES.A, { by: 'pin' }), /Drag the pin to travel within this sync/);
+    assert.doesNotMatch(words.sunTip(s, TIMES.A, { by: 'pin' }), /Click or drag the wave/, 'the pin is dragged, it is not "the wave"');
+    assert.match(words.sunTip(s, TIMES.A, { by: 'dial' }), /Click or drag the wave to travel within this sync/);
+    assert.match(words.sunTip(s, TIMES.A, { by: 'dial', touch: true }), /Tap or drag the wave to travel within this sync/);
+    assert.match(words.sunTip(s, TIMES.A, { by: 'key' }), /Arrow keys travel within this sync, Page keys by a quarter/);
+    assert.match(words.sunKeys(), /Arrow keys travel within the sync, Page Up and Page Down by a quarter, Home and End/);
+  }
+  flag.on = false;
+  // normal mode keeps every other word it had
+  assert.equal(words.sunDefinition(), '19 η cycles ≈ 4 days');
+  assert.equal(words.eclipseLegend(), 'an eclipse of the series, with its year; the thin loops are β and γ');
+  assert.equal(words.glossaryHint(), '');
+});
+
+test('tipHTMLPure escapes what it is given', () => {
+  const cur = eng.readHalves(model.frame(TIMES.A));
+  const d = eng.describe(6, cur[6].idx);
+  const html = tipHTMLPure({ d: { ...d, letter: '<img src=x>', signed: '+1&"' }, p: null, at: null, now: TIMES.A, pure: pureT, model, theme });
+  assert.doesNotMatch(html, /<img/);
+  assert.match(html, /&lt;img src=x&gt;/);
 });

@@ -114,3 +114,8 @@
 @media (prefers-reduced-motion: reduce) {
   .tl-canvas { scroll-behavior: auto; }
 }
+
+/* ---------- pure mode (Fractonica terms only: a ruler of units, glyph pairs instead of percentages) ---------- */
+.tl-tip .pure-pair svg { height: 1.55em; }
+.tl-tip-row .pure-pair { margin-left: auto; }
+.tl-tip-sub { margin-top: 2px; font-size: 11.5px; line-height: 1.4; font-weight: 400; }

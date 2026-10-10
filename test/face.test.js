@@ -4,6 +4,8 @@ import { readFileSync, readdirSync } from 'node:fs';
 import '../fractonica.js';
 import { createModel } from '../src/core/model.js';
 import { createFormatter } from '../src/core/format.js';
+import { createPure } from '../src/core/pure.js';
+import { judge } from '../tools/pure-scan.mjs';
 import { createGlyphBook } from '../src/ui/face/glyphs.js';
 import {
   SCREEN,
@@ -44,7 +46,28 @@ import {
   rowAriaLabel,
   layoutFit,
   BEZEL,
+  thresholdCaption as capOf,
 } from '../src/ui/face/helpers.js';
+import {
+  inText,
+  agoText,
+  pairSpeech,
+  pureInfoLabels,
+  pureInfoSpeech,
+  purePeriodTooltip,
+  pureSolarTooltip,
+  pureTooltipModel,
+  pureRowAriaLabel,
+  pureCaption,
+  letterName,
+  pureRange,
+  PURE_SOLAR_NA,
+  pureHowToLines,
+  FROM_ONE,
+  GLOSSARY_NOTE,
+  CAPTION_NOTE,
+  DRIFT_REF,
+} from '../src/ui/face/pure.js';
 
 const model = createModel();
 const fmt = createFormatter(() => 'UTC');
@@ -635,4 +658,353 @@ test('no user-visible string of the face says "level"', () => {
   const dir = '../src/ui/face/';
   const files = ['../src/ui/face.js', '../src/styles/face.css', ...readdirSync(new URL(dir, import.meta.url)).map((f) => dir + f)];
   for (const f of files) assert.deepEqual(levelWordHits(sourceOf(f)), [], f);
+});
+
+// =====================================================================================================
+// Pure mode (docs/design/80-pure.md): the face speaks Fractonica only
+// =====================================================================================================
+const pure = createPure(model, { now: () => T_A });
+const lambdaUnit = pure.UNITS.find((u) => u.id === 'lambda');
+// the library's glyph SVGs carry their own <title>/<desc> ("vector CBT value 3 ..."): not part of the visible text
+const stripTags = (html) => html.replace(/<(title|desc)>[\s\S]*?<\/\1>/g, '').replace(/<[^>]*>/g, ' ');
+/** Every user-visible / spoken string of a tooltip model, including the aria-label of embedded graphics, as scanner items. */
+function tipItems(m, where = 'tip') {
+  if (!m) return [];
+  const out = [];
+  const add = (kind, text) => text && out.push({ kind, text: String(text).replace(/\s+/g, ' ').trim(), where });
+  add('text', m.title);
+  add('text', m.aside);
+  add('text', m.hint);
+  for (const l of m.lines) {
+    if (typeof l === 'string') add('text', l);
+    else {
+      add('text', stripTags(l.html));
+      for (const a of l.html.matchAll(/aria-label="([^"]*)"/g)) add('attr:aria-label', a[1]);
+    }
+  }
+  return out;
+}
+const hardLeaks = (items) => judge(items, 'test').filter((l) => l.severity === 'hard');
+
+// the notation (header of src/core/pure.js): X#n is an ordinal from 1, nX counts units (clock counters from 0), "η 7" is a depth chip
+const OLD_SPELLINGS = [
+  [/[δεζ]½ \d+(?![\d½ηιλμνξαβγδεζ])/, 'a half-cycle ordinal written "δ½ 3" instead of "δ½#3"'],
+  [/\d+·\d+/, 'a glyph pair written "13·4" (it reads as the number 13.4)'],
+  [/(?<!depth )\b\d+ [αβγδεζηιλμνξ]½?(?![\wα-ω½#])/, 'a count written with a space ("19 η")'],
+];
+const oldSpellings = (text) => OLD_SPELLINGS.filter(([re]) => re.test(text)).map(([, why]) => `${why}: ${text}`);
+
+test('the notation scan itself: it sees the old spellings, not durations, counters or depth chips', () => {
+  for (const bad of ['δ½ 3 ε½ 2 ζ½ 5', 'phase 13·4 of 256', '19 η per sync', 'yellow = 19 η cycles']) assert.notDeepEqual(oldSpellings(bad), [], bad);
+  for (const ok of ['δ½#3 ε½#2 ζ½#5', 'in 1ζ½ 3η', 'Ends in 4δ½ 1ε½ → Gamma Decafracton begins', '0η 29ι 21λ', 'η 7 · θ 8', 'depth 7 η over depth 8 θ', 'phase 13 and 4 of 256', '19η per sync', 'state 13 of 16']) {
+    assert.deepEqual(oldSpellings(ok), [], ok);
+  }
+});
+
+test('pure: the sync drift, the cycle length and the pair names come from the shared vocabulary (no local copies)', () => {
+  const src = sourceOf('../src/ui/face/pure.js').replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:\w'"`])\/\/.*$/gm, '$1');
+  for (const gone of ['groupDigits', 'driftLambda', 'driftText = ', 'function driftText', 'cycleLengthText', 'tidyPair', 'prefixNum', 'NNBSP']) assert.ok(!src.includes(gone), `${gone} was replaced by ctx.pure`);
+  assert.ok(!/tidyPair/.test(sourceOf('../src/ui/face/howto.js')));
+  const sol = model.solarAt(T_A);
+  const lTop = model.levelAt(T_A, 6);
+  const m = pureInfoLabels(pure, T_A, lTop, sol);
+  assert.equal(m.syncVal, `drift ${pure.driftText(sol)}`);
+  assert.match(m.syncVal, /^drift −\d{1,3}( \d{3})*λ$/, 'a true minus and narrow digit groups, as everywhere');
+  assert.match(pureInfoSpeech(m), /Solar sync 4820, drift −\d/);
+  // the same drift text in the tooltip and nowhere else spelt differently
+  const tip = pureTooltipModel({ model, pure, frame: model.frame(T_A), row: 'solar', topDepth: 7 });
+  assert.equal(tip.lines[1], `Drift ${pure.driftText(sol)} ${DRIFT_REF}`);
+  assert.ok(tip.lines[1].includes(m.syncVal.replace(/^drift /, '')), 'info label and tooltip say the same number');
+  // exact cycle lengths come from pure.cycleLength for every depth the face shows
+  for (let depth = 2; depth <= 11; depth++) {
+    for (const row of ['top', 'bottom']) {
+      const level = row === 'top' ? depth - 1 : depth;
+      const t = pureTooltipModel({ model, pure, frame: model.frame(T_A), row, topDepth: depth });
+      assert.equal(t.aside, `one cycle = ${pure.cycleLength(level)}`, `depth ${level + 1}`);
+    }
+  }
+  assert.equal(pureTooltipModel({ model, pure, frame: model.frame(T_A), row: 'top', topDepth: 7 }).aside, 'one cycle = 1η');
+  assert.equal(pureTooltipModel({ model, pure, frame: model.frame(T_A), row: 'top', topDepth: 6 }).aside, 'one cycle = 2ζ½');
+  assert.equal(pureTooltipModel({ model, pure, frame: model.frame(T_A), row: 'bottom', topDepth: 7 }).aside, 'one cycle = 4ι');
+  // a spoken pair is the accessible name of the drawn pair
+  assert.equal(pairSpeech(pure, 0.5), 'phase 8 and 0 of 256');
+  assert.equal(pairSpeech(pure, 13 / 16 + 4 / 256 + 1e-4), 'phase 13 and 4 of 256');
+  assert.equal(pairSpeech(pure, 0.3, 'state'), pure.pairHTML(0.3, { label: 'state' }).match(/aria-label="([^"]*)"/)[1]);
+});
+
+test('pure: countdowns are positions counted in ladder units, "ago" is the same span backwards', () => {
+  const lv = model.levelAt(T_A, 6);
+  assert.equal(inText(pure, T_A, lv.end), 'in ' + pure.between(T_A, lv.end));
+  assert.equal(inText(pure, T_A, lv.end), 'in 6ι 43λ'); // 56 min 12 s at vector A
+  assert.equal(agoText(pure, lv.end, T_A), '6ι 43λ ago');
+  assert.equal(inText(pure, T_A, null), '—');
+  assert.equal(inText(pure, T_A, NaN), '—');
+  assert.equal(agoText(pure, T_A, undefined), '—');
+  // trailing zero parts are the vocabulary's business: a whole η reads "1η", never "1η 0ι"
+  assert.equal(inText(pure, lv.start, lv.end), 'in 1η');
+  assert.equal(agoText(pure, lv.end, lv.start), '1η ago');
+});
+
+test('pure info labels: threshold countdowns and the sync number with its drift, never a clock time', () => {
+  const lTop = model.levelAt(T_A, 6);
+  const sol = model.solarAt(T_A);
+  const m = pureInfoLabels(pure, T_A, lTop, sol);
+  assert.equal(m.topCap, capOf(lTop.next.name));
+  assert.equal(m.topVal, inText(pure, T_A, lTop.next.time));
+  assert.match(m.topVal, /^in \d+[αβγδεζηιλμνξ½]+ \d+[αβγδεζηιλμνξ½]+$/);
+  assert.equal(m.solarCap, 'NEXT NODE');
+  assert.equal(m.solarVal, inText(pure, T_A, sol.threshold.time));
+  assert.equal(m.syncCap, 'SYNC 4820');
+  assert.equal(m.syncVal, `drift ${pure.driftText(sol)}`);
+  assert.equal(m.solarOk, true);
+  assert.equal(m.pure, true);
+  assert.deepEqual(hardLeaks(['topCap', 'topVal', 'solarCap', 'solarVal', 'syncCap', 'syncVal'].map((k) => ({ kind: 'text', text: m[k], where: k }))), []);
+  // no solar reading (within a sync of the catalogue ends): the solar block is a dash, the caption names the sync generically
+  const n = pureInfoLabels(pure, T_A, lTop, null);
+  assert.deepEqual([n.solarCap, n.solarVal, n.syncCap, n.syncVal, n.solarOk], ['SOLAR SYNC', '—', 'SYNC', '—', false]);
+  // a threshold that does not exist reads as a dash
+  const none = pureInfoLabels(pure, T_A, { next: { name: 'end', time: null } }, sol);
+  assert.equal(none.topVal, '—');
+});
+
+test('pure info speech reads the countdowns and the sync, with placeholders for undefined values', () => {
+  const lTop = model.levelAt(T_A, 6);
+  const sol = model.solarAt(T_A);
+  const m = pureInfoLabels(pure, T_A, lTop, sol);
+  const say = pureInfoSpeech(m);
+  assert.equal(say, `Next ${lTop.next.name} of the top period: in 6ι 43λ. Next node of the solar sync: ${m.solarVal}. Solar sync 4820, ${m.syncVal}.`);
+  assert.equal(pureInfoSpeech(pureInfoLabels(pure, T_A, lTop, null)), 'Next end of the top period: in 6ι 43λ. Solar sync: not defined within one sync of the catalogue edge.');
+  assert.match(pureInfoSpeech({ ...m, topVal: '—' }), /^Next end of the top period: not defined\./);
+  assert.deepEqual(hardLeaks([{ kind: 'text', text: say, where: 'speech' }]), []);
+});
+
+test('pure period tooltip at vector A: the cycle is named and numbered, the end names the cycle that begins', () => {
+  const m = pureTooltipModel({ model, pure, frame: model.frame(T_A), row: 'top', topDepth: 7 });
+  assert.equal(m.title, 'η · depth 7');
+  assert.equal(m.aside, 'one cycle = 1η');
+  assert.equal(m.lines.length, 6);
+  assert.equal(m.lines[0], 'Eta Monofracton · η#1 of 11 in its ζ');
+  assert.equal(m.lines[1], `State 13 of 16: value ${MINUS}3, rising ↗`);
+  assert.match(m.lines[2], /^Right \(fine\) glyph: state 0 of 16, changes in \d+\S+ \d+\S+$/);
+  assert.match(m.lines[3], /^Next change in \d+\S+ \d+\S+$/);
+  assert.equal(m.lines[4], 'Ends in 6ι 43λ → Eta Difracton begins');
+  assert.equal(m.lines[5], FROM_ONE, 'which numbers count from 0 and which from 1');
+  assert.equal(m.hint, 'Click or tap: select this cycle in every view and show longer periods');
+  // the same readings as normal mode: only the wording of the times changed
+  const normal = periodTooltip(
+    { letter: 'η', depth: 7, meanSeconds: 18180, state: stateInfo(13), fineIndex: 0, fineNext: null, majorNext: null, cycleEnd: null, local: 0, siblings: 11, parentLetter: 'ζ', now: T_A, step: -1 },
+    fmt,
+  );
+  assert.equal(normal.lines[0], m.lines[1]);
+  assert.equal(normal.hint, m.hint);
+  const b = pureTooltipModel({ model, pure, frame: model.frame(T_A), row: 'bottom', topDepth: 7 });
+  assert.equal(b.title, 'θ · depth 8');
+  assert.equal(b.aside, 'one cycle = 4ι');
+  assert.equal(b.lines[0], 'Theta Octafracton · θ#8 of 9 in its η');
+  assert.match(b.lines.at(-2), /^Ends in \d\S+ \d\S+ → Theta Nonafracton begins$/);
+  assert.ok(!/depth 7|row/.test(b.hint) && /shorter periods$/.test(b.hint));
+  // keyboard focus names the key instead of the click
+  assert.equal(pureTooltipModel({ model, pure, frame: model.frame(T_A), row: 'top', topDepth: 7, by: 'key' }).hint, 'Enter: select this cycle in every view');
+  // Alpha has no parent: its ordinal is global and there is no "of n"
+  const alpha = purePeriodTooltip(
+    { letter: 'α', depth: 1, level: 0, cycle: 5, length: pure.cycleLength(0), state: stateInfo(0), fineIndex: 0, fineNext: null, majorNext: null, cycleEnd: null, local: 5, siblings: null, parentLetter: null, now: T_A },
+    pure,
+  );
+  assert.equal(alpha.lines[0], 'Alpha Hexafracton · α#6');
+  assert.equal(alpha.aside, 'one cycle = 1α');
+});
+
+test('pure period tooltip: the last cycle of a parent is followed by the first of the next parent', () => {
+  const zeta = model.levelAt(T_A, 5);
+  const t = zeta.end - 60; // inside the 11th η of its ζ
+  const m = pureTooltipModel({ model, pure, frame: model.frame(t), row: 'top', topDepth: 7 });
+  assert.equal(m.lines[0], 'Eta Didecafracton · η#11 of 11 in its ζ');
+  assert.match(m.lines.at(-2), /→ Eta Monofracton begins$/);
+  // the last cycle of the catalogue ends with the catalogue
+  const edge = pureTooltipModel({ model, pure, frame: model.frame(model.tMax - 5), row: 'top', topDepth: 7 });
+  assert.match(edge.lines.at(-2), /^Ends in .+, with the catalogue$/);
+  // the end of the first cycle and a clamped depth: no step in the hint at the ends of the range
+  assert.equal(pureTooltipModel({ model, pure, frame: model.frame(T_A), row: 'top', topDepth: 2 }).hint, 'Click or tap: select this cycle in every view');
+  assert.equal(pureTooltipModel({ model, pure, frame: model.frame(T_A), row: 'bottom', topDepth: 11 }).hint, 'Click or tap: select this cycle in every view');
+});
+
+test('pure solar tooltip: sync number, phase as a glyph pair, drift in λ, next quarter and age as ladder spans', () => {
+  const s = model.solarAt(T_A);
+  const m = pureTooltipModel({ model, pure, frame: model.frame(T_A), row: 'solar', topDepth: 7 });
+  assert.equal(m.title, 'Solar sync #4820');
+  assert.equal(m.aside, '19η per sync');
+  assert.equal(m.lines.length, 4);
+  assert.ok(typeof m.lines[0] === 'object' && typeof m.lines[0].html === 'string');
+  assert.equal((m.lines[0].html.match(/<svg/g) || []).length, 2, 'two glyphs');
+  assert.ok(!/<title>|vector CBT/.test(m.lines[0].html), 'no library jargon as a native tooltip (the shared helper strips it)');
+  assert.equal((m.lines[0].html.match(/aria-hidden="true"/g) || []).length, 2, 'the glyphs are decoration of the pair image');
+  assert.ok(m.lines[0].html.includes(`aria-label="${pairSpeech(pure, s.phase)}"`));
+  assert.ok(m.lines[0].html.includes('aria-label="phase 5 and 11 of 256"'), 'two digits spoken as two numbers, never "5.11"');
+  assert.match(stripTags(m.lines[0].html).replace(/\s+/g, ' '), /^Phase +of this sync$/);
+  assert.equal(m.lines[1], `Drift ${pure.driftText(s)} ${DRIFT_REF}`);
+  assert.equal(m.lines[2], `Next node ${inText(pure, T_A, s.threshold.time)}`);
+  assert.equal(m.lines[3], `Sync began ${pure.between(s.start, T_A)} ago`);
+  assert.equal(m.hint, 'Click or tap: info labels · double tap: letters');
+  assert.equal(pureTooltipModel({ model, pure, frame: model.frame(T_A), row: 'solar', topDepth: 7, by: 'key' }).hint, 'Enter: show the info labels · key l: keep the letters');
+  // negative sync numbers keep the true minus; the pair never reaches 256 before the sync ends
+  const early = pureSolarTooltip({ sync: -3, phase: 0.99999, drift: 5, nominalStart: s.nominalStart, thresholdName: 'end', thresholdTime: T_A + 100, start: T_A - 50, now: T_A }, pure);
+  assert.equal(early.title, `Solar sync #${MINUS}3`);
+  assert.ok(early.lines[0].html.includes('phase 15 and 15 of 256'));
+  // no solar reading near the catalogue ends: one explanatory line, no counts
+  const edge = pureTooltipModel({ model, pure, frame: model.frame(model.tMin + 5), row: 'solar', topDepth: 7 });
+  assert.deepEqual(edge, { title: 'Solar sync', aside: '', lines: ['The sync around this instant runs past the catalogue, so it is not defined here.'], hint: '' });
+  // out of range: nothing
+  assert.equal(pureTooltipModel({ model, pure, frame: model.frame(model.tMax + 10), row: 'top', topDepth: 7 }), null);
+});
+
+test('pure row aria labels: the name and the phase pair spoken as two numbers, instead of "percent"', () => {
+  const s = model.solarAt(T_A);
+  const solar = pureRowAriaLabel('solar', { sync: s.sync, phase: s.phase, digits: s.digits3 }, pure);
+  assert.equal(solar, `Solar sync 4820, phase 5 and 11 of 256, glyphs ${s.digits3.join(', ')}. Activate to show the info labels`);
+  assert.doesNotMatch(solar, /percent|%|\d·\d/);
+  const lv = model.levelAt(T_A, 6);
+  const row = pureRowAriaLabel('top', { letter: 'η', depth: 7, name: letterName(pure, 6, lv.local), state: stateInfo(13), local: lv.local, siblings: lv.siblings }, pure);
+  assert.equal(row, `η depth 7 · Eta Monofracton: state 13 of 16, value ${MINUS}3, rising, cycle 1 of 11. Activate to select this depth`);
+  assert.ok(!/[↗↘]/.test(row));
+  assert.ok(!/cycle/.test(pureRowAriaLabel('top', { letter: 'α', depth: 1, name: 'Alpha Hexafracton', state: stateInfo(0), local: 0, siblings: null }, pure)));
+});
+
+test('pure caption: the address and clock counters in the new notation, the same numbers as the header and pure.stamp', () => {
+  const c = pure.clock(T_A);
+  const d = pure.date(T_A);
+  const text = pureCaption(pure, T_A);
+  assert.equal(text, `α#6 β#4 γ#9 · δ½#${d.delta} ε½#${d.epsilon} ζ½#${d.zeta} · ${c.eta}η ${c.iota}ι ${c.lambda}λ`);
+  assert.deepEqual(oldSpellings(text), []);
+  // the same tokens as the shared stamp (only the separators between the half-cycle ordinals are left out)
+  const tokens = (s) => s.split(/[\s·]+/).filter(Boolean);
+  for (const t of [T_A, 946684800.5, 2886085800.25, 125593320.816, model.tMin + 9, model.tMax - 9]) {
+    assert.deepEqual(tokens(pureCaption(pure, t)), tokens(pure.stamp(t, 'lambda')), `caption @ ${t}`);
+    assert.match(pureCaption(pure, t), /^α#\d+ β#\d γ#\d+ · δ½#\d+ ε½#\d ζ½#\d · \d+η \d+ι \d+λ$/);
+  }
+  // the longest address still fits the narrowest card at the caption's 10 px (about 6 px per character)
+  assert.ok('α#18 β#5 γ#13 · δ½#10 ε½#5 ζ½#7 · 10η 35ι 64λ'.length <= 46);
+  assert.ok(text.length <= 44, `short enough for the card (${text.length})`);
+  assert.equal(pureCaption(pure, model.tMax + 10), '');
+  assert.equal(pureCaption(pure, model.tMin - 10), '');
+  assert.deepEqual(hardLeaks([{ kind: 'text', text, where: 'caption' }]), []);
+  // its hover text says which numbers start at 0 and points to the glossary
+  assert.equal(CAPTION_NOTE, `${FROM_ONE} ${GLOSSARY_NOTE}`);
+  assert.match(CAPTION_NOTE, /count from 1.*count from 0.*Press \? for the glossary\.$/);
+  assert.deepEqual(hardLeaks([{ kind: 'attr:title', text: CAPTION_NOTE, where: 'caption' }]), []);
+});
+
+test('pure letters, range and texts for states without a reading', () => {
+  assert.equal(letterName(pure, 6, 0), 'Eta Monofracton');
+  assert.equal(letterName(pure, 7, 7), 'Theta Octafracton');
+  assert.equal(letterName(pure, 10, 12), 'Lambda Tridecafracton');
+  assert.equal(letterName(pure, 1, 4), 'Beta Pentafracton');
+  const r = pureRange(pure);
+  assert.deepEqual([r.from, r.to], ['α#1', 'α#18']);
+  assert.deepEqual(r.lines, ['outside the', 'catalogue']);
+  assert.equal(r.label, 'Fractonica clock face: outside the catalogue, no reading');
+  assert.deepEqual([...PURE_SOLAR_NA.lines], ['not defined within', 'one sync of the edge']);
+  const items = [...r.lines, `from ${r.from}`, `to ${r.to}`, r.label, PURE_SOLAR_NA.label, ...PURE_SOLAR_NA.lines].map((text) => ({ kind: 'text', text, where: 'oor' }));
+  assert.deepEqual(hardLeaks(items), []);
+  // the longest name still fits the 192 px screen at 9.5 px (about 5.6 px per letter)
+  const longest = Math.max(...[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11].flatMap((L) => Array.from({ length: model.levelInfo(L).siblings }, (_, i) => letterName(pure, L, i).length)));
+  assert.ok(longest * 5.6 < 150, `longest name ${longest} letters`);
+});
+
+test('pure how-to: the five kinds of line plus counters-from-0, in Fractonica terms, and the glossary pointer', () => {
+  const lines = pureHowToLines(pure.pairHTML(13 / 16 + 4 / 256 + 1e-4, { label: 'phase' }));
+  assert.deepEqual(lines.map(([k]) => k), ['teal', 'dot', 'pair', 'count', 'zero', 'gold']);
+  const zero = lines[4][1];
+  assert.match(zero, /0η 29ι 21λ/, 'the counter example');
+  assert.match(zero, /δ½#6/, 'the ordinal example');
+  assert.match(zero, /from 0/);
+  assert.match(zero, /from 1/);
+  const gold = lines[5][1];
+  assert.match(gold, /19η cycles/);
+  assert.doesNotMatch(gold, /civil|4-day|\bs\b|days|19 η/);
+  assert.match(lines[2][1], /16 × 16 = 256 phases/);
+  assert.ok(lines[2][1].includes('aria-label="phase 13 and 4 of 256"'));
+  assert.equal(pureHowToLines(null).length, 6);
+  const items = lines.flatMap(([, html]) => [{ kind: 'text', text: stripTags(html), where: 'howto' }, ...[...html.matchAll(/aria-label="([^"]*)"/g)].map((a) => ({ kind: 'attr:aria-label', text: a[1], where: 'howto' }))]);
+  assert.deepEqual(hardLeaks(items), []);
+  for (const [, html] of lines) assert.deepEqual(oldSpellings(stripTags(html)), []);
+  // normal mode keeps its wording (the file still says civil days there) and shows no glossary pointer
+  const howto = sourceOf('../src/ui/face/howto.js');
+  assert.match(howto, /19 η cycles ≈ 4 civil days/);
+  assert.match(howto, /Press <span class="kbd">\?<\/span> for the glossary\./);
+  assert.match(howto, /glossary\.hidden = !pure/);
+  assert.match(howto, /else glossary\.replaceChildren\(\)/, 'normal mode keeps none of it in the DOM');
+});
+
+test('the scanner rules would catch a leak in these strings (sanity check of the wiring)', () => {
+  const normal = periodTooltip({ letter: 'η', depth: 7, meanSeconds: 18180, state: stateInfo(13), fineIndex: 0, fineNext: T_A + 33, majorNext: T_A + 3372, cycleEnd: T_A + 3372, local: 0, siblings: 11, parentLetter: 'ζ', now: T_A }, fmt);
+  assert.ok(hardLeaks(tipItems(normal)).length >= 3, 'clock times and "min" are flagged');
+  const sol = model.solarAt(T_A);
+  const normalSolar = solarTooltip({ sync: sol.sync, phase: sol.phase, drift: sol.drift, thresholdName: 'node', thresholdTime: sol.threshold.time, start: sol.start, now: T_A }, fmt);
+  assert.ok(hardLeaks(tipItems(normalSolar)).some((l) => l.rule === 'percent'));
+});
+
+test('pure: no tooltip, label, caption or info text of the face leaks an Earth reference or an old spelling (many instants, depths, rows)', () => {
+  const instants = [T_A, 946684800, 2886085800, 125593320.816, model.tMin + 5, model.tMax - 5, model.tMin + 4e6, model.tMax - 4e6];
+  for (let i = 0; i < 40; i++) instants.push(model.tMin + ((model.tMax - model.tMin) * (i + 0.37)) / 40);
+  const items = [];
+  const seen = new Set();
+  const addAll = (xs) => xs.forEach((x) => seen.has(x.text) || (seen.add(x.text), items.push(x)));
+  let tooltips = 0;
+  for (const t of instants) {
+    const frame = model.frame(t);
+    for (const topDepth of [2, 5, 7, 9, 11]) {
+      for (const row of ['top', 'bottom', 'solar']) {
+        for (const by of ['pointer', 'key']) {
+          const m = pureTooltipModel({ model, pure, frame, row, topDepth, by });
+          if (m) tooltips++;
+          addAll(tipItems(m, `${row}@${t}/d${topDepth}`));
+        }
+      }
+      const lv = levelsFor(topDepth);
+      const lTop = frame.level(lv.top);
+      let sol = null;
+      try {
+        sol = frame.solar();
+      } catch {
+        sol = null;
+      }
+      const info = pureInfoLabels(pure, t, lTop, sol);
+      addAll(['topCap', 'topVal', 'solarCap', 'solarVal', 'syncCap', 'syncVal'].map((k) => ({ kind: 'text', text: info[k], where: `info.${k}` })));
+      addAll([{ kind: 'text', text: pureInfoSpeech(info), where: 'speech' }]);
+      for (const [kind, L] of [['top', lv.top], ['bottom', lv.bottom]]) {
+        const cyc = frame.level(L);
+        const od = frame.odometer(L);
+        addAll([{ kind: 'attr:aria-label', text: pureRowAriaLabel(kind, { letter: model.levelInfo(L).letter, depth: L + 1, name: letterName(pure, L, cyc.local), state: stateInfo(od.digits[0]), local: cyc.local, siblings: cyc.siblings }, pure), where: 'row' }]);
+        addAll([{ kind: 'text', text: letterName(pure, L, cyc.local), where: 'letters' }]);
+      }
+    }
+    if (model.solarAt(t)) {
+      const s = model.solarAt(t);
+      addAll([{ kind: 'attr:aria-label', text: pureRowAriaLabel('solar', { sync: s.sync, phase: s.phase, digits: s.digits3 }, pure), where: 'solarrow' }]);
+    }
+    addAll([{ kind: 'text', text: pureCaption(pure, t), where: 'caption' }]);
+  }
+  assert.ok(tooltips > 800, `${tooltips} tooltips checked`);
+  assert.ok(items.length > 2000, `${items.length} distinct strings checked`);
+  assert.deepEqual(hardLeaks(items), []);
+  // the notation: no half-cycle ordinal without its #, no glyph pair as "a·b", no count written with a space
+  assert.deepEqual(items.flatMap((i) => oldSpellings(i.text)), []);
+  // one drift format everywhere: signed (true minus), narrow digit groups, counted in λ (also at the catalogue edges)
+  const drifts = items.filter((i) => i.where === 'info.syncVal' && i.text !== '\u2014');
+  assert.ok(drifts.length > 20, `${drifts.length} drift labels`);
+  assert.deepEqual(drifts.filter((i) => !/^drift [−+]?\d{1,3}(\u202f\d{3})*λ$/.test(i.text)).map((i) => i.text), []);
+  assert.ok(items.some((i) => /^drift 0λ$/.test(i.text)), 'the anchor sync has no drift');
+  // every duration of the face is the vocabulary's: whole cycles never read "1η 0ι"
+  assert.deepEqual(items.filter((i) => /\b[1-9]\d*[αβγδεζηιλμνξ½]+ 0[αβγδεζηιλμνξ½]+\b(?! \d)/.test(i.text) && !/^\d+η \d+ι \d+λ|· \d+η \d+ι \d+λ$/.test(i.text)).map((i) => i.text), []);
+  // soft rules: the only soft hits allowed are sync numbers ("#2417") and none of them is a count of λ
+  const soft = judge(items, 'soft').filter((l) => l.severity === 'soft');
+  for (const l of soft) assert.ok(l.rule === 'year-number' && /Solar sync #|SYNC |Solar sync \d/.test(l.text), `${l.rule}: ${l.text}`);
+});
+
+test('the face source keeps the Earth vocabulary out of its pure strings', () => {
+  const src = sourceOf('../src/ui/face/pure.js').replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:\w'"`])\/\/.*$/gm, '$1');
+  const strings = [...src.matchAll(/'([^'\n]*)'|`([^`\n]*)`/g)].map((m) => m[1] ?? m[2]);
+  const items = strings.map((text) => ({ kind: 'text', text: text.replace(/\$\{[^}]*\}/g, ' '), where: 'pure.js' }));
+  assert.ok(items.length > 30);
+  assert.deepEqual(hardLeaks(items), []);
 });

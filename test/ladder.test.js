@@ -4,10 +4,13 @@ import { readFileSync } from 'node:fs';
 import '../fractonica.js';
 import { createModel } from '../src/core/model.js';
 import { createFormatter } from '../src/core/format.js';
+import { createPure } from '../src/core/pure.js';
+import { judge } from '../tools/pure-scan.mjs';
 import {
   DEFAULT_IMPORTANCE,
   DEFAULT_MAX_DEPTH,
   IMPORTANCE,
+  JUST_AFTER_S,
   MAX_DEPTH,
   MIN_DEPTH,
   advancedBy,
@@ -46,6 +49,30 @@ import {
   whenFull,
   whenLabel,
 } from '../src/ui/ladder/lib.js';
+import {
+  counterName,
+  counterParts,
+  cycleWords,
+  dateAtPosition,
+  dateTail,
+  depthWords,
+  endsText,
+  groupByHalf,
+  heroLeft,
+  leadBeats,
+  leftText,
+  lengthText,
+  levelWord,
+  nextCycle,
+  pathText,
+  periodBeats,
+  phaseWords,
+  positionOfKey,
+  quarterWhere,
+  sectorName,
+  turnoverInfo,
+  turnoverWords,
+} from '../src/ui/ladder/pure-text.js';
 
 const model = createModel();
 const utc = createFormatter(() => 'UTC');
@@ -625,4 +652,410 @@ test('advancedBy recognises a list that has moved forward', () => {
   assert.equal(advancedBy(k('a', 'b', 'c'), k('b', 'x', 'd')), -1, 'different sequence');
   assert.equal(advancedBy([], k('a')), -1);
   assert.equal(advancedBy(k('a'), []), -1);
+});
+
+// ---------------------------------------------------------------------------
+// pure mode (docs/design/80-pure.md): Fractonica terms only
+// ---------------------------------------------------------------------------
+const pure = createPure(model, { now: () => A });
+const R = model.F.rational;
+const exactPos = (t) => model.clock.positionAt(R(String(Math.round(t * 1000) / 1000)));
+const SAMPLE = [A, 946684800, 2886085800, 125593320.816, 1e9, -3e9, model.tMin + 5, model.tMax - 5, model.tMax - 3 * 86400];
+
+test('pure: names are the library vocabulary of cycles, counters and sectors', () => {
+  for (const t of SAMPLE) {
+    for (let L = 0; L < 14; L++) {
+      const lv = model.levelAt(t, L);
+      assert.equal(cycleWords(pure, L, lv.local), pure.nameAt(t, L), `depth ${L + 1} at ${t}`);
+      assert.equal(counterName(pure, lv.local, lv.siblings), pure.ordinalName(lv.local + 1));
+      assert.ok(cycleWords(pure, L, lv.local).endsWith(counterName(pure, lv.local, lv.siblings)), 'the row counter completes the chip');
+      // the bar sector the phase is in is the child cycle of that number
+      if (L < 13) {
+        const seg = segmentState(lv.phase, lv.factor);
+        assert.equal(sectorName(pure, L, seg.index), pure.nameAt(t, L + 1), `sector of depth ${L + 1}`);
+      }
+    }
+  }
+  assert.equal(counterName(pure, 99, 5), 'Pentafracton', 'never beyond the sibling count');
+  assert.equal(depthWords(pure, 6), 'Eta, depth 7');
+  assert.equal(levelWord(pure, 2), 'Gamma');
+  assert.equal(levelWord(pure, 40), 'Level 41');
+});
+
+test('pure: the cycle that begins where a cycle ends, and the end of the catalogue', () => {
+  for (const t of SAMPLE.slice(0, 7)) {
+    for (let L = 0; L < 14; L++) {
+      const lv = model.levelAt(t, L);
+      const next = nextCycle(model, pure, L, lv.cycleBig);
+      assert.ok(next, `depth ${L + 1} has a successor at ${t}`);
+      assert.equal(next.name, pure.nameAt(lv.end + 0.001, L), `depth ${L + 1} at ${t}`);
+      assert.equal(next.address, pure.addressAt(lv.end + 0.001, L));
+      assert.equal(next.short, pure.cycleShort(L, model.levelAt(lv.end + 0.001, L).cycle));
+      assert.equal(endsText(next), `→ ${next.name} begins`);
+    }
+  }
+  // the last cycle of every level has no successor
+  for (let L = 0; L < 14; L++) {
+    const last = model.levelAt(model.tMax - 0.002, L);
+    assert.equal(nextCycle(model, pure, L, last.cycleBig), null, `depth ${L + 1}`);
+  }
+  assert.equal(endsText(null), '→ the catalogue ends');
+});
+
+test('pure: time left is counted in ladder units, exactly, and never goes negative', () => {
+  // SPEC vector A: eta has 56 min 12 s left = 6.67 iota
+  const eta = model.levelAt(A, 6);
+  assert.match(leftText(model, pure, A, eta.end), /^6ι 4\dλ$/);
+  assert.equal(leftText(model, pure, A, A - 5), '0ξ', 'a passed instant reads zero');
+  assert.equal(leftText(model, pure, A, A), '0ξ');
+  for (const t of SAMPLE.slice(0, 7)) {
+    for (let L = 0; L < 14; L++) {
+      const lv = model.levelAt(t, L);
+      const txt = leftText(model, pure, t, lv.end);
+      assert.match(txt, /^\d+[αβγδεζημνξικλ½]+( \d+[αβγδεζημνξικλ½]+)?$/u, `${L}: ${txt}`);
+      // agrees with the core's span between two instants
+      assert.equal(txt, pure.between(t, lv.end, { parts: 2 }));
+    }
+  }
+  // the end of the catalogue is a valid instant
+  assert.match(leftText(model, pure, model.tMax - 100, model.tMax), /^\d/);
+  // outside the catalogue the span falls back to seconds around t1
+  assert.match(leftText(model, pure, model.tMax + 100, model.tMax + 5000), /^\d+[ξνμλικ]/u);
+});
+
+test('pure: the hero countdown shows at most three units, zero tails dropped by the core (never finer than λ once the span is a few ι long)', () => {
+  const U = pure.UNITS;
+  const len = (id) => pure.unitPos(U.find((u) => u.id === id));
+  const sym = (id) => U.find((u) => u.id === id).sym;
+  const p0 = 22.9;
+  const t0 = model.timeOfPosition(p0);
+  /** The instant `parts` = [[unit id, count], ...] after p0, plus half of the unit that follows the last one (no float edge). */
+  const after = (parts, tailId, share = 0.5) => model.timeOfPosition(p0 + parts.reduce((a, [id, n]) => a + n * len(id), 0) + share * len(tailId));
+  const cases = [
+    // [parts, the unit after them, expected text, share of that unit added]
+    [[['gamma', 3], ['delta-half', 1], ['epsilon-half', 2]], 'zeta-half', '3γ 1δ½ 2ε½'],
+    [[['beta', 2], ['gamma', 4], ['delta-half', 7]], 'epsilon-half', '2β 4γ 7δ½'],
+    [[['zeta-half', 1], ['eta', 4], ['iota', 24]], 'lambda', '1ζ½ 4η 24ι'],
+    [[['eta', 3], ['iota', 5], ['lambda', 9]], 'mu', '3η 5ι 9λ'], // λ is the finest counter: η first still gets three units
+    [[['iota', 11], ['lambda', 5]], 'mu', '11ι 5λ'],
+    [[['lambda', 3], ['mu', 2]], 'nu', '3λ 2μ'],
+    [[['gamma', 3], ['delta-half', 0], ['epsilon-half', 2]], 'zeta-half', '3γ 0δ½ 2ε½'], // a zero between two counts stays
+    [[['gamma', 3], ['delta-half', 1]], 'epsilon-half', '3γ 1δ½'], // a zero third part is dropped, not written "0ε½"
+    [[['zeta-half', 2]], 'eta', '2ζ½', 0.02], // 0η and 0ι follow: both zero tails are dropped
+  ];
+  for (const [parts, tail, expect, share] of cases) {
+    const text = heroLeft(model, pure, t0, after(parts, tail, share));
+    assert.equal(text, expect, `${parts.map(([i, n]) => n + sym(i)).join(' ')}`);
+    assert.ok(text.split(' ').length <= 3, `at most three units: ${text}`);
+    assert.doesNotMatch(text, / 0[^ ]+$/u, `no trailing zero part: ${text}`);
+  }
+  assert.equal(heroLeft(model, pure, A, A - 1), '0ξ', 'nothing left');
+  // the three-unit hero text starts like the two-unit row text of the same span
+  for (const t of SAMPLE.slice(0, 5)) {
+    const lv = model.levelAt(t, 5);
+    const hero = heroLeft(model, pure, t, lv.end);
+    const row = leftText(model, pure, t, lv.end);
+    assert.ok(hero.startsWith(row.split(' ')[0]), `${t}: ${hero} vs ${row}`);
+    assert.ok(hero.split(' ').length <= 3 && row.split(' ').length <= 2);
+  }
+});
+
+test('pure: cycle lengths are the units themselves, exactly, at every depth (core pure.cycleLength, no local trimming)', () => {
+  const expect = ['1α', '1β', '1γ', '2δ½', '2ε½', '2ζ½', '1η', '4ι', '1ι', '13λ', '1λ', '1μ', '1ν', '1ξ'];
+  for (let L = 0; L < 14; L++) {
+    assert.equal(pure.cycleLength(L), expect[L], `depth ${L + 1}`);
+    for (const t of [A, 946684800, 2886085800, model.tMin + 5]) assert.equal(lengthText(model, pure, model.levelAt(t, L)), expect[L], `depth ${L + 1} at ${t}`);
+  }
+  // a cycle clipped by the end of the catalogue keeps its odd tail
+  const clipped = model.levelAt(model.tMax - 5, 0);
+  assert.ok(clipped.clipped);
+  assert.equal(lengthText(model, pure, clipped), '1β 3γ', 'the last alpha keeps 1 of its 4 saros intervals (69 - 68), a bit over a beta');
+  assert.equal(lengthText(model, pure, clipped), pure.durationPos(1, { parts: 2 }));
+  const lastEta = model.levelAt(model.tMax - 0.002, 6);
+  assert.equal(lastEta.clipped, true);
+  assert.match(lengthText(model, pure, lastEta), /^\d+ι( \d+λ)?$/u, 'a clipped η is shorter than 1η');
+  // the core never writes a zero tail, so no length does
+  for (let L = 0; L < 14; L++) assert.doesNotMatch(pure.cycleLength(L), / 0\D/u, `depth ${L + 1}`);
+});
+
+test('pure: the phase is a pair of glyphs (256 states) whose high digit is the ladder glyph', () => {
+  for (const t of SAMPLE.slice(0, 7)) {
+    for (let L = 0; L < 14; L++) {
+      const lv = model.levelAt(t, L);
+      const ph = phaseWords(pure, lv.phase);
+      assert.equal(ph.hi, lv.index, `depth ${L + 1}: the glyph normal mode shows is the high digit`);
+      assert.equal(ph.index, ph.hi * 16 + ph.lo);
+      assert.equal(ph.text, `${ph.hi}·${ph.lo}`);
+      // the accessible name is the helper's: two digits spoken as numbers, never "13 point 0"
+      assert.equal(ph.label, `phase ${ph.hi} and ${ph.lo} of 256`);
+      assert.match(pure.pairHTML(lv.phase), new RegExp(`aria-label="${ph.label}"`), 'the label is the one pure.pairHTML draws');
+    }
+  }
+  assert.equal(phaseWords(pure, 0).text, '0·0');
+  assert.equal(phaseWords(pure, 1).text, '15·15');
+  assert.equal(phaseWords(pure, 0.5).index, 128);
+  assert.equal(phaseWords(pure, 0.5).label, 'phase 8 and 0 of 256');
+  assert.equal(phaseWords(pure, 0.5, 'sector phase').label, 'sector phase 8 and 0 of 256');
+});
+
+test('pure: real-time leads are beats, lengths of too-fast cycles two digits', () => {
+  assert.deepEqual([2, 0.4, 0.0775, 0.011, 1.5].map((s) => leadBeats(pure, s)), ['2 beats', '0.4 beats', '0.0775 beats', '0.011 beats', '1.5 beats']);
+  assert.equal(leadBeats(pure, JUST_AFTER_S), '0.001 beats');
+  assert.equal(periodBeats(0.311), '0.31 beats');
+  assert.equal(periodBeats(0.0444), '0.044 beats');
+  assert.equal(periodBeats(1), '1 beat');
+  assert.equal(periodBeats(1.555), '1.6 beats');
+});
+
+test('pure: quarter thresholds are named by their two finest counters; the end reads as the next start', () => {
+  const lv = model.levelAt(A, 6); // eta 1 of 11, SPEC vector A
+  const where = lv.thresholds.slice(1).map((t) => quarterWhere(model, pure, t.time, 6));
+  const c = (t) => counterParts(pure, t);
+  // clock readings in the notation of the header clock: completed units, count first (0-based), joined by spaces
+  assert.deepEqual(where, [`0η 9ι`, `0η 18ι`, `0η 27ι`, `1η 0ι`]);
+  assert.equal(where[3], `${c(lv.end + 0.001)[6]} ${c(lv.end + 0.001)[7]}`);
+  for (const t of SAMPLE.slice(0, 7)) {
+    for (let L = 0; L < 10; L++) {
+      const cyc = model.levelAt(t, L);
+      const labels = cyc.thresholds.slice(1).map((th) => quarterWhere(model, pure, th.time, L));
+      assert.equal(new Set(labels).size, 4, `depth ${L + 1} at ${t}: four different labels ${labels.join(' / ')}`);
+      // the end is the start of the next cycle (the rounding of the threshold to a millisecond never shows the old one)
+      if (cyc.end < model.tMax - 1) {
+        const next = counterParts(pure, cyc.end + 0.001);
+        assert.ok(labels[3].endsWith(next.slice(0, 9)[Math.min(8, [1, 2, 3, 4, 5, 6, 7, 7, 8, 8][L])]), `depth ${L + 1}: ${labels[3]} vs ${next}`);
+      }
+      assert.ok(labels.every((x) => x.split(' · ').length <= 2 || /^[αβγ]#\d+ [βγ]#\d+$/.test(x)), `at most two counters: ${labels}`);
+      // notation: ordinals are X#n, counts are nX; the old "ζ½ 5 · η 3" (symbol, space, number) never appears
+      assert.ok(labels.every((x) => !/(^|[\s·])[α-ω]½? \d+(?![\dα-ω#½])/u.test(x)), `no symbol-then-number counters: ${labels}`);
+    }
+    for (let L = 10; L < 14; L++) assert.equal(quarterWhere(model, pure, model.levelAt(t, L).thresholds[2].time, L), '', 'λ and finer: the ¼ ½ ¾ column says it');
+  }
+  assert.equal(quarterWhere(model, pure, null, 6), '');
+  assert.equal(quarterWhere(model, pure, model.tMax, 6).length > 0, true, 'the catalogue end is a valid threshold');
+});
+
+test('pure: dateAtPosition is the exact-arithmetic twin of pure.date', () => {
+  let seed = 987654;
+  const rnd = () => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648;
+  for (let i = 0; i < 3000; i++) {
+    const t = Math.round((model.tMin + rnd() * (model.tMax - model.tMin - 2)) * 1000) / 1000;
+    const p = exactPos(t);
+    const d = dateAtPosition(model, p.numerator, p.denominator);
+    assert.deepEqual(d, pure.date(t), `t = ${t}`);
+  }
+  // on a boundary the new unit has begun
+  const z = model.levelAt(A, 5);
+  const ps = exactPos(z.end + 0.0006);
+  assert.deepEqual(dateAtPosition(model, ps.numerator, ps.denominator), pure.date(z.end + 0.0006));
+  assert.equal(dateTail({ delta: 3, epsilon: 2, zeta: 5 }), 'δ½#3 · ε½#2 · ζ½#5');
+  // the tail is the end of pure.dateText: the one spelling of a date
+  for (const t of [A, 946684800, 2886085800]) assert.ok(pure.dateText(t).endsWith(dateTail(pure.date(t))), t);
+});
+
+test('pure: an upcoming turnover is named by the cycle that begins there', () => {
+  for (const imp of IMPORTANCE) {
+    for (const t of [A, 946684800, 2886085800, model.tMin + 5]) {
+      for (const e of buildEvents(model, t, { importance: imp, maxLevel: 9, count: 8 })) {
+        const ti = turnoverInfo(model, pure, e);
+        const after = e.time + 0.001;
+        assert.equal(ti.name, pure.nameAt(after, e.top), `event ${e.key}`);
+        assert.equal(ti.address, pure.addressAt(after, e.top));
+        assert.equal(ti.short, pure.cycleShort(e.top, model.levelAt(after, e.top).cycle));
+        const d = pure.date(after);
+        assert.deepEqual(ti.date, d);
+        assert.ok(positionOfKey(e.key).den > 0n);
+      }
+    }
+  }
+  // a turnover whose next cycle would lie past the catalogue (an exact end position) names nothing
+  assert.equal(turnoverInfo(model, pure, { key: '276/1', top: 0 }).name, null);
+  assert.equal(turnoverInfo(model, pure, { key: 'garbage', top: 5 }).name, null);
+  // the turnovers that are left near the end all begin a cycle
+  for (const e of buildEvents(model, model.tMax - 6 * 86400, { importance: 'ζ', maxLevel: 9 })) assert.ok(turnoverInfo(model, pure, e).name);
+  assert.equal(positionOfKey('x'), null);
+});
+
+test('pure: the list is grouped by the ζ½ an event falls in, the pure "day"', () => {
+  const evs = buildEvents(model, A, { importance: 'η', maxLevel: 9, count: 8 });
+  const g = groupByHalf(model, pure, evs.slice(1));
+  assert.equal(g.length, 7);
+  for (let i = 0; i < g.length; i++) {
+    const before = pure.date(evs[i + 1].time + 0.001);
+    const prev = i === 0 ? null : pure.date(evs[i].time + 0.001);
+    const sameHalf = prev && ['alpha', 'beta', 'gamma', 'delta', 'epsilon', 'zeta'].every((k) => prev[k] === before[k]);
+    if (i > 0) assert.equal(g[i].newDay, !sameHalf, `row ${i}`);
+    assert.equal(g[i].day, null);
+    assert.equal(g[i].clock, dateTail(before));
+  }
+  assert.equal(g[0].newDay, false, 'the first row never carries a separator');
+  // η turnovers come several to a ζ½: some rows share a group
+  assert.ok(g.some((e) => !e.newDay) || evs.length < 3);
+  // events of ζ and coarser each fall in a ζ½ of their own
+  const coarse = buildEvents(model, A, { importance: 'ζ', maxLevel: 9, count: 8 });
+  assert.ok(groupByHalf(model, pure, coarse).slice(1).every((e) => e.newDay));
+});
+
+test('pure: everything the two cards can say passes the leak rules (no date, unit word, percent or zone)', () => {
+  const strings = new Set();
+  const add = (x) => x && strings.add(String(x));
+  for (const t of SAMPLE.slice(0, 8)) {
+    for (let L = 0; L < 14; L++) {
+      const lv = model.levelAt(t, L);
+      if (!lv) continue;
+      const next = nextCycle(model, pure, L, lv.cycleBig);
+      add(counterName(pure, lv.local, lv.siblings));
+      add(cycleWords(pure, L, lv.local));
+      add(depthWords(pure, L));
+      add(leftText(model, pure, t, lv.end));
+      add(heroLeft(model, pure, t, lv.end));
+      add(leftText(model, pure, lv.start, t) + ' ago');
+      add(lengthText(model, pure, lv));
+      add(pure.cycleLength(L));
+      add(quarterWhere(model, pure, lv.end, L));
+      add(endsText(next));
+      add(next?.address);
+      add(pathText(pure, model.cycleToPath(L, lv.cycleBig)));
+      add(phaseWords(pure, lv.phase).label);
+      add(periodBeats(model.levelInfo(L).meanSeconds));
+      add(`+${periodBeats(lv.duration / 4)}`);
+      add(sectorName(pure, L, segmentState(lv.phase, lv.factor).index));
+      for (const th of lv.thresholds.slice(1)) add(quarterWhere(model, pure, th.time, L));
+      add(turnoverWords(L, 13));
+    }
+    for (const imp of IMPORTANCE) {
+      add(`Counting ${imp.label} turnovers · ${imp.id} cycles last ${pure.cycleLength(imp.top)}`);
+      for (const e of buildEvents(model, t, { importance: imp, maxLevel: 9 })) {
+        const ti = turnoverInfo(model, pure, e);
+        add(ti.name);
+        add(ti.address);
+        add(`→ ${ti.name} begins`);
+        add(dateTail(ti.date ?? { delta: 1, epsilon: 1, zeta: 1 }));
+        add(heroLeft(model, pure, t, e.time));
+      }
+    }
+  }
+  for (const s of [2, 0.4, 0.0775, 0.011, 0.001]) add(leadBeats(pure, s));
+  add(pure.catalogueText());
+  add(pure.stamp(model.tMin, 'beta'));
+  add(pure.stamp(model.tMax, 'beta'));
+  const hard = judge([...strings].map((text) => ({ kind: 'text', text, where: '' })), 'ladder pure').filter((l) => l.severity === 'hard');
+  assert.deepEqual(hard.map((l) => `${l.rule}: ${l.text}`), []);
+  assert.ok(strings.size > 300, `${strings.size} strings checked`);
+});
+
+test('pure: the ladder and up next say nothing Earth-ish in their own source strings', () => {
+  const src = (f) => readFileSync(new URL(`../src/ui/${f}`, import.meta.url), 'utf8');
+  // every string literal that sits in a pure branch must not carry an Earth unit (checked on the pure wording module whole)
+  const code = src('ladder/pure-text.js').replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  const literals = (code.match(/'(?:[^'\\\n]|\\.)*'|`(?:[^`\\]|\\.)*`|"(?:[^"\\\n]|\\.)*"/g) ?? []).join('\n');
+  assert.ok(literals.length > 200);
+  for (const bad of [' ms', ' min', 'hour', ' day', 'week', 'month', 'year', 'second', 'minute', 'UTC', 'percent', '%', ' Hz', 'Unix', 'ISO']) {
+    assert.ok(!literals.includes(bad), `pure-text.js strings mention "${bad}"`);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// pure mode: notation, landings, shared helpers (regressions of the audit)
+// ---------------------------------------------------------------------------
+test('pure: notation - ordinals are X#n, counts are nX, "X d" is only a chip', () => {
+  const ORD = /^(?:[αβγ]|[δεζ]½)#\d+$/u;
+  const COUNT = /^\d+[ηιλ]$/u;
+  for (const t of SAMPLE.slice(0, 7)) {
+    const parts = counterParts(pure, t);
+    assert.equal(parts.length, 9);
+    parts.slice(0, 6).forEach((p) => assert.match(p, ORD, `${t}`));
+    parts.slice(6).forEach((p) => assert.match(p, COUNT, `${t}`));
+    // the counters are the ones pure.stamp writes, in its order and spelling
+    const c = pure.clock(t);
+    assert.equal(`${parts[6]} ${parts[7]} ${parts[8]}`, `${c.eta}η ${c.iota}ι ${c.lambda}λ`);
+    assert.ok(pure.stamp(t, 'lambda').endsWith(` · ${parts[6]} ${parts[7]} ${parts[8]}`));
+    assert.ok(pure.stamp(t, 'zeta').endsWith(` · ${parts[3]} · ${parts[4]} · ${parts[5]}`));
+    assert.equal(pure.dateText(t).split(' · ').slice(1).join(' · '), `${parts[3]} · ${parts[4]} · ${parts[5]}`);
+    for (let L = 0; L < 10; L++) {
+      const lv = model.levelAt(t, L);
+      for (const th of lv.thresholds.slice(1)) {
+        const w = quarterWhere(model, pure, th.time, L);
+        // grammar: TOKEN ((" · " | " ") TOKEN)* with TOKEN an ordinal or a count; never a letter, a space and a number
+        assert.match(w, /^(?:(?:[αβγ]|[δεζ]½)#\d+|\d+[ηιλ])(?: · | )(?:(?:[αβγ]|[δεζ]½)#\d+|\d+[ηιλ])$/u, `${L}: ${w}`);
+        assert.doesNotMatch(w, /(^|[\s·])[α-ω]½? \d+(?![\dα-ω#½])/u, `${L}: ${w}`);
+      }
+    }
+  }
+  // a clock reading of the end of a cycle is the start of the next: "1η 0ι" for an η that is not the last in its ζ
+  const eta = model.levelAt(A, 6);
+  assert.equal(quarterWhere(model, pure, eta.end, 6), '1η 0ι');
+  // the last η of a ζ ends at the start of the next ζ: counters wrap to 0η
+  const last = model.levelAt(model.levelAt(A, 5).end - 0.5, 6);
+  assert.equal(last.local, 10);
+  assert.match(quarterWhere(model, pure, last.end, 6), /^0η 0ι$/);
+  // sentences name a cycle by its letter or its name, never "ζ 6"
+  for (let top = 0; top <= 6; top++) for (let max = top; max <= 13; max++) assert.doesNotMatch(turnoverWords(top, max), /[α-ω] \d/u, turnoverWords(top, max));
+});
+
+test('pure: the hero sentence names the cycle by its letter and fits one line', () => {
+  assert.equal(turnoverWords(5, 9), 'ζ ends — 4 finer cycles (η, θ, ι, κ) end with it.');
+  assert.equal(turnoverWords(4, 8), 'ε ends — 4 finer cycles (ζ, η, θ, ι) end with it.');
+  assert.equal(turnoverWords(7, 8), 'θ ends — 1 finer cycle (ι) ends with it.');
+  assert.equal(turnoverWords(9, 9), 'κ ends.');
+  assert.equal(turnoverWords(5, 3), 'ζ ends.');
+  assert.equal(turnoverWords(0, 9), 'α ends — 9 finer cycles (β … κ) end with it.');
+  for (let top = 0; top <= 13; top++) for (let max = top; max <= 13; max++) assert.ok(turnoverWords(top, max).length <= 52, turnoverWords(top, max));
+  // normal mode keeps its own sentence ("ζ 6 ends — ...")
+  assert.equal(turnoverSentence(5, 9), 'ζ 6 ends — 4 finer cycles (η, θ, ι, κ) end with it.');
+});
+
+test('Just after / Just before land exactly 1 ms inside (or the lead before) the cycle boundary, at every depth, on any boundary', () => {
+  let seed = 20260810;
+  const rnd = () => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648;
+  let checked = 0;
+  for (let i = 0; i < 300; i++) {
+    const t = model.tMin + rnd() * (model.tMax - model.tMin - 10);
+    for (let L = 0; L < 14; L++) {
+      const lv = model.levelAt(t, L);
+      if (!lv || lv.end >= model.tMax - 1) continue;
+      const dest = justAfterTime(lv.end);
+      const at = model.levelAt(dest, L);
+      assert.equal(at.cycle, lv.cycle + 1, `depth ${L + 1} at ${t}`);
+      // 1 ms inside the new cycle: not 0, not 2 (instants near 3e10 s are only ~4 microseconds apart)
+      near(dest - at.start, JUST_AFTER_S, 2e-5, `depth ${L + 1} at ${t}: into the next cycle`);
+      checked++;
+    }
+  }
+  // boundaries that are exact milliseconds (every catalogue instant is, and an α boundary is one of every depth)
+  for (let k = 4; k < model.catalogue.length - 4; k += 4) {
+    const edge = model.catalogue[k];
+    for (const L of [0, 3, 6, 9, 13]) {
+      const lv = model.levelAt(edge - 0.002, L);
+      near(lv.end, edge, 1e-5, `catalogue instant ${k} ends a depth ${L + 1} cycle`);
+      const at = model.levelAt(justAfterTime(lv.end), L);
+      assert.equal(at.cycle, lv.cycle + 1);
+      near(justAfterTime(lv.end) - at.start, JUST_AFTER_S, 2e-5, `catalogue instant ${k}, depth ${L + 1}`);
+      checked++;
+    }
+  }
+  // and every Up next turnover, for the coarsest level that rolls and every finer one with it
+  for (const imp of IMPORTANCE) {
+    for (const t of [A, 946684800, 2886085800, model.tMin + 5]) {
+      for (const e of buildEvents(model, t, { importance: imp, maxLevel: 13, count: 8 })) {
+        const dest = justAfterTime(e.time);
+        for (let L = e.top; L < 14; L++) {
+          const before = model.levelAt(e.time - 0.003, L);
+          const at = model.levelAt(dest, L);
+          assert.equal(at.cycle, before.cycle + 1, `turnover ${e.key} depth ${L + 1}`);
+          checked++;
+        }
+      }
+    }
+  }
+  assert.ok(checked > 4000, `${checked} landings checked`);
+});
+
+test('pure: the ladder and up next use the core helpers instead of local copies', () => {
+  const src = (f) => readFileSync(new URL(`../src/ui/${f}`, import.meta.url), 'utf8');
+  for (const f of ['ladder.js', 'upnext.js', 'ladder/pure-text.js', 'ladder/dom.js']) {
+    const text = src(f).replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+    assert.ok(!/\btrimZeros\b|\bnominalLength\b|\bpairGlyphs\b|\bcycleLength\(model/.test(text), `${f} still carries a local copy of a core helper`);
+  }
+  assert.ok(src('ladder/pure-text.js').includes('pure.cycleLength('), 'cycle lengths come from pure.cycleLength');
+  assert.ok(src('ladder/dom.js').includes('pure.pairHTML('), 'the glyph pair is pure.pairHTML');
 });

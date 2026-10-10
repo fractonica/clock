@@ -5,7 +5,7 @@
   "type": "module",
   "description": "Web app for the Fractonica eclipse-anchored harmonic clock (SPEC.md) built on fractonica.js",
   "scripts": {
-    "start": "python3 -m http.server 5199",
+    "start": "node tools/serve.mjs",
     "test": "node --test",
     "check": "node tools/run-checks.mjs"
   }

@@ -9,12 +9,19 @@
  *   strip  next quarter threshold of the level selected in the ladder
  *   list   the following turnovers, grouped by civil day
  *
+ * Pure mode (docs/design/80-pure.md): the hero says what begins ("→ Zeta Pentafracton begins", with its address
+ * chain) instead of a date, every countdown is counted in ladder units (1ζ½ 4η 12ι: two parts in the list, three
+ * at most in the hero), the phase is a pair of glyphs (pure.pairHTML), real-time leads are beats and the list is
+ * grouped by ζ½ instead of by civil day, its date counters written δ½#6 · ε½#5 · ζ½#4. It switches live.
+ *
  * Contract: export mount(el, ctx) -> { render, alwaysOn, destroy } (docs/ARCHITECTURE.md).
  */
 import {
   DEFAULT_IMPORTANCE,
   DEFAULT_MAX_DEPTH,
   IMPORTANCE,
+  JUST_AFTER_S,
+  JUST_BEFORE_S,
   advancedBy,
   buildEvents,
   countdownLong,
@@ -35,7 +42,19 @@ import {
   whenFull,
   whenLabel,
 } from './ladder/lib.js';
-import { attrCell, classCell, createTip, esc, icons, levelVars, reducedMotion, textCell } from './ladder/dom.js';
+import {
+  depthWords,
+  groupByHalf,
+  heroLeft,
+  leadBeats,
+  leftText,
+  levelWord,
+  phaseWords,
+  quarterWhere,
+  turnoverInfo,
+  turnoverWords,
+} from './ladder/pure-text.js';
+import { attrCell, classCell, createTip, esc, icons, levelVars, pairCell, reducedMotion, textCell } from './ladder/dom.js';
 
 const PREF_KEY = 'fractonica-clock/upnext/importance';
 const COUNT = 8; // hero + 7 list rows
@@ -55,10 +74,18 @@ const writePref = (v) => {
   }
 };
 
+/** The note under the list, per mode (pure: leads in beats, no Earth unit, a pointer to the glossary). */
+const noteText = (pure) =>
+  `A turnover is the instant a cycle ends and the next one begins; every finer cycle ends with it. Click a row for Just after (${pure ? `${leadBeats(pure, JUST_AFTER_S)} into the next cycle` : '1 ms into the next cycle'}), or its arrow for Just before (${pure ? leadBeats(pure, JUST_BEFORE_S) : '2 s'} ahead, then real time).${pure ? ' Press ? for the glossary.' : ''}`;
+
 export function mount(el, ctx) {
   const { model, store, fmt, theme } = ctx;
   const QN = ctx.QUARTER_NAMES;
   let importance = importanceById(readPref() ?? DEFAULT_IMPORTANCE);
+  /** Pure vocabulary (ctx.pure) and the mode the card is currently built for (null until the first render). */
+  const pure = ctx.pure;
+  const wantPure = () => !!pure && !!ctx.isPure?.();
+  let pureMode = null;
 
   el.classList.add('upnext');
   el.innerHTML = `
@@ -93,10 +120,11 @@ export function mount(el, ctx) {
       </button>
       <ol class="upnext-list" aria-label="Following turnovers"></ol>
       <p class="upnext-empty" hidden></p>
-      <p class="upnext-note">A turnover is the instant a cycle ends and the next one begins; every finer cycle ends with it. Click a row for Just after (1 ms into the next cycle), or its arrow for Just before (2 s ahead, then real time).</p>
+      <p class="upnext-note"></p>
     </div>`;
 
   const $ = (s) => el.querySelector(s);
+  const noteEl = $('.upnext-note');
   const impEl = $('.upnext-imp');
   const hero = $('.upnext-hero');
   const strip = $('.upnext-strip');
@@ -117,7 +145,10 @@ export function mount(el, ctx) {
     progFill: $('.upnext-prog i'),
     since: textCell($('.upnext-since')),
     pct: textCell($('.upnext-pct')),
+    pctEl: $('.upnext-pct'),
+    pair: pure ? pairCell(pure, $('.upnext-pct')) : null,
     now: attrCell($('.upnext-prog'), 'aria-valuenow'),
+    nowText: attrCell($('.upnext-prog'), 'aria-valuetext'),
   };
   const S = {
     chipL: strip.querySelector('.upnext-chip b'),
@@ -130,19 +161,26 @@ export function mount(el, ctx) {
     off: attrCell(strip, 'disabled'),
     chip: strip.querySelector('.upnext-chip'),
     sel: -1,
+    whereKey: '',
   };
   const tip = createTip('upnext-tip');
   const setCap = textCell($('.upnext-cap'));
+  /** Every write-only-on-change cell with live text: a mode switch empties their memory so nothing stale survives. */
+  const cells = [H.count, H.when, H.zone, H.sentence, H.since, H.pct, H.now, H.nowText, S.q, S.inEl, S.clock, S.title, S.off, setCap];
   /** Finest level of the ladder's range (0-based): the hero sentence names the finer cycles down to it. */
   const maxLevel = () => normDepth(store.state.maxDepth, DEFAULT_MAX_DEPTH) - 1;
 
   // importance control ------------------------------------------------------
+  const impTitle = (imp) =>
+    pureMode
+      ? `Turnovers of cycles down to ${imp.id}, depth ${imp.top + 1} (${pure.cycleLength(imp.top)} each)`
+      : `Turnovers of cycles down to ${imp.id}, depth ${imp.top + 1} (about ${fmt.duration(model.levelInfo(imp.top).meanSeconds)} each)`;
   for (const imp of IMPORTANCE) {
     const b = document.createElement('button');
     b.type = 'button';
     b.dataset.id = imp.id;
     b.textContent = imp.label;
-    b.title = `Turnovers of cycles down to ${imp.id}, depth ${imp.top + 1} (about ${fmt.duration(model.levelInfo(imp.top).meanSeconds)} each)`;
+    b.title = impTitle(imp);
     b.addEventListener('click', () => {
       if (importance === imp) return;
       importance = imp;
@@ -154,12 +192,19 @@ export function mount(el, ctx) {
     impEl.append(b);
   }
   function syncImportance() {
-    for (const b of impEl.children) b.setAttribute('aria-pressed', String(b.dataset.id === importance.id));
-    setCap(`Counting ${importance.label} turnovers · ${importance.id} cycles last about ${fmt.duration(model.levelInfo(importance.top).meanSeconds)}`);
-    // coarse importances count in whole days / years, so their countdown column can be narrower and the date wider
-    listEl.style.setProperty('--in-w', importance.top <= 4 ? '76px' : '84px');
+    for (const b of impEl.children) {
+      b.setAttribute('aria-pressed', String(b.dataset.id === importance.id));
+      b.title = impTitle(importanceById(b.dataset.id));
+    }
+    if (pureMode) {
+      setCap(`Counting ${importance.label} turnovers · ${importance.id} cycles last ${pure.cycleLength(importance.top)}`);
+      listEl.style.setProperty('--in-w', '64px'); // ladder-unit countdowns are short: the name of what begins gets the room
+    } else {
+      setCap(`Counting ${importance.label} turnovers · ${importance.id} cycles last about ${fmt.duration(model.levelInfo(importance.top).meanSeconds)}`);
+      // coarse importances count in whole days / years, so their countdown column can be narrower and the date wider
+      listEl.style.setProperty('--in-w', importance.top <= 4 ? '76px' : '84px');
+    }
   }
-  syncImportance();
 
   // state --------------------------------------------------------------------
   let events = []; // full list incl. the hero, from lib.buildEvents
@@ -242,15 +287,28 @@ export function mount(el, ctx) {
     return row;
   }
 
-  /** "ζ, depth 6": the letter and the depth number a chip shows, spelled out. */
-  const depthName = (top) => `${letterOf(top)}, depth ${top + 1}`;
-  /** How far ahead "Just before" stops, as text ("2 s"); the cycles listed here are hours long, so it is always the full 2 s. */
-  const leadOf = (top) => leadText(justBeforeLead(model.levelInfo(top).meanSeconds));
+  /** "ζ, depth 6" ("Zeta, depth 6" in pure mode): the letter and the depth number a chip shows, spelled out. */
+  const depthName = (top) => (pureMode ? depthWords(pure, top) : `${letterOf(top)}, depth ${top + 1}`);
+  /** How far ahead "Just before" stops, as text ("2 s", "2 beats"); the cycles listed here are hours long, so it is always the full 2 s. */
+  const leadOf = (top) => {
+    const lead = justBeforeLead(model.levelInfo(top).meanSeconds);
+    return pureMode ? leadBeats(pure, lead) : leadText(lead);
+  };
+  /** The same moment as text: "1 ms into" / "0.001 beats into" the next cycle. */
+  const afterLead = () => (pureMode ? leadBeats(pure, JUST_AFTER_S) : '1 ms');
 
   function itemLabels(ev) {
     const name = depthName(ev.top);
-    const when = `${whenFull(fmt, ev.time)} ${fmt.tag(ev.time)}`;
     const finer = ev.finer > 0 ? `, ${ev.finer} finer cycle${ev.finer === 1 ? '' : 's'} end with it` : '';
+    if (pureMode) {
+      const ti = turnoverInfo(model, pure, ev);
+      const what = ti.name ? `${name} turns over and ${ti.name} begins (${ti.address})` : `${name} turns over where the catalogue ends`;
+      return {
+        go: `Just after: ${what}${finer}. Jump ${afterLead()} into the next cycle.`,
+        pre: `Just before: jump to ${leadOf(ev.top)} before the ${name} turnover${ti.name ? ` that begins ${ti.name}` : ''} and play in real time.`,
+      };
+    }
+    const when = `${whenFull(fmt, ev.time)} ${fmt.tag(ev.time)}`;
     return {
       go: `Just after: ${name} turns over ${when}${finer}. Jump to 1 ms into the next cycle.`,
       pre: `Just before: jump to ${leadOf(ev.top)} before the ${name} turnover on ${when} and play in real time.`,
@@ -277,7 +335,13 @@ export function mount(el, ctx) {
         fresh.push(r);
       }
       r.ev = ev;
-      r.setDay(ev.day ?? '');
+      if (pureMode) {
+        const ti = turnoverInfo(model, pure, ev);
+        const what = ti.name ?? 'the catalogue ends';
+        r.setDay(what);
+      } else {
+        r.setDay(ev.day ?? '');
+      }
       r.setClock(ev.clock);
       r.setFin(ev.finer > 0 ? `+${ev.finer}` : '');
       r.setSep(ev.newDay);
@@ -310,21 +374,28 @@ export function mount(el, ctx) {
     H.badge.setAttribute('aria-label', depthName(ev.top));
     H.badge.title = depthName(ev.top);
     const lead = leadOf(ev.top);
-    const name = `${letterOf(ev.top)} ${ev.top + 1}`;
+    const name = pureMode ? levelWord(pure, ev.top) : `${letterOf(ev.top)} ${ev.top + 1}`;
     const before = `Just before: jump to ${lead} before the ${name} turnover and watch it happen in real time`;
-    const after = `Just after: jump to 1 ms into the next ${name} cycle, after the turnover`;
+    const after = `Just after: jump to ${afterLead()} into the next ${name} cycle, after the turnover`;
     for (const [btn, text] of [[heroBefore, before], [heroAfter, after]]) {
       btn.title = text;
       btn.setAttribute('aria-label', text);
     }
-    H.when(whenFull(fmt, ev.time));
-    H.zone(fmt.tag(ev.time));
-    H.sentence(turnoverSentence(ev.top, maxLevel()));
+    if (pureMode) {
+      // what begins where this cycle ends, and where it sits in the hierarchy (no date to give)
+      const ti = turnoverInfo(model, pure, ev);
+      H.when(ti.name ? `→ ${ti.name} begins` : '→ the catalogue ends');
+      H.zone(ti.address);
+    } else {
+      H.when(whenFull(fmt, ev.time));
+      H.zone(fmt.tag(ev.time));
+    }
+    H.sentence(pureMode ? turnoverWords(ev.top, maxLevel()) : turnoverSentence(ev.top, maxLevel()));
     const cur = frame.level(ev.top);
     heroStart = cur ? cur.start : ev.time;
     heroEnd = ev.time;
-    H.since(`since ${whenLabel(fmt, heroStart, frame.t, Math.max(1, heroEnd - heroStart))}`);
-    H.prog.setAttribute('aria-label', `Progress through the current ${info.letter} ${info.depth} cycle`);
+    if (!pureMode) H.since(`since ${whenLabel(fmt, heroStart, frame.t, Math.max(1, heroEnd - heroStart))}`);
+    H.prog.setAttribute('aria-label', `Progress through the current ${pureMode ? levelWord(pure, ev.top) : `${info.letter} ${info.depth}`} cycle`);
     if (animate && !reducedMotion()) {
       hero.animate(
         [
@@ -341,7 +412,7 @@ export function mount(el, ctx) {
     const t = frame.t;
     const prevKeys = events.length ? events : [];
     const built = buildEvents(model, t, { importance, maxLevel: maxLevel(), count: COUNT });
-    const grouped = groupByDay(built.slice(1), fmt, t);
+    const grouped = pureMode ? groupByHalf(model, pure, built.slice(1)) : groupByDay(built.slice(1), fmt, t);
     const fin = frame.level(importance.top);
     validFrom = fin ? fin.start : -Infinity;
     validUntil = built.length ? built[0].time : Infinity;
@@ -356,7 +427,9 @@ export function mount(el, ctx) {
       heroKey = null;
       hero.hidden = true;
       emptyEl.hidden = false;
-      emptyEl.textContent = `No further turnovers of this size before the catalogue ends (${fmt.date(model.tMax)}).`;
+      emptyEl.textContent = pureMode
+        ? 'No further turnovers of this size before the catalogue ends.'
+        : `No further turnovers of this size before the catalogue ends (${fmt.date(model.tMax)}).`;
       reconcile([], false);
       return;
     }
@@ -366,8 +439,37 @@ export function mount(el, ctx) {
     reconcile(grouped, animate);
   }
 
+  /**
+   * Switch the whole card to a mode: static texts, every cell's memory and the list (rebuilt by the next
+   * render), so nothing of the other mode survives a switch.
+   */
+  function applyMode(next) {
+    pureMode = next;
+    el.classList.toggle('is-pure', next);
+    noteEl.textContent = noteText(next ? pure : null);
+    for (const c of cells) c.reset();
+    H.pair?.reset();
+    H.pctEl.replaceChildren();
+    H.prog.setAttribute('aria-valuemax', next ? '255' : '100');
+    H.prog.removeAttribute('aria-valuetext'); // pure writes the phase words each frame; normal mode has none
+    H.p = -1;
+    S.sel = -1;
+    S.whereKey = '';
+    syncImportance();
+    for (const r of rows.values()) r.el.remove();
+    rows.clear();
+    events = [];
+    heroKey = null;
+    sig = '';
+    off = null;
+    stale = true;
+    hideTip();
+  }
+
   function render(frame, info) {
     lastFrame = frame;
+    const want = wantPure();
+    if (want !== pureMode) applyMode(want);
     // nothing moved since the last frame (paused clock, no setting changed): nothing to recompute or write
     if (info?.dirty === false && off !== null && !stale && !tip.visible) return;
     const t = frame.t;
@@ -381,7 +483,9 @@ export function mount(el, ctx) {
         strip.hidden = true;
         listEl.hidden = true;
         emptyEl.hidden = false;
-        emptyEl.textContent = `Outside the Saros 141 catalogue (${fmt.date(model.tMin)} to ${fmt.date(model.tMax)}): there are no turnovers to count down to.`;
+        emptyEl.textContent = pureMode
+          ? `Outside the catalogue (${pure.catalogueText()}): there are no turnovers to count down to.`
+          : `Outside the Saros 141 catalogue (${fmt.date(model.tMin)} to ${fmt.date(model.tMax)}): there are no turnovers to count down to.`;
         off = true;
         stale = true;
       }
@@ -394,7 +498,7 @@ export function mount(el, ctx) {
       stale = true;
     }
 
-    const s = `${importance.id}|${fmt.zone()}|${store.state.maxDepth}`;
+    const s = `${importance.id}|${pureMode ? 'pure' : fmt.zone()}|${store.state.maxDepth}`;
     if (s !== sig) {
       sig = s;
       heroKey = null;
@@ -410,7 +514,7 @@ export function mount(el, ctx) {
     // live text ---------------------------------------------------------------
     if (events.length) {
       const ev = events[0];
-      const text = countdownLong(fmt, ev.time - t);
+      const text = pureMode ? heroLeft(model, pure, t, ev.time) : countdownLong(fmt, ev.time - t);
       H.count(text);
       const size = text.length > 17 ? 2 : text.length > 15 ? 1 : 0; // long strings step the type size down
       if (size !== H.size) {
@@ -418,15 +522,25 @@ export function mount(el, ctx) {
         H.countBox.dataset.size = String(size);
       }
       const span = heroEnd - heroStart;
-      const p = span > 0 ? Math.min(1, Math.max(0, (t - heroStart) / span)) : 0;
+      // pure: the cycle's own phase (position-linear, the one the ladder pair shows); normal: the share of the time between the two turnovers
+      const p = pureMode ? (frame.level(ev.top)?.phase ?? 0) : span > 0 ? Math.min(1, Math.max(0, (t - heroStart) / span)) : 0;
       const pq = quantize(p, 1000);
       if (pq !== H.p) {
         H.progFill.style.transform = `scaleX(${pq})`;
         H.p = pq;
       }
-      H.pct(`${pctWhole(p)}\u202f% of this cycle`);
-      H.now(String(pctWhole(p)));
-      for (const r of rows.values()) r.setIn(countdownText(fmt, r.ev.time - t));
+      if (pureMode) {
+        const ph = phaseWords(pure, p);
+        H.pair.set(p, 'phase');
+        H.now(String(ph.index));
+        H.nowText(ph.label);
+        H.since(`began ${leftText(model, pure, heroStart, t)} ago`);
+        for (const r of rows.values()) r.setIn(leftText(model, pure, t, r.ev.time));
+      } else {
+        H.pct(`${pctWhole(p)}\u202f% of this cycle`);
+        H.now(String(pctWhole(p)));
+        for (const r of rows.values()) r.setIn(countdownText(fmt, r.ev.time - t));
+      }
     }
 
     // next quarter threshold of the selected level --------------------------------
@@ -443,10 +557,22 @@ export function mount(el, ctx) {
     if (lv && lv.next.time != null) {
       S.none(false);
       S.q(QN[lv.quarter]);
-      S.inEl(`in ${countdownText(fmt, lv.next.time - t)}`);
-      S.clock(whenLabel(fmt, lv.next.time, t, lv.duration));
+      if (pureMode) {
+        S.inEl(`in ${leftText(model, pure, t, lv.next.time)}`);
+        // the clock reading of the threshold ("at 1η 0ι": a position, next to the countdown, a duration) is an
+        // exact model read: only when the threshold or the level changes
+        const whereKey = `${sel}:${lv.next.time}`;
+        if (whereKey !== S.whereKey) {
+          S.whereKey = whereKey;
+          const where = quarterWhere(model, pure, lv.next.time, sel);
+          S.clock(where ? `at ${where}` : '');
+        }
+      } else {
+        S.inEl(`in ${countdownText(fmt, lv.next.time - t)}`);
+        S.clock(whenLabel(fmt, lv.next.time, t, lv.duration));
+      }
       S.off(false);
-      S.title(`Just after: jump to 1 ms past the next ${QN[lv.quarter]} of ${letterOf(sel)} ${sel + 1}`);
+      S.title(`Just after: jump to ${afterLead()} past the next ${QN[lv.quarter]} of ${pureMode ? `the current ${levelWord(pure, sel)} cycle` : `${letterOf(sel)} ${sel + 1}`}`);
     } else {
       S.none(true);
       S.q('');
@@ -468,6 +594,14 @@ export function mount(el, ctx) {
   function tipHtml(ev, t) {
     const info = model.levelInfo(ev.top);
     const color = theme.levelColor(ev.top);
+    if (pureMode) {
+      const ti = turnoverInfo(model, pure, ev);
+      return `<div class="upnext-tip-h"><b style="color:${color}">${esc(info.letter)} ${info.depth}</b><span class="upnext-tip-d dim">${esc(levelWord(pure, ev.top))}</span><span>${esc(heroLeft(model, pure, t, ev.time))}</span></div>
+      <div><b>${esc(ti.name ? `→ ${ti.name} begins` : '→ the catalogue ends')}</b></div>
+      ${ti.address ? `<div class="dim mono">${esc(ti.address)}</div>` : ''}
+      <div class="dim">${esc(turnoverWords(ev.top, maxLevel()))}</div>
+      <div class="upnext-tip-hint dim">Click: Just after · arrow button: Just before (${leadOf(ev.top)} ahead, then real time)</div>`;
+    }
     return `<div class="upnext-tip-h"><b style="color:${color}">${esc(info.letter)} ${info.depth}</b><span class="upnext-tip-d dim">depth ${info.depth}</span><span>${esc(countdownLong(fmt, ev.time - t))}</span></div>
       <div><b>${esc(whenFull(fmt, ev.time))}</b> <span class="dim">${esc(fmt.tag(ev.time))}</span></div>
       <div class="dim">${esc(turnoverSentence(ev.top, maxLevel()))}</div>

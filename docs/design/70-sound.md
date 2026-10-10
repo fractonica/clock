@@ -97,3 +97,8 @@ should be explainable from this: "this note is the cycle of depth N".
 - Chime floor defaults to 0.5 s (calm); the valley bell is derived from the folded peak so it is always an octave lower; when the
   polyphony cap is reached the quietest/finest note is stolen so the coarse notes of a major boundary always sound.
 - Tempo lock is a visible state ("Locked: one ζ = 4 s") with an unlock action; it clears when the rate changes elsewhere.
+
+## Pure mode
+Mixer rows read `ratio · octave · cents` with "ground" instead of Hz; cycle lengths are pure durations (`one cycle = 2ζ½`); true
+rates are "cycles per beat"; speed chips use `pure.rateLabel` (`real time`, `η per beat`, `9ι per beat`); tempo lock counts beats.
+Wording lives in `src/audio/words.js`. Audio output is unchanged.

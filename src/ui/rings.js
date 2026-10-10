@@ -5,6 +5,11 @@
  * the selected cycle and lists its quarter thresholds; the inset plots the glyph value over the selected
  * cycle and lets the cursor be dragged to scrub time inside it. Geometry and cycle maths live in
  * ./rings/geometry.js, text formatting in ./rings/text.js, the two renderers in dial.js and wave.js.
+ *
+ * Pure mode (docs/design/80-pure.md): the same view in Fractonica terms only. Every sentence that would carry a
+ * Gregorian date, a clock time, an Earth unit or a percentage is written again in ./rings/pure-text.js (cycle names,
+ * coordinates on the unit ladder, countdowns in ι and λ, "→ the cycle that begins") and the percentage becomes a pair
+ * of two-stroke glyphs. The mode is read on every frame, so switching is live in both directions.
  */
 import { createDial } from './rings/dial.js';
 import { createWave } from './rings/wave.js';
@@ -39,6 +44,7 @@ import {
   percentText,
   valueText,
 } from './rings/text.js';
+import * as PT from './rings/pure-text.js';
 
 const PREF_KEY = 'fractonica-clock/rings';
 /** Innermost depth of the range the dial opens with (the shared default of `store.state.maxDepth`) and the deepest there is. */
@@ -86,6 +92,9 @@ function savePrefs(p) {
 
 export function mount(el, ctx) {
   const { model, store, fmt, theme, icons } = ctx;
+  const P = ctx.pure;
+  const isPure = () => !!ctx.isPure?.();
+  let pureNow = isPure();
   const prefs = loadPrefs();
   const reduceQuery = window.matchMedia?.('(prefers-reduced-motion: reduce)');
   let reduced = !!reduceQuery?.matches;
@@ -96,6 +105,19 @@ export function mount(el, ctx) {
   // DOM
   // ------------------------------------------------------------------------------------------
   const rangeNote = () => depthRangeNote(fmt, model.levelInfo(OPENING_DEPTH - 1), model.levelInfo(FINEST_LEVEL));
+  /** Inner HTML of the "How to read" list: the Gregorian wording, or the pure one (rebuilt whenever the mode changes). */
+  const helpHTML = (pureMode) =>
+    pureMode
+      ? PT.helpHTML(P, model.levelInfo(OPENING_DEPTH - 1), model.levelInfo(FINEST_LEVEL))
+      : `
+        <div><dt>Labels</dt><dd><b>η 7 · 1/11</b> reads: cycle η, depth 7, the 1st of the 11 η cycles inside its parent cycle. The pill under the name says what the glyph is doing now (rising, peak, falling, valley) and which threshold comes next.</dd></div>
+        <div><dt>Rings</dt><dd>Every ring is one cycle. The outermost, α, lasts about 72 years; each ring inside it is the next harmonic, 4 to 13 times shorter. ${rangeNote()}</dd></div>
+        <div><dt>Arc and dot</dt><dd>The arc grows clockwise from 12 o’clock as the cycle runs; the dot is the hand, exactly where we are in that cycle. Rings too fast to follow dissolve into a glow.</dd></div>
+        <div><dt>Sectors</dt><dd>A ring is cut into the child cycles it contains. The tinted sector is the one running now, and the funnel shows it opening up into the whole next ring.</dd></div>
+        <div><dt>Quarters</dt><dd>Beads at 3, 6 and 9 o’clock mark peak, node and valley; they fill in as they are passed. The selected ring is labelled.</dd></div>
+        <div><dt>Centre</dt><dd>Countdown to the end of the selected cycle, its Gregorian end time in your zone, and its four thresholds. The wave shows what the glyph does over the same cycle.</dd></div>
+        <div><dt>Navigate</dt><dd>Click a sector to jump to the start of that child cycle, a label to select a ring, drag the wave cursor to scrub inside the cycle. On a touch screen, tap a ring or sector (or touch and hold it) to see what it is, and tap the same sector again to jump. The thresholds in the centre jump to that moment of the selected cycle, passed ones included.</dd></div>
+      `;
   el.innerHTML = `
   <div class="rings" data-compact="0">
     <div class="sr-only rings-live" role="status" aria-live="polite" aria-atomic="true"></div>
@@ -124,15 +146,7 @@ export function mount(el, ctx) {
       <button type="button" class="btn btn-sm rings-help-btn" aria-expanded="false" aria-controls="rings-help-panel">${helpIcon()}How to read</button>
     </div>
     <section class="card rings-help" id="rings-help-panel" aria-label="How to read the rings" hidden>
-      <dl>
-        <div><dt>Labels</dt><dd><b>η 7 · 1/11</b> reads: cycle η, depth 7, the 1st of the 11 η cycles inside its parent cycle. The pill under the name says what the glyph is doing now (rising, peak, falling, valley) and which threshold comes next.</dd></div>
-        <div><dt>Rings</dt><dd>Every ring is one cycle. The outermost, α, lasts about 72 years; each ring inside it is the next harmonic, 4 to 13 times shorter. ${rangeNote()}</dd></div>
-        <div><dt>Arc and dot</dt><dd>The arc grows clockwise from 12 o’clock as the cycle runs; the dot is the hand, exactly where we are in that cycle. Rings too fast to follow dissolve into a glow.</dd></div>
-        <div><dt>Sectors</dt><dd>A ring is cut into the child cycles it contains. The tinted sector is the one running now, and the funnel shows it opening up into the whole next ring.</dd></div>
-        <div><dt>Quarters</dt><dd>Beads at 3, 6 and 9 o’clock mark peak, node and valley; they fill in as they are passed. The selected ring is labelled.</dd></div>
-        <div><dt>Centre</dt><dd>Countdown to the end of the selected cycle, its Gregorian end time in your zone, and its four thresholds. The wave shows what the glyph does over the same cycle.</dd></div>
-        <div><dt>Navigate</dt><dd>Click a sector to jump to the start of that child cycle, a label to select a ring, drag the wave cursor to scrub inside the cycle. On a touch screen, tap a ring or sector (or touch and hold it) to see what it is, and tap the same sector again to jump. The thresholds in the centre jump to that moment of the selected cycle, passed ones included.</dd></div>
-      </dl>
+      <dl class="rings-help-list"></dl>
     </section>
 
     <div class="rings-body">
@@ -150,6 +164,7 @@ export function mount(el, ctx) {
               <div class="rings-eyebrow"></div>
               <div class="rings-count mono"></div>
               <div class="rings-more">
+                <div class="rings-fullname mono"></div>
                 <div class="rings-end"></div>
                 <div class="rings-chips" role="group" aria-label="Quarter thresholds of the selected cycle"></div>
                 <div class="rings-btns">
@@ -226,6 +241,7 @@ export function mount(el, ctx) {
   const waveIn = $('.rings-wave-in');
   const helpBtn = $('.rings-help-btn');
   const helpPanel = $('.rings-help');
+  const helpList = $('.rings-help-list');
   const nodes = {
     name: $('.rings-cn-name'),
     phase: $('.rings-cn-phase'),
@@ -236,6 +252,7 @@ export function mount(el, ctx) {
     thr: $('.rings-b-thr'),
     next: $('.rings-b-next'),
     glyph: $('.rings-glyph'),
+    fullName: $('.rings-fullname'),
     whName: $('.rings-wh-name'),
     whSub: $('.rings-wh-sub'),
     whPct: $('.rings-wh-pct'),
@@ -260,35 +277,43 @@ export function mount(el, ctx) {
     in: b.querySelector('.rings-chip-in'),
   }));
 
-  // text/attribute writes only when the value changed
+  // text/attribute writes only when the value changed. Text and HTML share one content slot: switching a node from
+  // markup back to the same plain text it showed before (pure mode and back) must still rewrite it.
   const memo = new WeakMap();
+  const memoOf = (node) => {
+    let m = memo.get(node);
+    if (!m) memo.set(node, (m = {}));
+    return m;
+  };
   const setText = (node, text) => {
-    if (memo.get(node)?.t !== text) {
+    const m = memoOf(node);
+    if (m.c !== `t:${text}`) {
       node.textContent = text;
-      memo.set(node, { ...(memo.get(node) || {}), t: text });
+      m.c = `t:${text}`;
     }
   };
   const setHTML = (node, html) => {
-    if (memo.get(node)?.h !== html) {
+    const m = memoOf(node);
+    if (m.c !== `h:${html}`) {
       node.innerHTML = html;
-      memo.set(node, { ...(memo.get(node) || {}), h: html });
+      m.c = `h:${html}`;
     }
   };
   const setAttr = (node, name, value) => {
-    const m = memo.get(node) || {};
+    const m = memoOf(node);
     const key = `a:${name}`;
     if (m[key] !== value) {
       if (value === null || value === false) node.removeAttribute(name);
       else node.setAttribute(name, value === true ? '' : value);
-      memo.set(node, { ...m, [key]: value });
+      m[key] = value;
     }
   };
   const setClass = (node, cls, on) => {
-    const m = memo.get(node) || {};
+    const m = memoOf(node);
     const key = `c:${cls}`;
     if (m[key] !== on) {
       node.classList.toggle(cls, on);
-      memo.set(node, { ...m, [key]: on });
+      m[key] = on;
     }
   };
 
@@ -432,13 +457,20 @@ export function mount(el, ctx) {
   });
 
   // ------------------------------------------------------------------------------------------
-  // cached per-cycle strings (Gregorian times of the thresholds)
+  // cached per-cycle strings (Gregorian times of the thresholds; pure mode: their coordinates on the ladder)
   // ------------------------------------------------------------------------------------------
   function cycleStrings(frame, lv) {
-    const key = `${lv.level}:${lv.cycleBig}:${fmt.zone()}`;
+    const pm = pureNow;
+    const key = `${lv.level}:${lv.cycleBig}:${pm ? 'pure' : fmt.zone()}`;
     if (cache.key === key) return cache;
-    const refYear = fmt.parts(frame.t).year;
     const times = lv.thresholds.map((e) => e.time);
+    if (pm) {
+      // a coordinate per threshold (ordinals written once, then only where they change), with a shorter one for narrow plots
+      const labels = PT.boundaryLabels(P, model, lv.level, times);
+      cache = { key, times, parts: labels, alt: labels.map((l) => l && l.alt), chip: labels, facts: PT.factParts(P, model, lv.level, lv), refYear: 0 };
+      return cache;
+    }
+    const refYear = fmt.parts(frame.t).year;
     const parts = times.map((t) => (t === null ? null : whenParts(fmt, t, lv.duration, { compact: true, refYear })));
     // chips: a short cycle that stays inside one civil day needs only the time of day
     const day = fmt.date(lv.start);
@@ -447,7 +479,7 @@ export function mount(el, ctx) {
       if (lv.duration < 86400 && parts[i].time && fmt.date(t) === day) return { date: '', time: parts[i].time };
       return { date: parts[i].date, time: parts[i].time };
     });
-    cache = { key, times, parts, chip, refYear };
+    cache = { key, times, parts, alt: null, chip, facts: null, refYear };
     return cache;
   }
 
@@ -462,12 +494,15 @@ export function mount(el, ctx) {
       root.style.setProperty('--rings-accent-soft', theme.levelColor(sel, 0.16));
       memo.set(centre, { ...(memo.get(centre) || {}), accent });
     }
+    const pm = pureNow;
     if (!frame.inRange || !lv) {
       setText(nodes.name, 'Outside the catalogue');
       setText(nodes.phase, '');
+      setText(nodes.fullName, '');
       setText(nodes.eyebrow, 'Saros 141 covers');
-      setText(nodes.count, `${fmt.parts(model.tMin).year}–${fmt.parts(model.tMax).year}`);
-      setText(nodes.end, `${fmt.date(model.tMin)} → ${fmt.date(model.tMax)}`);
+      // pure mode: the catalogue is α#1 – α#18 and spans positions 0 → 69, never years
+      setText(nodes.count, pm ? P.catalogueText() : `${fmt.parts(model.tMin).year}–${fmt.parts(model.tMax).year}`);
+      setText(nodes.end, pm ? `pos 0 → ${model.extent}` : `${fmt.date(model.tMin)} → ${fmt.date(model.tMax)}`);
       if (!chipsBox.hidden) chipsBox.hidden = true;
       setHTML(nodes.prev, `${icons.prev}<span class="rings-b-text">Start</span>`);
       setHTML(nodes.next, `<span class="rings-b-text">End</span>${icons.next}`);
@@ -487,12 +522,29 @@ export function mount(el, ctx) {
 
     const strings = cycleStrings(frame, lv);
     const pw = phaseWord(lv.index, lv.derivative, M);
-    setText(nodes.name, cycleTag(info, lv));
-    setText(nodes.phase, `${PHASE_MARK[pw.word]} ${pw.word}${lv.next.time !== null ? ` · to ${lv.next.name}` : ''}`);
+    const toNext = lv.next.time !== null ? ` · to ${lv.next.name}` : '';
+    const pillCore = `${PHASE_MARK[pw.word]} ${pw.word}${toNext}`;
+    if (pm) {
+      // the big name is the cycle's own (Eta Monofracton); a small hole keeps the short tag and leaves the name to the card below
+      const name = PT.cycleName(P, sel, lv);
+      setText(nodes.name, compactNow ? cycleTag(info, lv) : name);
+      setText(nodes.phase, compactNow ? pillCore : `${cycleTag(info, lv)} · ${pillCore}`);
+      setText(nodes.fullName, name);
+    } else {
+      setText(nodes.name, cycleTag(info, lv));
+      setText(nodes.phase, pillCore);
+      setText(nodes.fullName, '');
+    }
     setText(nodes.eyebrow, lv.clipped ? 'catalogue ends in' : 'ends in');
-    setText(nodes.count, countdownBody(fmt, lv.remaining));
-    const endLabel = whenText(fmt, lv.end, lv.duration);
-    setText(nodes.end, `${endLabel}${lv.duration < YEAR * 0.9 ? ' · ' + fmt.tag(lv.end) : ''}`);
+    if (pm) {
+      // two units like everywhere else; a roomy dial adds a third one while it is steady (never finer than λ, as in Up next)
+      setText(nodes.count, PT.centreSpan(P, model, frame.t, lv.end, { compact: compactNow }));
+      setText(nodes.end, PT.endLine(P, model, sel, lv));
+    } else {
+      setText(nodes.count, countdownBody(fmt, lv.remaining));
+      const endLabel = whenText(fmt, lv.end, lv.duration);
+      setText(nodes.end, `${endLabel}${lv.duration < YEAR * 0.9 ? ' · ' + fmt.tag(lv.end) : ''}`);
+    }
 
     // chips: peak / node / valley / end
     ctx.QUARTER_NAMES.forEach((name, k) => {
@@ -504,6 +556,16 @@ export function mount(el, ctx) {
       setClass(chip.b, 'is-next', isNext);
       setClass(chip.b, 'is-void', t === null);
       setAttr(chip.b, 'disabled', t === null);
+      if (pm) {
+        // every chip counts to (or from) its threshold and says where it sits on the clock of the header
+        const c = PT.chipText(P, model, sel, lv, k, t, frame.t, strings.chip[k + 1]);
+        setHTML(chip.time, `${c.date ? `<span>${esc(c.date)}</span>` : ''}${c.time ? `<span>${esc(c.time)}</span>` : ''}`);
+        setText(chip.in, c.count);
+        setAttr(chip.b, 'title', c.title);
+        setAttr(chip.b, 'aria-label', c.label);
+        return;
+      }
+      setAttr(chip.b, 'aria-label', null);
       const c = strings.chip[k + 1];
       // date and time are separate spans: when both do not fit on one line the time wraps, nothing is cut off
       setHTML(chip.time, `${c.date ? `<span>${esc(c.date)}</span>` : ''}${c.time ? `<span>${esc(c.time)}</span>` : ''}`);
@@ -523,6 +585,7 @@ export function mount(el, ctx) {
 
   function updateInset(frame) {
     const { sel, selLv: lv, selInfo: info } = view;
+    const pm = pureNow;
     if (!frame.inRange || !lv) {
       setText(nodes.whName, '—');
       setText(nodes.whSub, 'Outside the catalogue');
@@ -530,47 +593,79 @@ export function mount(el, ctx) {
       setText(nodes.whPctL, '');
       setText(nodes.chip, `${levelTag(info)}`);
       setHTML(nodes.glyph, '');
+      memoOf(nodes.glyph).g = null; // the glyph is redrawn when a cycle is back in view, whatever it was before
+      memoOf(nodes.fAddr).k = null;
       for (const n of [nodes.fStart, nodes.fEnd, nodes.fLen, nodes.fGlyph, nodes.fAddr]) setText(n, '—');
+      setAttr(waveCanvas, 'aria-valuemax', pm ? '255' : '100');
       setAttr(waveCanvas, 'aria-valuenow', '0');
       setAttr(waveCanvas, 'aria-valuetext', 'Outside the catalogue');
       return;
     }
     const pw = phaseWord(lv.index, lv.derivative, M);
     setText(nodes.chip, `${levelTag(info)}`);
-    setText(nodes.whName, cycleTag(info, lv));
+    setText(nodes.whName, pm ? PT.cycleName(P, sel, lv) : cycleTag(info, lv));
     setAttr(nodes.whName, 'title', `${levelTag(info)}: cycle ${lv.local + 1} of ${lv.siblings}${info.siblings === null ? ' in the catalogue' : ' inside its parent cycle'}`);
     setText(nodes.whSub, `${pw.word} · value ${valueText(lv.value)}`);
-    setText(nodes.whPct, percentText(lv.phase));
-    setText(nodes.whPctL, 'through this cycle');
+    if (pm) {
+      // two glyphs (16 x 16 = 256 states) instead of a percentage; the first one is the glyph the cycle shows now
+      setHTML(nodes.whPct, P.pairHTML(lv.phase, { label: 'phase' }));
+      setText(nodes.whPctL, `phase ${P.pairText(lv.phase)}`);
+      setAttr(nodes.whPctL, 'aria-hidden', 'true'); // "13·4" would be read as a number; the pair says "phase 13 and 4 of 256"
+    } else {
+      setText(nodes.whPct, percentText(lv.phase));
+      setText(nodes.whPctL, 'through this cycle');
+      setAttr(nodes.whPctL, 'aria-hidden', null);
+    }
     const glyphKey = `${lv.index}|${sel}`;
-    if (memo.get(nodes.glyph)?.g !== glyphKey) {
+    if (memoOf(nodes.glyph).g !== glyphKey) {
       nodes.glyph.innerHTML = model.glyphSVG(lv.index, { strokes: STROKES, ...theme.glyphStyle(theme.levelColor(sel, 1, 74), 4.6) });
-      memo.set(nodes.glyph, { ...(memo.get(nodes.glyph) || {}), g: glyphKey });
+      memoOf(nodes.glyph).g = glyphKey;
+      memoOf(nodes.glyph).c = null;
     }
     // facts
-    const rel = (t) => countdownBody(fmt, t - frame.t);
-    const startRel = frame.t >= lv.start ? `${rel(lv.start)} ago` : `in ${rel(lv.start)}`;
-    // date, time and the relative phrase each own a line: the block keeps its height as the numbers change
-    const when = (t) => {
-      const p = whenParts(fmt, t, lv.duration);
-      return `<span class="mono">${esc(p.date)}</span>${p.time ? `<span class="mono">${esc(p.time)}</span>` : ''}`;
-    };
-    setHTML(nodes.fStart, `${when(lv.start)}<span class="dim">${esc(startRel)}</span>`);
-    setHTML(nodes.fEnd, `${when(lv.end)}${lv.clipped ? '<span class="dim">end of the catalogue</span>' : ''}<span class="dim">in ${esc(rel(lv.end))}</span>`);
-    setText(nodes.fLen, `${fmt.duration(lv.duration)}${lv.clipped ? ' (clipped by the catalogue)' : ''}`);
-    setHTML(nodes.fGlyph, `<span>state ${lv.index} of 0–${4 * M - 1}</span><span>value ${valueText(lv.value)}${lv.dotted ? ' · dotted' : ''}</span>`);
-    const addrKey = `${sel}:${lv.cycleBig}`;
-    if (memo.get(nodes.fAddr)?.k !== addrKey) {
+    if (pm) {
+      // coordinates and spans on the ladder; the cycle that begins when this one ends takes the place of the end date
+      // (everything but the distances is worked out once per cycle)
+      const f = cycleStrings(frame, lv).facts;
+      const when = (p) => `<span class="mono">${esc(p.date)}</span>${p.time ? `<span class="mono">${esc(p.time)}</span>` : ''}`;
+      setHTML(nodes.fStart, `${when(f.start)}<span class="dim">${esc(PT.inText(P, frame.t, lv.start))}</span>`);
+      setHTML(nodes.fEnd, `${when(f.end)}<span class="mono">${esc(f.endLine)}</span><span class="dim">${esc(PT.inText(P, frame.t, lv.end))}</span>`);
+      setText(nodes.fLen, `${f.length}${lv.clipped ? ' (clipped by the catalogue)' : ''}`);
+      setHTML(nodes.fGlyph, `<span>${esc(PT.stateText(P, lv.phase))}</span><span>value ${valueText(lv.value)}${lv.dotted ? ' · dotted' : ''}</span>`);
+    } else {
+      const rel = (t) => countdownBody(fmt, t - frame.t);
+      const startRel = frame.t >= lv.start ? `${rel(lv.start)} ago` : `in ${rel(lv.start)}`;
+      // date, time and the relative phrase each own a line: the block keeps its height as the numbers change
+      const when = (t) => {
+        const p = whenParts(fmt, t, lv.duration);
+        return `<span class="mono">${esc(p.date)}</span>${p.time ? `<span class="mono">${esc(p.time)}</span>` : ''}`;
+      };
+      setHTML(nodes.fStart, `${when(lv.start)}<span class="dim">${esc(startRel)}</span>`);
+      setHTML(nodes.fEnd, `${when(lv.end)}${lv.clipped ? '<span class="dim">end of the catalogue</span>' : ''}<span class="dim">in ${esc(rel(lv.end))}</span>`);
+      setText(nodes.fLen, `${fmt.duration(lv.duration)}${lv.clipped ? ' (clipped by the catalogue)' : ''}`);
+      setHTML(nodes.fGlyph, `<span>state ${lv.index} of 0–${4 * M - 1}</span><span>value ${valueText(lv.value)}${lv.dotted ? ' · dotted' : ''}</span>`);
+    }
+    const addrKey = `${sel}:${lv.cycleBig}:${pm ? 'p' : 'n'}`;
+    if (memoOf(nodes.fAddr).k !== addrKey) {
       const path = model.cycleToPath(sel, lv.cycleBig);
+      // pure mode writes an address chain with ordinals (α#6 › β#4 …); the Gregorian-side view keeps the depth chips
       nodes.fAddr.innerHTML = path
-        .map((n, l) => `<span class="rings-addr" style="--c:${theme.levelColor(l, 1, 72)}">${esc(model.levelInfo(l).letter)} ${n}</span>`)
+        .map((n, l) => `<span class="rings-addr" style="--c:${theme.levelColor(l, 1, 72)}">${esc(pm ? P.shortName(l, n) : `${model.levelInfo(l).letter} ${n}`)}</span>`)
         .join('<span class="rings-addr-sep" aria-hidden="true">›</span>');
-      memo.set(nodes.fAddr, { ...(memo.get(nodes.fAddr) || {}), k: addrKey });
+      memoOf(nodes.fAddr).k = addrKey;
+      memoOf(nodes.fAddr).c = null;
     }
     // slider semantics
-    const pct = Math.round(lv.phase * 100);
-    setAttr(waveCanvas, 'aria-valuenow', String(pct));
-    setAttr(waveCanvas, 'aria-valuetext', `${pw.word}, ${percentText(lv.phase)} through ${cycleTag(info, lv)}`);
+    if (pm) {
+      setAttr(waveCanvas, 'aria-valuemax', '255');
+      setAttr(waveCanvas, 'aria-valuenow', String(P.pair(lv.phase).index));
+      setAttr(waveCanvas, 'aria-valuetext', PT.sliderText(P, pw.word, lv.phase, PT.cycleName(P, sel, lv)));
+    } else {
+      const pct = Math.round(lv.phase * 100);
+      setAttr(waveCanvas, 'aria-valuemax', '100');
+      setAttr(waveCanvas, 'aria-valuenow', String(pct));
+      setAttr(waveCanvas, 'aria-valuetext', `${pw.word}, ${percentText(lv.phase)} through ${cycleTag(info, lv)}`);
+    }
   }
 
   /** The countdown to the next boundary is DOM text over the canvas: cheap to change every frame. */
@@ -604,6 +699,7 @@ export function mount(el, ctx) {
     const { sel, selLv: lv } = view;
     if (!frame.inRange || !lv) return { inRange: false, level: sel, M, phase: 0, index: 0, quarter: 0, limit: 1, key: 'out', labels: [], hover: null };
     if (isBlur(view.selInfo, view.speed)) return { inRange: true, blur: true, level: sel, M, phase: 0, index: 0, quarter: 0, limit: 1, key: 'blur', labels: [], hover: null };
+    const pm = pureNow;
     const strings = cycleStrings(frame, lv);
     const limit = phaseLimit(model, sel, lv.cycle);
     // the first boundary still ahead that exists in the catalogue
@@ -620,16 +716,18 @@ export function mount(el, ctx) {
         name,
         date: p ? p.date : '—',
         time: p ? p.time : '',
+        // pure mode: a shorter coordinate for plots too narrow for five long ones
+        alt: pm && p ? strings.alt[i] : undefined,
         passed: strings.times[i] !== null && i <= lv.quarter,
         next: i === nextIdx,
-        in: i === nextIdx ? fmt.countdown(strings.times[i] - frame.t) : '',
+        in: i === nextIdx ? (pm ? PT.inText(P, frame.t, strings.times[i]) : fmt.countdown(strings.times[i] - frame.t)) : '',
       };
     });
     let hoverState = null;
     if (waveHover !== null && !scrubbing) {
       const t = timeAtPhase(model, sel, lv.cycle, Math.min(waveHover, limit));
-      const p = t === null ? null : whenParts(fmt, t, lv.duration, { compact: true, refYear: strings.refYear });
-      hoverState = { phase: Math.min(waveHover, limit), text: compactText(p) };
+      const text = pm ? (t === null ? '—' : PT.pointerText(P, model, sel, t)) : compactText(t === null ? null : whenParts(fmt, t, lv.duration, { compact: true, refYear: strings.refYear }));
+      hoverState = { phase: Math.min(waveHover, limit), text };
     }
     return {
       inRange: true,
@@ -658,14 +756,17 @@ export function mount(el, ctx) {
     const lv = view.readings[i];
     if (L === undefined || !lv) return '';
     const frame = view.frame;
+    const pm = pureNow;
     const color = theme.levelColor(L, 1, 72);
     const touch = !!hoverPointer?.touch;
     const click = touch ? 'Tap' : 'Click';
     if (lv.stub) {
-      return `<div class="rings-tip-h"><b style="color:${color}">${esc(levelTag(info))}</b><span class="dim">about ${esc(fmt.duration(info.meanSeconds))} per cycle</span></div><div class="rings-tip-row dim">Too fast to follow at this speed: drawn as a glow</div><div class="rings-tip-hint">${click} to select this ring</div>`;
+      return `<div class="rings-tip-h"><b style="color:${color}">${esc(levelTag(info))}</b><span class="dim">about ${esc(pm ? PT.aboutTurn(P, info) : fmt.duration(info.meanSeconds))} per cycle</span></div><div class="rings-tip-row dim">Too fast to follow at this speed: drawn as a glow</div><div class="rings-tip-hint">${click} to select this ring</div>`;
     }
-    const head = `<div class="rings-tip-h"><b style="color:${color}">${esc(cycleTag(info, lv))}</b><span class="dim">${esc(percentText(lv.phase))} through this cycle</span></div>`;
-    const ends = `<div class="rings-tip-row dim">${lv.clipped ? 'catalogue ends' : 'ends'} in ${esc(countdownBody(fmt, lv.remaining))}</div>`;
+    const head = pm
+      ? `<div class="rings-tip-h"><b style="color:${color}">${esc(PT.cycleName(P, L, lv))}</b><span class="dim">${esc(cycleTag(info, lv))}</span></div><div class="rings-tip-row rings-tip-phase"><span aria-hidden="true">phase</span> ${P.pairHTML(lv.phase, { label: 'phase' })}</div>`
+      : `<div class="rings-tip-h"><b style="color:${color}">${esc(cycleTag(info, lv))}</b><span class="dim">${esc(percentText(lv.phase))} through this cycle</span></div>`;
+    const ends = `<div class="rings-tip-row dim">${lv.clipped ? 'catalogue ends' : 'ends'} in ${esc(pm ? PT.between(P, frame.t, lv.end) : countdownBody(fmt, lv.remaining))}</div>`;
     if (hover.label) {
       return `${head}${ends}<div class="rings-tip-hint">${click} to select this ring</div>`;
     }
@@ -676,13 +777,25 @@ export function mount(el, ctx) {
     if (ch) {
       const span = ch.duration;
       const running = frame.t >= ch.start && frame.t < ch.end;
-      body =
-        `<div class="rings-tip-sep"></div>` +
-        `<div class="rings-tip-h"><b style="color:${theme.levelColor(L + 1, 1, 72)}">${esc(cInfo.letter)} ${cInfo.depth} · ${j + 1}/${info.factor}</b><span class="dim">child cycle</span></div>` +
-        `<div class="rings-tip-row mono">${esc(whenText(fmt, ch.start, span))}</div>` +
-        `<div class="rings-tip-row mono">→ ${esc(whenText(fmt, ch.end, span))}${ch.clipped ? ' (catalogue end)' : ''}</div>` +
-        `<div class="rings-tip-row dim">lasts ${esc(fmt.duration(span))} · ${esc(startPhrase(fmt, ch.start, ch.end, frame.t))}</div>` +
-        `<div class="rings-tip-hint">${touch ? (running ? 'Tap again to jump back to its start' : 'Tap again to jump to its start') : running ? (L === view.sel ? 'Click to jump back to its start' : 'Click to select this ring') : 'Click to jump to its start'}</div>`;
+      const hint = `<div class="rings-tip-hint">${touch ? (running ? 'Tap again to jump back to its start' : 'Tap again to jump to its start') : running ? (L === view.sel ? 'Click to jump back to its start' : 'Click to select this ring') : 'Click to jump to its start'}</div>`;
+      if (pm) {
+        // the child is named, then what follows it; spans and distances are counted on the ladder
+        const follower = PT.followerName(P, model, ch.level, { cycle: ch.index, clipped: ch.clipped, end: ch.end });
+        body =
+          `<div class="rings-tip-sep"></div>` +
+          `<div class="rings-tip-h"><b style="color:${theme.levelColor(L + 1, 1, 72)}">${esc(P.cycleName(ch.level, ch.index))}</b><span class="dim">child · ${esc(cInfo.letter)} ${cInfo.depth} · ${j + 1}/${info.factor}</span></div>` +
+          `<div class="rings-tip-row mono">${esc(follower ? `ends → ${follower} begins` : 'the catalogue ends here')}</div>` +
+          `<div class="rings-tip-row dim">lasts ${esc(PT.lengthText(P, ch.level, ch))} · ${esc(PT.startPhrase(P, ch.start, ch.end, frame.t))}</div>` +
+          hint;
+      } else {
+        body =
+          `<div class="rings-tip-sep"></div>` +
+          `<div class="rings-tip-h"><b style="color:${theme.levelColor(L + 1, 1, 72)}">${esc(cInfo.letter)} ${cInfo.depth} · ${j + 1}/${info.factor}</b><span class="dim">child cycle</span></div>` +
+          `<div class="rings-tip-row mono">${esc(whenText(fmt, ch.start, span))}</div>` +
+          `<div class="rings-tip-row mono">→ ${esc(whenText(fmt, ch.end, span))}${ch.clipped ? ' (catalogue end)' : ''}</div>` +
+          `<div class="rings-tip-row dim">lasts ${esc(fmt.duration(span))} · ${esc(startPhrase(fmt, ch.start, ch.end, frame.t))}</div>` +
+          hint;
+      }
     } else if (j !== null && j !== undefined) {
       body = `<div class="rings-tip-sep"></div><div class="rings-tip-row dim">${L >= 13 ? 'Finer than the dial shows' : 'Beyond the end of the catalogue'}</div><div class="rings-tip-hint">${click} to select this ring</div>`;
     }
@@ -956,7 +1069,13 @@ export function mount(el, ctx) {
       ctx.stepCycle(dir, L + 1);
     }
     const now = model.levelAt(store.t(), L + 1);
-    if (now && store.t() - now.start < 0.01) announce(`Jumped to the start of ${cycleTag(model.levelInfo(L + 1), now)}, ${fmt.long(now.start)}`);
+    if (now && store.t() - now.start < 0.01) {
+      announce(
+        pureNow
+          ? `Jumped to the start of ${PT.cycleName(P, L + 1, now)}, ${cycleTag(model.levelInfo(L + 1), now)}`
+          : `Jumped to the start of ${cycleTag(model.levelInfo(L + 1), now)}, ${fmt.long(now.start)}`,
+      );
+    }
   }
   /** Screen-reader note (polite live region). */
   function announce(text) {
@@ -1123,7 +1242,34 @@ export function mount(el, ctx) {
   // ------------------------------------------------------------------------------------------
   // frame
   // ------------------------------------------------------------------------------------------
+  /**
+   * The mode changed (header button, key P, ?pure=1): rebuild every static text, drop every cached string and
+   * everything that was said in the other vocabulary, so nothing stale is left behind in either direction.
+   */
+  function applyMode(pureMode) {
+    root.dataset.pure = pureMode ? '1' : '';
+    if (!pureMode) delete root.dataset.pure;
+    helpList.innerHTML = helpHTML(pureMode);
+    cache = { key: '', times: [], parts: [], alt: null, chip: [], facts: null, refYear: 0 };
+    lastTextKey = '';
+    clearPreview();
+    hover = null;
+    waveHover = null;
+    tip.hidden = true;
+    memo.delete(tip);
+    liveNote.textContent = '';
+    dial.invalidate();
+    wave.invalidate();
+    own = true;
+  }
+  applyMode(pureNow);
+
   function render(frame, info) {
+    const pm = isPure();
+    if (pm !== pureNow) {
+      pureNow = pm;
+      applyMode(pm);
+    }
     // pixel ratio changes (zoom, moving between screens)
     const d = dpr();
     if (d !== lastDpr) {
@@ -1199,7 +1345,7 @@ export function mount(el, ctx) {
     const p1 = prof.on ? performance.now() : 0;
     // a selected cycle too fast to follow would make the large digits strobe: refresh them at 4 Hz and dim them
     const selBlur = inRange && isBlur(view.selInfo, speed);
-    const textKey = `${sel}|${inRange}|${fmt.zone()}|${selBlur}`;
+    const textKey = `${sel}|${inRange}|${pm ? `pure${compactNow ? 'c' : ''}` : fmt.zone()}|${selBlur}`;
     const nowT = performance.now();
     if (!selBlur || textKey !== lastTextKey || nowT - lastTextAt >= 250) {
       lastTextKey = textKey;
@@ -1213,7 +1359,11 @@ export function mount(el, ctx) {
       const slv = view.selLv;
       if (slv) {
         const pwd = phaseWord(slv.index, slv.derivative, M).word.toLowerCase();
-        announce(`Selected ${cycleTag(view.selInfo, slv)}, ${pwd}, ${slv.clipped ? 'the catalogue ends' : 'ends'} in ${countdownBody(fmt, slv.remaining)}`);
+        announce(
+          pm
+            ? `Selected ${PT.cycleName(P, sel, slv)}, ${cycleTag(view.selInfo, slv)}, ${pwd}, ${slv.clipped ? 'the catalogue ends' : 'ends'} in ${PT.between(P, frame.t, slv.end)}`
+            : `Selected ${cycleTag(view.selInfo, slv)}, ${pwd}, ${slv.clipped ? 'the catalogue ends' : 'ends'} in ${countdownBody(fmt, slv.remaining)}`,
+        );
       }
     }
     const p2 = prof.on ? performance.now() : 0;
@@ -1239,7 +1389,7 @@ export function mount(el, ctx) {
     setAttr(
       wrap,
       'aria-label',
-      `Concentric cycle dial, rings ${levelTag(model.levelInfo(minL))} to ${levelTag(model.levelInfo(maxL))}. Selected ${levelTag(view.selInfo)}. Left and right arrow keys change the ring; Page Up and Page Down jump to the next or previous child cycle, Enter to the start of the running one.`,
+      `Concentric cycle dial, rings ${levelTag(model.levelInfo(minL))} to ${levelTag(model.levelInfo(maxL))}. Selected ${levelTag(view.selInfo)}${pm && view.selLv ? `, ${PT.cycleName(P, sel, view.selLv)}` : ''}. Left and right arrow keys change the ring; Page Up and Page Down jump to the next or previous child cycle, Enter to the start of the running one.`,
     );
   }
 

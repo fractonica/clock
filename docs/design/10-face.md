@@ -57,3 +57,9 @@ Update only glyph groups whose digits changed (compare a signature string per od
   but rebuild SVG attributes only on change.
 - Depth ≥ 11 changes faster than ~50 ms: that is expected (SPEC §10); do not throttle, but never let it freeze the page.
 - Put pure helpers (counter arc positions, hit-region mapping, label text) in `src/ui/face/helpers.js` and unit-test them.
+
+## Pure mode
+Letters overlay: the running cycles' names under their letters. Info labels: `NEXT END in 6ι 43λ`, `NEXT NODE in 2η 24ι`,
+`SYNC 4820 · drift −6 236λ`. Tooltips: cycle name, `η#1 of 11 in its ζ`, `one cycle = 1η`, `ends → Eta Difracton begins`, the
+solar phase as a glyph pair. Caption: the pure stamp. How-to: six lines incl. "counters from 0, names from 1" and the
+glossary pointer. Out of range: "outside the catalogue, from α#1 to α#18". Strings live in `src/ui/face/pure.js`.

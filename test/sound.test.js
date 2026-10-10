@@ -48,6 +48,9 @@ import { fmtHz, fmtRate, fmtSeconds, fmtSecondsShort, fmtDb, fmtOct, fmtPeriod, 
 import { sanitize, DEFAULT_SETTINGS, FLOORS, SETTINGS_REV, presetLevels, matchPreset, loadSettings, saveSettings, STORAGE_KEY, dbToGain } from '../src/audio/settings.js';
 import { createEngine, MAX_NOTES, VOICE_AMP, safetyCurve } from '../src/audio/engine.js';
 import { labelSlots } from '../src/ui/sound/scope.js';
+import { createPure } from '../src/core/pure.js';
+import * as W from '../src/audio/words.js';
+import { RULES } from '../tools/pure-scan.mjs';
 
 const model = createModel();
 const near = (a, b, eps, msg) => assert.ok(Math.abs(a - b) <= eps, `${msg ?? ''} ${a} vs ${b} (±${eps})`);
@@ -1527,4 +1530,246 @@ test('spectrum letters: every tick that has room is labelled, whatever order the
   for (const it of items) if (!got.has(it.key)) assert.ok(sorted.some((p) => Math.abs(p - it.x) <= 13), `tick ${it.key} lost its letter without a neighbour in the way`);
   assert.deepEqual([...labelSlots([{ key: 'a', x: 10 }, { key: 'b', x: 30 }, { key: 'c', x: 31 }], 13)].sort(), ['a', 'b']);
   assert.equal(labelSlots([], 13).size, 0);
+});
+
+// ------------------------------------------------------------------------------------------------
+// pure mode wording (docs/design/80-pure.md): ratios, octaves, cents, Fractonica periods, beats, glyph pairs
+// ------------------------------------------------------------------------------------------------
+const pure = createPure(model, { now: () => VECTOR_A });
+const rowsT = buildTuning(model);
+const hardLeaks = (text) => RULES.filter(([, re, severity]) => severity === 'hard' && re.test(text)).map(([id]) => id);
+const noLeak = (text, what) => assert.deepEqual(hardLeaks(text), [], `${what}: "${text}"`);
+/** What a user reads of a piece of markup. */
+const plainText = (html) => html.replace(/<svg[\s\S]*?<\/svg>/g, '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+
+test('pure wording: a ratio is written with a slash and never looks like a time of day', () => {
+  assert.equal(W.ratioText(rowsT[0]), '1/1');
+  assert.equal(W.ratioText(rowsT[2]), '65/64');
+  assert.equal(W.ratioText(rowsT[4]), '1625/1024');
+  // "65:64" is what the normal mode writes: the leak rules read it as 65:64 o'clock
+  assert.deepEqual(hardLeaks(rowsT[2].ratio), ['clock-time']);
+  for (const r of rowsT) noLeak(W.ratioText(r), `ratio of depth ${r.depth}`);
+});
+
+test('pure wording: octave offsets, shifts and cents', () => {
+  assert.equal(W.octaveOffset(0), 'octave +0');
+  assert.equal(W.octaveOffset(3), 'octave +3');
+  assert.equal(W.octaveOffset(-1), 'octave −1');
+  assert.equal(W.octaveShift(0), 'no shift');
+  assert.equal(W.octaveShift(1), '+1 octave');
+  assert.equal(W.octaveShift(-2), '−2 octaves');
+  assert.equal(W.cents(799.5), '800¢');
+  assert.equal(W.cents(0), '0¢');
+  assert.equal(W.cents(1119.6), '1120¢');
+});
+
+test('pure wording: the base pitch is an offset of the ground, never a frequency', () => {
+  assert.equal(W.groundText(0), 'ground ×1');
+  assert.equal(W.groundText(12), '+1 octave ×2');
+  assert.equal(W.groundText(-12), '−1 octave ×½');
+  assert.equal(W.groundText(7), '+700¢ ×1.5');
+  assert.equal(W.groundText(-5), '−500¢ ×0.749');
+  assert.equal(W.groundPhrase(0), 'ground ×1');
+  assert.equal(W.groundPhrase(3), 'ground +300¢ ×1.19');
+  let prev = 0;
+  for (let k = -12; k <= 12; k++) {
+    const { head, sub } = W.groundWords(k);
+    noLeak(`${head} ${sub}`, `ground ${k}`);
+    // monotone: a higher step is a bigger ratio (the text carries it, the slider carries the order)
+    const ratio = Math.pow(2, k / 12);
+    assert.ok(ratio > prev);
+    prev = ratio;
+    if (k !== 0 && Math.abs(k) !== 12) assert.equal(head, `${k < 0 ? '−' : '+'}${Math.abs(k) * 100}¢`);
+  }
+});
+
+test('pure wording: counts of beats and rates per beat', () => {
+  assert.equal(W.fmtBeats(1), '1 beat');
+  assert.equal(W.fmtBeats(4), '4 beats');
+  assert.equal(W.fmtBeats(0.5), '0.5 beats');
+  assert.equal(W.fmtBeats(0.00432), '0.00432 beats');
+  assert.equal(W.fmtBeats(12.34), '12.3 beats');
+  assert.equal(W.fmtBeats(1234.5), '1,235 beats');
+  assert.equal(W.fmtBeats(2.63e6), '2.63 M beats');
+  assert.equal(W.fmtBeats(1.82e9), '1.82 G beats');
+  assert.equal(W.fmtBeats(NaN), '— beats');
+  // no exponent notation, however small the span
+  assert.doesNotMatch(W.plain(4.5e-9), /e/);
+  assert.equal(W.plain(0), '0');
+  assert.equal(W.fmtPerBeat(22.5), '22.50 cycles per beat');
+  assert.equal(W.fmtPerBeat(247.7), '247.7 cycles per beat');
+  assert.equal(W.fmtPerBeat(2229.4), '2,229 cycles per beat');
+  assert.equal(W.fmtPerBeat(1), '1 cycle per beat');
+  assert.equal(W.fmtPerBeat(1 / 7.77), '1 cycle per 7.77 beats');
+  assert.equal(W.fmtPerBeat(1 / 1.4e6), '1 cycle per 1.40 M beats');
+  assert.equal(W.fmtPerBeat(0), '—');
+  for (const r of rowsT) noLeak(W.fmtPerBeat(r.trueHz), `true rate of depth ${r.depth}`);
+  for (const b of [0.004, 0.0222, 0.1, 0.25, 1, 4, 13.5, 600, 4547, 1e7, 3e10]) noLeak(W.fmtBeats(b), `${b} beats`);
+  // the true rates keep their order: finer cycles come faster
+  const per = rowsT.map((r) => r.trueHz);
+  for (let i = 1; i < per.length; i++) assert.ok(per[i] > per[i - 1]);
+});
+
+test('pure wording: every depth is a whole number of ladder periods, written by the helper (pure.cycleLength)', () => {
+  assert.deepEqual(
+    rowsT.map((r) => pure.cycleLength(r.level)),
+    ['1α', '1β', '1γ', '2δ½', '2ε½', '2ζ½', '1η', '4ι', '1ι', '13λ', '1λ', '1μ', '1ν', '1ξ'],
+  );
+  // and the counts give the cycle's length back exactly (in Saros position units)
+  const len = new Map(pure.UNITS.map((u) => [u.sym, pure.unitPos(u)]));
+  for (const r of rowsT) {
+    const sum = pure.cycleLength(r.level)
+      .split(' ')
+      .reduce((a, part) => a + Number.parseInt(part, 10) * len.get(part.replace(/^\d+/, '')), 0);
+    near(sum / (4 / Number(r.prefix)), 1, 1e-12, `depth ${r.depth}`);
+    // a zero part never adds information ("1η", not "1η 0ι"): the helper drops it, the panel does not re-trim
+    assert.doesNotMatch(pure.cycleLength(r.level), /(^| )0\D/, `depth ${r.depth}`);
+    noLeak(pure.cycleLength(r.level), `length of depth ${r.depth}`);
+  }
+  // the words module has no length formatter of its own any more
+  assert.equal(W.cycleLength, undefined);
+});
+
+test('pure wording: the spectrum is labelled by the octaves of the ground', () => {
+  const grid = W.octaveGrid(110, 40, 8000);
+  // the lines of the A's of the normal mode (55 .. 3520), plus the one more octave that still fits the axis
+  assert.deepEqual(grid.map((g) => g.f), [55, 110, 220, 440, 880, 1760, 3520, 7040]);
+  assert.deepEqual(grid.map((g) => g.ratio), ['×½', '×1', '×2', '×4', '×8', '×16', '×32', '×64']);
+  assert.deepEqual(grid.map((g) => g.offset), ['−1', '0', '+1', '+2', '+3', '+4', '+5', '+6']);
+  assert.deepEqual(W.octaveGrid(55, 40, 8000).map((g) => g.f), [55, 110, 220, 440, 880, 1760, 3520, 7040]);
+  assert.deepEqual(W.octaveGrid(220, 40, 8000).map((g) => g.offset), ['−2', '−1', '0', '+1', '+2', '+3', '+4', '+5']);
+  assert.deepEqual(W.octaveGrid(1, 40, 80).map((g) => g.f), [64]);
+  for (const base of [55, 110, 163.3, 220]) for (const g of W.octaveGrid(base, 40, 8000)) { noLeak(g.ratio, 'ratio'); noLeak(g.offset, 'offset'); assert.ok(g.f >= 40 && g.f <= 8000 * (1 + 1e-9)); }
+  // the pitch ring: only every third spoke is named, in cents
+  assert.deepEqual(Array.from({ length: 12 }, (_, k) => W.spokeLabel(k)), ['1/1', '', '', '300¢', '', '', '600¢', '', '', '900¢', '', '']);
+});
+
+test('pure wording: speed buttons are the helper\'s rateLabel (units per beat) and agree with the header', () => {
+  const buttons = W.rateButtons(pure);
+  assert.deepEqual(buttons.map((b) => b.label), ['Live', 'real time', 'λ', 'ι', 'η', 'ζ½', 'δ½', 'Pause', 'Reverse']);
+  assert.deepEqual(buttons.map((b) => b.unit), ['follow now', '', 'per beat', 'per beat', 'per beat', 'per beat', 'per beat', '', '']);
+  // the keys are the rates of the header's speed select, read back exactly (the pressed state compares them with ===)
+  for (const b of buttons.slice(1, 7)) {
+    const say = `${b.label}${b.unit ? ' ' + b.unit : ''}`;
+    assert.equal(pure.rateLabel(Number(b.key)), say, 'the words of a button are what the header says for the same rate');
+    assert.ok(pure.RATES.some((x) => x.rate === Number(b.key) && x.label === say), b.label);
+  }
+  // no bare multiplier on any button, whatever the unit
+  for (const b of buttons) {
+    noLeak(`${b.label} ${b.unit} ${b.tip}`, b.key);
+    assert.doesNotMatch(b.tip, /clock time/);
+    assert.doesNotMatch(`${b.label} ${b.unit}`, /×|\d{3}/, `${b.key}: no ×N`);
+  }
+  assert.deepEqual(W.RATE_BUTTON_UNITS.length, 5);
+});
+
+test('pure wording: a tempo lock reads as a count of one unit per beat, never as a bare multiplier', () => {
+  const unitSec = new Map(pure.UNITS.map((u) => [u.sym, pure.unitSeconds(u)]));
+  let n = 0;
+  for (const depth of [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]) {
+    for (const beatsPerCycle of [0.25, 1, 4, 13.5, 60, 600]) {
+      const rate = tempoRate(model, depth, beatsPerCycle);
+      const say = pure.rateLabel(rate);
+      assert.match(say, /^(\d+(\.\d+)?)?(α|β|γ|δ½|ε½|ζ½|η|ι|λ|μ|ν|ξ) per beat$/, `depth ${depth} in ${beatsPerCycle}`);
+      assert.doesNotMatch(say, /×|,/, 'no bare multiplier, no digit grouping that looks like one');
+      noLeak(say, `lock ${depth}/${beatsPerCycle}`);
+      // the count is honest: count x unit lasts (within the 3 digits shown) as long as the rate says
+      const [, count, sym] = /^((?:\d+(?:\.\d+)?)?)(.+?) per beat$/.exec(say);
+      near(((count === '' ? 1 : Number(count)) * unitSec.get(sym)) / rate, 1, 0.006, say);
+      n++;
+    }
+  }
+  assert.equal(n, 78);
+  // the panel's own sentences are built from the helper's label and the beats of the lock
+  const rate = tempoRate(model, 7, 4);
+  assert.equal(pure.rateLabel(rate), '9ι per beat');
+  const lines = [
+    `${pure.rateLabel(rate)}: one η cycle lasts ${W.fmtBeats(tempoInfo(model, 7, rate).cycle)}; a quarter lasts ${W.fmtBeats(tempoInfo(model, 7, rate).beat)}.`,
+    `Tempo locked: one η cycle = ${W.fmtBeats(4)} (${pure.rateLabel(rate)})`,
+    `Tempo unlocked. The speed stays at ${pure.rateLabel(rate)} until you change it.`,
+  ];
+  assert.equal(lines[0], '9ι per beat: one η cycle lasts 4 beats; a quarter lasts 1 beat.');
+  for (const l of lines) { noLeak(l, l); assert.doesNotMatch(l, /×4/); }
+  // a lock of one cycle in one beat is exactly a named preset
+  assert.equal(pure.rateLabel(tempoRate(model, 7, 1)), 'η per beat');
+  assert.equal(pure.rateLabel(tempoRate(model, 9, 1)), 'ι per beat');
+  assert.equal(pure.rateLabel(-tempoRate(model, 9, 1)), 'ι per beat backward');
+});
+
+test('pure wording: a glyph pair is spoken as two digits in the helper\'s words (never "13·0")', () => {
+  for (const f of [0, 0.0001, 0.0859375, 0.5, 13 / 16 + 4 / 256 + 0.0001, 0.999, 1]) {
+    const p = pure.pair(f);
+    for (const label of ['volume', 'reverb', 'loudness', 'phase']) {
+      const say = W.pairSay(pure, f, label);
+      assert.equal(say, `${label} ${p.hi} and ${p.lo} of 256`);
+      // the same words as the accessible name of the drawn pair
+      assert.match(pure.pairHTML(f, { label }), new RegExp(`aria-label="${say}"`));
+      assert.doesNotMatch(say, /·|\./, 'no dot between the digits: it is read as a decimal');
+      noLeak(say, say);
+    }
+  }
+  assert.equal(W.pairSay(pure, 0.5, 'volume'), 'volume 8 and 0 of 256');
+  assert.equal(W.pairSay(pure, 1, 'reverb'), 'reverb 15 and 15 of 256');
+  assert.equal(W.GLOSSARY_HINT, 'Press ? for the glossary.');
+});
+
+test('pure wording: floors and tempo are counted in beats', () => {
+  assert.deepEqual(
+    FLOORS.map((f) => W.floorLabel(f, f === 0.5 ? 'default' : '')),
+    ['0.05 beats', '0.12 beats', '0.25 beats', '0.5 beats · default', '1 beat'],
+  );
+  // a lock of one cycle of depth 7 in 4 beats is the rate the normal mode calls x4,547; pure mode counts it: 9 ι per beat
+  const rate = tempoRate(model, 7, 4);
+  assert.equal(fmtRate(rate), '×4,547');
+  assert.equal(pure.rateLabel(rate), '9ι per beat');
+  const ti = tempoInfo(model, 7, rate);
+  assert.equal(W.fmtBeats(ti.cycle), '4 beats');
+  assert.equal(W.fmtBeats(ti.beat), '1 beat'); // "a quarter lasts 1 beat"
+});
+
+test('pure wording: every static text and every tooltip is free of Earth references', () => {
+  for (const [h, p] of W.HOW) noLeak(`${h} ${p}`, h);
+  for (const text of [W.CAPTION, W.LEGEND_MIXER, W.LEGEND_RHYTHM]) noLeak(plainText(text), text.slice(0, 30));
+  // "30 Hz" became "30 cycles per beat"; "beats" is the time word, so the musical beat of the normal wording is gone
+  assert.match(W.LEGEND_RHYTHM, /30 cycles per beat/);
+  assert.doesNotMatch(W.HOW.map((x) => x.join(' ')).join(' '), /Tempo lock turns quarters into beats/);
+  noLeak(plainText(W.physicalTip([[ 'ξ', 22.5 ], [ 'ο', 247.7 ], [ 'π', 2229.4 ], [ 'ρ', 8915.2 ]])), 'physical tip');
+  // the tooltip of every voice, with a live reading and without (outside the catalogue)
+  for (const r of rowsT) {
+    const info = model.levelInfo(r.level);
+    for (const live of [null, { phase: 0.3, loud: 0.62, state: 'falling' }, { phase: 0, loud: 0, state: 'rising' }, { phase: 0.9999, loud: 1, state: 'rising' }]) {
+      const html = W.voiceTip({ row: r, info, pure, live, int: fmtInt, color: '#fff' });
+      noLeak(plainText(html), `tip of depth ${r.depth}`);
+      assert.doesNotMatch(plainText(html), /Hz|%|\b[A-G][#♯]?\d\b/);
+      assert.equal((html.match(/class="pure-pair"/g) ?? []).length, live ? 2 : 0, 'phase and loudness are glyph pairs');
+      assert.match(html, new RegExp(`one cycle = ${pure.cycleLength(r.level)}`));
+    }
+  }
+  assert.match(W.nowPure(pure, null), /^outside the catalogue$/);
+});
+
+test('pure wording: the voice tooltip teaches ratio, register and rate in Fractonica terms', () => {
+  const r = rowsT[4]; // epsilon, depth 5
+  const html = W.voiceTip({ row: r, info: model.levelInfo(4), pure, live: { phase: 0.3, loud: 0.5, state: 'falling' }, int: fmtInt, color: '#0ff' });
+  const text = plainText(html);
+  assert.match(text, /^ε depth 5 · one cycle = 2ε½ /);
+  assert.match(text, /1,625 such cycles fit in one α cycle/);
+  assert.match(text, /Folded into one octave: 1625\/1024 = ×1\.59 \(799\.5¢\)/);
+  assert.match(text, /Placed 1 octave above the ground, sounding at 3\.17 : 1 to α/);
+  assert.match(text, /True rate of this cycle: 1 cycle per 1\.40 M beats/);
+  assert.match(text, /Now: phase \(falling\), loudness/);
+  const a = W.voiceTip({ row: rowsT[0], info: model.levelInfo(0), pure, live: null, int: fmtInt, color: '#0ff' });
+  assert.match(plainText(a), /The slowest cycle of the hierarchy is the ground itself: 1 : 1\./);
+  assert.match(plainText(a), /Placed in the ground octave$|Placed in the ground octave True rate/);
+});
+
+test('pure wording: normal mode keeps its numbers (the pure helpers do not replace them)', () => {
+  assert.equal(fmtHz(247.7), '247.7 Hz');
+  assert.equal(fmtOct(-1), '−1 oct');
+  assert.equal(fmtRate(3600), '×3,600');
+  assert.equal(fmtPeriod(16.2 * 86400), '16.2 d');
+  assert.equal(fmtSecondsShort(4), '4 s');
+  assert.equal(fmtDb(-18), '−18 dB');
+  assert.equal(noteLabel(349.2), 'F4 ±0¢');
+  assert.equal(rowsT[2].ratio, '65:64');
 });

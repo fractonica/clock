@@ -405,3 +405,36 @@
   .rings-detail .rings-btns .btn { height: 44px; min-width: 44px; }
   .rings-detail .rings-chip { min-height: 44px; }
 }
+
+/* ---------- pure mode: the same view in Fractonica terms only (data-pure is set on .rings by rings.js) ---------- */
+/* the cycle's own name: the centre carries it itself, so only a dial too small for it (compact) shows it in the card below */
+.rings-fullname { display: none; }
+.rings[data-pure="1"][data-compact="1"] .rings-fullname {
+  display: block;
+  font-size: 15px;
+  font-weight: 650;
+  line-height: 1.3;
+  color: var(--rings-accent);
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+/* quarter chips: every chip has its countdown, only the next one is accented */
+.rings[data-pure="1"] .rings-chip:not(.is-next) .rings-chip-in { color: var(--rings-dim); }
+.rings[data-pure="1"] .rings-chip-time { column-gap: 0.4em; }
+
+/* phase card: the two glyphs (256 states) take the place of the glyph and of the percentage */
+.rings[data-pure="1"] .rings-glyph { display: none; }
+.rings[data-pure="1"] .rings-wh-name { font-size: 15px; white-space: normal; overflow-wrap: anywhere; line-height: 1.25; }
+.rings[data-pure="1"] .rings-wh-sub { white-space: normal; }
+.rings[data-pure="1"] .rings-wh-pct { color: var(--rings-accent); line-height: 1; padding: 2px 0; }
+.rings[data-pure="1"] .rings-wh-pct .pure-pair { gap: 0.18em; }
+.rings[data-pure="1"] .rings-wh-pct .pure-pair svg { height: 44px; }
+.rings[data-pure="1"] .rings-wh-pctl { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.02em; }
+.rings[data-pure="1"] .rings-f-end > .mono,
+.rings[data-pure="1"] .rings-f-start > .mono { white-space: nowrap; }
+
+/* tooltip */
+.rings-tip-phase { display: flex; align-items: center; gap: 6px; color: var(--ink-3); }
+.rings-tip-phase .pure-pair { color: var(--teal); }
+.rings-tip-phase .pure-pair svg { height: 22px; }

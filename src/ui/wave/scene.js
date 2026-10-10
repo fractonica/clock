@@ -13,7 +13,7 @@
  *   the frame of its level-0 ancestor by a translate + uniform scale `toAlpha` (p_alpha = a + k p),
  *   which is what lets the renderer zoom smoothly between levels.
  */
-import { childOf, halfOf, levelMarkers, rowOffset, viewRotation } from './geometry.js';
+import { childOf, focusArcLength, halfOf, levelMarkers, rowOffset, viewRotation } from './geometry.js';
 
 const DEEPEST = 15; // deepest level we ever need a marker for (focus 13 + 2 grandchildren)
 export const LAND = 0.001; // seconds past a half-arc start where navigation lands (so the reading is inside it)
@@ -216,6 +216,23 @@ export function createEngine(model) {
     };
   }
 
+  /**
+   * How many pixels half-arc (level, idx) measures on a W x H stage when it is the focus (focusArcLength). The
+   * half-arcs of one depth are not alike (their sweeps differ, so does the fit), so each is measured for itself, once
+   * per size: a scene is built the first time and remembered.
+   */
+  const pxMemo = new Map();
+  function arcPixels(level, idx, W, H, pad) {
+    const key = `${W}x${H}|${level}|${idx}`;
+    let px = pxMemo.get(key);
+    if (px === undefined) {
+      px = focusArcLength(buildFocus(level, idx), W, H, pad);
+      if (pxMemo.size > 240) pxMemo.clear();
+      pxMemo.set(key, px);
+    }
+    return px;
+  }
+
   /** The arc of a level-`l` half-arc in the frame of `scene`, for markers deeper than the grandchildren. */
   function arcInScene(scene, l, idx) {
     return arcIn(l, idx, { level: scene.level, idx: scene.idx });
@@ -313,6 +330,7 @@ export function createEngine(model) {
     describe,
     readHalves,
     buildFocus,
+    arcPixels,
     arcIn,
     arcInScene,
     markersFor,

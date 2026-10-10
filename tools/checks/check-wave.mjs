@@ -1,6 +1,6 @@
 // Visual / interaction checks for the wave view (headless Chromium through tools/browse.mjs).
 //
-//   node tools/checks/check-wave.mjs [shots|interact|perf|edges|reduced|pinch|stress|all]
+//   node tools/checks/check-wave.mjs [shots|interact|perf|edges|reduced|pinch|stress|labels|regress|pure|solar|all]
 //
 //   shots     screenshots of the wave card at several instants / levels / sizes -> tools/out/wave-*.png
 //   interact  chips, zoom buttons, wheel, keyboard, step buttons, hover tooltips, click, scrub, resize
@@ -14,6 +14,15 @@
 //             no read-out line is clipped or re-wraps while it ticks -> tools/out/wave-labels-*.png
 //   regress   one check per reviewed defect: touch scrub and scroll, wheel, Prev at depth 14, end of the
 //             catalogue, ms fields, disabled controls, announcements, label steadiness, idle redraws, ...
+//   pure      pure mode (docs/design/80-pure.md): the leak scanner of tools/pure-scan.mjs restricted to the wave tab, in
+//             every depth / instant / solar state, hovering everything, announcements, toasts, scrubs, time-lapse, out of
+//             range, the first and last arcs; the live switch both ways (P key, header button) lands on the text of a
+//             fresh load and leaves nothing behind; layout at 1440 and 390 px -> tools/out/wave-pure-*.png
+//   solar     the optional yellow solar wave: toggle, memory, ?solar= (a per-page override), ripple depths (the hint lists
+//             exactly the depths that draw one, on several stage shapes and at the end of the catalogue), pin and dial
+//             tooltips, dragging the pin and the dial (they travel within the sync), keyboard (a click focuses the
+//             slider, focus shows the tooltip, drift is spoken), time-lapse, first / last sync, zooming, cost on and
+//             off, phone -> tools/out/wave-solar-*.png
 //
 // Exit code is non-zero when an assertion fails or the wave module logs an error.
 import path from 'node:path';
@@ -962,7 +971,743 @@ async function labels() {
   }
 }
 
-const modes = { shots, interact, perf, edges, reduced, pinch, stress, regress, labels };
+// ------------------------------------------------------- pure mode ----
+// The pure-mode leak scanner (tools/pure-scan.mjs) restricted to the wave tab, in the states the shared scan cannot reach:
+// every depth and the catalogue at several instants, the solar wave on and off, hovering arcs / loops / dots / the pin /
+// the dial, the announcements after a step, toasts, out-of-range, the first and last (clipped) arcs, a scrub in progress,
+// time-lapse at several speeds; the live switch in both directions (button, P key, ?pure=1); layout at 1440 and 390 px.
+import { installHooks, judge, formatLeaks } from '../pure-scan.mjs';
+
+const WAVE_ONLY = `
+  const visible = (el) => {
+    if (!el.isConnected || el.closest('[hidden]')) return false;
+    const cs = getComputedStyle(el);
+    return cs.display !== 'none' && cs.visibility !== 'hidden' && el.getClientRects().length > 0;
+  };`;
+/** Everything a person can see or hear in the wave tab (and the toast): text, titles, aria labels, options, canvas text. */
+const collectWave = (page) =>
+  page.evaluate(`(() => {
+    ${WAVE_ONLY}
+    const items = [];
+    const add = (kind, text, el) => {
+      const t = String(text ?? '').replace(/\\s+/g, ' ').trim();
+      if (!t) return;
+      const where = el ? (el.id ? '#' + el.id : '') + [...(el.classList ?? [])].slice(0, 2).map((c) => '.' + c).join('') || el.tagName.toLowerCase() : '';
+      items.push({ kind, text: t, where });
+    };
+    for (const root of [document.querySelector('#view-wave'), document.querySelector('#toast')]) {
+      if (!root) continue;
+      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+      for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+        const el = n.parentElement;
+        if (!el || ['SCRIPT', 'STYLE'].includes(el.tagName) || !visible(el)) continue;
+        add('text', n.nodeValue, el);
+      }
+      for (const el of [root, ...root.querySelectorAll('[title],[aria-label],[aria-description],[placeholder],[alt]')]) {
+        if (!visible(el)) continue;
+        for (const a of ['title', 'aria-label', 'aria-description', 'placeholder', 'alt']) if (el.hasAttribute(a)) add('attr:' + a, el.getAttribute(a), el);
+      }
+      for (const t of root.querySelectorAll('svg title')) if (visible(t.parentElement)) add('svg-title', t.textContent, t.parentElement);
+    }
+    for (const c of [...(window.__canvasText ?? [])]) add('canvas', c, null);
+    window.__canvasText = new Set();
+    return items;
+  })()`);
+/** The notation rule (src/core/pure.js): a half-cycle ordinal is "δ½#3", a counter "3η"; "δ½ 3" and "η 3" are the old spellings. */
+const OLD_NOTATION = /(?<![\d#])(?:[δεζ]½|[ηιλ]) \d/;
+const oldNotation = [];
+const waveScan = async (page, state) => {
+  await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+  const items = await collectWave(page);
+  for (const i of items) if (OLD_NOTATION.test(i.text)) oldNotation.push(`${state}: ${i.kind} "${i.text.slice(0, 90)}"`);
+  return judge(items, state);
+};
+/** Soft hits that are not an Earth reference: the clock's own base unit, sync numbers that look like years. */
+const SOFT_OK = (l) => l.rule === 'saros' || l.rule === 'eclipse-date-word' || (l.rule === 'year-number' && /#\d{4}\b|sync \d{4}|Solar sync/.test(l.text));
+
+async function pureCheck() {
+  const T_MIN = -11253795486 + 5;
+  const T_MAX = 28005212035 - 5;
+  const hard = [];
+  const soft = [];
+  const note = (leaks) => {
+    for (const l of leaks) (l.severity === 'hard' ? hard : soft).push(l);
+  };
+
+  // ---- 1. leaks in many states (1440 x 900) ------------------------------------------------------------------
+  await withApp(async ({ page, url, errors }) => {
+    await installHooks(page);
+    const go = async (q, wait = 700) => {
+      await page.goto(url(q));
+      await ready(page);
+      await page.waitForTimeout(wait);
+    };
+    const instants = [['A', T.A], ['2000', T.Y2000], ['2061', T.Y2061], ['catalogue start', T_MIN], ['catalogue end', T_MAX], ['first sync', T_MIN + 2e5], ['last sync', T_MAX - 2e5]];
+    for (const solar of [0, 1]) {
+      for (const [name, t] of instants) {
+        for (const sel of [1, 3, 4, 5, 6, 7, 9, 12, 14]) {
+          await go(`?pure=1&t=${t}&view=wave&sel=${sel}&solar=${solar}`, 450);
+          note(await waveScan(page, `depth ${sel} @ ${name} solar ${solar}`));
+        }
+        await go(`?pure=1&t=${t}&view=wave&solar=${solar}`, 300);
+        await page.evaluate(() => window.__fractonica.instances.wave.showOverview(true));
+        await page.waitForTimeout(800);
+        note(await waveScan(page, `catalogue @ ${name} solar ${solar}`));
+      }
+    }
+    ok('pure: no hard leak in any depth / instant / solar state', hard.length === 0, '\n' + formatLeaks(hard));
+
+    // ---- 2. hovering: arcs, loops, dots, the pin, the dial, chips, buttons ------------------------------------
+    const hoverHard = [];
+    for (const [sel, solar] of [[5, 1], [4, 1], [7, 1], [3, 0], [1, 1]]) {
+      await go(`?pure=1&t=${T.A}&view=wave&sel=${sel}&solar=${solar}`, 600);
+      const box = await page.locator('.wave-canvas').boundingBox();
+      const hits = await hitsOf(page);
+      const spots = [
+        ...hits.arcs.map((a) => ({ ...pointOnHit(box, a, 0.5), n: `${a.kind}${a.idx}` })),
+        ...hits.arcs.map((a) => ({ ...pointOnHit(box, a, 0.2), n: `${a.kind}${a.idx}b` })),
+        ...hits.markers.map((m) => ({ x: box.x + m.x, y: box.y + m.y, n: `marker${m.level}` })),
+        ...(hits.sun ? [{ x: box.x + hits.sun.x, y: box.y + hits.sun.y, n: 'pin' }] : []),
+      ];
+      for (const sp of spots.slice(0, 40)) {
+        await page.mouse.move(sp.x, sp.y);
+        await page.waitForTimeout(200);
+        note(await waveScan(page, `hover ${sp.n} depth ${sel} solar ${solar}`));
+        if (sp.n === 'pin' && sel === 5) {
+          const tipText = (await page.locator('.wave-tip').innerText()).replace(/\n/g, ' | ');
+          ok('pure: the pin tooltip counts the drift in λ (drift −6 236λ style), says what it does, and names no reference', /Drift [−+]?[\d\u202f]+λ/.test(tipText) && /Drag the pin to travel within this sync/.test(tipText) && !/steady|civil|beat count/.test(tipText), tipText);
+        }
+      }
+      for (const selector of ['.wave-sun', '.wave-sun-svg', '.wave-sun-toggle', '.wave-lv-all', '.wave-lv[data-level="6"]', '.wave-lv[data-level="13"]', '[data-step="1"]', '[data-zoom="1"]', '.wave-r-fast', '.wave-r-cyc', '.wave-r-loop']) {
+        const el = page.locator(selector).first();
+        if (!(await el.count()) || !(await el.isVisible())) continue;
+        await el.hover({ timeout: 1500 }).catch(() => {});
+        await page.waitForTimeout(700);
+        note(await waveScan(page, `hover ${selector} depth ${sel}`));
+      }
+    }
+    ok('pure: hovering arcs, loops, dots, the pin, the dial and every control leaks nothing', hard.length === 0, '\n' + formatLeaks(hard));
+
+    // ---- 3. announcements, toasts, drags, keyboard, depth limits ---------------------------------------------
+    await go(`?pure=1&t=${T.A}&view=wave&sel=7&solar=1`, 600);
+    for (const sel of ['[data-step="1"]', '[data-step="-1"]', '[data-zoom="1"]', '[data-zoom="-1"]']) {
+      await page.click(sel);
+      await page.waitForTimeout(900);
+      note(await waveScan(page, `after ${sel}`));
+    }
+    for (let i = 0; i < 8; i++) await page.keyboard.press('Tab');
+    await page.focus('.wave-canvas');
+    for (const k of ['ArrowRight', 'ArrowLeft', 'ArrowUp', 'ArrowDown', 'Home']) {
+      await page.keyboard.press(k);
+      await page.waitForTimeout(900);
+      note(await waveScan(page, `key ${k}`));
+    }
+    await go(`?pure=1&t=${T.A}&view=wave&sel=14&solar=1`, 500);
+    await page.click('[data-zoom="1"]', { force: true }); // aria-disabled: pressing it explains why
+    await page.waitForTimeout(300);
+    note(await waveScan(page, 'toast: the deepest depth'));
+    await page.evaluate(() => window.__fractonica.instances.wave.showOverview(true));
+    await page.waitForTimeout(700);
+    await page.click('[data-zoom="-1"]', { force: true });
+    await page.waitForTimeout(300);
+    note(await waveScan(page, 'toast: the whole catalogue'));
+    await go(`?pure=1&t=${T.A}&view=wave&sel=5&solar=1`, 700);
+    const box = await page.locator('.wave-canvas').boundingBox();
+    const arc = (await hitsOf(page)).arcs.find((a) => a.kind === 'focus');
+    const p0 = pointOnHit(box, arc, 0.3);
+    await page.mouse.move(p0.x, p0.y);
+    await page.mouse.down();
+    for (const f of [0.35, 0.45, 0.6]) {
+      const p = pointOnHit(box, arc, f);
+      await page.mouse.move(p.x, p.y, { steps: 4 });
+      await page.waitForTimeout(250);
+      note(await waveScan(page, `scrubbing at ${f}`));
+    }
+    await page.mouse.up();
+    // the dial: scrub within the sync
+    const dial = await page.locator('.wave-sun-svg').boundingBox();
+    await page.mouse.move(dial.x + dial.width * 0.5, dial.y + dial.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(dial.x + dial.width * 0.7, dial.y + dial.height / 2, { steps: 5 });
+    await page.waitForTimeout(250);
+    note(await waveScan(page, 'scrubbing the dial'));
+    await page.mouse.up();
+    for (const rate of [18188.9, -505.2, 100038.9, 3501360, 1]) {
+      await page.evaluate((r) => window.__fractonica.store.setRate(r), rate);
+      for (const sel of [3, 4, 6, 13]) {
+        await page.evaluate((s) => window.__fractonica.ctx.select(s), sel);
+        await page.waitForTimeout(450);
+        note(await waveScan(page, `time-lapse ${rate} depth ${sel + 1}`));
+      }
+    }
+    await page.evaluate(() => window.__fractonica.store.pause());
+    ok('pure: announcements, toasts, scrubs, keys and time-lapse leak nothing', hard.length === 0, '\n' + formatLeaks(hard));
+    report(errors);
+  }, { viewport: { width: 1440, height: 900 } });
+
+  // ---- 4. out of range and the catalogue edges (a faked device clock) -----------------------------------------
+  for (const [label, ms] of [['after', Date.UTC(3000, 0, 1)], ['before', Date.UTC(1500, 5, 1)]]) {
+    await withApp(async ({ page, url, errors }) => {
+      await installHooks(page);
+      await page.addInitScript((fake) => { Date.now = () => fake; }, ms);
+      for (const solar of [0, 1]) {
+        await page.goto(url(`?pure=1&view=wave&sel=5&solar=${solar}`));
+        await ready(page);
+        await page.waitForTimeout(700);
+        note(await waveScan(page, `out of range (${label}) solar ${solar}`));
+        const text = await page.locator('.wave-r-oor p').innerText();
+        ok(`pure: out of range (${label}) is explained in Fractonica terms, the eclipses numbered like the position (#0 ... #69)`, /Outside the Saros 141 catalogue/.test(text) && /\(#0\)/.test(text) && /\(#69\)/.test(text) && !/\d{4}/.test(text), text);
+        ok(`pure: out of range (${label}): no solar dial, no ripple`, !(await page.locator('.wave-sun').isVisible()) && !(await state(page)).ripple);
+      }
+      report(errors);
+    }, { viewport: { width: 1440, height: 900 } });
+  }
+
+  // ---- 5. the live switch: header button, P key, ?pure=1, in both directions ----------------------------------
+  await withApp(async ({ page, url, errors }) => {
+    await installHooks(page);
+    const fingerprint = async () => {
+      await collectWave(page); // drop what was drawn before
+      await page.waitForTimeout(350);
+      const items = await collectWave(page);
+      const set = (k) => [...new Set(items.filter(k).map((i) => `${i.kind}|${i.text}`))].sort();
+      return { dom: set((i) => i.kind !== 'canvas' && !/wave-tip|wave-live|#toast/.test(i.where)), canvas: set((i) => i.kind === 'canvas') };
+    };
+    const diff = (a, b) => ({ onlyA: a.filter((x) => !b.includes(x)).slice(0, 6), onlyB: b.filter((x) => !a.includes(x)).slice(0, 6) });
+    for (const [sel, solar, overview] of [[5, 1, false], [7, 0, false], [4, 1, false], [3, 1, true]]) {
+      const q = (pure) => `?t=${T.A}&view=wave&zone=UTC&sel=${sel}&solar=${solar}&pure=${pure}`;
+      const setup = async () => {
+        await ready(page);
+        if (overview) await page.evaluate(() => window.__fractonica.instances.wave.showOverview(true));
+        await page.waitForTimeout(900);
+      };
+      await page.goto(url(q(0)));
+      await setup();
+      const normal = await fingerprint();
+      await page.goto(url(q(1)));
+      await setup();
+      const pure = await fingerprint();
+      const tag = `depth ${sel} solar ${solar}${overview ? ' catalogue' : ''}`;
+      ok(`${tag}: pure and normal look different`, normal.dom.join() !== pure.dom.join());
+      // ... and a live switch lands on exactly the text of a fresh load, both ways, with three ways to switch
+      for (const via of ['P key', 'header button']) {
+        await page.goto(url(q(0)));
+        await setup();
+        if (via === 'P key') await page.keyboard.press('p');
+        else await page.click('#btn-pure');
+        await page.waitForTimeout(900);
+        const toPure = await fingerprint();
+        const d1 = diff(toPure.dom, pure.dom);
+        const d2 = diff(toPure.canvas, pure.canvas);
+        ok(`${tag}: switching to pure (${via}) shows what a fresh pure load shows`, !d1.onlyA.length && !d1.onlyB.length && !d2.onlyA.length && !d2.onlyB.length, JSON.stringify({ d1, d2 }).slice(0, 600));
+        const leaks = judge(await collectWave(page), 'x').filter((l) => l.severity === 'hard');
+        ok(`${tag}: nothing Earth-ish is left behind after switching (${via})`, leaks.length === 0, formatLeaks(leaks));
+        if (via === 'P key') await page.keyboard.press('p');
+        else await page.click('#btn-pure');
+        await page.waitForTimeout(900);
+        const back = await fingerprint();
+        const e1 = diff(back.dom, normal.dom);
+        const e2 = diff(back.canvas, normal.canvas);
+        ok(`${tag}: switching back (${via}) shows what a fresh normal load shows`, !e1.onlyA.length && !e1.onlyB.length && !e2.onlyA.length && !e2.onlyB.length, JSON.stringify({ e1, e2 }).slice(0, 600));
+        const stale = [...back.dom, ...back.canvas].filter((s) => /fracton|·\d|\d·|#\d+ |ζ½|ε½|δ½|\bη \d|beat|opening half|closing half|of 256/.test(s));
+        ok(`${tag}: nothing pure is left behind in normal mode (${via})`, stale.length === 0, stale.slice(0, 5).join(' || '));
+      }
+    }
+    // ?pure=1 on a loaded page is a reload; the switch itself must not reload
+    await page.goto(url(`?t=${T.A}&view=wave&zone=UTC&sel=5&solar=1`));
+    await ready(page);
+    await page.evaluate(() => { window.__marker = 'same page'; });
+    await page.keyboard.press('p');
+    await page.waitForTimeout(600);
+    ok('the switch is live: no reload', (await page.evaluate(() => window.__marker)) === 'same page');
+    // a hovered tooltip does not survive the switch with its old words
+    const box = await page.locator('.wave-canvas').boundingBox();
+    const hits = await hitsOf(page);
+    const f = hits.arcs.find((a) => a.kind === 'focus');
+    const pt = pointOnHit(box, f, 0.5);
+    await page.mouse.move(pt.x, pt.y);
+    await page.waitForTimeout(400);
+    const tip1 = await page.locator('.wave-tip').innerText();
+    await page.keyboard.press('p');
+    await page.waitForTimeout(600);
+    await page.mouse.move(pt.x + 2, pt.y + 1);
+    await page.waitForTimeout(400);
+    const tip2 = await page.locator('.wave-tip').innerText();
+    ok('a tooltip is rebuilt in the new vocabulary', /Fracton|ε#5/.test(tip1) && /\d{4}-\d\d-\d\d|ends in \d+ h/.test(tip2), `${tip1.slice(0, 80)} -> ${tip2.slice(0, 80)}`);
+    report(errors);
+  }, { viewport: { width: 1440, height: 900 } });
+
+  // ---- 6. the phone, and the layout of the longer strings ----------------------------------------------------
+  await withApp(async ({ page, url, errors }) => {
+    await installHooks(page);
+    await hideChrome(page);
+    for (const sel of [1, 4, 5, 7, 9, 14]) {
+      for (const solar of [0, 1]) {
+        await page.goto(url(`?pure=1&t=${T.A}&view=wave&sel=${sel}&solar=${solar}`));
+        await ready(page);
+        await page.waitForTimeout(600);
+        note(await waveScan(page, `phone depth ${sel} solar ${solar}`));
+        const m = await page.evaluate(() => {
+          const card = document.querySelector('.wave-card').getBoundingClientRect();
+          const bad = [];
+          for (const el of document.querySelectorAll('.wave-card *')) {
+            if (el.closest('canvas') || !el.getClientRects().length) continue;
+            const r = el.getBoundingClientRect();
+            if (r.width && (r.right > card.right + 1 || r.left < card.left - 1) && !el.closest('.wave-levels') && !el.closest('.wave-sr') && getComputedStyle(el).position !== 'fixed') bad.push(el.className || el.tagName);
+            const cs = getComputedStyle(el);
+            if (cs.textOverflow === 'ellipsis' && el.scrollWidth > el.clientWidth + 1) bad.push('clipped ' + (el.className || el.tagName) + ' ' + el.scrollWidth + '>' + el.clientWidth);
+          }
+          return { overflowX: document.documentElement.scrollWidth - innerWidth, bad: [...new Set(bad)].slice(0, 6) };
+        });
+        ok(`phone depth ${sel} solar ${solar}: no horizontal overflow, nothing clipped`, m.overflowX <= 0 && m.bad.length === 0, JSON.stringify(m));
+      }
+    }
+    for (const [sel, name] of [[5, 'd5'], [7, 'd7'], [1, 'd1']]) {
+      await page.goto(url(`?pure=1&t=${T.A}&view=wave&sel=${sel}&solar=1`));
+      await ready(page);
+      await page.waitForTimeout(700);
+      console.log(await snap(page, `wave-pure-mobile-${name}.png`));
+    }
+    await page.goto(url(`?pure=1&t=${T.A}&view=wave&solar=1`));
+    await ready(page);
+    await page.evaluate(() => window.__fractonica.instances.wave.showOverview(true));
+    await page.waitForTimeout(900);
+    console.log(await snap(page, 'wave-pure-mobile-catalogue.png'));
+    report(errors);
+  }, { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 });
+
+  // ---- 7. the desktop read-out keeps its size while it ticks, and the pictures --------------------------------
+  await withApp(async ({ page, url, errors }) => {
+    await hideChrome(page);
+    for (const solar of [0, 1]) {
+      await page.goto(url(`?pure=1&t=${T.A}&view=wave&sel=7&solar=${solar}&rate=18188.9`));
+      await ready(page);
+      const heights = new Set();
+      const widths = new Set();
+      for (let i = 0; i < 24; i++) {
+        const m = await page.evaluate(() => [Math.round(document.querySelector('.wave-read').getBoundingClientRect().height), Math.round(document.querySelector('.wave-r-side').getBoundingClientRect().width), Math.round(document.querySelector('.wave-sun')?.getBoundingClientRect().height ?? 0)]);
+        heights.add(m.join('x'));
+        widths.add(m[1]);
+        await page.waitForTimeout(160);
+      }
+      ok(`pure desktop solar ${solar}: the read-out and the dial keep their size while the numbers tick`, heights.size === 1, [...heights].join(' '));
+    }
+    for (const [q, name] of [
+      [`?pure=1&t=${T.A}&view=wave&sel=5&solar=1`, 'd5-solar'],
+      [`?pure=1&t=${T.A}&view=wave&sel=4&solar=1`, 'd4-solar'],
+      [`?pure=1&t=${T.A}&view=wave&sel=7&solar=1`, 'd7-solar'],
+      [`?pure=1&t=${T.A}&view=wave&sel=1`, 'd1'],
+      [`?pure=1&t=${T.A}&view=wave&sel=11`, 'd11'],
+      [`?pure=1&t=${T.Y2000}&view=wave&sel=5&solar=1`, 'y2000-d5-solar'],
+      [`?pure=1&t=${T.Y2061}&view=wave&sel=6&solar=1`, 'y2061-d6-solar'],
+    ]) {
+      await page.goto(url(q));
+      await ready(page);
+      await page.waitForTimeout(800);
+      console.log(await snap(page, `wave-pure-${name}.png`));
+    }
+    await page.goto(url(`?pure=1&t=${T.A}&view=wave&solar=1`));
+    await ready(page);
+    await page.evaluate(() => window.__fractonica.instances.wave.showOverview(true));
+    await page.waitForTimeout(900);
+    console.log(await snap(page, 'wave-pure-catalogue.png'));
+    report(errors);
+  }, { viewport: { width: 1440, height: 900 } });
+
+  // ---- verdict: the notation rule, then soft hits are only the clock's own words and numbers ---------------------
+  ok('pure: no old-style "δ½ 3" / "η 3" anywhere in the wave tab (ordinals are X#n, counters nX)', oldNotation.length === 0, '\n' + [...new Set(oldNotation)].slice(0, 8).join('\n'));
+  const odd = soft.filter((l) => !SOFT_OK(l));
+  ok('pure: every soft hit is the clock\'s own base unit (Saros), the eclipse series or a sync number', odd.length === 0, '\n' + formatLeaks(odd, { soft: true }));
+  console.log(`soft hits kept (${soft.length}): ${[...new Set(soft.map((l) => l.rule + ' "' + l.match + '"'))].slice(0, 12).join(', ')}`);
+}
+
+// ------------------------------------------------------ solar wave ----
+async function solar() {
+  const T_MIN = -11253795486 + 5;
+  const T_MAX = 28005212035 - 5;
+  await withApp(async ({ page, url, errors }) => {
+    const wave = (fn, ...a) => page.evaluate(fn, ...a);
+    const store = () => page.evaluate(() => { try { return JSON.parse(localStorage.getItem('fractonica-clock/wave') ?? '{}'); } catch { return null; } });
+    await open(page, url, `?t=${T.A}&view=wave&zone=UTC&sel=5`);
+    ok('the solar wave is off by default: no dial, no ripple, the toggle is not pressed', !(await page.locator('.wave-sun').isVisible()) && (await page.getAttribute('.wave-sun-toggle', 'aria-pressed')) === 'false' && !(await state(page)).solar);
+    ok('and the legend and caption do not mention it', !(await page.locator('.wave-leg-sun').isVisible()) && (await page.locator('.wave-caption-sun').innerText()) === '');
+    const before = await page.locator('.wave-caption').innerText();
+    // ---- toggle, remembered, link parameter
+    await page.click('.wave-sun-toggle');
+    await page.waitForTimeout(500);
+    ok('the Solar button turns it on: pressed, dial shown, state set', (await page.getAttribute('.wave-sun-toggle', 'aria-pressed')) === 'true' && (await page.locator('.wave-sun').isVisible()) && (await state(page)).solar);
+    ok('it is remembered in localStorage', (await store())?.solar === true, JSON.stringify(await store()));
+    ok('the caption explains the picture in one sentence and the legend names the wave', /yellow ripple is the solar sync/.test(await page.locator('.wave-caption').innerText()) && /solar sync: 19 η cycles/.test(await page.locator('.wave-leg-sun').innerText()));
+    ok('the caption says where it is drawn: one and a half syncs or more, not "two"', /where one and a half or more fit/.test(await page.locator('.wave-caption').innerText()) && !/at least two/.test(await page.locator('.wave-caption').innerText()));
+    ok('the wave caption is unchanged apart from the added sentence', (await page.locator('.wave-caption').innerText()).startsWith(before));
+    await open(page, url, `?t=${T.A}&view=wave&zone=UTC&sel=5`);
+    ok('after a reload it is still on', (await state(page)).solar && (await page.locator('.wave-sun').isVisible()));
+    await open(page, url, `?t=${T.A}&view=wave&zone=UTC&sel=5&solar=0`);
+    ok('?solar=0 in a link turns it off for that page', !(await state(page)).solar && !(await page.locator('.wave-sun').isVisible()));
+    await page.click('.wave-sun-toggle');
+    await page.waitForTimeout(300);
+    await page.click('.wave-sun-toggle');
+    await page.waitForTimeout(300);
+    ok('off again leaves nothing behind (dial hidden, caption sentence gone, nothing stored as on)', !(await state(page)).solar && !(await page.locator('.wave-sun').isVisible()) && (await page.locator('.wave-caption-sun').innerText()) === '' && (await store())?.solar === false);
+    // keyboard: Tab to the button, Space toggles
+    await page.focus('.wave-sun-toggle');
+    await page.keyboard.press('Space');
+    await page.waitForTimeout(300);
+    ok('keyboard: Space on the button toggles it', (await state(page)).solar);
+    ok('the button has a focus ring and a title that explains the wave', /19 η cycles/.test(await page.getAttribute('.wave-sun-toggle', 'title')));
+    await page.keyboard.press('Enter');
+    await page.waitForTimeout(300);
+    ok('keyboard: Enter toggles it back', !(await state(page)).solar);
+    ok('the title says where the ripple is drawn: one and a half syncs or more', /where one and a half or more syncs fit/.test(await page.getAttribute('.wave-sun-toggle', 'title')) && !/two or more/.test(await page.getAttribute('.wave-sun-toggle', 'title')));
+
+    // ---- a link is a per-page override: only the Solar button changes the remembered setting
+    const setStore = (v) => page.evaluate((x) => localStorage.setItem('fractonica-clock/wave', JSON.stringify(x)), v);
+    await page.evaluate(() => localStorage.removeItem('fractonica-clock/wave'));
+    await open(page, url, `?t=${T.A}&view=wave&zone=UTC&sel=5&solar=1`);
+    ok('?solar=1 shows the wave on that page', (await state(page)).solar && (await page.locator('.wave-sun').isVisible()));
+    await page.click('.wave-lv-all');
+    await page.waitForTimeout(300);
+    ok('an unrelated click (the catalogue chip) does not save the link\'s value as the preference', (await store())?.solar === false, JSON.stringify(await store()));
+    await open(page, url, `?t=${T.A}&view=wave&zone=UTC&sel=5`);
+    ok('a plain visit afterwards has the wave off', !(await state(page)).solar);
+    await setStore({ solar: true });
+    await open(page, url, `?t=${T.A}&view=wave&zone=UTC&sel=5&solar=0`);
+    ok('?solar=0 over a remembered "on": off on that page', !(await state(page)).solar);
+    await page.click('.wave-lv-all');
+    await page.waitForTimeout(300);
+    ok('... and the remembered "on" survives an unrelated click', (await store())?.solar === true, JSON.stringify(await store()));
+    await open(page, url, `?t=${T.A}&view=wave&zone=UTC&sel=5`);
+    ok('... so a plain visit shows it', (await state(page)).solar);
+    await page.click('.wave-sun-toggle');
+    await page.waitForTimeout(300);
+    ok('the button is what changes the memory', (await store())?.solar === false && !(await state(page)).solar);
+    for (const v of ['off', 'no', 'yes', 'on', 'banana', '', '2', '0.0']) {
+      for (const remembered of [false, true]) {
+        await setStore({ solar: remembered });
+        await open(page, url, `?t=${T.A}&view=wave&zone=UTC&sel=5&solar=${v}`);
+        if ((await state(page)).solar !== remembered) ok(`?solar=${v} is ignored (remembered ${remembered})`, false, String((await state(page)).solar));
+      }
+    }
+    ok('?solar= with anything but 1 / 0 / true / false is ignored (off / no / yes / on / banana / empty / 2 / 0.0)', true);
+    for (const [v, want] of [['TRUE', true], ['False', false], ['true', true], ['false', false]]) {
+      await setStore({ solar: !want });
+      await open(page, url, `?t=${T.A}&view=wave&zone=UTC&sel=5&solar=${v}`);
+      ok(`?solar=${v} is understood`, (await state(page)).solar === want);
+    }
+    await setStore({});
+
+    // ---- the ripple lives at the depths where one sync is a few arc lengths
+    const rows = [];
+    for (let sel = 1; sel <= 14; sel++) {
+      await open(page, url, `?t=${T.A}&view=wave&zone=UTC&sel=${sel}&solar=1`);
+      await page.waitForTimeout(450);
+      const st = await state(page);
+      const hits = await hitsOf(page);
+      const hint = (await page.locator('.wave-sun-hint').innerText()).trim();
+      rows.push({ sel, ripple: st.ripple, pin: !!hits.sun, hint });
+    }
+    ok('the ripple and its pin appear at depths 4 and 5 only (desktop)', rows.every((r) => r.ripple === (r.sel === 4 || r.sel === 5) && r.pin === r.ripple), JSON.stringify(rows.filter((r) => r.ripple || r.pin)));
+    ok('elsewhere the hint says where the ripple is', rows.filter((r) => !r.ripple).every((r) => r.hint === 'ripple at depths 4–5'), JSON.stringify(rows.filter((r) => !r.ripple).map((r) => r.hint)));
+    ok('and where it is drawn, the hint is empty', rows.filter((r) => r.ripple).every((r) => r.hint === ''));
+    await open(page, url, `?t=${T.A}&view=wave&zone=UTC&sel=3&solar=1`);
+    await page.evaluate(() => window.__fractonica.instances.wave.showOverview(true));
+    await page.waitForTimeout(800);
+    ok('the catalogue has the dial and the hint but no ripple', !(await state(page)).ripple && (await page.locator('.wave-sun').isVisible()) && /ripple at depths/.test(await page.locator('.wave-sun-hint').innerText()));
+
+    // ---- at the end of the catalogue the last ε half-arc is clipped (1.01 syncs): no ripple at depth 5, and the hint no longer claims one
+    await open(page, url, `?t=28004952836&view=wave&zone=UTC&sel=5&solar=1`);
+    const endHint = (await page.locator('.wave-sun-hint').innerText()).trim();
+    ok('a clipped last ε arc draws no ripple, and the hint does not claim one at depth 5', !(await state(page)).ripple && /^ripple at depth 4$/.test(endHint), `ripple ${(await state(page)).ripple}, hint "${endHint}"`);
+
+    // ---- the dial reads the model
+    await open(page, url, `?t=${T.A}&view=wave&zone=UTC&sel=5&solar=1`);
+    const sun = await wave(() => window.__fractonica.model.solarAt(window.__fractonica.store.t()));
+    ok('the dial shows the sync number of the model', (await page.locator('.wave-sun-n').innerText()) === `#${sun.sync}`, `${await page.locator('.wave-sun-n').innerText()} vs ${sun.sync}`);
+    ok('the dial phase is the floored percentage of the model', (await page.locator('.wave-sun-ph').innerText()).trim() === `${Math.floor(sun.phase * 100)} %`, await page.locator('.wave-sun-ph').innerText());
+    ok('the next quarter is named with its countdown', new RegExp(`^${sun.threshold.name} in `).test((await page.locator('.wave-sun-nx').innerText()).trim()), await page.locator('.wave-sun-nx').innerText());
+    const sync = (await state(page)).sun;
+    ok('the ripple works from the position grid and agrees with the model', sync.sync === sun.sync && Math.abs(sync.phase - sun.phase) < 1e-6);
+
+    // ---- hover: the pin and the dial tooltips
+    const box = await page.locator('.wave-canvas').boundingBox();
+    const hits = await hitsOf(page);
+    await page.mouse.move(box.x + hits.sun.x, box.y + hits.sun.y);
+    await page.waitForTimeout(400);
+    const pinTip = await page.locator('.wave-tip').innerText();
+    ok('hovering the pin explains the sync: number, phase, next quarter, drift', /Solar sync #−?\d+/.test(pinTip) && /Phase \d+ % of this 4-day sync/.test(pinTip) && /Next (peak|node|valley|end) in/.test(pinTip) && /Drift against civil days/.test(pinTip), pinTip.replace(/\n/g, ' | '));
+    ok('and what it promises is what the pin does: drag it', /Drag the pin to travel within this sync/.test(pinTip) && !/Click or drag the wave/.test(pinTip), pinTip.replace(/\n/g, ' | '));
+    ok('the cursor over the pin is a hand to grab', (await page.evaluate(() => document.querySelector('.wave-canvas').style.cursor)) === 'grab');
+    ok('and the pin is marked as hovered (hover state)', (await state(page)).hover?.kind === 'sun');
+    await page.mouse.move(box.x + 30, box.y + box.height - 30);
+    await page.waitForTimeout(300);
+    ok('the tooltip goes away', !(await page.locator('.wave-tip').isVisible()));
+    const dbox = await page.locator('.wave-sun').boundingBox();
+    await page.mouse.move(dbox.x + 40, dbox.y + dbox.height / 2);
+    await page.waitForTimeout(400);
+    ok('hovering the dial shows the sync, and says the wave there is clicked or dragged', /Solar sync #−?\d+/.test(await page.locator('.wave-tip').innerText()) && /Click or drag the wave to travel within this sync/.test(await page.locator('.wave-tip').innerText()));
+    await page.mouse.move(dbox.x + dbox.width / 2, dbox.y - 60);
+    await page.waitForTimeout(300);
+
+    // ---- travel within the sync: click and drag along the dial
+    const svg = await page.locator('.wave-sun-svg').boundingBox();
+    const t0 = await timeOf(page);
+    const s0 = (await state(page)).sun;
+    await page.mouse.click(svg.x + svg.width * 0.85, svg.y + svg.height / 2);
+    await page.waitForTimeout(400);
+    const s1 = (await state(page)).sun;
+    ok('clicking the dial travels to that phase of the same sync', s1.sync === s0.sync && s1.phase > 0.75 && s1.phase < 0.95 && (await timeOf(page)) > t0, `${s0.phase.toFixed(3)} -> ${s1.phase.toFixed(3)}`);
+    await page.mouse.move(svg.x + svg.width * 0.3, svg.y + 10);
+    await page.mouse.down();
+    await page.mouse.move(svg.x + svg.width * 0.1, svg.y + 10, { steps: 6 });
+    await page.mouse.up();
+    await page.waitForTimeout(400);
+    const s2 = (await state(page)).sun;
+    ok('dragging along it scrubs', s2.sync === s0.sync && s2.phase < 0.2, `${s2.phase.toFixed(3)}`);
+
+    // ---- the pin is a handle: a press alone does nothing, a drag travels within the sync and never leaves it
+    // (three and a half days earlier the pin stands in a sync that lies wholly on the ε arc, so both of its ends are on it)
+    await open(page, url, `?t=${T.A - 3.5 * 86400}&view=wave&zone=UTC&sel=5&solar=1`);
+    const pb = await page.locator('.wave-canvas').boundingBox();
+    const ph = (await hitsOf(page)).sun;
+    const sync0 = (await state(page)).sun;
+    const [, arcIdx] = (await state(page)).scene.split(':').map(Number);
+    const P4 = await page.evaluate(() => window.__fractonica.model.levelInfo(4).prefixNum);
+    const P6 = 125125;
+    // the progress along the half-arc of the point of sync coordinate c (position-linear, as the arc is)
+    const progressOf = (c) => (((c * 19 + (20 * P6) / 4) * 4) / P6) * (P4 / 2) - arcIdx;
+    ok('the sync of the pin lies wholly on the arc (the test\'s premise)', progressOf(sync0.sync) > 0.02 && progressOf(sync0.sync + 1) < 0.98, `${progressOf(sync0.sync).toFixed(3)} .. ${progressOf(sync0.sync + 1).toFixed(3)}`);
+    const tPin0 = await timeOf(page);
+    await page.mouse.move(pb.x + ph.x, pb.y + ph.y);
+    await page.mouse.down();
+    await page.mouse.up();
+    await page.waitForTimeout(300);
+    ok('a press on the pin changes nothing', Math.abs((await timeOf(page)) - tPin0) < 1, `${(await timeOf(page)) - tPin0} s`);
+    const arc = (await hitsOf(page)).arcs.find((a) => a.kind === 'focus');
+    const dragTo = async (progress) => {
+      const hh = (await hitsOf(page)).sun;
+      await page.mouse.move(pb.x + hh.x, pb.y + hh.y);
+      await page.mouse.down();
+      const p = pointOnHit(pb, arc, progress);
+      await page.mouse.move(p.x, p.y, { steps: 8 });
+      await page.waitForTimeout(250);
+      const mid = (await state(page)).sun;
+      await page.mouse.up();
+      await page.waitForTimeout(300);
+      return mid;
+    };
+    const farRight = await dragTo(0.995);
+    ok('dragging the pin to the far end of the arc stops at the end of its own sync (it does not enter the next)', farRight.sync === sync0.sync && farRight.phase > 0.99, `${sync0.phase.toFixed(3)} -> sync ${farRight.sync} phase ${farRight.phase.toFixed(3)}`);
+    const farLeft = await dragTo(0.005);
+    ok('... and to the far start: held at the start of the same sync', farLeft.sync === sync0.sync && farLeft.phase < 0.01, `sync ${farLeft.sync} phase ${farLeft.phase.toFixed(3)}`);
+    const want = 0.7;
+    const near70 = await dragTo(progressOf(sync0.sync + want));
+    ok('... a point of the arc inside the sync lands on that phase of it', near70.sync === sync0.sync && Math.abs(near70.phase - want) < 0.03, `${near70.phase.toFixed(3)} (wanted ${want})`);
+    ok('the time moved (it is the clock that travels)', Math.abs((await timeOf(page)) - tPin0) > 1000);
+
+    // ---- keyboard: a click focuses the slider, arrows travel, focus shows the tooltip, drift is spoken
+    await open(page, url, `?t=${T.A}&view=wave&zone=UTC&sel=5&solar=1`);
+    const dsvg = await page.locator('.wave-sun-svg').boundingBox();
+    await page.mouse.click(dsvg.x + dsvg.width * 0.5, dsvg.y + dsvg.height / 2);
+    await page.waitForTimeout(300);
+    ok('a click on the dial focuses the slider', (await page.evaluate(() => document.activeElement?.classList.contains('wave-sun-svg'))) === true);
+    const k0 = (await state(page)).sun.phase;
+    await page.keyboard.press('ArrowRight');
+    await page.waitForTimeout(300);
+    const k1 = (await state(page)).sun.phase;
+    ok('ArrowRight right after the click travels by 1/32 of the sync', k1 > k0 && Math.abs(k1 - k0 - 1 / 32) < 0.01, `${k0.toFixed(3)} -> ${k1.toFixed(3)}`);
+    await page.keyboard.press('PageDown');
+    await page.waitForTimeout(300);
+    const k2 = (await state(page)).sun.phase;
+    ok('PageDown goes back a quarter', Math.abs(k1 - k2 - 0.25) < 0.01, `${k1.toFixed(3)} -> ${k2.toFixed(3)}`);
+    await page.mouse.move(5, 5);
+    await page.evaluate(() => document.activeElement?.blur());
+    await page.waitForTimeout(250);
+    ok('no tooltip while nothing is focused or hovered', !(await page.locator('.wave-tip').isVisible()));
+    await page.focus('.wave-sun-svg');
+    await page.waitForTimeout(300);
+    const keyTip = await page.locator('.wave-tip').innerText();
+    ok('keyboard focus on the dial shows its tooltip: sync, phase, next quarter, drift, and the keys', /Solar sync #−?\d+/.test(keyTip) && /Drift against civil days/.test(keyTip) && /Arrow keys travel within this sync/.test(keyTip), keyTip.replace(/\n/g, ' | '));
+    const groupLabel = await page.getAttribute('.wave-sun', 'aria-label');
+    ok('the dial\'s spoken label carries the drift as well', /drift against civil days −?\+?\d+ h \d+ min\./.test(groupLabel), groupLabel);
+    ok('the slider says its keys (aria-description)', /Arrow keys travel within the sync/.test((await page.getAttribute('.wave-sun-svg', 'aria-description')) ?? ''));
+    await page.evaluate(() => document.activeElement?.blur());
+    await page.waitForTimeout(250);
+    ok('the tooltip goes when the focus does', !(await page.locator('.wave-tip').isVisible()));
+
+    // ---- negative syncs use the app's minus; the first and last sync explain themselves, and the slider forgets its value
+    await open(page, url, `?t=-2200000000&view=wave&zone=UTC&sel=5&solar=1`);
+    const neg = await page.locator('.wave-sun-n').innerText();
+    ok('a sync before the anchor is written with the app\'s minus (U+2212), not a hyphen', /^#−\d+$/.test(neg.trim()), neg);
+    ok('... in the spoken label too', /^Solar sync −\d+,/.test(await page.getAttribute('.wave-sun', 'aria-label')));
+    await open(page, url, `?t=${T.A}&view=wave&zone=UTC&sel=5&solar=1`);
+    ok('a live sync has a slider value', (await page.getAttribute('.wave-sun-svg', 'aria-valuenow')) !== null);
+    await page.evaluate((t) => window.__fractonica.ctx.goto(t, 'jump'), T_MIN + 86400);
+    await page.waitForTimeout(700);
+    ok('moving into the first sync clears the slider value (nothing stale is spoken)', (await page.getAttribute('.wave-sun-svg', 'aria-valuenow')) === null && (await page.getAttribute('.wave-sun-svg', 'aria-valuetext')) === null && (await page.getAttribute('.wave-sun-svg', 'aria-disabled')) === 'true');
+    const eh = (await hitsOf(page)).sun;
+    ok('the pin is still drawn there', !!eh);
+    if (eh) {
+      const eb = await page.locator('.wave-canvas').boundingBox();
+      await page.mouse.move(eb.x + eh.x, eb.y + eh.y);
+      await page.waitForTimeout(300);
+      const edgeTip = await page.locator('.wave-tip').innerText();
+      ok('hovering it explains that the sync is cut short (a tooltip, not a silent pointer)', /Solar sync #−\d+/.test(edgeTip) && /Not defined within 3 days of the catalogue edge/.test(edgeTip), edgeTip.replace(/\n/g, ' | '));
+      ok('and it is not a handle there: the cursor is the plain one', (await page.evaluate(() => document.querySelector('.wave-canvas').style.cursor)) === 'default');
+      const te = await timeOf(page);
+      await page.mouse.down();
+      await page.mouse.move(eb.x + eh.x + 40, eb.y + eh.y + 10, { steps: 4 });
+      await page.mouse.up();
+      await page.waitForTimeout(250);
+      ok('and a drag on it does not move the time', Math.abs((await timeOf(page)) - te) < 1);
+    }
+
+    // ---- the pin and the dial follow time-lapse; every quarter is passed in order
+    await open(page, url, `?t=${T.A}&view=wave&zone=UTC&sel=5&solar=1&rate=3501360`);
+    const seen = [];
+    for (let i = 0; i < 40; i++) {
+      const s = (await state(page)).sun;
+      if (s) seen.push(`${s.sync}.${s.quarter}`);
+      await page.waitForTimeout(120);
+    }
+    const uniq = [...new Set(seen)];
+    ok('time-lapse: the sync and its quarter advance (sync ".quarter")', uniq.length >= 4, uniq.join(' '));
+    const marks = [];
+    for (let i = 0; i < 6; i++) {
+      marks.push(await page.evaluate(() => ({ tr: document.querySelector('.wave-sun-mark').getAttribute('transform'), n: document.querySelector('.wave-sun-n').textContent, pin: window.__fractonica.instances.wave.getHits().sun })));
+      await page.waitForTimeout(180);
+    }
+    ok('time-lapse: the dial dot moves', new Set(marks.map((m) => m.tr)).size > 2, marks.map((m) => m.tr).join(' '));
+    ok('time-lapse: the pin moves along the arc (or the arc changes)', new Set(marks.map((m) => JSON.stringify(m.pin))).size > 2);
+    await page.evaluate(() => window.__fractonica.store.pause());
+
+    // ---- the first and the last sync of the catalogue have no model reading: the dial says so, the ripple still works
+    for (const [label, t] of [['first', T_MIN + 2e5], ['last', T_MAX - 2e5]]) {
+      await open(page, url, `?t=${t}&view=wave&zone=UTC&sel=5&solar=1`);
+      await page.waitForTimeout(500);
+      const dialText = await page.locator('.wave-sun').innerText();
+      ok(`the ${label} sync of the catalogue: the dial says it is not defined there`, /Not defined within 3 days of the catalogue edge/.test(dialText) && (await page.getAttribute('.wave-sun', 'data-state')) === 'edge', dialText.replace(/\n/g, ' | '));
+      // the ripple needs 1.5 syncs on the arc; the last ε half-arc of the catalogue is cut to half its length, so it has none
+      const [lv, idx] = (await state(page)).scene.split(':').map(Number);
+      const frac = await page.evaluate(([lv, idx]) => { const m = window.__fractonica.model; const P = m.levelInfo(lv).prefixNum; return Math.min(1, (m.extent * P - 2 * idx) / 2); }, [lv, idx]);
+      const want = frac * 2.026 >= 1.5;
+      ok(`the ${label} sync of the catalogue: the ripple is drawn exactly when the arc (${frac.toFixed(2)} of a half-arc) carries 1.5 syncs`, (await state(page)).ripple === want && !!(await hitsOf(page)).sun === want, `ripple ${(await state(page)).ripple}`);
+    }
+    await open(page, url, `?t=${T_MAX - 0.0001}&view=wave&zone=UTC&sel=4&solar=1`);
+    await page.waitForTimeout(500);
+    console.log(await snap(page, 'wave-solar-last-arc.png'));
+    ok('the clipped last δ half-arc (half of its length, 5 syncs) carries its ripple as far as it goes', (await state(page)).ripple && !!(await hitsOf(page)).sun);
+
+    // ---- zooming with the wave on never throws (cross-fades of scenes with and without ripple)
+    await open(page, url, `?t=${T.A}&view=wave&zone=UTC&sel=4&solar=1`);
+    for (const dir of [1, 1, 1, -1, -1, -1, -1, -1]) {
+      await page.click(`[data-zoom="${dir}"]`);
+      await page.waitForTimeout(240);
+      await page.screenshot({ path: path.join(out, 'wave-solar-zoom.png') });
+    }
+    await page.waitForTimeout(900);
+    ok('zooming through the ripple depths with the wave on settles on a scene', !!(await state(page)).scene);
+    report(errors);
+  }, { viewport: { width: 1440, height: 900 } });
+
+  // ---- the hint lists exactly the depths that draw a ripple, whatever the shape of the stage ----------------------
+  // (it used to estimate from one canonical arc: wrong on a 1300 x 1000 window, where the real arcs are fitted larger)
+  for (const [vp, tag] of [[{ width: 1300, height: 1000 }, '1300x1000'], [{ width: 1920, height: 1080 }, '1920x1080'], [{ width: 1100, height: 700 }, '1100x700'], [{ width: 2560, height: 1440 }, '2560x1440'], [{ width: 390, height: 844 }, 'phone']]) {
+    await withApp(async ({ page, url, errors }) => {
+      const rows = [];
+      for (let sel = 1; sel <= 14; sel++) {
+        await open(page, url, `?t=${T.A}&view=wave&zone=UTC&sel=${sel}&solar=1`);
+        await page.waitForTimeout(350);
+        rows.push({ sel, ripple: (await state(page)).ripple, pin: !!(await hitsOf(page)).sun, hint: (await page.locator('.wave-sun-hint').innerText()).trim() });
+      }
+      const depths = rows.filter((r) => r.ripple).map((r) => r.sel);
+      const run = depths.every((d, i) => !i || d === depths[i - 1] + 1);
+      const expect = !depths.length ? 'no ripple here: these arcs are too short' : depths.length === 1 ? `ripple at depth ${depths[0]}` : run ? `ripple at depths ${depths[0]}–${depths.at(-1)}` : `ripple at depths ${depths.join(', ')}`;
+      const wrong = rows.filter((r) => (r.ripple ? r.hint !== '' : r.hint !== expect));
+      ok(`${tag}: the hint lists exactly the depths that draw a ripple (${depths.join(', ') || 'none'})`, wrong.length === 0, JSON.stringify(wrong));
+      ok(`${tag}: a pin on every depth that draws a ripple, none elsewhere`, rows.every((r) => r.pin === r.ripple));
+      report(errors);
+    }, { viewport: vp });
+  }
+
+  // ---- cost: nearly nothing when off, small when on -------------------------------------------------------------
+  await withApp(async ({ page, url, errors }) => {
+    await page.goto(url('?view=wave&zone=UTC&sel=5'));
+    await ready(page);
+    const measure = (solarOn, level, extra) =>
+      page.evaluate(
+        async ({ solarOn, level, extra }) => {
+          const F = window.__fractonica;
+          const inst = F.instances.wave;
+          inst.setSolar(solarOn);
+          if (extra === 'overview') inst.showOverview(true);
+          else {
+            inst.showOverview(false);
+            F.ctx.select(level);
+          }
+          if (extra === 'lapse') F.store.setRate(3501360);
+          await new Promise((r) => setTimeout(r, 900));
+          const orig = inst.render;
+          const samples = [];
+          inst.render = (frame, info) => {
+            const t0 = performance.now();
+            orig(frame, info);
+            samples.push(performance.now() - t0);
+          };
+          await new Promise((r) => setTimeout(r, 2200));
+          inst.render = orig;
+          if (extra === 'lapse') F.store.pause();
+          samples.sort((a, b) => a - b);
+          const n = samples.length;
+          return { n, median: samples[n >> 1], p95: samples[Math.floor(n * 0.95)], max: samples[n - 1] };
+        },
+        { solarOn, level, extra },
+      );
+    const cost = {};
+    for (const [label, level, extra] of [['live depth 5', 4], ['live depth 4', 3], ['live depth 7', 6], ['live catalogue', 0, 'overview'], ['time-lapse x3.5M, depth 5', 4, 'lapse'], ['time-lapse x3.5M, depth 4', 3, 'lapse']]) {
+      for (const on of [false, true]) {
+        const r = await measure(on, level, extra);
+        cost[`${label} ${on}`] = r;
+        ok(`${label}, solar ${on ? 'on' : 'off'}: median ${r.median.toFixed(2)} ms, p95 ${r.p95.toFixed(2)} ms, max ${r.max.toFixed(2)} ms (${r.n} frames)`, r.median < 3 && r.p95 < 6);
+      }
+      const off = cost[`${label} false`];
+      const on = cost[`${label} true`];
+      ok(`${label}: the wave on costs under 0.6 ms more at the median than off`, on.median - off.median < 0.6, `off ${off.median.toFixed(3)} on ${on.median.toFixed(3)}`);
+    }
+    report(errors);
+  }, { viewport: { width: 1440, height: 900 }, deviceScaleFactor: 2 });
+
+  // ---- phone and the pictures -----------------------------------------------------------------------------------
+  for (const [vp, tag, dpr] of [[{ width: 1440, height: 900 }, 'desktop', 1], [{ width: 390, height: 844 }, 'mobile', 2]]) {
+    await withApp(async ({ page, url, errors }) => {
+      await hideChrome(page);
+      for (const [q, name] of [
+        [`?t=${T.A}&view=wave&zone=UTC&sel=5&solar=1`, 'd5'],
+        [`?t=${T.A}&view=wave&zone=UTC&sel=4&solar=1`, 'd4'],
+        [`?t=${T.A}&view=wave&zone=UTC&sel=3&solar=1`, 'd3'],
+        [`?t=${T.A}&view=wave&zone=UTC&sel=7&solar=1`, 'd7'],
+        [`?t=${T.Y2000}&view=wave&zone=UTC&sel=5&solar=1`, 'y2000-d5'],
+        [`?t=${T.Y2061}&view=wave&zone=UTC&sel=4&solar=1`, 'y2061-d4'],
+        [`?t=${T.A + 86400 * 1.4}&view=wave&zone=UTC&sel=5&solar=1`, 'later-d5'],
+        [`?t=${T.A + 86400 * 2.9}&view=wave&zone=UTC&sel=5&solar=1`, 'later2-d5'],
+      ]) {
+        await page.goto(url(q));
+        await ready(page);
+        await page.waitForTimeout(700);
+        console.log(await snap(page, `wave-solar-${tag}-${name}.png`));
+        const m = await page.evaluate(() => ({ overflowX: document.documentElement.scrollWidth - innerWidth, dial: (() => { const r = document.querySelector('.wave-sun').getBoundingClientRect(); const c = document.querySelector('.wave-card').getBoundingClientRect(); return r.right <= c.right + 1 && r.left >= c.left - 1; })() }));
+        ok(`${tag} ${name}: the dial fits the card and the page does not scroll sideways`, m.dial && m.overflowX <= 0, JSON.stringify(m));
+      }
+      await page.goto(url(`?t=${T.A}&view=wave&zone=UTC&solar=1`));
+      await ready(page);
+      await page.evaluate(() => window.__fractonica.instances.wave.showOverview(true));
+      await page.waitForTimeout(900);
+      console.log(await snap(page, `wave-solar-${tag}-catalogue.png`));
+      report(errors);
+    }, { viewport: vp, deviceScaleFactor: dpr });
+  }
+}
+
+const modes = { shots, interact, perf, edges, reduced, pinch, stress, regress, labels, pure: pureCheck, solar };
 if (mode === 'all') for (const fn of Object.values(modes)) await fn();
 else if (modes[mode]) await modes[mode]();
 else {

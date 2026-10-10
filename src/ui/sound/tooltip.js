@@ -21,6 +21,7 @@ export function createTooltip() {
   let owner = null;
   let cur = null; // {el, html, x, y, anchor}
   let seq = 0;
+  const descs = []; // the hidden description nodes, one per bound element
 
   const textOf = (html) => (typeof html === 'function' ? html() : html);
 
@@ -72,6 +73,17 @@ export function createTooltip() {
     place();
   }
 
+  /**
+   * The words of the tips changed (pure mode was switched): empty every description node, so a screen reader never
+   * reads the other vocabulary; each one is written again when its element is hovered, focused or tapped.
+   */
+  function invalidate() {
+    for (const d of descs) {
+      d.textContent = '';
+      d.__h = undefined;
+    }
+  }
+
   // a tap (or press) anywhere outside the owner closes a tip that a tap opened
   const onOutside = (e) => {
     if (cur && !cur.el.contains(e.target)) hide();
@@ -97,6 +109,7 @@ export function createTooltip() {
     const desc = document.createElement('span');
     desc.id = `snd-desc-${++seq}`;
     bank.append(desc);
+    descs.push(desc);
     const targets = () => (el.matches(describe) ? [el] : [...el.querySelectorAll(describe)]);
     for (const t of targets()) t.setAttribute('aria-describedby', desc.id);
     const describeNow = () => {
@@ -158,5 +171,5 @@ export function createTooltip() {
     bank.remove();
   }
 
-  return { bind, show, hide, refresh, destroy };
+  return { bind, show, hide, refresh, invalidate, destroy };
 }

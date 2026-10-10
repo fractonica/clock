@@ -19,6 +19,7 @@ import {
   stepById,
   formatCycleLength,
 } from './helpers.js';
+import { createRuler } from './ruler.js';
 
 const MAX_BLOCKS = 4000;
 const SLACK = 1.6; // a cycle is never longer than 1.6 x the mean of its level
@@ -29,8 +30,10 @@ const SLACK = 1.6; // a cycle is never longer than 1.6 x the mean of its level
  */
 const EPS = 1e-4;
 
-export function createData({ model, fmt }) {
+export function createData({ model, fmt, pure = null }) {
   const lim = limitsFor(model.tMin, model.tMax);
+  /** The pure ruler (Fractonica units instead of the Gregorian axis); null when no pure vocabulary is supplied. */
+  const ruler = pure ? createRuler({ model, pure }) : null;
   const blockCache = new Map();
   const currentCache = new Map();
   const spanCache = new Map();
@@ -106,12 +109,14 @@ export function createData({ model, fmt }) {
     spanCache.set(k, { from, to, items });
     return items;
   }
-  const ticksFor = (step, t0, t1) => spans('tick', step.id, t0, t1, (a, b) => generateTicks(step, a, b, fmt));
+  // a step is either a Gregorian one (helpers.js) or a pure ruler step (ruler.js, `step.pure`): same item shapes
+  const ticksFor = (step, t0, t1) => spans('tick', step.id, t0, t1, (a, b) => (step.pure ? ruler.ticksIn(step, a, b) : generateTicks(step, a, b, fmt)));
   const minorFor = (step, t0, t1) => {
-    const m = minorStepOf(step);
+    const m = step.pure ? ruler.minorStepOf(step) : minorStepOf(step);
     return m ? { step: m, ticks: ticksFor(m, t0, t1) } : null;
   };
-  const contextFor = (step, t0, t1) => spans('ctx', step.id, t0, t1, (a, b) => generateContext(step, a, b, fmt));
+  const contextFor = (step, t0, t1) =>
+    spans('ctx', step.id, t0, t1, (a, b) => (step.pure ? ruler.spansIn(step.ctx, a, b) : generateContext(step, a, b, fmt)));
   const weekendsFor = (t0, t1) =>
     spans('wk', 'day', t0, t1, (a, b) => civilSpans('day', a, b, fmt).filter((s) => s.weekday === 0 || s.weekday === 6));
 
@@ -124,6 +129,8 @@ export function createData({ model, fmt }) {
   const eclipses = model.catalogue; // 70 Unix instants, ascending
   /** Overview century ticks (zone aware, rebuilt when the zone changes). */
   const overviewTicks = () => spans('ov', 'year100', lim.d0, lim.d1, (a, b) => generateTicks(stepById('year100'), a, b, fmt));
+  /** Pure overview labels: eclipse numbers ("#10" …, the position of that eclipse), which never depend on the zone. */
+  const overviewMarks = () => (ruler ? ruler.overviewMarks() : []);
 
   // ---- strings ----------------------------------------------------------------------------
   /** "Oct 18 03:41" or, for long cycles, "Fri 18 Oct 2030". Cached per zone. */
@@ -152,11 +159,14 @@ export function createData({ model, fmt }) {
     contextFor,
     weekendsFor,
     overviewTicks,
+    overviewMarks,
+    ruler,
     alpha,
     eclipses,
     endLabel,
     lengthLabel,
     invalidate() {
+      // zone changes and mode switches: nothing derived from a formatter or a vocabulary may survive
       spanCache.clear();
       labelCache.clear();
     },

@@ -8,6 +8,28 @@
 export const MAX_LEVEL = 13;
 export const OUT_OF_RANGE_HINT = 'Outside the catalogue: use “Go to the first eclipse” or “Go to the last eclipse”';
 
+/**
+ * A on / off link parameter (?solar=1): "1" / "true" is on, "0" / "false" is off (case and spaces do not matter);
+ * anything else, a missing parameter included, is null: the link says nothing and the remembered setting stays.
+ */
+export function parseFlag(value) {
+  if (value === null || value === undefined) return null;
+  const v = String(value).trim().toLowerCase();
+  return v === '1' || v === 'true' ? true : v === '0' || v === 'false' ? false : null;
+}
+
+/**
+ * The solar wave at load: `shown` is what this page shows (the link's answer when it gives one, else the remembered
+ * setting), `remembered` is the setting kept between visits: a link never changes it, only the Solar button does.
+ */
+export function solarAtLoad(linkValue, saved) {
+  const remembered = saved?.solar === true;
+  return { shown: parseFlag(linkValue) ?? remembered, remembered };
+}
+
+/** What the view writes to its storage: the catalogue / focus choice and the remembered solar setting. */
+export const storedSettings = ({ overview, solarRemembered }) => ({ overview: !!overview, solar: !!solarRemembered });
+
 /** A shared level selection as an integer 0..max; anything that is not a number falls back to `fallback`. */
 export function sanitizeLevel(n, max = MAX_LEVEL, fallback = 6) {
   const isNumeric = typeof n === 'number' || (typeof n === 'string' && n.trim() !== '');

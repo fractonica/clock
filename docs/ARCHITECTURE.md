@@ -12,6 +12,7 @@ src/core/model.js          the only code that talks to fractonica.js
 src/core/store.js          displayed time (live / time travel / time-lapse) + shared settings
 src/core/format.js         zone-aware Gregorian formatting and conversion, durations, countdowns
 src/core/theme.js          colours (TEAL, GOLD, level hues) and glyph style helper
+src/core/pure.js           pure-mode vocabulary: names, unit ladder, phase pairs, pure clock/date/stamps (docs/design/80-pure.md)
 src/ui/*.js                one module per UI region (face, rings, ladder, upnext, timeline, wave,
                            calendar, jump, sound)  –  helpers go in src/ui/<module>/
 src/audio/*.js             sonification engine (pure scheduling/tuning + Web Audio)
@@ -66,7 +67,7 @@ Quarter thresholds of a cycle are named `peak, node, valley, end` (ascending fam
 validated: an unknown IANA zone, a non-integer or out-of-range depth, etc. is ignored and never persisted, and blocked
 or garbage storage falls back to the defaults. Time-lapse stops at the catalogue edge (`onTime('edge')`). Settings:
 
-`zone` (IANA or null = system), `view` (active tab id), `topDepth` (2..11, depth of the upper period on the
+`zone` (IANA or null = system), `pure` (pure mode: Fractonica terms only), `view` (active tab id), `topDepth` (2..11, depth of the upper period on the
 face), `selectedLevel` (0-based level highlighted everywhere), `minDepth`/`maxDepth` (1..14, the depth range
 shown by rings / ladder / timeline lanes), `showLetters`.
 
@@ -91,7 +92,7 @@ export function mount(el, ctx) {
 }
 ```
 
-`ctx`: `F, model, store, fmt, theme, icons, goto(t), select(level), stepCycle(dir, level?), toast(msg),
+`ctx`: `F, model, store, fmt, pure, isPure(), theme, icons, goto(t), select(level), stepCycle(dir, level?), toast(msg),
 requestRender(), QUARTER_NAMES, modules` (other mounted instances by id, e.g. `ctx.modules.sound`).
 
 `info.dirty` is true when time or any setting changed since the previous frame: skip drawing when

@@ -135,12 +135,13 @@ await withApp(
     const flagY = st.L.axis.y + st.L.axis.ctxH + st.L.axis.tickH + 8;
     const flagX = xAt(st, st.t);
     const k2 = (st.L.px1 - st.L.px0) / st.win.span;
-    await page.mouse.move(...abs(st, flagX - 10, flagY));
+    // (press on the cursor line itself: the flag sits left of, right of or on it depending on where the real "now" marker is)
+    await page.mouse.move(...abs(st, flagX, flagY));
     await page.waitForTimeout(100);
     const cur = await page.evaluate(() => document.querySelector('.tl-canvas').style.cursor);
     ok(cur === 'ew-resize', 'hovering the cursor flag shows the scrub cursor', cur);
     await page.mouse.down();
-    await page.mouse.move(...abs(st, flagX - 10 + 120, flagY), { steps: 6 });
+    await page.mouse.move(...abs(st, flagX + 120, flagY), { steps: 6 });
     await page.mouse.up();
     await settle(150);
     st2 = await state();
@@ -150,7 +151,7 @@ await withApp(
     // scrubbing past the plot edge scrolls the view and keeps the cursor under the pointer
     st = await state();
     const fx = xAt(st, st.t);
-    await page.mouse.move(...abs(st, fx + 8, flagY));
+    await page.mouse.move(...abs(st, fx, flagY));
     await page.mouse.down();
     await page.mouse.move(...abs(st, st.L.px1 + 6, flagY), { steps: 8 });
     await page.waitForTimeout(600);
@@ -329,7 +330,9 @@ await withApp(
     await page.mouse.move(...abs(st, ex, st.L.eclipse.y + 0.4 * st.L.eclipse.h));
     await page.waitForTimeout(150);
     const etip = await page.evaluate(() => { const t = document.querySelector('.tl-tip'); return t.hidden ? null : t.innerText; });
-    ok(etip && /Eclipse \d+ of 70/.test(etip), 'hovering an eclipse marker names it', etip?.slice(0, 80));
+    // numbered like the position (eclipse #k sits at pos k), the same number in both modes
+    const eclNo = await page.evaluate((e) => window.__fractonica.model.catalogue.indexOf(e), ecl[1]);
+    ok(etip && new RegExp(`^Eclipse #${eclNo} · one of 70`).test(etip) && etip.includes(`position ${eclNo}`), 'hovering an eclipse marker names it by its position number', etip?.slice(0, 80));
     await page.mouse.click(...abs(st, ex + 2, st.L.eclipse.y + 0.4 * st.L.eclipse.h));
     await settle(450);
     st2 = await state();

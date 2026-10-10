@@ -8,12 +8,25 @@
  * "Catalogue" stop shows the whole Saros 141 wave. Geometry comes from `clock.arc`, clock
  * readings from `ctx.model`; src/ui/wave/* holds the pure geometry, scene building, drawing and
  * tooltip text.
+ *
+ * Two additions share the file with the original view:
+ *   - pure mode (docs/design/80-pure.md): every text is asked from wave/words.js, which answers in Fractonica
+ *     terms only (cycle names and address chains, durations counted in ladder units, a pair of glyphs instead of
+ *     a percentage, numbered eclipses). The mode is re-read each frame; a switch rebuilds the static labels and
+ *     drops every cached text.
+ *   - the optional yellow solar wave (the Solar button): a ripple of one sync (19 η cycles) along the focused
+ *     arc where it fits, a pin at the present phase (drag it to travel within the sync), and a dial that shows
+ *     the sync at every depth (wave/solar.js, wave/sun.js; the drawing is in wave/draw.js). A ?solar= link is a
+ *     per-page override: only the Solar button changes the remembered setting.
  */
 import { createEngine } from './wave/scene.js';
 import * as G from './wave/geometry.js';
 import { createPainter, drawFocus, drawOverview } from './wave/draw.js';
-import { followableLevel, MAX_LEVEL, OUT_OF_RANGE_HINT, sanitizeLevel, throughOf, zoomEnabled, zoomPlan } from './wave/nav.js';
-import { cycleText, floorPercent, loopHint, loopText, nextLines, roundMs, spanText, tipHTML, whenText } from './wave/tooltip.js';
+import { followableLevel, MAX_LEVEL, OUT_OF_RANGE_HINT, sanitizeLevel, solarAtLoad, storedSettings, throughOf, zoomEnabled, zoomPlan } from './wave/nav.js';
+import { loopHint } from './wave/tooltip.js';
+import { cap, createWords } from './wave/words.js';
+import { createSunDial } from './wave/sun.js';
+import { arcSpec, hintDepths, pinPhase, quarterOf, rippleFit, SYNC_LEVEL, syncAt, syncGrid, syncsOnArc, travelTime } from './wave/solar.js';
 
 const STORE_KEY = 'fractonica-clock/wave';
 const MIN_FADE_GAP = 500; // ms: neighbour half-arcs that change faster than this swap instantly
@@ -21,6 +34,7 @@ const MIN_FADE_GAP = 500; // ms: neighbour half-arcs that change faster than thi
 export function mount(el, ctx) {
   const { model, store, fmt, theme } = ctx;
   const eng = createEngine(model);
+  const words = createWords({ fmt, pure: ctx.pure, model, theme, isPure: () => ctx.isPure() });
   const reducedQuery = globalThis.matchMedia?.('(prefers-reduced-motion: reduce)');
   let reduced = !!reducedQuery?.matches;
   const onReduced = (e) => (reduced = e.matches);
@@ -33,8 +47,7 @@ export function mount(el, ctx) {
   const chipHTML = infos
     .map(
       (i) =>
-        `<button class="wave-lv" type="button" role="radio" aria-checked="false" tabindex="-1" data-level="${i.level}" style="--c:var(--lv-${i.level})" ` +
-        `aria-label="Depth ${i.depth}, ${i.text}, cycle about ${fmt.duration(i.meanSeconds)}" title="${i.text} · depth ${i.depth} · cycle ≈ ${fmt.duration(i.meanSeconds)} · ${i.factor} child half-arcs per half-arc">` +
+        `<button class="wave-lv" type="button" role="radio" aria-checked="false" tabindex="-1" data-level="${i.level}" style="--c:var(--lv-${i.level})">` +
         `<span class="wave-lv-g">${i.text}</span><span class="wave-lv-n">${i.depth}</span><i class="wave-lv-bar"><b></b></i></button>`,
     )
     .join('');
@@ -44,6 +57,7 @@ export function mount(el, ctx) {
     <h2>Wave</h2>
     <span class="wave-sub dim">circular harmonic geometry</span>
     <span class="spacer"></span>
+    <button class="btn btn-sm wave-sun-toggle" type="button" aria-pressed="false"><i class="wave-sun-dot" aria-hidden="true"></i><span>Solar</span></button>
     <div class="wave-steps" role="group" aria-label="Step by half-arc">
       <button class="btn btn-sm" type="button" data-step="-1" aria-label="Previous half-arc" title="Previous half-arc (← key on the wave)"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 3 5 8l5 5"/></svg><span>Prev</span></button>
       <button class="btn btn-sm" type="button" data-step="1" aria-label="Next half-arc" title="Next half-arc (→ key on the wave)"><span>Next</span><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 3 5 5-5 5"/></svg></button>
@@ -54,7 +68,7 @@ export function mount(el, ctx) {
     <span class="wave-hint dim"><span class="wave-hint-fine">Drag along the bright arc to travel in time · click a loop to jump to it · Ctrl + scroll or +/− change the depth</span><span class="wave-hint-touch">Drag the arc to travel in time · tap a loop to jump · pinch to change depth</span></span>
   </div>
   <div class="wave-levels" role="radiogroup" aria-label="Focus depth">
-    <button class="wave-lv wave-lv-all" type="button" role="radio" aria-checked="false" tabindex="-1" data-level="all" aria-label="Whole catalogue" title="Catalogue: the whole Saros 141 wave, 35 α half-arcs from 1613 to 2857">
+    <button class="wave-lv wave-lv-all" type="button" role="radio" aria-checked="false" tabindex="-1" data-level="all" aria-label="Whole catalogue">
       <span class="wave-lv-g">∿</span><span class="wave-lv-n">all</span></button>
     <span class="wave-lv-sep" aria-hidden="true"></span>
     ${chipHTML}
@@ -95,7 +109,7 @@ export function mount(el, ctx) {
     <div class="sr-only wave-live" aria-live="polite" aria-atomic="true"></div>
   </div>
   <div class="wave-foot">
-    <p class="wave-caption">Every half-cycle is an arc, a crest (+) or a trough (−); the numbered loops along it are its next-depth half-cycles, and the dot on each depth shows how far the displayed time has travelled through its arc.</p>
+    <p class="wave-caption">Every half-cycle is an arc, a crest (+) or a trough (−); the numbered loops along it are its next-depth half-cycles, and the dot on each depth shows how far the displayed time has travelled through its arc.<span class="wave-caption-sun"></span><span class="wave-caption-pure"></span></p>
     <ul class="wave-legend" aria-label="Legend">
       <li><i class="wave-key wave-key-dot"></i>displayed time, one dot per depth</li>
       <li><i class="wave-key wave-key-on"></i>travelled</li>
@@ -103,8 +117,9 @@ export function mount(el, ctx) {
       <li data-for="focus"><span class="wave-key-n mono">+3</span> crest · <span class="wave-key-n mono">−2</span> trough: the n-th loop in the parent half-arc</li>
       <li data-for="focus"><i class="wave-key wave-key-tick"></i>begin · peak or valley · node or end</li>
       <li data-for="focus"><i class="wave-key wave-key-tether"></i>tether to the next depth's dot; a lettered circle on the edge is a dot that is off-screen</li>
-      <li data-for="all"><i class="wave-key wave-key-eclipse"></i>an eclipse of the series, with its year; the thin loops are β and γ</li>
+      <li data-for="all"><i class="wave-key wave-key-eclipse"></i><span class="wave-leg-ecl"></span></li>
       <li><span class="wave-key-n mono">+ −</span> and the bar on each depth button: crest or trough, and progress through its current half-arc</li>
+      <li data-for="sun"><svg class="wave-key wave-key-sun" viewBox="0 0 24 12" aria-hidden="true"><path d="M1 6C4 -1.5 8 -1.5 12 6S20 13.5 23 6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><span class="wave-leg-sun"></span></li>
     </ul>
   </div>
 </section>`;
@@ -122,6 +137,11 @@ export function mount(el, ctx) {
   const chips = [...chipsEl.querySelectorAll('.wave-lv')];
   const chipAll = chips[0];
   const chipByLevel = chips.slice(1);
+  const sunToggle = $('.wave-sun-toggle');
+  const captionSun = $('.wave-caption-sun');
+  const captionPure = $('.wave-caption-pure');
+  const legendEcl = $('.wave-leg-ecl');
+  const legendSun = $('.wave-leg-sun');
   const R = {
     badge: $('.wave-r-badge'),
     title: $('.wave-r-title'),
@@ -162,12 +182,26 @@ export function mount(el, ctx) {
       return {};
     }
   })();
+  const query = new URLSearchParams(globalThis.location?.search);
+  const grid = syncGrid(infos[SYNC_LEVEL].prefixNum);
+  const solar0 = solarAtLoad(query.get('solar'), saved); // ?solar=1 / 0 / true / false in a link: this page only
   const S = {
     w: 0,
     h: 0,
     dpr: 1,
     active: false,
-    overview: !!saved.overview && !new URLSearchParams(globalThis.location?.search).has('sel'), // a deep link with ?sel= focuses that level
+    overview: !!saved.overview && !query.has('sel'), // a deep link with ?sel= focuses that level
+    solar: solar0.shown, // the yellow solar wave on this page
+    solarSaved: solar0.remembered, // the remembered setting: only the Solar button changes it
+    pure: !!ctx.isPure(), // the vocabulary the static labels are in
+    sun: null, // the model's solar sync reading of the displayed time (null near the catalogue edges)
+    sunT: NaN,
+    sunSync: null, // the same sync from the position grid: {sync, phase, quarter}, always available inside the catalogue
+    pos: 0,
+    dialHover: false,
+    dialFocus: false, // the dial's slider has keyboard focus: its tooltip is shown
+    nowMemo: { key: '', text: '' },
+    dialOn: false,
     lastSel: levelOf(store.state.selectedLevel),
     level: levelOf(store.state.selectedLevel), // the shared selection
     eff: levelOf(store.state.selectedLevel), // the level actually focused (slower when the selection is too fast to follow)
@@ -179,7 +213,7 @@ export function mount(el, ctx) {
     cur: null,
     curT: NaN, // time S.cur was read at
     inRange: true,
-    hits: { arcs: [], markers: [] },
+    hits: { arcs: [], markers: [], sun: null },
     hover: null,
     pointer: { x: 0, y: 0, inside: false, type: 'mouse' },
     down: null,
@@ -211,16 +245,20 @@ export function mount(el, ctx) {
     labeled: -1, // the level button that carries the live "now in half-arc ..." label
   };
 
+  /** Remember the catalogue / focus choice and the solar wave between visits. */
+  function persist() {
+    try {
+      globalThis.localStorage?.setItem(STORE_KEY, JSON.stringify(storedSettings({ overview: S.overview, solarRemembered: S.solarSaved })));
+    } catch {
+      /* private mode: the view works without it */
+    }
+  }
   /** Show the catalogue or the focus level; remembered between visits. */
   function setOv(on) {
     on = !!on;
     if (S.overview === on) return;
     S.overview = on;
-    try {
-      globalThis.localStorage?.setItem(STORE_KEY, JSON.stringify({ overview: on }));
-    } catch {
-      /* private mode: the view works without it */
-    }
+    persist();
   }
 
   const setText = (key, node, str) => {
@@ -241,6 +279,113 @@ export function mount(el, ctx) {
       S.last[key] = html;
     }
   };
+
+  // ------------------------------------------------- vocabulary and solar wave
+  const baseLabel = []; // the spoken label of each depth button without the live reading
+
+  /** Labels that do not change while the view runs, in the current vocabulary: depth buttons, titles, legend, caption. */
+  function buildStatic() {
+    infos.forEach((i, l) => {
+      const len = words.cycleLength(i);
+      const c = chipByLevel[l];
+      c.title = `${i.text} · depth ${i.depth} · cycle ≈ ${len} · ${i.factor} child half-arcs per half-arc`;
+      c.setAttribute('aria-label', `Depth ${i.depth}, ${i.text}, cycle about ${len}`);
+      baseLabel[l] = c.getAttribute('aria-label');
+    });
+    chipAll.title = words.catalogueTitle(eng.halfCount(0));
+    legendEcl.textContent = words.eclipseLegend();
+    legendSun.textContent = words.sunLegend();
+    sunToggle.title = words.sunToggleTitle();
+    captionSun.textContent = S.solar ? ' ' + words.sunCaption() : '';
+    captionPure.textContent = words.glossaryHint() ? ' ' + words.glossaryHint() : '';
+  }
+
+  /**
+   * The solar scrub, from the dial or the pin: travel to a phase of the sync with the displayed time, time-linear as
+   * the model's reading is (SPEC §7); applied once per frame, like the arc scrub. Nothing happens in the first and
+   * last sync of the catalogue, which the model leaves undefined.
+   */
+  function scrubSun(phase) {
+    const s = S.sun;
+    if (!s) return;
+    touched();
+    S.pending = travelTime(s.start, s.end, phase);
+    ctx.requestRender();
+  }
+  const dial = createSunDial(stage, {
+    words,
+    onScrub: scrubSun,
+    onHover(on, e) {
+      S.dialHover = on;
+      if (e) S.pointer = { ...S.pointer, cx: e.clientX, cy: e.clientY, type: e.pointerType };
+      if (!on && !S.dialFocus) hideTip();
+      ctx.requestRender();
+    },
+    onFocus(on) {
+      if (S.dialFocus === on) return;
+      S.dialFocus = on;
+      if (!on && !S.dialHover) hideTip();
+      ctx.requestRender();
+    },
+  });
+
+  /** Show or hide the yellow solar wave (the Solar button); remembered between visits. */
+  function setSolar(on) {
+    on = !!on;
+    if (S.solar === on) return;
+    touched();
+    S.solar = on;
+    S.solarSaved = on; // the button is the one thing that changes the remembered setting
+    persist();
+    syncSolarUI();
+    S.dirty = true;
+    S.drawKey = '';
+    S.readNow = true;
+    ctx.requestRender();
+  }
+  function syncSolarUI() {
+    sunToggle.setAttribute('aria-pressed', String(S.solar));
+    if (S.solar) card.dataset.solar = '1';
+    else delete card.dataset.solar;
+    captionSun.textContent = S.solar ? ' ' + words.sunCaption() : '';
+    if (!S.solar) {
+      dial.setVisible(false);
+      S.dialHover = false;
+      S.dialFocus = false;
+      S.sun = null;
+      S.sunT = NaN;
+      S.hits.sun = null;
+    }
+  }
+  sunToggle.addEventListener('click', () => setSolar(!S.solar));
+
+  /** The vocabulary changed (header button, P key, ?pure=1): rebuild every static label and drop every cached text. */
+  function applyMode(on) {
+    S.pure = on;
+    if (on) card.dataset.pure = '1';
+    else delete card.dataset.pure;
+    buildStatic();
+    S.last = {};
+    S.label = '';
+    S.labeled = -1;
+    S.years = [];
+    S.yearsZone = null;
+    S.nowMemo = { key: '', text: '' };
+    S.drawKey = '';
+    S.mkFor = null;
+    S.dirty = true;
+    S.readNow = true;
+    clearTimeout(announceTimer);
+    announceText = '';
+    liveRegion.textContent = '';
+    hideTip();
+    dial.reset();
+    painter.labelMem?.clear();
+    ctx.requestRender();
+  }
+  if (S.pure) card.dataset.pure = '1';
+  syncSolarUI();
+  buildStatic();
 
   const touched = () => (S.userAt = performance.now());
   let announceTimer = 0;
@@ -499,13 +644,14 @@ export function mount(el, ctx) {
     return out;
   }
 
+  /** The eclipse labels of the catalogue: years (in the zone shown) or, in pure mode, eclipse numbers. */
   function refreshYears() {
-    const zone = fmt.zone();
-    if (S.yearsZone === zone && S.years.length) return;
-    S.yearsZone = zone;
-    S.years = [];
-    for (let i = 0; i < eng.halfCount(0); i++) S.years.push(String(fmt.parts(model.catalogue[2 * i]).year));
-    S.endYear = String(fmt.parts(model.tMax).year);
+    const key = words.on() ? 'pure' : fmt.zone();
+    if (S.yearsZone === key && S.years.length) return;
+    S.yearsZone = key;
+    const e = words.eclipses(eng.halfCount(0));
+    S.years = e.marks;
+    S.endYear = e.end;
   }
 
   /** The markers of a scene seen through `view`; kept for the frame on screen (`steady`), which both the draw and the redraw test need. */
@@ -520,11 +666,18 @@ export function mount(el, ctx) {
     }
     return S.mk;
   }
-  /** The displayed time written next to the focus marker (empty when the scene is not the one the time is in). */
+  /**
+   * The displayed time written next to the focus marker (empty when the scene is not the one the time is in): a date
+   * or clock in normal mode, three counters of the pure date / clock in pure mode. Kept for as long as the time, the
+   * scene, the vocabulary and the zone stay the same (the pure reading costs a dozen exact cycle lookups).
+   */
   function nowLabelFor(scene) {
     if (!S.inRange) return '';
-    if (scene.kind === 'overview') return fmt.date(S.lastT);
-    return scene.idx === S.cur?.[scene.level]?.idx ? markLabel(scene.desc) : '';
+    const overview = scene.kind === 'overview';
+    if (!overview && scene.idx !== S.cur?.[scene.level]?.idx) return '';
+    const key = `${words.on() ? 'p' : fmt.zone()}|${S.lastT}|${overview ? 'O' : scene.level}`;
+    if (S.nowMemo.key !== key) S.nowMemo = { key, text: words.nowLabel({ t: S.lastT, level: overview ? 0 : scene.level, duration: overview ? 0 : scene.desc.duration, overview }) };
+    return S.nowMemo.text;
   }
 
   function drawScene(scene, cam, alpha, interactive, quiet = false) {
@@ -543,6 +696,7 @@ export function mount(el, ctx) {
         quiet,
         avoid: S.avoid ?? { x0: S.w - 56, y0: 0, x1: S.w, y1: 88 }, // the zoom buttons
         nowLabel: nowLabelFor(scene),
+        sun: sunFor(scene),
       });
     } else {
       drawOverview(painter, scene, view, {
@@ -562,12 +716,31 @@ export function mount(el, ctx) {
     return view;
   }
   const letters = infos.map((i) => i.text);
-  /** The displayed time as a short label next to the focus marker (time only for short arcs, date for long ones). */
-  function markLabel(d) {
-    const t = S.lastT;
-    if (d.duration >= 2 * 365.25 * 86400) return fmt.date(t);
-    if (d.duration >= 86400) return fmt.dateTime(t, { seconds: false });
-    return fmt.time(d.duration < 10 ? roundMs(t) : t, { seconds: true, ms: d.duration < 10 });
+
+  /**
+   * What the focus scene needs to draw the solar ripple (or null: solar wave off, out of range, catalogue scene):
+   * the sync grid, the half-arc in position units, the sync with the displayed time and how far along the arc it is.
+   * The sync comes from the position grid, which agrees with the model's reading (to 1e-10), so the ripple also
+   * works in the first and last sync of the catalogue where the model has no reading.
+   */
+  function sunFor(scene) {
+    if (!S.solar || !S.inRange || scene.kind !== 'focus' || !S.cur || !S.sunSync) return null;
+    const here = S.cur[scene.level].idx === scene.idx;
+    return {
+      grid,
+      spec: arcSpec(scene.idx, infos[scene.level].prefixNum, scene.fraction),
+      sync: S.sunSync.sync,
+      quarter: S.sunSync.quarter,
+      here,
+      pNow: here ? S.cur[scene.level].local : 0,
+      label: words.sunNumber(S.sunSync),
+    };
+  }
+  /** How the ripple fits the scene in view (wavelength in px, syncs on the arc), or null for the catalogue. */
+  function rippleOf(scene, view) {
+    if (!scene || scene.kind !== 'focus') return null;
+    const sa = view.arc(scene.focus, {});
+    return rippleFit(syncsOnArc(infos[scene.level].prefixNum, scene.fraction, grid), sa.r * Math.abs(sa.sweep) * scene.fraction);
   }
   /**
    * What the frame on screen looks like, boiled down: the scene, where each marker sits to half a
@@ -578,6 +751,8 @@ export function mount(el, ctx) {
     const sc = S.scene;
     if (!sc) return '';
     let k = `${sc.key}|${S.inRange}|${S.yearsZone}|${nowLabelFor(sc)}`;
+    // the pin and the quarter dots of the solar ripple move with the sync phase (to 1/256 of a sync)
+    if (S.solar && S.sunSync && sc.kind === 'focus') k += `|sun${S.sunSync.sync}:${Math.round(S.sunSync.phase * 256)}`;
     if (S.cur) {
       const view = G.makeView(S.cam, S.w, S.h);
       const near = sc.kind === 'focus' ? sc.level + 2 : 2; // deeper half-arcs change faster than they move
@@ -595,11 +770,21 @@ export function mount(el, ctx) {
     return [p.x, p.y];
   };
 
+  function resetHits() {
+    S.hits.arcs.length = 0;
+    S.hits.markers.length = 0;
+    S.hits.sun = null;
+  }
+
   // -------------------------------------------------------------- picking
   function pick(px, py, touch) {
     const tolM = touch ? 18 : 10;
     const tolA = touch ? 22 : 12;
     let best = null;
+    if (S.hits.sun) {
+      const d = Math.hypot(px - S.hits.sun.x, py - S.hits.sun.y);
+      if (d <= tolM) return { kind: 'sun', level: -1, idx: 0, dist: d, x: S.hits.sun.x, y: S.hits.sun.y };
+    }
     for (const m of S.hits.markers) {
       const d = Math.hypot(px - m.x, py - m.y);
       if (d <= tolM && (!best || d < best.dist - 0.5 || (Math.abs(d - best.dist) <= 0.5 && m.level > best.level))) {
@@ -631,6 +816,20 @@ export function mount(el, ctx) {
     return Math.min(span.end - 0.001, Math.max(span.start + 0.001, t));
   }
 
+  /**
+   * Time under the pointer while dragging the pin: the point of the focused arc nearest to it, as a phase of the sync the
+   * drag began in (so the drag travels within that sync and never into the next one).
+   */
+  function pinTime(px, py, sync) {
+    const sc = S.scene;
+    const s = S.sun;
+    const a = S.hits.arcs.find((x) => x.kind === 'focus');
+    if (!s || s.sync !== sync || !a || !sc || sc.kind !== 'focus') return null; // (a drag that outlived its sync stops)
+    const n = G.nearestOnArc(a.sa, px, py, a.fraction);
+    const spec = arcSpec(sc.idx, infos[sc.level].prefixNum, sc.fraction);
+    return travelTime(s.start, s.end, pinPhase(spec, grid, n.t, sync));
+  }
+
   // ----------------------------------------------------------- pointer I/O
   const rel = (e) => {
     const r = canvas.getBoundingClientRect();
@@ -643,8 +842,10 @@ export function mount(el, ctx) {
     const d = S.down;
     // a finger that landed on the arc scrubs once it really drags; until then it may still be a tap
     if (d && d.finger && d.target && !d.scrub && Math.hypot(p.x - d.x, p.y - d.y) > 6) d.scrub = true;
+    // the pin is a handle, not a tap target: it travels once it has been dragged a few pixels (a press alone changes nothing)
+    if (d && d.pin && !d.scrub && Math.hypot(p.x - d.x, p.y - d.y) > 3) d.scrub = true;
     if (d?.scrub) {
-      const t = scrubTime(p.x, p.y);
+      const t = d.pin ? pinTime(p.x, p.y, d.sync) : scrubTime(p.x, p.y);
       if (t !== null) S.pending = t;
     }
     S.dirty = true;
@@ -706,7 +907,8 @@ export function mount(el, ctx) {
     // that landed near the arc was about to scroll (the touchstart handler below keeps the page still).
     const target = !!h && (h.kind === 'focus' || h.kind === 'alpha');
     const finger = e.pointerType !== 'mouse';
-    S.down = { x: p.x, y: p.y, hover: h, target, finger, scrub: target && !finger };
+    const pin = !!h && h.kind === 'sun' && !!S.sun && !!S.sunSync; // not in the first and last sync, which the model leaves undefined
+    S.down = { x: p.x, y: p.y, hover: h, target, finger, scrub: target && !finger, pin, sync: pin ? S.sun.sync : 0 };
     if (S.down.scrub) {
       canvas.setPointerCapture?.(e.pointerId);
       const t = scrubTime(p.x, p.y);
@@ -768,7 +970,7 @@ export function mount(el, ctx) {
       if (e.touches.length > 1) return e.preventDefault();
       const r = canvas.getBoundingClientRect();
       const h = S.anim ? null : pick(e.touches[0].clientX - r.left, e.touches[0].clientY - r.top, true);
-      if (h && (h.kind === 'focus' || h.kind === 'alpha')) e.preventDefault();
+      if (h && (h.kind === 'focus' || h.kind === 'alpha' || (h.kind === 'sun' && S.sun))) e.preventDefault();
     },
     { passive: false },
   );
@@ -810,8 +1012,16 @@ export function mount(el, ctx) {
     if (!tip.hidden) tip.hidden = true;
     S.tipKey = '';
   }
-  function placeTip() {
-    const p = S.pointer;
+  /** Where a tooltip anchors: the pointer, or (`atDial`) the dial, for the tooltip of its slider's keyboard focus. */
+  function tipAnchor(atDial) {
+    if (atDial) {
+      const r = dial.el.getBoundingClientRect();
+      return { cx: r.left + Math.min(40, r.width / 2), cy: r.top + r.height / 2 };
+    }
+    return S.pointer;
+  }
+  function placeTip(atDial = false) {
+    const p = tipAnchor(atDial);
     const w = tip.offsetWidth;
     const h = tip.offsetHeight;
     let x = p.cx + 16;
@@ -820,9 +1030,32 @@ export function mount(el, ctx) {
     if (y + h > innerHeight - 8) y = p.cy - h - 14;
     tip.style.transform = `translate(${Math.max(8, Math.round(x))}px, ${Math.max(8, Math.round(y))}px)`;
   }
+  /**
+   * The tooltip of the solar sync, for the pin on the ripple (by 'pin'), the dial under the pointer ('dial') and the
+   * dial with keyboard focus ('key'). In the first and last sync, which the model leaves undefined, it says so.
+   */
+  function updateSunTip(now, tNow, by) {
+    const s = S.sun;
+    if (!s && !S.sunSync) return hideTip();
+    const touch = S.pointer.type === 'touch';
+    const key = s ? `sun|${by}|${touch}|${s.sync}|${Math.round(s.phase * 512)}` : `sun|edge|${S.sunSync.sync}`;
+    if (key !== S.tipKey || now - S.tipAt > 180) {
+      setHTML('tip', tip, s ? words.sunTip(s, tNow, { by, touch }) : words.sunEdgeTip(S.sunSync.sync));
+      S.tipKey = key;
+      S.tipAt = now;
+    }
+    if (tip.hidden) tip.hidden = false;
+    placeTip(by === 'key');
+  }
   function updateTip(now, tNow) {
+    if (S.dialHover && S.solar) return updateSunTip(now, tNow, 'dial');
     const h = S.hover;
-    if (!h || !S.pointer.inside || S.anim) return hideTip();
+    if (!h || !S.pointer.inside || S.anim) {
+      // a pointer on the stage has its own tooltip; without one the focused dial keeps its tooltip (keyboard use)
+      if (S.dialFocus && S.solar) return updateSunTip(now, tNow, 'key');
+      return hideTip();
+    }
+    if (h.kind === 'sun') return updateSunTip(now, tNow, 'pin');
     const L = h.level;
     const key = `${h.kind}|${L}|${h.idx}|${h.kind === 'marker' ? '' : Math.round((h.t ?? 0) * 200)}`;
     if (key !== S.tipKey || now - S.tipAt > 180) {
@@ -835,7 +1068,7 @@ export function mount(el, ctx) {
       if (h.kind === 'alpha') action = 'Click or drag to travel along the wave';
       if (h.kind === 'focus') action = 'Click or drag to travel along this arc';
       if (marker) action = L === S.eff && !S.overview ? '' : 'Click to focus this depth';
-      setHTML('tip', tip, tipHTML({ d, p, at, now: tNow, fmt, model, theme, marker, action }));
+      setHTML('tip', tip, words.tip({ d, p, at, now: tNow, marker, action }));
       S.tipKey = key;
       S.tipAt = now;
     }
@@ -862,7 +1095,6 @@ export function mount(el, ctx) {
   }
 
   /** The checked level button also says where its level is now (a screen reader cannot see the bar under it). */
-  const baseLabel = chipByLevel.map((c) => c.getAttribute('aria-label'));
   function updateChipLabel(cur) {
     const chk = !S.overview && cur ? S.level : -1;
     if (S.labeled !== chk && S.labeled >= 0) {
@@ -873,18 +1105,17 @@ export function mount(el, ctx) {
     if (chk < 0) return;
     const h = cur[chk];
     const d = eng.describe(chk, h.idx);
-    const text = `${baseLabel[chk]}. Now in half-arc ${d.signed}, ${d.crest ? 'crest' : 'trough'}, ${loopText(d)}, ${Math.floor(h.local * 20) * 5} % through this half-arc. ${cap(cycleText(d))}.`;
+    const text = words.chipLive(baseLabel[chk], d, h);
     if (S.last.chipLabel !== text) {
       S.last.chipLabel = text;
       chipByLevel[chk].setAttribute('aria-label', text);
     }
   }
 
-  const cap = (str) => str.charAt(0).toUpperCase() + str.slice(1);
   /** A date and its time stay together ("2026-10-09 11:40"), so a span that has to wrap breaks at its arrow. */
   const glue = (str) => str.replace(/(\d) (?=\d)/g, '$1\u00a0');
-  /** "13.5 % of this η cycle": a second share, floored; the label stays put in a fixed column while the digits change. */
-  const pctRow = (frac, decimals, what) => `<b>${floorPercent(frac, decimals)} %</b><span class="dim">${what}</span>`;
+  /** "13.5 % of this η cycle": a second share, floored (a pair of glyphs in pure mode); the label stays put in a fixed column while the digits change. */
+  const pctRow = (frac, decimals, what, label) => `<b>${words.share(frac, label, decimals)}</b><span class="dim">${what}</span>`;
 
   function glyphMarkup(level, index) {
     return model.glyphSVG(index, { strokes: 2, color: theme.levelColor(level, 1, 70), scale: 6, thickness: 0.3, padding: 0.3 });
@@ -897,13 +1128,7 @@ export function mount(el, ctx) {
     setHidden(R.side, !S.inRange);
     updateControls();
     if (!S.inRange) {
-      const before = t < model.tMin;
-      const gap = before ? model.tMin - t : t - model.tMax;
-      setText(
-        'oor',
-        R.oorText,
-        `Outside the Saros 141 catalogue. The wave exists only between the first eclipse (${fmt.date(model.tMin)}) and the last (${fmt.date(model.tMax)}); the displayed time is ${fmt.duration(gap)} ${before ? 'before the first' : 'after the last'}, so the catalogue is shown greyed.`,
-      );
+      setText('oor', R.oorText, words.outOfRange(t));
       setHTML('glyph', R.glyph, '');
       return;
     }
@@ -914,16 +1139,16 @@ export function mount(el, ctx) {
       R.badge.style.setProperty('--c', theme.levelColor(0, 1, 64));
       setText('badge', R.badge, '∿');
       setHTML('title', R.title, `<b>Saros 141</b> <span class="dim">· ${eng.halfCount(0)} α half-arcs · ${model.extent} intervals</span>`);
-      setText('span', R.span, glue(spanText(fmt, model.tMin, model.tMax)));
+      setText('span', R.span, glue(words.catalogueSpan()));
       setHidden(R.loop, true);
-      setText('cyc', R.cyc, `Now in the ${cycleText(d)}`);
+      setText('cyc', R.cyc, `Now in the ${words.cycle(d)}`);
       const pos = frame.pos / model.extent;
-      setText('pct', R.pct, `${floorPercent(pos, 1)} %`);
+      setHTML('pct', R.pct, words.share(pos, 'catalogue phase', 1));
       setText('what', R.what, 'of the catalogue');
       R.bar.style.transform = `scaleX(${pos})`;
-      setHTML('pct2', R.pct2, pctRow(throughOf(d, h.local, t, model.tMax), 0, 'of this α half-arc'));
+      setHTML('pct2', R.pct2, pctRow(throughOf(d, h.local, t, model.tMax), 0, 'of this α half-arc', 'half-arc phase'));
       setHTML('n1', R.n1, `<span class="dim">now in</span> α half-arc ${d.signed} <span class="dim">${d.crest ? 'crest' : 'trough'}</span>`);
-      setHTML('n2', R.n2, `${fmt.date(d.start)} \u2192 ${fmt.date(d.end)}`);
+      setHTML('n2', R.n2, words.alphaSpan(d));
       setHTML('glyph', R.glyph, glyphMarkup(0, cur[0].reading.index));
       return;
     }
@@ -935,22 +1160,22 @@ export function mount(el, ctx) {
     setHTML(
       'title',
       R.title,
-      `<b>half-arc ${d.signed}</b> <span class="wave-r-sign">${d.crest ? 'crest' : 'trough'}</span>${S.level > L ? ` <span class="wave-r-fast" title="${infos[S.level].text} half-arcs last ${fmt.duration(infos[S.level].meanSeconds / 2)}: too short to follow, so the view stays on ${d.letter}; the finer depths are its loops">${infos[S.level].text} is too fast to follow</span>` : ''}`,
+      `<b>half-arc ${d.signed}</b> <span class="wave-r-sign">${d.crest ? 'crest' : 'trough'}</span>${S.level > L ? ` <span class="wave-r-fast" title="${infos[S.level].text} half-arcs last ${words.halfLength(infos[S.level])}: too short to follow, so the view stays on ${d.letter}; the finer depths are its loops">${infos[S.level].text} is too fast to follow</span>` : ''}`,
     );
-    setText('span', R.span, glue(spanText(fmt, d.start, d.end) + (d.clipped ? '  (clipped)' : '')));
+    setText('span', R.span, glue(words.span(d)));
     // two numberings of one thing, side by side: the loop number of the picture (inside the parent HALF-ARC)
     // and the cycle number every other view shows (inside the parent CYCLE)
     setHidden(R.loop, false);
-    setText('loop', R.loop, loopText(d));
+    setText('loop', R.loop, words.loop(d));
     setTitle('loopT', R.loop, loopHint(d));
-    setText('cyc', R.cyc, cap(cycleText(d)));
+    setText('cyc', R.cyc, cap(words.cycle(d)));
     // progress through the part of the half-arc that lies inside the catalogue, and through the whole cycle (as every other view counts it)
     const through = throughOf(d, h.local, t, model.tMax);
-    setText('pct', R.pct, `${floorPercent(through)} %`);
+    setHTML('pct', R.pct, words.share(through, 'half-arc phase'));
     setText('what', R.what, 'of this half-arc');
     R.bar.style.transform = `scaleX(${through})`;
-    setHTML('pct2', R.pct2, pctRow(h.reading.phase, 1, `of this ${d.letter} cycle`));
-    const [l1, l2] = nextLines(fmt, eng, d, h, t);
+    setHTML('pct2', R.pct2, pctRow(h.reading.phase, 1, `of this ${d.letter} cycle`, 'cycle phase'));
+    const [l1, l2] = words.nextLines(eng, d, h, t);
     setHTML('n1', R.n1, `<span class="dim">${l1.dim}</span>${l1.text ? ' ' + l1.text : ''}`);
     setHTML('n2', R.n2, `<span class="dim">${l2.dim}</span>${l2.text ? ' ' + l2.text : ''}`);
     setHTML('glyph', R.glyph, glyphMarkup(L, h.reading.index));
@@ -959,17 +1184,38 @@ export function mount(el, ctx) {
   function updateLabel(frame) {
     let label;
     if (!S.inRange) label = 'Wave view. The displayed time is outside the Saros 141 catalogue.';
-    else if (S.overview) {
-      const d = eng.describe(0, S.cur[0].idx);
-      label = `Wave view of the whole catalogue. Now in α half-arc ${d.signed}: ${cycleText(d)}.`;
-    } else {
-      const d = eng.describe(S.eff, S.cur[S.eff].idx);
-      label = `Wave view focused on ${d.letter} half-arc ${d.signed} (${cycleText(d)}), now in the ${S.cur[S.eff].local < 0.5 ? 'first' : 'second'} half of this half-arc.`;
-    }
+    else if (S.overview) label = words.overviewLabel(eng.describe(0, S.cur[0].idx));
+    else label = words.canvasLabel(eng.describe(S.eff, S.cur[S.eff].idx), S.cur[S.eff].local);
     if (label !== S.label) {
       S.label = label;
       canvas.setAttribute('aria-label', label + ' Arrow keys: left and right step by half-arc, up and down change the depth, Home shows the catalogue.');
     }
+  }
+
+  // ------------------------------------------------------------- solar dial
+  /** The dial follows the time on every frame the time moves (a dot and a bright stretch of wave); its texts change only when they do. */
+  function updateSun(frame, dirty) {
+    const show = S.solar && S.inRange;
+    dial.setVisible(show);
+    if (!show) {
+      S.dialOn = false;
+      S.dialHover = false; // a hidden dial gets neither pointer nor focus events to say it was left
+      S.dialFocus = false;
+      return;
+    }
+    if (dirty || !S.dialOn) dial.update(S.sun, frame.t);
+    S.dialOn = true;
+  }
+  /**
+   * Where the ripple is not drawn, say at which depths it is: the one-line hint under the dial. The depths are those
+   * whose half-arc of the displayed time would carry a ripple on this stage, measured (hintDepths) and not estimated:
+   * a clipped last arc carries fewer syncs, and a stage of another shape fits the arcs larger or smaller.
+   */
+  function updateSunHint() {
+    if (!S.solar || !S.inRange || !S.scene || !S.cam || !S.cur) return;
+    const fit = rippleOf(S.scene, G.makeView(S.cam, S.w, S.h));
+    if (fit?.visible) return dial.setHint('');
+    dial.setHint(words.sunRange(hintDepths(eng, grid, S.cur, S.w, S.h, padFocus(), MAX_LEVEL + 1)));
   }
 
   // ---------------------------------------------------------------- render
@@ -978,6 +1224,10 @@ export function mount(el, ctx) {
     const now = performance.now();
     if (Math.min(3, globalThis.devicePixelRatio || 1) !== S.dpr) onResize(S.w, S.h); // the window moved to another display
     S.lastT = frame.t;
+    S.pos = frame.pos;
+    // the vocabulary changed (header button, P key, ?pure=1): every label and cached text is rebuilt
+    const pureNow = !!ctx.isPure();
+    if (pureNow !== S.pure) applyMode(pureNow);
     // shared selection changed elsewhere -> focus it here
     const sel = levelOf(store.state.selectedLevel);
     if (sel !== S.lastSel) {
@@ -1000,6 +1250,20 @@ export function mount(el, ctx) {
       S.curT = frame.t;
     }
     refreshYears();
+    // the solar sync of the displayed time: the model's reading (the dial, null in the first and last sync of the
+    // catalogue) and the same sync from the position grid (the ripple, available everywhere inside it)
+    if (S.solar && S.inRange) {
+      if (frame.t !== S.sunT) {
+        S.sun = frame.solar();
+        S.sunT = frame.t;
+      }
+      const sy = syncAt(frame.pos, grid);
+      S.sunSync = { sync: sy.sync, phase: sy.phase, quarter: quarterOf(sy.phase) };
+    } else {
+      S.sun = null;
+      S.sunT = NaN;
+      S.sunSync = null;
+    }
 
     // which scene should be on screen?
     const wantOv = S.overview || !S.inRange;
@@ -1015,10 +1279,7 @@ export function mount(el, ctx) {
       S.dirty = true;
       if (S.active) {
         if (wantOv) announce(S.inRange ? 'Showing the whole catalogue.' : 'The displayed time is outside the catalogue.');
-        else {
-          const d = eng.describe(S.eff, S.cur[S.eff].idx);
-          announce(`${d.letter} half-arc ${d.signed}, ${d.crest ? 'crest' : 'trough'}, ${loopText(d)}. ${cap(cycleText(d))}. ${cap(whenText(fmt, d, frame.t))}.`);
-        }
+        else announce(words.announce(eng.describe(S.eff, S.cur[S.eff].idx), frame.t));
       }
     }
     updateChips(S.level, wantOv && S.overview);
@@ -1034,8 +1295,7 @@ export function mount(el, ctx) {
 
     if (needDraw) {
       painter.begin();
-      S.hits.arcs.length = 0;
-      S.hits.markers.length = 0;
+      resetHits();
       if (S.anim) {
         const a = S.anim;
         const c = animCamera(a, now);
@@ -1056,8 +1316,7 @@ export function mount(el, ctx) {
           if (changed) {
             // redraw once with the hover highlight
             painter.begin();
-            S.hits.arcs.length = 0;
-            S.hits.markers.length = 0;
+            resetHits();
             drawScene(S.scene, S.cam, 1, true);
           }
         } else S.hover = null;
@@ -1065,15 +1324,19 @@ export function mount(el, ctx) {
       S.dirty = painter.settling; // a label still gliding wants the next frame as well
       S.drawKey = moving ? '' : visualKey();
     }
-    const cursor = S.hover || S.down?.scrub ? (S.down?.scrub ? 'grabbing' : 'pointer') : 'default';
+    // the pin is a handle (grab) where it can be dragged, and only explains itself in the first and last sync
+    const pinGrab = S.hover?.kind === 'sun' ? (S.sun ? 'grab' : 'default') : null;
+    const cursor = S.down?.scrub ? 'grabbing' : pinGrab ?? (S.hover ? 'pointer' : 'default');
     if (cursor !== S.cursor) {
       S.cursor = cursor;
       canvas.style.cursor = cursor;
     }
     updateTip(now, frame.t);
+    updateSun(frame, info.dirty || switched || S.readNow);
     if (switched || S.readNow || (now - S.readAt > 90 && (info.dirty || needDraw))) {
       S.readNow = false;
       S.readAt = now;
+      updateSunHint();
       updateReadout(frame, now);
       updateChipBars(S.inRange ? S.cur : null);
       updateChipLabel(S.inRange ? S.cur : null);
@@ -1098,6 +1361,7 @@ export function mount(el, ctx) {
     },
     destroy() {
       clearTimeout(announceTimer);
+      dial.destroy();
       ro.disconnect();
       reducedQuery?.removeEventListener?.('change', onReduced);
       el.innerHTML = '';
@@ -1105,6 +1369,8 @@ export function mount(el, ctx) {
     // --- public surface (also used by tests and deep links)
     /** Show the whole catalogue (true) or return to the shared focus level (false). */
     showOverview,
+    /** Show (true) or hide (false) the yellow solar wave. */
+    setSolar,
     /** Zoom one level in (+1) or out (-1); out of level 1 (α) leads to the catalogue. */
     zoom,
     /** Step to the previous (-1) / next (+1) half-arc of the focus level. */
@@ -1120,11 +1386,16 @@ export function mount(el, ctx) {
       size: [S.w, S.h],
       inRange: S.inRange,
       cursor: S.pointer.inside ? { x: S.pointer.x, y: S.pointer.y } : null,
+      solar: S.solar,
+      pure: S.pure,
+      sun: S.sunSync ? { ...S.sunSync } : null,
+      ripple: S.solar && S.scene && S.cam ? !!rippleOf(S.scene, G.makeView(S.cam, S.w, S.h))?.visible : false,
     }),
     /** Hit targets of the last frame (pixels), for tests. */
     getHits: () => ({
       arcs: S.hits.arcs.map((a) => ({ kind: a.kind, level: a.level, idx: a.idx, sa: { ...a.sa }, fraction: a.fraction })),
       markers: S.hits.markers.map((m) => ({ ...m })),
+      sun: S.hits.sun ? { ...S.hits.sun } : null,
     }),
     get active() {
       return S.active;

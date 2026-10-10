@@ -6,6 +6,10 @@
  * This file owns the DOM, the window state (centre + span), animation, input and the tooltip;
  * pure maths lives in timeline/helpers.js, cached model queries in timeline/data.js and all
  * drawing in timeline/paint.js.
+ *
+ * Pure mode (docs/design/80-pure.md): the Gregorian axis is replaced by a ruler of Fractonica units (timeline/ruler.js),
+ * every sentence by its Fractonica wording (timeline/words.js, timeline/tips.js) and the percentages of the hover
+ * read-out by glyph pairs. The mode is read on every frame (`applyMode`), so switching is live in both directions.
  */
 import {
   PRESETS,
@@ -38,6 +42,9 @@ import {
 } from './timeline/helpers.js';
 import { createData } from './timeline/data.js';
 import { paint } from './timeline/paint.js';
+import { createWords } from './timeline/words.js';
+import { pureTipHTML } from './timeline/tips.js';
+import { createPure } from '../core/pure.js';
 
 const ICON = (body) =>
   `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body}</svg>`;
@@ -55,22 +62,34 @@ const LONG_PRESS_MS = 450; // touch: press and hold shows what hovering shows wi
 const TOUCH_TIP_MS = 5000; // ... and the tooltip stays this long after the finger lifts
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 const DAY = 86400;
+const PIXEL = 0.5; // half a pixel: the window width the status line reads is only known to this much (see ruler.spanText)
 
 export function mount(el, ctx) {
   const { model, store, fmt, theme } = ctx;
-  const data = createData({ model, fmt });
+  // pure mode (docs/design/80-pure.md): the Gregorian axis becomes a ruler of Fractonica units and every text is
+  // said in Fractonica terms. The vocabulary comes from the shell; a bare harness gets its own.
+  const pure = ctx.pure ?? createPure(model, { now: () => store.t() });
+  const isPure = () => (typeof ctx.isPure === 'function' ? !!ctx.isPure() : !!store.state.pure);
+  const data = createData({ model, fmt, pure });
+  const ruler = data.ruler;
+  const words = createWords({ model, pure, ruler });
   const lim = data.lim;
   const uid = ++mountCount;
   // a corrupt persisted setting must not stop the view from mounting
   const selLevel = () => validLevel(store.state.selectedLevel);
 
   // ---- DOM -------------------------------------------------------------------------------------
+  /** Zoom preset buttons: Day … All in normal mode, the ladder units λ … α and All in pure mode. */
+  function presetsHTML(pureOn) {
+    if (pureOn) {
+      return ruler.PRESETS.map((p) => `<button type="button" data-preset="${p.id}" aria-pressed="false" title="${esc(words.presetTitle(p))}">${esc(words.presetLabel(p))}</button>`).join('');
+    }
+    return PRESETS.map((p) => `<button type="button" data-preset="${p.id}" aria-pressed="false" title="Show ${p.id === 'all' ? 'the whole catalogue' : 'about one ' + p.id}">${p.label}</button>`).join('');
+  }
   el.innerHTML = `
     <div class="card tl-root">
       <div class="tl-toolbar" role="toolbar" aria-label="Timeline controls">
-        <div class="seg tl-presets" role="group" aria-label="Zoom presets">
-          ${PRESETS.map((p) => `<button type="button" data-preset="${p.id}" aria-pressed="false" title="Show ${p.id === 'all' ? 'the whole catalogue' : 'about one ' + p.id}">${p.label}</button>`).join('')}
-        </div>
+        <div class="seg tl-presets" role="group" aria-label="Zoom presets">${presetsHTML(isPure())}</div>
         <div class="tl-group">
           <button type="button" class="btn btn-icon" data-act="out" aria-label="Zoom out" title="Zoom out (-)">${ICONS.out}</button>
           <button type="button" class="btn btn-icon" data-act="in" aria-label="Zoom in" title="Zoom in (+)">${ICONS.in}</button>
@@ -91,7 +110,7 @@ export function mount(el, ctx) {
         <span class="tl-hint dim" data-role="hint"></span>
       </div>
       <div class="sr-only" id="tl-sum-${uid}" data-role="summary"></div>
-      <div class="sr-only" id="tl-keys-${uid}">Left and right arrows pan, plus and minus zoom, Home centres on the time cursor, F fits the cycle of the selected depth, Enter moves the cursor to the middle of the view, up and down select a depth.</div>
+      <div class="sr-only" id="tl-keys-${uid}" data-role="keys"></div>
       <div class="sr-only" role="status" aria-live="polite" data-role="live"></div>
     </div>`;
   const $ = (sel) => el.querySelector(sel);
@@ -103,12 +122,17 @@ export function mount(el, ctx) {
   const hintEl = $('[data-role="hint"]');
   const liveEl = $('[data-role="live"]');
   const sumEl = $('[data-role="summary"]');
+  const keysEl = $('[data-role="keys"]');
+  const KEYS_HELP =
+    'Left and right arrows pan, plus and minus zoom, Home centres on the time cursor, F fits the cycle of the selected depth, Enter moves the cursor to the middle of the view, up and down select a depth.';
+  const keysText = () => (pureMode ? `${KEYS_HELP} Press ? for the glossary.` : KEYS_HELP);
   const btnIn = $('[data-act="in"]');
   const btnOut = $('[data-act="out"]');
   const fitLabel = $('.tl-fit-label');
   const btnFollow = $('[data-act="follow"]');
   const btnFit = $('[data-act="fit"]');
-  const presetBtns = [...el.querySelectorAll('[data-preset]')];
+  const presetsEl = $('.tl-presets');
+  let presetBtns = [...el.querySelectorAll('[data-preset]')];
   const g = canvas.getContext('2d');
 
   const cssVar = (name, fallback) => {
@@ -162,6 +186,7 @@ export function mount(el, ctx) {
   let tipMoved = false; // the window moved under a stationary pointer: refresh the tooltip, throttled
   let lastTipAt = 0;
   let initialised = false;
+  let pureMode = isPure(); // the mode every cached text and the toolbar were built for
 
   const S = {
     g,
@@ -177,6 +202,10 @@ export function mount(el, ctx) {
     fmt,
     data,
     lim,
+    pure,
+    ruler,
+    words,
+    isPure: pureMode,
     catLabel: '',
   };
 
@@ -199,6 +228,10 @@ export function mount(el, ctx) {
     needsDraw = true;
   }
   function catLabel() {
+    if (pureMode) {
+      S.catLabel = words.rangeLabel();
+      return;
+    }
     try {
       S.catLabel = `${fmt.parts(model.tMin).year}–${fmt.parts(model.tMax).year}`;
     } catch {
@@ -320,7 +353,6 @@ export function mount(el, ctx) {
   }
   function setPreset(id) {
     const w = goalWindow();
-    const span = presetSpan(id, lim);
     const t = cursorT();
     const cur = cursorOk();
     const t0 = w.c - w.span / 2;
@@ -332,6 +364,11 @@ export function mount(el, ctx) {
       anchor = t;
       frac = (t - t0) / w.span;
     }
+    if (pureMode) {
+      // one unit across *in position*: the edges are laid out in Saros positions, so the status line reads exactly "1α"
+      return animateTo(ruler.presetWindow(id, lim, anchor, frac));
+    }
+    const span = presetSpan(id, lim);
     animateTo({ c: anchor - frac * span + span / 2, span });
   }
   function fitSelected() {
@@ -385,7 +422,7 @@ export function mount(el, ctx) {
   };
   function syncToolbar() {
     const span = goalWindow().span;
-    const ap = activePreset(span, lim);
+    const ap = pureMode ? ruler.activePreset(span, lim, goalWindow().c) : activePreset(span, lim);
     for (const b of presetBtns) setAttr(b, 'aria-pressed', String(b.dataset.preset === ap));
     setAttr(btnFollow, 'aria-pressed', String(follow));
     if (btnFollow.classList.contains('is-on') !== follow) btnFollow.classList.toggle('is-on', follow);
@@ -398,7 +435,7 @@ export function mount(el, ctx) {
     setAttr(btnFit, 'title', fitTitle(info));
     const hint = coarse.matches
       ? 'Drag to pan · pinch to zoom · tap to move the cursor · double-tap a cycle to fit it · press and hold for details'
-      : 'Drag to pan · wheel to zoom · click to move the cursor · double-click a cycle to fit it · ← → + − Home';
+      : `Drag to pan · wheel to zoom · click to move the cursor · double-click a cycle to fit it · ← → + − Home${pureMode ? ' · ? glossary' : ''}`;
     if (hintEl.textContent !== hint) hintEl.textContent = hint;
   }
 
@@ -456,7 +493,10 @@ export function mount(el, ctx) {
     const info = model.levelInfo(L);
     return `<span class="tl-tip-k" style="color:${theme.levelColor(L, 1, 72)}">${info.letter} ${info.depth}</span>${extra}`;
   };
+  /** What the pure tooltips need from this closure (read at the moment of the call: the lanes change). */
+  const tipEnv = () => ({ model, store, pure, ruler, words, theme, levels, data, step: S.step, hoverEclipse, ovTime });
   function tipHTML(h) {
+    if (pureMode) return pureTipHTML(h, tipEnv());
     if (h.gutter) {
       if (h.kind === 'lane') {
         const L = levels[h.lane];
@@ -482,7 +522,8 @@ export function mount(el, ctx) {
     if (h.kind === 'eclipse' && hoverEclipse >= 0) {
       const i = hoverEclipse;
       const e = data.eclipses[i];
-      return `<div class="tl-tip-h"><span class="tl-tip-k" style="color:${theme.TEAL}">Eclipse ${i + 1} of ${data.eclipses.length}</span></div>
+      // numbered like the position (eclipse #22 sits at pos 22), the same number in both modes and in every view
+      return `<div class="tl-tip-h"><span class="tl-tip-k" style="color:${theme.TEAL}">Eclipse ${pure.eclipseName(i)}</span> <span class="dim">· one of ${data.eclipses.length}</span></div>
         <div class="tl-tip-p mono">${esc(fmt.long(e))} <span class="dim">${esc(fmt.tag(e))}</span></div>
         <div class="tl-tip-p dim">Greatest eclipse of Saros 141 · position ${i}${i % 4 === 0 ? ' · starts α cycle ' + (i / 4 + 1) : ''}<br><span class="dim">vs now</span> ${esc(fmt.countdown(e - store.realNow()))} · click to move the cursor here</div>`;
     }
@@ -755,7 +796,7 @@ export function mount(el, ctx) {
       return best === null ? t : Math.min(model.tMax, best + 0.001); // +1 ms: the model rounds to ms and we want to land *in* the cycle
     }
     if (r.kind === 'axis') {
-      const step = S.step ?? pickStep(k);
+      const step = S.step ?? (pureMode ? ruler.pickStep(k, plotW()) : pickStep(k));
       const ticks = data.ticksFor(step, win.c - win.span / 2, win.c + win.span / 2);
       const i = nearestWithin(
         ticks.map((tk) => tk.t),
@@ -888,9 +929,43 @@ export function mount(el, ctx) {
     e.preventDefault();
   });
 
+  // ---- pure mode: live switching ---------------------------------------------------------------------------------------
+  /**
+   * The mode changed (header button, P, ?pure=1): rebuild everything that was written in the old vocabulary – the
+   * zoom presets, the catalogue label, every cached label and tooltip, the screen-reader text – and repaint.
+   */
+  function applyMode() {
+    const on = isPure();
+    if (on === pureMode) return;
+    pureMode = on;
+    S.isPure = on;
+    S.step = null; // a ruler step belongs to one mode
+    S.hover = null;
+    if (on) root.dataset.pure = '1';
+    else delete root.dataset.pure;
+    presetsEl.innerHTML = presetsHTML(on);
+    presetBtns = [...presetsEl.querySelectorAll('[data-preset]')];
+    keysEl.textContent = keysText();
+    data.invalidate();
+    catLabel();
+    tip.hidden = true;
+    lastTipKey = '';
+    lastSum = '';
+    lastLive = '';
+    lastSumAt = -1e9;
+    sumEl.textContent = '';
+    liveEl.textContent = '';
+    winEl.textContent = '';
+    lastDraw = { c: NaN, span: NaN, t: NaN, now: NaN, dyn: '' };
+    if (hover) tipDirty = true;
+    needsDraw = true;
+    syncToolbar();
+  }
+
   // ---- store events --------------------------------------------------------------------------------------------------
   const offStore = store.subscribe((kind, patch) => {
     if (kind !== 'settings') return;
+    if (patch && 'pure' in patch) applyMode();
     if (patch && 'zone' in patch) {
       data.invalidate();
       catLabel();
@@ -921,6 +996,7 @@ export function mount(el, ctx) {
 
   // ---- per-frame work ------------------------------------------------------------------------------------------------------
   function flagLabel(t) {
+    if (pureMode) return ruler.flagText(roundMs(t), S.step ? S.step.u : 7);
     const span = win.span;
     t = roundMs(t);
     if (span <= 3 * DAY) return fmt.time(t, { seconds: true, ms: span < 40 });
@@ -960,6 +1036,7 @@ export function mount(el, ctx) {
 
   function render(frame) {
     if (!layout || !initialised) return;
+    if (isPure() !== pureMode) applyMode(); // also covers a switch made while this tab was hidden
     const now = performance.now();
     const dt = Math.min(0.1, (now - lastNow) / 1000);
     lastNow = now;
@@ -997,7 +1074,9 @@ export function mount(el, ctx) {
     const t1 = t0 + win.span;
     const nowT = store.realNow();
     const nowShow = model.inRange(nowT);
-    const refYear = fmt.parts(t).year;
+    const step = pureMode ? ruler.pickStep(k, plotW()) : pickStep(k);
+    S.step = step; // the labels below depend on the tick unit
+    const refYear = pureMode ? 0 : fmt.parts(t).year;
     S.refYear = refYear;
     S.cursorLabel = inRange ? flagLabel(t) : '';
     S.nowLabel = nowShow ? flagLabel(nowT) : '';
@@ -1007,7 +1086,7 @@ export function mount(el, ctx) {
     let chipSig = '';
     if (selCycle) {
       const ex = layout.px0 + (selCycle.end - t0) * k;
-      chipSig = ex > layout.px1 || ex < layout.px0 ? fmt.countdown(selCycle.end - t) : '';
+      chipSig = ex > layout.px1 || ex < layout.px0 ? (pureMode ? ruler.relText(selCycle.end, t) : fmt.countdown(selCycle.end - t)) : '';
     }
     const dyn = `${S.cursorLabel}|${S.nowLabel}|${S.hoverLabel}|${chipSig}`;
     const moved =
@@ -1032,8 +1111,9 @@ export function mount(el, ctx) {
 
     // toolbar / readouts (text only when changed)
     if (moved || needsDraw) {
-      const spanTxt = fmt.duration(win.span, { parts: 2 });
-      const range = `${fmt.short(t0, refYear)} → ${fmt.short(t1, refYear)} · ${spanTxt} across · ${fmt.tag(win.c)}`;
+      const range = pureMode
+        ? `${ruler.rangeText(t0, t1, step.u)} · ${ruler.spanText(t0, t1, 2, PIXEL / plotW())} across`
+        : `${fmt.short(t0, refYear)} → ${fmt.short(t1, refYear)} · ${fmt.duration(win.span, { parts: 2 })} across · ${fmt.tag(win.c)}`;
       if (winEl.textContent !== range) winEl.textContent = range;
       syncToolbar();
     }
@@ -1072,7 +1152,7 @@ export function mount(el, ctx) {
     S.span = win.span;
     S.k = k;
     S.X = makeScale(win, layout.px0, plotW()).toX;
-    S.step = pickStep(k);
+    S.isPure = pureMode;
     S.hover = hover;
     S.hoverEclipse = hoverEclipse;
     S.cursorT = t;
@@ -1082,13 +1162,26 @@ export function mount(el, ctx) {
     S.nowShow = nowShow;
     S.live = store.live;
     S.selCycle = selCycle;
-    S.chipYear = fmt.parts(win.c).year; // off-screen chips name their year relative to the view, not to the cursor
+    S.chipYear = pureMode ? 0 : fmt.parts(win.c).year; // off-screen chips name their year relative to the view, not to the cursor
     paint(S);
   }
 
   /** One-sentence-per-fact description of the view, for screen readers (no seconds: it must not tick). */
   function describeView(t, inRange) {
     const t0 = win.c - win.span / 2;
+    if (pureMode) {
+      const u = S.step ? S.step.u : 7;
+      const out = [`Timeline shows ${ruler.rangeText(t0, t0 + win.span, u)}, ${ruler.spanText(t0, t0 + win.span, 2, PIXEL / plotW())} across.`];
+      if (!inRange) {
+        out.push('The cursor is outside the Saros 141 catalogue.');
+        return out.join(' ');
+      }
+      out.push(`Cursor at ${ruler.stampText(t, Math.min(11, u + 1))}${store.live ? ', live' : store.playing ? ', in time-lapse' : ''}.`);
+      const L = selLevel();
+      const cyc = data.cycleAt(L, t);
+      if (cyc) out.push(words.selectedSentence(L, cyc.idx, cyc.local, model.levelInfo(L).siblings ?? data.alpha.length, cyc.end >= model.tMax - 1e-3));
+      return out.join(' ');
+    }
     const out = [`Timeline shows ${fmt.date(t0)} to ${fmt.date(t0 + win.span)}, ${fmt.duration(win.span)} across.`];
     if (!inRange) {
       out.push('The cursor is outside the Saros 141 catalogue.');
@@ -1118,6 +1211,8 @@ export function mount(el, ctx) {
   }
 
   // ---- boot ----------------------------------------------------------------------------------------------------------------------
+  if (pureMode) root.dataset.pure = '1';
+  keysEl.textContent = keysText();
   computeLevels();
   catLabel();
   stage.style.height = `${stageHeight({ lanes: levels.length, width: 800, viewportH: globalThis.innerHeight || 900 })}px`;
@@ -1142,6 +1237,13 @@ export function mount(el, ctx) {
       },
       get levels() {
         return [...levels];
+      },
+      /** The ruler step of the last frame ({id, u, m}; a Gregorian one has no `u` of a unit ladder) and the tick labels it drew. */
+      get step() {
+        return S.step ? { id: S.step.id, u: S.step.u, m: S.step.m ?? S.step.n } : null;
+      },
+      get axisLabels() {
+        return [...(S.axisLabels ?? [])];
       },
       setWindow: (w) => setWindow(w),
       animateTo,

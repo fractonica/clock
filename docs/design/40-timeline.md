@@ -55,3 +55,9 @@ that day?" is answered by looking.
 - Out-of-range cursor or window: draw outside regions with a diagonal "no data" hatch and the catalogue edge labelled.
 - Provide small pure helpers (tick generator, nice-step picker, time↔x mapping) in `src/ui/timeline/helpers.js` with tests,
   including DST (e.g. zone `Europe/Berlin` around 2026-03-29 and 2026-10-25) and a century-scale tick case.
+
+## Pure mode
+The Gregorian axis becomes a **pure ruler** (`src/ui/timeline/ruler.js`, `words.js`, `tips.js`): ticks at unit boundaries of the
+ladder α β γ δ½ ε½ ζ½ η ι λ μ ν ξ with 4–12 labelled ticks at every zoom; ordinal ticks `ζ½#3`, count ticks `9η`, `17ι`; a context row
+names the larger unit (`ε½#4 · ζ½#6`). Eclipses are numbered `#k` like the position (`#0 … #69`); the overview is labelled with
+them; hover tooltips give the stamp, `pos` and the cycle names; the status line measures the span in position.

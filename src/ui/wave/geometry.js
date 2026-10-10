@@ -161,6 +161,15 @@ export function makeView(cam, W, H) {
   };
 }
 
+/**
+ * Length in pixels of the focused half-arc of a focus scene once the camera has fitted the scene (focus, children and
+ * grandchildren) into a W x H canvas with padding `pad`: the part inside the catalogue only (`scene.fraction`).
+ */
+export function focusArcLength(scene, W, H, pad = {}) {
+  const sa = makeView(fitCamera(scene.samples, scene.rot, W, H, pad), W, H).arc(scene.focus, {});
+  return sa.r * Math.abs(sa.sweep) * scene.fraction;
+}
+
 /** Point of a projected (screen) arc at progress t. */
 export function screenPoint(sa, t, out = {}) {
   const a = sa.a0 + sa.sweep * t;

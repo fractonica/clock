@@ -2,9 +2,13 @@
  * Live spectrum + scope of the output (AnalyserNode). The spectrum has a log frequency axis; the
  * voices of the chord stand on it as ticks in their level colour, as tall as the voice is loud right now,
  * so the picture reads "which cycles are sounding, where, and how much" even before any sound plays.
+ *
+ * Pure mode: the frequency axis is unchanged, but its labels are no longer Hz and keyboard notes: the vertical lines are
+ * the octaves of the ground (the base pitch), named by their ratio (`×2`) and their offset (`+1`).
  */
 import { createCanvasView } from './canvas.js';
 import { LINE, TEAL, levelColor } from '../../core/theme.js';
+import { octaveGrid } from '../../audio/words.js';
 
 const SMALL = '#8191a1'; // small text on the dark canvas: at least 4.5 : 1
 const F_MIN = 40;
@@ -52,8 +56,10 @@ export function createScope(canvas) {
    * @param {{level:number, letter:string, hz:number, loud:number, on:boolean, flash?:boolean}[]} s.voices
    * @param {boolean} s.enabled
    * @param {string} s.hint  text shown when nothing is audible
+   * @param {boolean} [s.pure]    label the octave lines of the ground instead of Hz and note names
+   * @param {number} [s.baseHz]   the ground (needed in pure mode)
    */
-  function draw({ analyser, voices, enabled, hint }) {
+  function draw({ analyser, voices, enabled, hint, pure = false, baseHz = 110 }) {
     if (!view.visible) return;
     const { g, w, h } = view.begin();
     const padL = 6;
@@ -64,11 +70,14 @@ export function createScope(canvas) {
     const pw = w - padL - padR;
     const xOf = (f) => padL + (Math.log(f / F_MIN) / logSpan) * pw;
 
-    // grid: the A's of the keyboard, labelled where there is room
+    // grid: the A's of the keyboard, labelled where there is room (pure: the octaves of the ground, ratio over offset)
     g.lineWidth = 1;
     g.font = '10px ui-sans-serif, system-ui, sans-serif';
     g.textBaseline = 'alphabetic';
-    for (const [f, name] of GRID) {
+    const lines = pure
+      ? octaveGrid(baseHz, F_MIN, F_MAX).map((o) => ({ f: o.f, main: o.ratio, sub: o.k === 0 ? 'ground' : o.offset }))
+      : GRID.map(([f, name]) => ({ f, main: f >= 1000 ? `${f / 1000}k` : String(f), sub: name }));
+    for (const { f, main, sub } of lines) {
       const x = Math.round(xOf(f)) + 0.5;
       g.strokeStyle = LINE;
       g.beginPath();
@@ -77,10 +86,10 @@ export function createScope(canvas) {
       g.stroke();
       g.fillStyle = SMALL;
       g.textAlign = 'center';
-      g.fillText(f >= 1000 ? `${f / 1000}k` : String(f), x, bottom + 12);
-      if (w > 380) {
+      g.fillText(main, x, bottom + 12);
+      if (pure || w > 380) {
         g.fillStyle = '#6e7f90';
-        g.fillText(name, x, bottom + 22);
+        g.fillText(sub, x, bottom + 22);
       }
     }
     g.strokeStyle = LINE;

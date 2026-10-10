@@ -7,6 +7,7 @@
 import { createCanvasView } from './canvas.js';
 import { CURSOR, INK, INK_2, INK_3, LINE, levelColor } from '../../core/theme.js';
 import { noteOf } from '../../audio/tuning.js';
+import { spokeLabel } from '../../audio/words.js';
 
 const SEMITONES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 const TAU = Math.PI * 2;
@@ -26,13 +27,15 @@ export function createRing(canvas) {
    * @param {number} s.baseHz
    * @param {boolean} s.reduced   prefers-reduced-motion: no glow
    * @param {Set<number>} [s.flash]  levels whose note of "Hear this moment" is sounding right now
+   * @param {{ground:{head:string, sub:string}}|null} [s.pure]  pure mode: spokes are named in cents (no note names), the centre
+   *   names the ground (`head` / `sub` from words.groundWords), the corner is as before
    */
-  function draw({ rows, on, loud, enabled, selected, baseHz, reduced, flash }) {
+  function draw({ rows, on, loud, enabled, selected, baseHz, reduced, flash, pure = null }) {
     if (!view.visible) return;
     const { g, w, h } = view.begin();
     const cx = w / 2;
     const cy = h / 2;
-    const R = Math.min(w, h) / 2 - 24;
+    const R = Math.min(w, h) / 2 - (pure ? 32 : 24); // pure: the spoke labels ("300¢") are wider than note names
     const rIn = R * 0.42;
     const radius = (L) => R - ((R - rIn) * L) / (rows.length - 1);
     const angle = (cents) => -Math.PI / 2 + (cents / 1200) * TAU;
@@ -59,8 +62,8 @@ export function createRing(canvas) {
       g.lineTo(cx + c * (R + 5), cy + s * (R + 5));
       g.stroke();
       g.fillStyle = k === 0 ? INK : SMALL;
-      const name = SEMITONES[(((base.midi + k) % 12) + 12) % 12];
-      g.fillText(name, cx + c * (R + 14), cy + s * (R + 14));
+      const name = pure ? spokeLabel(k) : SEMITONES[(((base.midi + k) % 12) + 12) % 12];
+      if (name) g.fillText(name, cx + c * (R + 14), cy + s * (R + 14));
     }
 
     // the voices
@@ -115,10 +118,10 @@ export function createRing(canvas) {
     // centre: the base pitch
     g.fillStyle = INK;
     g.font = '600 15px ui-sans-serif, system-ui, sans-serif';
-    g.fillText(base.name, cx, cy - 6);
+    g.fillText(pure ? pure.ground.head : base.name, cx, cy - 6);
     g.fillStyle = INK_2;
     g.font = '10px ui-monospace, SFMono-Regular, Menlo, monospace';
-    g.fillText(`${baseHz.toFixed(baseHz % 1 ? 1 : 0)} Hz`, cx, cy + 9);
+    g.fillText(pure ? pure.ground.sub : `${baseHz.toFixed(baseHz % 1 ? 1 : 0)} Hz`, cx, cy + 9);
     // the selected level's exact interval, in the corner
     if (selected >= 0 && rows[selected]) {
       const r = rows[selected];

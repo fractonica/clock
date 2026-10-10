@@ -49,6 +49,43 @@ import {
   wallTimeNote,
 } from '../src/ui/calendar/convert.js';
 import { monthGrid, buildMonth, cyclesInWindow, syncQuartersInWindow, yearRibbon, yearSummary, weekdayOf, overlayById, clampMonth } from '../src/ui/calendar/month.js';
+import { createPure, UNITS, ORDINAL_NAMES } from '../src/core/pure.js';
+import { RULES } from '../tools/pure-scan.mjs';
+import { PURE_PLACEHOLDER, parsePure, pureExamples, normalizePure, namesToAddress, looksEarthly } from '../src/ui/calendar/pure-parse.js';
+import {
+  COUNTERS,
+  GRID,
+  buildPureGrid,
+  buildRibbon,
+  cellFraction,
+  cellOfTime,
+  cellTime,
+  clampView,
+  CELLS_PER,
+  countersAt,
+  cycleStart,
+  overlayCycle,
+  EPS_POS,
+  entriesText,
+  firstMs,
+  ladderRanges,
+  landCycleAt,
+  landPoint,
+  landPath,
+  counterText,
+  pureEclipseContext,
+  pureShareQuery,
+  pureSolarInfo,
+  resolveParts,
+  setCounter,
+  shiftUnits,
+  spanText,
+  unitById,
+  viewCount,
+  viewFromPath,
+  viewInfo,
+  viewOfTime,
+} from '../src/ui/calendar/pure-conv.js';
 
 const model = createModel();
 const utc = createFormatter(() => 'UTC');
@@ -1329,4 +1366,613 @@ test('jump box documentation strings: the placeholder and every example parse, i
   }
   assert.ok(examples().some(([t]) => /Tokyo/.test(t)), 'a zone example');
   assert.ok(examples().every(([t]) => !/^[α-ξ] ?\d+$/.test(t)), 'no example is a bare "letter number"');
+});
+
+
+// =============================================================================================
+// pure mode (docs/design/80-pure.md): converter maths, the δ½ page, the jump grammar
+//
+// NOTATION (core/pure.js): X#n is an ordinal counted from 1 (δ½#3), nX a count of units counted from 0 (3η 17ι 21λ).
+// The expectations below that used the old spellings ("δ½ 3", "η 0 · ι 17") were updated deliberately; the old
+// spellings themselves are still READ by the jump grammar (see 'old spellings' below).
+// =============================================================================================
+const pure = createPure(model, { now: () => A });
+const pj = (text, o = {}) => parsePure(text, { model, pure, now: A, real: A + 5, level: 6, ...o });
+const pfirst = (text, o) => pj(text, o)[0];
+const HARD = RULES.filter(([, , sev]) => sev === 'hard');
+/** Every hard leak rule of the scanner against a string (the visible text of a candidate). */
+const leaks = (text) => HARD.filter(([, re]) => re.test(text)).map(([id]) => id);
+const PSAMPLES = [A, A + 12345.6, 946684800.5, 2886085800.25, 125593320.816, -9e9, 2.7e10, model.tMin + 5, model.tMax - 5];
+const STAMP_UPTO_IDS = ['alpha', 'beta', 'gamma', 'delta', 'epsilon', 'zeta', 'eta', 'iota', 'lambda'];
+
+test('pure counters: the printed ranges are the hierarchy, ordinals count from 1 and counts from 0', () => {
+  const R = ladderRanges(model, pure);
+  assert.deepEqual(
+    Object.fromEntries(Object.entries(R).map(([id, r]) => [id, [r.min, r.max]])),
+    { alpha: [1, 18], beta: [1, 5], gamma: [1, 13], 'delta-half': [1, 10], 'epsilon-half': [1, 5], 'zeta-half': [1, 7], eta: [0, 10], iota: [0, 35], lambda: [0, 64] },
+  );
+  for (const c of COUNTERS) {
+    assert.deepEqual([c.min, c.max], [R[c.id].min, R[c.id].max], `${c.sym} range is derived, not re-typed`);
+    assert.equal(c.ordinal, c.min === 1, `${c.sym}: ordinals start at 1, counts at 0`);
+  }
+  assert.deepEqual(COUNTERS.map((c) => counterText(c, 3)), ['δ½#3', 'ε½#3', 'ζ½#3', '3η', '3ι', '3λ']);
+  assert.equal(entriesText([{ id: 'alpha', n: 6 }, { id: 'beta', n: 4 }, { id: 'delta-half', n: 3 }, { id: 'zeta-half', n: 5 }, { id: 'eta', n: 3 }, { id: 'iota', n: 17 }]), 'α#6 β#4 · δ½#3 · ζ½#5 · 3η 17ι');
+});
+
+test('pure counters: the six editable counters move the moment by whole units of themselves', () => {
+  const order = ['delta', 'epsilon', 'zeta', 'eta', 'iota', 'lambda'];
+  for (const t of PSAMPLES) {
+    const c0 = countersAt(pure, t);
+    if (!c0) continue;
+    for (const [k, spec] of COUNTERS.entries()) {
+      for (const n of [spec.min, spec.max, Math.floor((spec.min + spec.max) / 2)]) {
+        const r = setCounter(model, pure, t, spec.id, n);
+        if (r.error) continue; // an end of the catalogue
+        const c1 = countersAt(pure, r.t);
+        assert.equal(c1[spec.key], n, `${spec.sym}=${n} at ${t}`);
+        // the coarser counters did not move: the new value is inside the same parent
+        // (η ι λ count inside a ζ cycle, which is two ζ½ and may straddle an ε½ or a δ½: only α β γ are sure to stay)
+        for (const key of ['alpha', 'beta', 'gamma', ...(k < 3 ? order.slice(0, k) : [])]) assert.equal(c1[key], c0[key], `${key} kept (${spec.sym}=${n} at ${t})`);
+        // and the move is a whole number of units of this counter (what is finer than it keeps its place inside the unit)
+        const units = (model.positionOf(r.t) - model.positionOf(t)) / pure.unitPos(unitById(spec.id));
+        near(units, n - c0[spec.key], 1e-4, `${spec.sym} moves by ${n - c0[spec.key]} units`);
+      }
+    }
+  }
+  // out of range values and the catalogue edge are answered, never extrapolated
+  assert.match(setCounter(model, pure, A, 'delta-half', 11).error, /δ½#n is numbered 1–10/);
+  assert.match(setCounter(model, pure, A, 'lambda', -1).error, /λ counts 0–64/);
+  assert.ok(setCounter(model, pure, model.tMax - 2, 'delta-half', 10).error, 'a counter that would leave the catalogue says so');
+  assert.equal(shiftUnits(model, pure, model.tMin + 1, 'eta', -1), null);
+  assert.equal(shiftUnits(model, pure, model.tMax - 1, 'gamma', 1), null);
+  // one ζ½ forward is exactly one ζ½ of position
+  const t2 = shiftUnits(model, pure, A, 'zeta-half', 1);
+  near(model.positionOf(t2) - model.positionOf(A), pure.unitPos(unitById('zeta-half')), 1e-11);
+  assert.equal(setCounter(model, pure, model.tMax + 100, 'eta', 3).error, 'This moment is outside the catalogue');
+  // a counter set right at the start of its unit shows that counter (rounding to the millisecond must not land before it)
+  for (let k = 0; k < 120; k++) {
+    const t = A + k * 1234.567;
+    for (const spec of COUNTERS) {
+      const r = setCounter(model, pure, t, spec.id, spec.min);
+      if (!r.error) assert.equal(countersAt(pure, r.t)[spec.key], spec.min, `${spec.sym}=${spec.min} at ${t}`);
+    }
+  }
+});
+
+test('pure stamps: every entry of the header stamp reads back as the FIRST millisecond of that unit', () => {
+  const ids = ['alpha', 'beta', 'gamma', 'delta-half', 'epsilon-half', 'zeta-half', 'eta', 'iota', 'lambda'];
+  for (const t of PSAMPLES) {
+    const c = countersAt(pure, t);
+    if (!c) continue;
+    const keys = ['alpha', 'beta', 'gamma', 'delta', 'epsilon', 'zeta', 'eta', 'iota', 'lambda'];
+    for (let n = 1; n <= ids.length; n++) {
+      const parts = ids.slice(0, n).map((id, i) => ({ id, n: c[keys[i]] }));
+      const r = resolveParts(model, pure, parts, A);
+      assert.ok(!r.error, `${n} entries at ${t}: ${r.error}`);
+      // the result is the START of the finest unit: same stamp as t down to that unit, and it is not later than t
+      const upTo = STAMP_UPTO_IDS[n - 1];
+      assert.equal(pure.stamp(r.t, upTo), pure.stamp(t, upTo), `stamp ${n} at ${t}`);
+      assert.ok(r.t <= t + 0.002, `start of the unit is not after t (${n} at ${t})`);
+      if (n === 9) assert.ok(t - r.t < 8, 'a λ is shorter than 8 s');
+      // and it is the first millisecond: one millisecond earlier the unit before it is shown
+      if (r.t - 0.001 >= model.tMin) assert.notEqual(pure.stamp(r.t - 0.001, upTo), pure.stamp(r.t, upTo), `first ms of ${n} entries at ${t}`);
+    }
+  }
+  // missing ancestors come from the shown moment
+  const r = resolveParts(model, pure, [{ id: 'delta-half', n: 3 }, { id: 'epsilon-half', n: 2 }], A);
+  assert.equal(pure.stamp(r.t, 'epsilon'), 'α#6 β#4 γ#9 · δ½#3 · ε½#2');
+  const eta = resolveParts(model, pure, [{ id: 'eta', n: 7 }], A);
+  assert.equal(countersAt(pure, eta.t).eta, 7);
+  assert.equal(model.levelAt(eta.t, 5).cycle, model.levelAt(A, 5).cycle, 'η counts inside the ζ of the shown moment');
+  // errors say what is wrong, in the notation they will be corrected in
+  assert.match(resolveParts(model, pure, [{ id: 'alpha', n: 19 }], A).error, /only 18 Alpha/);
+  assert.equal(resolveParts(model, pure, [{ id: 'gamma', n: 14 }], A).error, 'γ#14: γ is numbered 1–13 inside a Beta');
+  assert.equal(resolveParts(model, pure, [{ id: 'zeta-half', n: 8 }], A).error, 'ζ½#8: ζ½ is numbered 1–7 inside an ε½');
+  assert.equal(resolveParts(model, pure, [{ id: 'eta', n: 11 }], A).error, '11η: η counts 0–10 inside a ζ cycle');
+  assert.equal(resolveParts(model, pure, [{ id: 'eta', n: 11 }], A).detail, '10η is the last');
+  assert.match(resolveParts(model, pure, [{ id: 'delta-half', n: 1 }, { id: 'zeta-half', n: 1 }], A).error, /ε½ is missing between δ½ and ζ½/);
+  assert.match(resolveParts(model, pure, [{ id: 'zeta-half', n: 1 }, { id: 'delta-half', n: 1 }], A).error, /longest to the shortest/);
+  assert.match(resolveParts(model, pure, [{ id: 'delta-half', n: 1 }], model.tMax + 5).error, /outside the catalogue/);
+  assert.match(resolveParts(model, pure, [{ id: 'alpha', n: 18 }, { id: 'beta', n: 5 }, { id: 'gamma', n: 13 }], A).error, /after the catalogue ends/);
+  // ζ½ and η must name the same half of their ζ cycle (the η that straddles the middle belongs to both halves: see below)
+  const c = countersAt(pure, A);
+  const half = (eta) => resolveParts(model, pure, [{ id: 'alpha', n: 6 }, { id: 'beta', n: 4 }, { id: 'gamma', n: 9 }, { id: 'delta-half', n: c.delta }, { id: 'epsilon-half', n: c.epsilon }, { id: 'zeta-half', n: c.zeta }, { id: 'eta', n: eta }], A);
+  const lo = half(0);
+  const hi = half(10);
+  assert.equal([lo, hi].filter((r) => r.error).length, 1, 'exactly one of 0η / 10η belongs to this ζ½');
+  assert.match([lo, hi].find((r) => r.error).error, /^ζ½#\d and \d+η do not meet$/);
+  assert.match([lo, hi].find((r) => r.error).detail, /^this ζ½ is the (first|second) half of its ζ cycle: it holds the counters (0η–5η|5η–10η)$/);
+});
+
+test('pure stamps: the stamp the header prints is always read, also in the second half of the η that straddles a ζ', () => {
+  // η 5 of a ζ cycle (11 η) straddles the middle: its first half is in the first ζ½, its second half in the second one.
+  // The header prints "…ζ½#6 · 5η" there; the first reading of it failed with "ζ½ 6 and η 5 do not meet".
+  let straddle = 0;
+  for (let k = 0; k < 25; k++) {
+    // built, not searched for: phase 0.52 of a ζ cycle is the second half of its η 5 (η 5 spans 5/11 .. 6/11)
+    const t = pointOfCycle(model, 5, 1000 + k * 7919, 0.52) + 0.123;
+    const cs = countersAt(pure, t);
+    assert.ok(cs.eta === 5 && model.levelAt(t, 5).phase >= 0.5, 'the instant is in the second half of η 5');
+    straddle++;
+    const text = pure.stamp(t, 'eta');
+    assert.match(text, / · 5η$/);
+    const r = pj(text, { now: t });
+    assert.equal(r[0].kind, 'cycle', `${text}: ${r[0].error}`);
+    assert.equal(pure.stamp(r[0].time, 'eta'), text, 'the same stamp comes back');
+    assert.ok(r[0].time <= t, text);
+    assert.equal(model.levelAt(r[0].time, 6).cycle, model.levelAt(t, 6).cycle, `the ζ½ began inside the η: ${text}`);
+    // the first millisecond of the second ζ½ (the one before still shows the first half)
+    assert.notEqual(pure.stamp(r[0].time - 0.001, 'zeta'), pure.stamp(r[0].time, 'zeta'));
+    // any tail of it, with the date entries above taken from the shown moment
+    assert.equal(pure.stamp(pj(text.split(' · ').slice(-2).join(' · '), { now: t })[0].time, 'eta'), text, 'ζ½#n · 5η');
+    // the first half of the same η reads back as the η itself
+    const t1 = model.levelAt(t, 6).start + 0.001;
+    const s1 = pure.stamp(t1, 'eta');
+    assert.equal(pure.stamp(pj(s1, { now: t })[0].time, 'eta'), s1);
+  }
+  assert.equal(straddle, 25, 'enough straddling instants were found');
+  // every depth of stamp of many instants reads back (about 2 % of the η-level stamps were refused)
+  for (let k = 0; k < 40; k++) {
+    const t = -9e9 + k * 985431711.7 + 0.37;
+    if (!model.inRange(t)) continue;
+    for (const upTo of ['gamma', 'delta', 'epsilon', 'zeta', 'eta', 'iota', 'lambda']) {
+      const text = pure.stamp(t, upTo);
+      const r = pj(text, { now: t })[0];
+      assert.equal(r.kind, 'cycle', `${text}: ${r.error}`);
+      assert.equal(pure.stamp(r.time, upTo), text, text);
+    }
+  }
+});
+
+test('pure stamps: the old spellings are still read, the clock the header shows too', () => {
+  const t = shiftUnits(model, pure, A, 'iota', 40);
+  const st = pure.stamp(t, 'lambda');
+  assert.match(st, /^α#6 β#4 γ#9 · δ½#\d+ · ε½#\d · ζ½#\d · \d+η \d+ι \d+λ$/);
+  const old = st.replace(/δ½#(\d+)/, 'δ½ $1').replace(/ε½#(\d+)/, 'ε½ $1').replace(/ζ½#(\d+)/, 'ζ½ $1').replace(/ · (\d+)η (\d+)ι (\d+)λ$/, ' · η $1 · ι $2 · λ $3');
+  assert.match(old, /δ½ \d+ · ε½ \d · ζ½ \d · η \d+ · ι \d+ · λ \d+$/);
+  assert.equal(pfirst(old, { now: t }).time, pfirst(st, { now: t }).time, 'the old spelling of a whole stamp');
+  assert.equal(pfirst('δ½ 3 · ε½ 2 · ζ½ 5').time, pfirst('δ½#3 · ε½#2 · ζ½#5').time);
+  assert.equal(pfirst('δ½ 3').time, pfirst('δ½#3').time);
+  assert.equal(pfirst('ζ½ 6 · η 5').time, pfirst('ζ½#6 · 5η').time);
+  assert.equal(pfirst('ζ½ 5 η 3 ι 17').time, pfirst('ζ½#5 · 3η 17ι').time);
+  assert.equal(pfirst('η 3 · ι 17 · λ 42').time, pfirst('3η 17ι 42λ').time);
+  assert.equal(pfirst('3η17ι42λ').time, pfirst('3η 17ι 42λ').time, 'the header clock copied without spaces');
+  // η#4 (the 4th η) is the counter 3
+  assert.equal(pfirst('ζ½#3 · η#4').time, pfirst('ζ½#3 · 3η').time);
+  assert.match(pfirst('η#0').error, /numbers start at 1/);
+  // the clock alone: the counters of the shown ζ come first, the span after the shown moment second
+  const clock = pj('0η 29ι 21λ');
+  assert.deepEqual(clock.map((c) => c.kind), ['cycle', 'relative']);
+  assert.match(clock[0].label, /^0η 29ι 21λ in the current ζ$/);
+  assert.match(clock[1].label, /^\+0η 29ι 21λ from the shown moment$/);
+  assert.equal(countersAt(pure, clock[0].time).iota, 29);
+  // a lone count, a sign, "in" / "ago" and spans that do not start with η are spans
+  assert.deepEqual(pj('3η').map((c) => c.kind), ['relative', 'cycle']);
+  assert.deepEqual(pj('+0η 29ι').map((c) => c.kind), ['relative']);
+  assert.deepEqual(pj('in 6ι 43λ').map((c) => c.kind), ['relative']);
+  assert.equal(pj('6ι 43λ')[0].kind, 'relative');
+  assert.equal(pj('2ζ½ 3η')[0].kind, 'relative');
+  // a count that is no counter says how to write the ordinal
+  assert.match(pfirst('α#6 β#4 3γ').error, /3γ is a count of units/);
+});
+
+test('pure span text: a span built from whole units reads as those units, without trailing zero parts', () => {
+  const t1 = shiftUnits(model, pure, A, 'iota', -1);
+  assert.equal(spanText(model, pure, t1, A), '1ι');
+  assert.equal(spanText(model, pure, A, t1), '1ι', 'the order of the two moments does not matter');
+  const t2 = shiftUnits(model, pure, A, 'zeta-half', 2);
+  assert.equal(spanText(model, pure, A, t2), '2ζ½');
+  assert.equal(spanText(model, pure, A, A, { parts: 1 }), '0ξ');
+  assert.equal(spanText(model, pure, A, shiftUnits(model, pure, A, 'eta', 3.5)), '3η 18ι');
+  // the lengths of the cycles in ladder units are clean counts (core: pure.cycleLength)
+  const spans = Array.from({ length: 14 }, (_, L) => pure.cycleLength(L, { parts: 1 }));
+  assert.deepEqual(spans, ['1α', '1β', '1γ', '2δ½', '2ε½', '2ζ½', '1η', '4ι', '1ι', '13λ', '1λ', '1μ', '1ν', '1ξ']);
+  assert.deepEqual(Array.from({ length: 14 }, (_, L) => pure.cycleLength(L)), spans, 'never "1η 0ι"');
+  // the sync's drift is the core text, with narrow digit groups
+  assert.match(pure.driftText(model.solarSyncByNumber(4820)), /^−\d{1,3}( \d{3})*λ$/);
+  const ec = pureEclipseContext(model, pure, A);
+  assert.deepEqual([ec.prev.k, ec.next.k], [22, 23]);
+  assert.deepEqual([ec.prev.name, ec.next.name], ['#22', '#23'], 'eclipses are named like positions: pure.eclipseName(k)');
+  assert.match(ec.prev.text, /^\d+β \d+γ$/);
+  assert.equal(pureEclipseContext(model, pure, model.catalogue[22]).prev.exact, true);
+  assert.equal(pureEclipseContext(model, pure, model.tMax + 1).prev, null);
+  // 12 decimals of the position reproduce the moment (9 decimals were 0.28 s off)
+  assert.equal(pureShareQuery(model, A), '?pos=' + model.positionOf(A).toFixed(12) + '&pure=1&view=calendar');
+  let worst = 0;
+  for (let i = 0; i < 400; i++) {
+    const t = Math.round((model.tMin + ((model.tMax - model.tMin) * ((i * 0.6180339887) % 1))) * 1000) / 1000;
+    const pos = Number(new URLSearchParams(pureShareQuery(model, t)).get('pos'));
+    worst = Math.max(worst, Math.abs(model.timeOfPosition(pos) - t));
+  }
+  assert.ok(worst < 0.001, `a copied link lands within a millisecond: ${worst}`);
+  const s = pureSolarInfo(model, 4820);
+  assert.equal(s.quarters.length, 4);
+  assert.equal(pure.driftText(s.sol), pure.driftText(model.solarSyncByNumber(4820)));
+  assert.ok(pureSolarInfo(model, 1e9) === null && pureSolarInfo(model, 1.5) === null);
+});
+
+test('pure page: the 35 cells of a δ½ are exactly the ζ½ the header counts', () => {
+  assert.equal(viewCount(model), 11213);
+  assert.equal(GRID.cells, GRID.rows * GRID.cols);
+  for (const t of PSAMPLES) {
+    const hv = viewOfTime(model, t);
+    if (hv === null) continue;
+    const info = viewInfo(model, hv);
+    const g = buildPureGrid(model, hv);
+    assert.equal(g.cells.length, 35);
+    const d = pure.date(t);
+    assert.deepEqual([d.alpha, d.beta, d.gamma, d.delta], [info.alpha, info.beta, info.gammaOrd, info.half], `page of ${t}`);
+    const i = cellOfTime(model, g, t);
+    assert.ok(i >= 0 && i < 35, `cell of ${t}`);
+    assert.equal(g.cells[i].row + 1, d.epsilon, 'the row is the ε½ counter');
+    assert.equal(g.cells[i].col + 1, d.zeta, 'the column is the ζ½ counter');
+    // every cell: its middle shows its own ε½ and ζ½
+    for (const c of g.cells) {
+      if (!c.inRange) continue;
+      // the start of a cell is the first millisecond that shows it
+      assert.deepEqual([pure.date(c.start).epsilon, pure.date(c.start).zeta], [c.row + 1, c.col + 1], `cell ${c.ord} start`);
+      const m = pure.date(cellTime(model, c, 0.5));
+      if (!m) continue;
+      assert.deepEqual([m.delta, m.epsilon, m.zeta], [info.half, c.row + 1, c.col + 1], `cell ${c.ord}`);
+    }
+  }
+  // clipped ends: the last page has cells outside, the first page starts at position 0
+  const last = buildPureGrid(model, viewCount(model) - 1);
+  assert.ok(last.cells[0].inRange && last.cells.some((c) => !c.inRange), 'the last page is partly outside');
+  assert.ok(last.cells.some((c) => c.partial) || last.cells.some((c) => !c.inRange));
+  near(buildPureGrid(model, 0).cells[0].start, model.tMin, 0.0011);
+  assert.equal(clampView(model, -5), 0);
+  assert.equal(clampView(model, 1e9), viewCount(model) - 1);
+});
+
+test('pure page: the page and the cell never read ahead of the header (no relative tolerance)', () => {
+  // a 1e-9 relative tolerance read the next δ½ page up to 3.5 ms early (and the next α up to 2.3 s early)
+  const bad = [];
+  const hvs = [1, 7, 10, 130, 650, 3000, 3724, 3725, 5000, 9000, 11000, viewCount(model) - 1];
+  for (const hv of hvs) {
+    const g = buildPureGrid(model, hv);
+    const start = g.cells[0].start;
+    assert.equal(viewOfTime(model, start), hv, `page ${hv} at its first millisecond`);
+    for (let ms = 1; ms <= 6; ms++) {
+      const t = Math.round((start - ms / 1000) * 1000) / 1000;
+      const d = pure.date(t);
+      const page = viewOfTime(model, t);
+      if (page === null) continue;
+      if (viewInfo(model, page).half !== d.delta) bad.push(`page ${hv} -${ms}ms: header δ½#${d.delta}, page δ½#${viewInfo(model, page).half}`);
+      assert.equal(page, hv - 1, `${ms} ms before page ${hv} is the page before`);
+    }
+    // each cell: its first millisecond is in it, the millisecond before is in the previous one
+    for (const c of g.cells) {
+      if (!c.inRange) continue;
+      assert.equal(cellOfTime(model, g, c.start), c.index, `cell ${c.ord} of page ${hv}`);
+      const before = cellOfTime(model, g, Math.round((c.start - 0.001) * 1000) / 1000);
+      assert.equal(before, c.index - 1 >= 0 ? c.index - 1 : -1, `1 ms before cell ${c.ord} of page ${hv}`);
+      // and the header agrees at both
+      const dz = pure.date(c.start);
+      assert.deepEqual([dz.epsilon, dz.zeta], [c.row + 1, c.col + 1]);
+      if (c.index > 0) assert.notDeepEqual([pure.date(c.start - 0.001).epsilon, pure.date(c.start - 0.001).zeta], [c.row + 1, c.col + 1]);
+      // the end is the start of the next cell
+      if (c.index < 34 && g.cells[c.index + 1].inRange) assert.equal(c.end, g.cells[c.index + 1].start);
+    }
+  }
+  assert.deepEqual(bad, []);
+  assert.ok(EPS_POS === 1e-12, 'the same absolute tolerance as core/pure.js');
+});
+
+test('pure landings: the first millisecond that shows the thing, even when the float estimate sits a hair after it', () => {
+  // the synthetic case of the audit: an exact boundary on a millisecond, estimated 0.3 µs late
+  assert.equal(firstMs(3311840352.0160003, (c) => c >= 3311840352.016), 3311840352.016);
+  // ... and one that is really a hair after the millisecond mark: the next millisecond is the first that shows it
+  assert.equal(firstMs(3311840352.0160003, (c) => c > 3311840352.0160003), 3311840352.017);
+  assert.equal(firstMs(100.5, (c) => c >= 100.5), 100.5);
+  assert.equal(firstMs(100.5, () => false), null);
+  assert.equal(firstMs(NaN, () => true), null);
+  // addresses of every depth: the landing is the first millisecond of that very cycle
+  for (const level of [0, 1, 2, 3, 4, 5, 6, 8, 10, 11, 12]) {
+    for (const idx of [0, 1, 2, 5, 17, 100, 431]) {
+      if (idx >= Number(model.clock.count(level))) continue;
+      const t = landPoint(model, level, idx, 0);
+      assert.equal(model.levelAt(t, level).cycle, idx, `L${level} #${idx}`);
+      if (t - 0.001 >= model.tMin) assert.equal(model.levelAt(t - 0.001, level).cycle, idx - 1, `L${level} #${idx}: one millisecond earlier is the cycle before`);
+      assert.equal(landCycleAt(model, model.cycleStartTime(level, idx), level), t, `L${level} #${idx} by its float start`);
+    }
+  }
+  // peak / node / valley: the first millisecond at which the cycle has reached that phase
+  for (const phase of [0.25, 0.5, 0.75]) {
+    const t = landPoint(model, 4, 1000, phase);
+    assert.ok(model.levelAt(t, 4).phase >= phase && model.levelAt(t - 0.001, 4).phase < phase, `ε phase ${phase}`);
+    assert.equal(model.levelAt(t, 4).cycle, 1000);
+  }
+  // the address jump lands exactly there
+  assert.equal(pfirst('α#7 β#3').time, landPoint(model, 1, model.pathToCycle([7, 3]) === null ? 0 : Number(model.pathToCycle([7, 3])), 0));
+  for (const text of ['α#7 β#3', 'α#7 β#2 γ#12', 'α#4 β#5 γ#13', 'α#12 β#1 γ#1', 'α#3', 'α#18']) {
+    const r = pfirst(text);
+    assert.equal(r.kind, 'cycle', text);
+    const level = text.split(' ').length - 1;
+    assert.notEqual(model.levelAt(r.time, level).cycle, model.levelAt(r.time - 0.001, level).cycle, `${text} is the first millisecond`);
+  }
+  // paths too (the converter's address point)
+  const t = landPath(model, [6, 4, 9], 'begin');
+  assert.equal(pfirst('α#6 β#4 γ#9').time, t);
+  assert.equal(landPath(model, [6, 4, 9], 'end'), landPath(model, [6, 4, 10], 'begin'));
+  assert.equal(landPath(model, [19], 'begin'), null);
+});
+
+test('pure page: η bands, quarter marks, eclipses, sync marks and the ε phase pair', () => {
+  const hv = viewOfTime(model, A);
+  const g = buildPureGrid(model, hv);
+  for (const c of g.cells) {
+    // the η segments tile the cell exactly
+    assert.equal(c.etas[0].x0, 0);
+    assert.equal(c.etas.at(-1).x1, 1);
+    for (let i = 1; i < c.etas.length; i++) assert.equal(c.etas[i].x0, c.etas[i - 1].x1);
+    const width = c.etas.reduce((a, e) => a + (e.x1 - e.x0), 0);
+    near(width, 1, 1e-12);
+    // a ζ½ is 5½ η: 22 quarter steps, 3 of 4 are quarter marks
+    assert.equal(c.quarters.length + c.etas.filter((e) => e.startsHere).length, 22);
+    for (const e of c.etas) {
+      // the counter on the band is the header's η counter at a time inside the segment
+      const t = cellTime(model, c, (e.x0 + e.x1) / 2);
+      assert.equal(pure.clock(t).eta, e.local, `cell ${c.ord} η ${e.local}`);
+    }
+    // quarter marks sit at ι 9, 18, 27 of their η
+    for (const q of c.quarters) {
+      const t = cellTime(model, c, q.x) + 0.002;
+      assert.equal(pure.clock(t).iota, q.q * 9, `cell ${c.ord} quarter ${q.name}`);
+      assert.equal(pure.clock(t).eta, q.local);
+    }
+    // the pair is the ε odometer at the start of the cell (16 x 16 states): the cell data keeps it for the tooltip
+    const t0 = c.inRange ? cellTime(model, c, 0) + 0.001 : null;
+    if (t0) {
+      const l = model.levelAt(t0, 4);
+      assert.deepEqual([pure.pair(c.epsPhase).hi, pure.pair(c.epsPhase).lo], model.odometerAt(t0, 4, { strokes: 2, digits: 2 }).digits, `cell ${c.ord} pair`);
+      near(l.phase, c.epsPhase, 1e-6);
+    }
+  }
+  // an eclipse is at the start or in the middle of its cell; the page holding eclipse #22 marks it
+  const hvE = viewOfTime(model, model.catalogue[22] + 1);
+  const ge = buildPureGrid(model, hvE);
+  const ec = ge.cells.find((c) => c.eclipse === 22);
+  assert.ok(ec, 'eclipse #22 is on its page');
+  assert.equal(pure.eclipseName(ec.eclipse), '#22', 'the number on the cell is the position of the eclipse');
+  assert.ok([0, 0.5].includes(ec.eclipseFrac));
+  near(cellFraction(model, ec, model.catalogue[22] + 0.0005), ec.eclipseFrac, 1e-6);
+  // the first eclipse sits at position 0 and is #0 (the page of the catalogue start)
+  const g0 = buildPureGrid(model, 0);
+  assert.equal(g0.cells[0].eclipse, 0);
+  assert.equal(pure.eclipseName(g0.cells[0].eclipse), '#0');
+  // sync marks: four per sync, in time order, at their exact fraction of the cell
+  const marks = g.cells.flatMap((c) => c.syncs.map((s) => ({ ...s, cell: c })));
+  assert.ok(marks.length >= 30 && marks.length <= 45, `about 40 quarters on a page: ${marks.length}`);
+  for (const m of marks) {
+    assert.equal(cellOfTime(model, g, m.start + 0.001), m.cell.index);
+    near(cellFraction(model, m.cell, m.start), m.x, 1e-7);
+  }
+  for (let i = 1; i < marks.length; i++) assert.ok(marks[i].start > marks[i - 1].start);
+  assert.ok(marks.filter((m) => m.q === 0).length >= 9, 'about ten sync starts on a page');
+  // at most one sync starts in a cell: the label in the corner is one number
+  for (const c of g.cells) assert.ok(c.syncs.filter((s) => s.q === 0).length <= 1);
+});
+
+test('pure page: navigation maths and the γ ribbon', () => {
+  for (const hv of [0, 1, 9, 10, 3725, viewCount(model) - 1]) {
+    const info = viewInfo(model, hv);
+    assert.equal(viewFromPath(model, info.alpha, info.beta, info.gammaOrd, info.half), hv, `round trip ${hv}`);
+  }
+  // beyond the clipped end the last γ is used
+  assert.equal(viewFromPath(model, 18, 5, 13, 10), viewCount(model) - 1);
+  assert.equal(viewOfTime(model, model.tMax + 1), null);
+  assert.equal(viewOfTime(model, model.tMax), viewCount(model) - 1);
+  const rb = buildRibbon(model, 372);
+  assert.equal(rb.segs.length, 10);
+  assert.equal(rb.eps.length, 40);
+  assert.deepEqual(rb.deltas.map((d) => d.x), [0.2, 0.4, 0.6, 0.8]);
+  assert.deepEqual(rb.path, [6, 4, 9]);
+  assert.equal(rb.segs[3].hv, 3723);
+  assert.equal(viewOfTime(model, A), 3725);
+});
+
+test('pure jump grammar: names, addresses, stamps and offsets land on the same moments the header counts', () => {
+  const gamma2 = pfirst('Gamma Difracton');
+  assert.equal(gamma2.kind, 'cycle');
+  assert.equal(pure.stamp(gamma2.time, 'gamma'), 'α#6 β#4 γ#2');
+  assert.equal(pfirst('γ#2').time, gamma2.time);
+  assert.equal(pfirst('Gamma Difracton in Beta Tetrafracton').time, gamma2.time);
+  const full = pfirst('Alpha Hexafracton Beta Tetrafracton Gamma Nonafracton');
+  assert.equal(full.time, pfirst('α#6 β#4 γ#9').time);
+  assert.match(full.label, /Alpha Hexafracton › Beta Tetrafracton › Gamma Nonafracton/);
+  assert.equal(pfirst('a6 b4 g9').time, full.time);
+  assert.equal(pfirst('6.4.9').time, full.time);
+  assert.equal(pfirst('Delta Pentafracton').time, pfirst('δ#5').time);
+  assert.match(pfirst('ε#5').label, /Epsilon Pentafracton in the current Delta/);
+  // a spaced "ζ 6" is the ordinal first, the running ζ second
+  const z6 = pj('ζ 6');
+  assert.deepEqual(z6.map((c) => c.kind), ['cycle', 'cycle']);
+  assert.match(z6[1].label, /running ζ/);
+  // the header's own stamp, whole or from any entry on
+  for (const t of PSAMPLES) {
+    const c = countersAt(pure, t);
+    if (!c) continue;
+    const text = pure.stamp(t, 'lambda');
+    const r = pj(text, { now: t })[0];
+    assert.equal(r.kind, 'cycle', text);
+    assert.equal(pure.stamp(r.time, 'lambda'), text, `the stamp reads back: ${text}`);
+    assert.ok(t - r.time < 8 && r.time <= t + 0.002);
+  }
+  const tail = pfirst('δ½#3 · ε½#2 · ζ½#5');
+  assert.equal(pure.stamp(tail.time, 'zeta'), 'α#6 β#4 γ#9 · δ½#3 · ε½#2 · ζ½#5');
+  assert.match(tail.label, /^δ½#3 · ε½#2 · ζ½#5 in the current γ$/);
+  assert.equal(pfirst('delta half 3').time, pfirst('δ½#3').time);
+  assert.equal(pure.stamp(pfirst('ι 17').time, 'iota').split(' · ').pop(), '0η 17ι', 'ι counts inside the shown η');
+  // offsets: whole units forward and back, measured in position
+  const fwd = pfirst('+2ζ½ 3η');
+  near(model.positionOf(fwd.time) - model.positionOf(A), 2 * pure.unitPos(unitById('zeta-half')) + 3 * pure.unitPos(unitById('eta')), 1e-10);
+  assert.equal(pfirst('2ζ½ 3η').time, fwd.time, 'a bare span reads as "after"');
+  assert.equal(pfirst('in 2ζ½ 3η').time, fwd.time);
+  assert.equal(pfirst('-1ι').time, shiftUnits(model, pure, A, 'iota', -1));
+  assert.equal(pfirst('1ι ago').time, pfirst('-1ι').time);
+  assert.equal(pfirst('+1.5η').time, shiftUnits(model, pure, A, 'eta', 1.5));
+  assert.match(pfirst('+2δ').error, /counted in halves/);
+  assert.match(pfirst('+2ε½ 3ζ').error ?? '', /counted in halves/);
+  assert.match(pfirst('+2θ').error, /not counted/);
+  assert.match(pfirst('+3').error, /Add a unit/);
+  assert.match(pfirst('+999α').error, /outside the catalogue/);
+  assert.match(pfirst('+1β', { now: model.tMax - 1 }).error, /outside the catalogue/);
+  // position, sync, now, global index
+  assert.equal(pfirst('pos 22.9278').kind, 'position');
+  near(model.positionOf(pfirst('pos 22.9278').time), 22.9278, 1e-9);
+  assert.equal(pfirst('22 + 0.9278').time, pfirst('pos 22.9278').time);
+  assert.equal(pfirst('pos 22.9278').detail.split(' · ').pop(), 'eclipse #22 + 0.9278', 'the eclipse is named like the position: #22');
+  assert.match(pfirst('pos 99').error, /between 0 and 69/);
+  const s = pfirst('sync 4820 node');
+  assert.equal(s.kind, 'sync');
+  assert.match(s.detail, /drift [−+]\d{1,3}( \d{3})*λ$/);
+  assert.ok(s.detail.endsWith(`drift ${pure.driftText(model.solarSyncByNumber(4820))}`), 'drift is the core text');
+  assert.match(pfirst('sync 99999999').error, /not inside the catalogue/);
+  assert.equal(pfirst('now').live, true);
+  assert.equal(pfirst('live').time, A + 5);
+  assert.match(pfirst('d7#717211').label, /η global index 717211/);
+});
+
+test('pure jump grammar: boundaries and glyph states', () => {
+  const e = pfirst('next ε');
+  assert.equal(e.kind, 'boundary');
+  assert.ok(e.time > A);
+  assert.equal(e.time, landPoint(model, 4, eventsAround(model, A, 4, 1, 1, 1)[0].idx, 0));
+  assert.match(e.detail, /ε#\d ends → Epsilon \w+fracton begins/);
+  assert.ok(pfirst('prev ζ').time < A);
+  assert.equal(pfirst('next peak η').time, pfirst('next peak', { level: 6 }).time);
+  assert.match(pfirst('next peak η').detail, /in Eta \w+fracton/);
+  assert.equal(pfirst('next 3 ε').label, 'Next 3rd ε boundary');
+  assert.equal(pj('ε').length, 2, 'a lone letter offers next and previous');
+  assert.match(pfirst('next peak', { level: undefined }).error, /needs a level/);
+  // half-units: the boundary of a ζ½ is the start or the middle of a ζ, whichever comes first
+  const h1 = pfirst('next ζ½');
+  const h2 = pfirst('next ζ');
+  assert.ok(h1.time > A && h1.time <= h2.time);
+  near(model.positionOf(h1.time) % pure.unitPos(unitById('zeta-half')), 0, 1e-9);
+  assert.match(h1.detail, /ζ½#\d begins$/);
+  // it is the first millisecond of that ζ½: the header's counter changes there
+  assert.notEqual(pure.dateText(h1.time - 0.001), pure.dateText(h1.time));
+  assert.equal(pure.date(h1.time).zeta, pure.date(h1.time + 0.5).zeta);
+  assert.match(pfirst('next η½').error, /no half/);
+  assert.match(pfirst('next ζ½ peak').error, /no peak/);
+  assert.equal(pfirst('prev δ½').time < A, true);
+  // a glyph state: the pair and the single glyph, both directions
+  const st = pj('η [13,0]');
+  assert.deepEqual(st.map((c) => c.kind), ['state', 'state']);
+  assert.ok(st[0].time > A && st[1].time < A);
+  assert.equal(model.odometerAt(st[0].time, 6, { digits: 2 }).digits.join(), '13,0');
+  assert.equal(pfirst('η 13·0').time, st[0].time);
+  assert.equal(pfirst('d7 13,0').time, st[0].time);
+  assert.match(st[0].label, /^Next time η shows 13·0$/);
+  assert.equal(model.odometerAt(pfirst('η [13]').time, 6, { digits: 1 }).digits[0], 13);
+  assert.match(pfirst('η [16,0]').error, /too large/);
+  assert.match(pfirst('d20 1,2').error, /Depth must be between 1 and 14/);
+});
+
+test('pure jump box never reads an Earth calendar or clock: one short answer instead', () => {
+  const EARTH = ['2031-06-01', '2031-06-01 14:30', '1 Jun 2031', 'Thu 8 Oct 2026', '+3d', '-2h30m', 'in 2 weeks', '3 days ago', 'tomorrow', 'today', 'yesterday', 'noon', 'Moscow', '14:30 Tokyo', 'Europe/Moscow', '1791460800', '1791460800000', 'unix 1791460800', 'UTC', 'Monday', '06/01/2031', '2pm', 'next day', '3 hours', '90 min', '+1y', 'May'];
+  for (const text of EARTH) {
+    const r = pj(text);
+    assert.equal(r.length, 1, text);
+    assert.equal(r[0].kind, 'error', text);
+    assert.equal(r[0].error, 'Dates and clock times are off in pure mode', text);
+    assert.ok(looksEarthly(text), text);
+    assert.match(r[0].detail, /read in cycles/);
+    assert.match(r[0].detail, /Press \? for the glossary\.$/, 'the help ends with the pointer to the glossary');
+  }
+  // pure inputs that LOOK a little Earthly are still read
+  for (const text of ['sync 4820', 'α#6 β#4 γ#9', '6.4.9', 'next ε', '+2ζ½ 3η', 'η [13,0]', 'pos 22.9278', 'Gamma Difracton', '0η 29ι 21λ', 'ζ½#6 · 5η']) assert.notEqual(pfirst(text).kind, 'error', text);
+  assert.ok(!looksEarthly('Gamma Difracton') && !looksEarthly('+2ζ½ 3η') && !looksEarthly('sync 4820') && !looksEarthly('0η 29ι 21λ'));
+  // junk is "cannot read", with pure help
+  const junk = pfirst('hello world');
+  assert.match(junk.error, /^Cannot read "hello world"$/);
+  assert.match(junk.detail, /Gamma Difracton/);
+  assert.match(junk.detail, /Counters count from 0, # numbers from 1\. Press \? for the glossary\.$/);
+  // a huge paste answers at once
+  const huge = pj('x'.repeat(5000));
+  assert.equal(huge.length, 1);
+  assert.match(huge[0].error, /characters/);
+  assert.ok(pfirst('Gamma Difracton' + ' '.repeat(400)).kind === 'cycle', 'trailing blanks do not count');
+  assert.deepEqual(pj(''), []);
+  assert.deepEqual(pj('   '), []);
+});
+
+test('pure jump box text never carries an Earth reference (the scanner rules, over many inputs)', () => {
+  const inputs = [
+    'Gamma Difracton', 'Alpha Hexafracton Beta Tetrafracton Gamma Nonafracton', 'Difracton', 'Omega Monofracton', 'α#6 β#4 γ#9', 'ε#5', 'ζ 6', 'a6 b3 g11', '6.3.11', 'α#19', 'β#6', 'γ#14',
+    'δ½#3 · ε½#2 · ζ½#5', 'δ½ 3 · ε½ 2 · ζ½ 5', 'η 3', 'ι 17', 'ζ½ 5 η 3', 'ζ½#6 · 5η', '3η 17ι 21λ', '0η29ι21λ', '5η', '3γ', 'δ½ 11', 'δ½#11', 'ε½ 0', 'η 11', '11η', 'η#0',
+    '+2ζ½ 3η', '-1ι', 'in 5λ', '3η ago', '+3', '+2δ', '+2θ', '+9999α',
+    'pos 22.9', 'pos 99', 'sync 4820', 'S4820 node', 'sync 99999999', 'next ε', 'prev ζ', 'next ζ½', 'next peak η', 'next 3 ε', 'next peak', 'next ε½ peak', 'ε', 'ι', 'θ', 'ξ',
+    'η [13,0]', 'η 13·4', 'η [16,0]', 'd7#717211', 'd7#99999999999', 'd20 1,2', 'now', '2031-06-01', '+3d', 'Moscow', 'tomorrow', '1791460800', 'xyz', 'hello world',
+  ];
+  for (const now of [A, 946684800, model.tMin + 5, model.tMax - 5, model.tMax + 100]) {
+    for (const text of inputs) {
+      for (const c of parsePure(text, { model, pure, now, real: now + 5, level: 6 })) {
+        const shown = [c.label, c.detail, c.error ?? ''].join(' | ');
+        assert.deepEqual(leaks(shown), [], `${text} @ ${now}: ${shown}`);
+      }
+    }
+  }
+  for (const [text, why] of pureExamples()) {
+    assert.deepEqual(leaks(text + ' ' + why), [], text);
+    assert.ok(pj(text).some((c) => c.kind !== 'error'), `${text} -> ${pj(text)[0]?.error}`);
+    assert.ok(why.length > 8);
+  }
+  assert.deepEqual(leaks(PURE_PLACEHOLDER), []);
+  const pieces = PURE_PLACEHOLDER.replace(/^Jump to…\s+/, '').split(' · ');
+  assert.ok(pieces.length >= 4);
+  for (const x of pieces) assert.ok(pj(x).some((c) => c.kind !== 'error'), x);
+  // the examples teach the new notation, not the old one
+  assert.ok(pureExamples().every(([text]) => !/(?<!\d)[δεζηι]½? \d/.test(text)), 'no old spelling in the examples');
+});
+
+test('pure jump helpers: names become hashed ordinals, ½ survives normalisation', () => {
+  assert.equal(normalizePure('  δ½ 3 '), 'δ½ 3');
+  assert.equal(normalizePure('δ½#3'), 'δ½#3');
+  assert.equal(normalizePure('−1ι'), '-1ι');
+  assert.equal(normalizePure('δ1⁄2 3'), 'δ½ 3');
+  assert.deepEqual(namesToAddress('gamma difracton'), { text: 'γ#2', had: true });
+  assert.deepEqual(namesToAddress('gamma difracton in beta tetrafracton'), { text: 'β#4 γ#2', had: true });
+  assert.equal(namesToAddress('next ε').had, false);
+  // every ordinal name of the shared table is understood
+  ORDINAL_NAMES.slice(1).forEach((name, i) => assert.equal(namesToAddress(`beta ${name.toLowerCase()}`).text, `β#${i + 1}`));
+  // the pure history never mixes with the normal one: sanitizeHistory keeps what it is given, nothing is added
+  assert.deepEqual(sanitizeHistory([{ text: 'Gamma Difracton', label: 'Gamma Difracton in the current Beta', kind: 'cycle' }]).map((x) => x.text), ['Gamma Difracton']);
+  assert.ok(UNITS.length >= 12);
+});
+
+test('pure page: the δ ε ζ band cycles are whole numbers of cells and start exactly on a cell', () => {
+  assert.deepEqual(CELLS_PER, { 3: 70, 4: 14, 5: 2 });
+  for (const t of [A, 946684800.5, 2886085800.25]) {
+    const hv = viewOfTime(model, t);
+    const g = buildPureGrid(model, hv);
+    for (const level of [3, 4, 5]) {
+      for (const c of g.cells) {
+        const cy = overlayCycle(model, c.z, level);
+        const l = model.levelAt(cellTime(model, c, 0.5), level);
+        assert.equal(l.cycle, cy.idx, `L${level} cell ${c.ord}`);
+        assert.equal(l.local + 1, cy.local);
+        assert.equal(cy.startsHere, cellTime(model, c, 0) <= l.start + 0.002 && l.start <= cellTime(model, c, 0) + 0.002, `L${level} cell ${c.ord} starts a cycle`);
+        if (cy.startsHere) {
+          near(cycleStart(model, level, cy.idx), cellTime(model, c, 0), 0.002);
+          // both are the first millisecond that shows the cycle
+          assert.equal(cycleStart(model, level, cy.idx), cellTime(model, c, 0), `L${level} cell ${c.ord}`);
+        }
+      }
+    }
+  }
+  assert.equal(cycleStart(model, 6, 1e12), null);
+  assert.ok(Math.abs(cycleStart(model, 6, 717211) - model.cycleStartTime(6, 717211)) < 0.002);
+});
+
+test('pure jump: Fractonica ordinal names are never mistaken for dates (Mon-ofracton, Oct-afracton, Dec-afracton)', async () => {
+  const { looksEarthly } = await import('../src/ui/calendar/pure-parse.js');
+  for (const w of ['Monofracton', 'Octafracton', 'Octadecafracton', 'Decafracton', 'Dodecafracton', 'Tetrafracton', 'Gamma Octafracton', 'Sunfracton']) {
+    assert.equal(looksEarthly(w), false, w);
+  }
+  for (const w of ['Monday', 'mon', 'oct 5', 'October', 'dec', 'Sat 3 Oct', 'sun', '2031-06-01', '14:30']) {
+    assert.equal(looksEarthly(w), true, w);
+  }
 });

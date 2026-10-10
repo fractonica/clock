@@ -31,7 +31,7 @@ const MIME = {
   '.md': 'text/markdown; charset=utf-8',
 };
 
-export function serve(dir = root) {
+export function serve(dir = root, port = 0, host = '127.0.0.1') {
   const server = http.createServer((req, res) => {
     const u = new URL(req.url, 'http://x');
     let p = path.join(dir, decodeURIComponent(u.pathname));
@@ -42,7 +42,10 @@ export function serve(dir = root) {
       res.writeHead(200, { 'content-type': MIME[path.extname(p)] ?? 'application/octet-stream', 'cache-control': 'no-store' }).end(buf);
     });
   });
-  return new Promise((resolve) => server.listen(0, '127.0.0.1', () => resolve({ server, port: server.address().port })));
+  return new Promise((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(port, host, () => resolve({ server, port: server.address().port }));
+  });
 }
 
 function findPlaywright() {

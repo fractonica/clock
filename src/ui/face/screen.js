@@ -135,11 +135,13 @@ export function createScreen({ glyphBook, uid }) {
   // ---- letters & info labels ------------------------------------------------------------
   const cy = SCREEN.cy;
   const text = (cls, x, y, anchor = 'middle') => node('text', { class: cls, x, y, 'text-anchor': anchor });
+  // pure mode adds the name of the running cycle ("Eta Monofracton") on the side of the letter that faces the solar row
+  const NAME_DY = 23;
   const letters = {
-    top: { l: text('face-letter', SCREEN.cx, cy - LABEL_DY), d: text('face-letter-depth', SCREEN.cx + 15, cy - LABEL_DY + 5, 'start'), key: '' },
-    bottom: { l: text('face-letter', SCREEN.cx, cy + LABEL_DY), d: text('face-letter-depth', SCREEN.cx + 15, cy + LABEL_DY + 5, 'start'), key: '' },
+    top: { l: text('face-letter', SCREEN.cx, cy - LABEL_DY), d: text('face-letter-depth', SCREEN.cx + 15, cy - LABEL_DY + 5, 'start'), n: text('face-letter-name', SCREEN.cx, cy - LABEL_DY + NAME_DY), key: '' },
+    bottom: { l: text('face-letter', SCREEN.cx, cy + LABEL_DY), d: text('face-letter-depth', SCREEN.cx + 15, cy + LABEL_DY + 5, 'start'), n: text('face-letter-name', SCREEN.cx, cy + LABEL_DY - NAME_DY), key: '' },
   };
-  const lettersG = node('g', { class: 'face-overlay face-letters', 'aria-hidden': 'true' }, letters.top.l, letters.top.d, letters.bottom.l, letters.bottom.d);
+  const lettersG = node('g', { class: 'face-overlay face-letters', 'aria-hidden': 'true' }, letters.top.l, letters.top.d, letters.top.n, letters.bottom.l, letters.bottom.d, letters.bottom.n);
 
   const info = {
     topCap: text('face-cap', SCREEN.cx, cy - LABEL_DY - 9),
@@ -149,7 +151,6 @@ export function createScreen({ glyphBook, uid }) {
     syncCap: text('face-cap face-info-sol', SCREEN.cx, cy + LABEL_DY + 5),
     syncVal: text('face-val face-val--gold-dim face-info-sol', SCREEN.cx, cy + LABEL_DY + 20),
   };
-  info.syncCap.textContent = 'SYNC TIME';
   const infoG = node('g', { class: 'face-overlay face-info', 'aria-hidden': 'true' }, ...Object.values(info));
 
   // ---- out of catalogue -------------------------------------------------------------------
@@ -159,8 +160,6 @@ export function createScreen({ glyphBook, uid }) {
     l3: text('face-oor-r', SCREEN.cx, cy + 22),
     l4: text('face-oor-r', SCREEN.cx, cy + 38),
   };
-  oor.l1.textContent = 'outside Saros 141';
-  oor.l2.textContent = 'catalogue';
   const oorG = node('g', { class: 'face-oor', 'aria-hidden': 'true' }, ...Object.values(oor));
 
   // ---- solar sync not defined next to the catalogue ends ----------------------------------------
@@ -170,8 +169,6 @@ export function createScreen({ glyphBook, uid }) {
     l3: text('face-oor-r', SCREEN.cx, cy + 23),
   };
   na.l1.textContent = 'SOLAR SYNC';
-  na.l2.textContent = 'not defined within';
-  na.l3.textContent = '3 days of the edge';
   const naG = node('g', { class: 'face-na', 'aria-hidden': 'true' }, ...Object.values(na));
 
   const content = node(
@@ -276,17 +273,20 @@ export function createScreen({ glyphBook, uid }) {
     }
   }
 
+  /** `name` (pure mode: "Eta Monofracton") is drawn under the letter; '' in normal mode. */
   function setLetters(top, bottom) {
     for (const [slot, v] of [
       ['top', top],
       ['bottom', bottom],
     ]) {
-      const key = `${v.letter}${v.depth}`;
+      const name = v.name ?? '';
+      const key = `${v.letter}${v.depth}|${name}`;
       const L = letters[slot];
       if (L.key === key) continue;
       L.key = key;
       L.l.textContent = v.letter;
       L.d.textContent = String(v.depth);
+      L.n.textContent = name;
     }
   }
 
@@ -295,7 +295,33 @@ export function createScreen({ glyphBook, uid }) {
     setText(info.topVal, v.topVal);
     setText(info.solarCap, v.solarCap);
     setText(info.solarVal, v.solarVal);
+    setText(info.syncCap, v.syncCap ?? 'SYNC TIME');
     setText(info.syncVal, v.syncVal);
+  }
+
+  /**
+   * Switch the wording of the static texts (normal / pure) and forget everything the other mode wrote: cached info
+   * values, letter names. Called once at mount and whenever pure mode is toggled; nothing of the previous mode stays
+   * in the DOM.
+   */
+  function setMode(pureOn, words) {
+    const [o1, o2] = pureOn ? words.range.lines : ['outside Saros 141', 'catalogue'];
+    setText(oor.l1, o1);
+    setText(oor.l2, o2);
+    const [n2, n3] = pureOn ? words.solarNa.lines : ['not defined within', '3 days of the edge'];
+    setText(na.l2, n2);
+    setText(na.l3, n3);
+    for (const k of ['topCap', 'topVal', 'solarCap', 'solarVal', 'syncVal']) setText(info[k], '');
+    setText(info.syncCap, pureOn ? 'SYNC' : 'SYNC TIME');
+    for (const L of Object.values(letters)) {
+      L.key = '';
+      L.n.textContent = '';
+    }
+    if (pureOn) svg.dataset.pure = '1';
+    else delete svg.dataset.pure;
+    // the range lines are rewritten by the next setRange() call
+    setText(oor.l3, '');
+    setText(oor.l4, '');
   }
 
   let overlay = 'none';
@@ -399,6 +425,7 @@ export function createScreen({ glyphBook, uid }) {
     setCounter,
     setLetters,
     setInfo,
+    setMode,
     setOverlay,
     setRange,
     setPending,

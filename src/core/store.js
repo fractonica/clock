@@ -23,6 +23,7 @@ const DEFAULTS = {
   minDepth: 1, // shared depth range for ring / ladder / timeline lanes
   maxDepth: 10,
   showLetters: false, // SPEC §8 period letters shown permanently
+  pure: false, // pure mode: Fractonica terms only (no Gregorian dates, Earth time units or percentages)
 };
 
 /** localStorage, or null when the browser blocks site data (reading the property can throw). */
@@ -56,6 +57,7 @@ const VALID = {
   minDepth: (v) => isInt(v, 1, 14),
   maxDepth: (v) => isInt(v, 1, 14),
   showLetters: (v) => typeof v === 'boolean',
+  pure: (v) => typeof v === 'boolean',
 };
 /** Keep only valid keys/values of a persisted or incoming object; keep minDepth <= maxDepth. */
 function sanitize(obj, base = DEFAULTS) {

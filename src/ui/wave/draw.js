@@ -4,6 +4,7 @@
  * full precision; nothing here touches the clock or the DOM except the canvas itself.
  */
 import * as G from './geometry.js';
+import { pinGeometry, QUARTERS, quarterMarks, rippleAmp, rippleFit, ripplePointAt, ripplePoints, rippleSplit, syncsOnArc } from './solar.js';
 
 const BIG_R = 3000; // px: arcs bigger than this are drawn as a polyline of their visible stretch
 const PANEL = '11, 16, 21'; // --bg-2, used for text halos
@@ -106,11 +107,20 @@ function clipToRect(x0, y0, x1, y1, inset, W, H) {
   return [x0 + dx * t, y0 + dy * t];
 }
 
-/** Keep an edge badge off a rectangle of controls (the zoom buttons): slide it along the border. */
+/**
+ * Keep an edge badge off the rectangles of controls (the zoom buttons, the solar dial): slide it along the border.
+ * `av` is one rectangle {x0, y0, x1, y1}, a list of them, or null.
+ */
 function dodge([x, y], av, inset) {
-  if (av && x >= av.x0 && y <= av.y1) {
-    if (y <= inset + 0.5) x = av.x0 - 14;
-    else y = av.y1 + 14;
+  if (!av) return [x, y];
+  const list = Array.isArray(av) ? av : [av];
+  for (let pass = 0; pass < 2; pass++) {
+    for (const r of list) {
+      if (x >= r.x0 && x <= r.x1 && y >= r.y0 && y <= r.y1) {
+        if (y <= inset + 0.5) x = r.x0 > 40 ? r.x0 - 14 : r.x1 + 14;
+        else y = r.y1 + 14;
+      }
+    }
   }
   return [x, y];
 }
@@ -279,6 +289,122 @@ function drawMarker(P, x, y, level, { emph = false, size = 4, grey = false }) {
   g.restore();
 }
 
+// ------------------------------------------------------- the solar sync ----
+
+const goldA = (a) => `rgba(255, 214, 10, ${a})`;
+/** The part of the ripple the displayed time has not reached: gold at this alpha over the panel is 4:1 (3:1 is the floor). */
+export const REST_ALPHA = 0.5;
+const tmpS = {};
+
+/**
+ * The solar ripple along the focused arc: the polyline of one yellow wave whose wavelength is a sync, bright up
+ * to the displayed time and dimmer (still 3:1 against the panel) after it, with a dot on every quarter (peak, node,
+ * valley, end) of the syncs it crosses. Nothing is drawn when the arc is too short or too long for a ripple (fewer
+ * than 1.5 syncs on it, or a wavelength under MIN_WAVELENGTH). `sun` = {grid, spec, sync, quarter}: the sync grid, the
+ * arc in position units, and the sync with the displayed time (quarter = how many of its quarters have passed, 0..3).
+ * @returns {null | {fit:object, amp:number}}
+ */
+function drawRipple(P, scene, sf, trF, sun, quiet, occ) {
+  const g = P.g;
+  const fit = rippleFit(syncsOnArc(sun.spec.P, scene.fraction, sun.grid), sf.r * Math.abs(sf.sweep) * scene.fraction);
+  if (!fit.visible) return null;
+  const amp = rippleAmp(fit.wavelength);
+  const { xs, ys, n } = ripplePoints(sf, sun.spec, sun.grid, { amp });
+  const split = rippleSplit(n, trF, scene.fraction);
+  const path = (i0, i1) => {
+    g.beginPath();
+    g.moveTo(xs[i0], ys[i0]);
+    for (let i = i0 + 1; i <= i1; i++) g.lineTo(xs[i], ys[i]);
+  };
+  g.save();
+  g.globalAlpha *= fit.strength;
+  if (split < n) {
+    path(split, n);
+    stroke(P, goldA(REST_ALPHA), 1.3);
+  }
+  if (split > 0) {
+    path(0, split);
+    stroke(P, goldA(0.92), 1.5);
+  }
+  // quarter dots: filled once passed, ringed for the coming one; only a wide wave (a quarter of it 40 px or more) marks every sync on the arc, a tight one just the sync of the displayed time
+  const quarterW = fit.wavelength / 4;
+  const marks = quarterMarks(sun.spec, sun.grid, quarterW >= 40 ? null : sun.sync);
+  for (const m of marks) {
+    const pt = ripplePointAt(sf, sun.spec, sun.grid, Math.min(scene.fraction, Math.max(0, m.p)), amp, tmpS);
+    const passed = m.sync < sun.sync || (m.sync === sun.sync && m.k <= sun.quarter);
+    const next = m.sync === sun.sync && m.k === sun.quarter + 1;
+    g.beginPath();
+    g.arc(pt.x, pt.y, next ? 3.2 : 2.2, 0, G.TAU);
+    if (passed) {
+      g.fillStyle = goldA(0.85);
+      g.fill();
+    } else {
+      g.fillStyle = 'rgba(11, 16, 21, 0.9)';
+      g.fill();
+      stroke(P, goldA(next ? 1 : 0.6), next ? 1.6 : 1.1);
+    }
+    if (!quiet && m.sync === sun.sync && quarterW >= 46) {
+      placeAndLabel(P, occ, 'sq' + m.k, QUARTERS[m.k - 1], pt.x, pt.y, pt.nx, pt.ny, { color: goldA(next ? 1 : 0.78), font: P.fonts.small }, 7);
+    }
+  }
+  g.restore();
+  return { fit, amp };
+}
+
+/** A label next to (x, y) on the side with room, drawn in its own colour; the spot is remembered per key. */
+function placeAndLabel(P, occ, key, str, x, y, nx, ny, style, clear = 8) {
+  const spot = placeLabel(P, occ, key, str, x, y, nx, ny, style.font, clear, SOFT);
+  text(P, str, spot.x, spot.y, style);
+  return spot;
+}
+
+/**
+ * The solar marker: a yellow pin standing on the ripple at the displayed time (its head floats off the arc, so it
+ * never hides the dot of the focused level), with the sync number beside it. Pin and label fade together with the
+ * ripple. Returns the head position.
+ */
+function drawSunPin(P, scene, sf, sun, ripple, hovered, o, occ) {
+  const g = P.g;
+  const pin = pinGeometry(sf, sun.spec, sun.grid, sun.pNow, ripple.amp);
+  const { foot, head, nx, ny } = pin;
+  const hx = head.x;
+  const hy = head.y;
+  if (hx < 9 || hy < 9 || hx > P.W - 9 || hy > P.H - 9) return null;
+  g.save();
+  g.globalAlpha *= ripple.fit.strength;
+  g.beginPath();
+  g.moveTo(foot.x, foot.y);
+  g.lineTo(hx - nx * 4, hy - ny * 4);
+  stroke(P, goldA(0.85), 1.3);
+  const halo = g.createRadialGradient(hx, hy, 0, hx, hy, 12);
+  halo.addColorStop(0, goldA(0.5));
+  halo.addColorStop(1, goldA(0));
+  g.fillStyle = halo;
+  g.beginPath();
+  g.arc(hx, hy, 12, 0, G.TAU);
+  g.fill();
+  g.beginPath();
+  g.arc(hx, hy, 5.6, 0, G.TAU);
+  g.fillStyle = 'rgba(7, 9, 13, 0.92)';
+  g.fill();
+  g.beginPath();
+  g.arc(hx, hy, 4, 0, G.TAU);
+  g.fillStyle = P.theme.GOLD;
+  g.fill();
+  if (hovered) {
+    g.beginPath();
+    g.arc(hx, hy, 9.5, 0, G.TAU);
+    stroke(P, 'rgba(255,255,255,0.8)', 1.5);
+  }
+  occ.push({ x0: hx - 8, x1: hx + 8, y0: hy - 8, y1: hy + 8 });
+  if (!o.quiet && sun.label) {
+    const spot = placeLabel(P, occ, 'sun', sun.label, hx, hy, nx, ny, P.fonts.small, 8, 1);
+    text(P, sun.label, spot.x, spot.y, { color: P.theme.GOLD, font: P.fonts.small }); // inside the save: fades with the pin
+  }
+  g.restore();
+  return { x: hx, y: hy };
+}
+
 // ---------------------------------------------------------- focus scene ----
 
 /**
@@ -428,6 +554,9 @@ export function drawFocus(P, scene, view, o) {
     }
   }
 
+  // ---- the solar ripple rides the focused arc (the dot of the displayed time comes after the child numbers)
+  const ripple = o.sun && visible(P, sf) ? drawRipple(P, scene, sf, trF, o.sun, o.quiet, occ) : null;
+
   // ---- child numbers (signed: + crest, − trough)
   for (const c of scene.children) {
     const sa = view.arc(c.arc, tmpB);
@@ -441,6 +570,12 @@ export function drawFocus(P, scene, view, o) {
       color: lit ? '#fff' : P.level(c.level, 0.9, 74, o.grey),
       font: lit ? font.labelBold : font.label,
     });
+  }
+
+  // ---- the solar marker (behind the level markers)
+  if (ripple && o.sun.here) {
+    const head = drawSunPin(P, scene, sf, o.sun, ripple, is('sun', -1, 0), o, occ);
+    if (head && hits) hits.sun = { x: head.x, y: head.y };
   }
 
   // ---- markers and tethers (coarse -> fine)

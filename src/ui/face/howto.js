@@ -3,6 +3,7 @@
  * three characteristic states (rising / peak / falling).
  */
 import { stateInfo, signed } from './helpers.js';
+import { pureHowToLines } from './pure.js';
 
 const NS = 'http://www.w3.org/2000/svg';
 
@@ -33,11 +34,45 @@ function miniGlyph(spec, caption) {
   return fig;
 }
 
+/** The five explanatory lines, normal wording. */
+const NORMAL_LINES = [
+  ['teal', '<b>Glyph = phase.</b> It shows where a cycle is: the value climbs to +4, falls to −4 and returns – 16 states per cycle.'],
+  ['dot', '<b>Dot = falling.</b> A dot above the stem marks the falling half; rising and the two turning points have none.'],
+  ['pair', '<b>Pair = odometer.</b> The left glyph is the coarse step, the right one the fine step inside it.'],
+  ['count', '<b>Counter dots</b> are the cycles of the parent period; lit up to the one you are in.'],
+  ['gold', '<b>Yellow</b> is the solar sync: 19 η cycles ≈ 4 civil days, landing ~10 s earlier each time.'],
+];
+
 /**
- * @param {{glyphBook: object, id: string}} opts
+ * (Re)write the lines for the current mode (five in normal mode, six in pure mode, which also ends with the glossary
+ * pointer). `pairHTML` (ctx.pure.pairHTML) draws the example glyph pair of pure mode. Safe to call at any time: the
+ * popover keeps its open / closed state.
+ * @param {HTMLElement} root  the element buildHowTo() returned
+ */
+export function fillHowTo(root, { pure = false, pairHTML = null } = {}) {
+  const list = root.querySelector('.face-pop-list');
+  const lines = pure ? pureHowToLines(pairHTML ? pairHTML(13 / 16 + 4 / 256 + 1e-4, { label: 'phase' }) : '') : NORMAL_LINES;
+  const items = lines.map(([kind, html]) => {
+    const li = document.createElement('li');
+    li.className = `face-pop-${kind}`;
+    li.innerHTML = html;
+    return li;
+  });
+  list.replaceChildren(...items);
+  // the glossary pointer exists in pure mode only (the glossary is a pure-mode panel): nothing of it waits in the DOM otherwise
+  const glossary = root.querySelector('.face-pop-glossary');
+  glossary.hidden = !pure;
+  if (pure) glossary.innerHTML = 'Press <span class="kbd">?</span> for the glossary.';
+  else glossary.replaceChildren();
+  if (pure) root.dataset.pure = '1';
+  else delete root.dataset.pure;
+}
+
+/**
+ * @param {{glyphBook: object, id: string, pure?: boolean, pairHTML?: Function}} opts
  * @returns {HTMLElement}
  */
-export function buildHowTo({ glyphBook, id }) {
+export function buildHowTo({ glyphBook, id, pure = false, pairHTML = null }) {
   const root = document.createElement('div');
   root.className = 'face-pop card';
   root.id = id;
@@ -59,26 +94,18 @@ export function buildHowTo({ glyphBook, id }) {
     minis.append(miniGlyph(glyphBook.get(e.index), `<b>${e.label}</b><span class="mono dim">${signed(e.info.value)}</span>`));
   }
 
-  const lines = [
-    ['teal', '<b>Glyph = phase.</b> It shows where a cycle is: the value climbs to +4, falls to −4 and returns – 16 states per cycle.'],
-    ['dot', '<b>Dot = falling.</b> A dot above the stem marks the falling half; rising and the two turning points have none.'],
-    ['pair', '<b>Pair = odometer.</b> The left glyph is the coarse step, the right one the fine step inside it.'],
-    ['count', '<b>Counter dots</b> are the cycles of the parent period; lit up to the one you are in.'],
-    ['gold', '<b>Yellow</b> is the solar sync: 19 η cycles ≈ 4 civil days, landing ~10 s earlier each time.'],
-  ];
   const list = document.createElement('ol');
   list.className = 'face-pop-list';
-  for (const [kind, html] of lines) {
-    const li = document.createElement('li');
-    li.className = `face-pop-${kind}`;
-    li.innerHTML = html;
-    list.append(li);
-  }
 
   const gestures = document.createElement('p');
   gestures.className = 'face-pop-keys dim';
   gestures.innerHTML =
     'Tap above / below: longer / shorter period · middle: info · double tap: letters · hover or press and hold a row: details · keys <span class="kbd">↑</span><span class="kbd">↓</span> <span class="kbd">i</span> <span class="kbd">l</span>';
+
+  // pure mode only (fillHowTo writes and shows it): the last thing the dialog says
+  const glossary = document.createElement('p');
+  glossary.className = 'face-pop-keys face-pop-glossary dim';
+  glossary.hidden = true;
 
   const head = document.createElement('div');
   head.className = 'card-h';
@@ -92,7 +119,8 @@ export function buildHowTo({ glyphBook, id }) {
 
   const body = document.createElement('div');
   body.className = 'card-b';
-  body.append(minis, list, gestures);
+  body.append(minis, list, gestures, glossary);
   root.append(head, body);
+  fillHowTo(root, { pure, pairHTML });
   return root;
 }

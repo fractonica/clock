@@ -6,12 +6,21 @@
  * `render()` only paints meters and visuals; the sound is scheduled by the engine's own timer.
  *
  * Exposed on the instance: { enabled, toggle(): Promise<boolean>, setEnabled(on), playMoment(t?), engine }
+ *
+ * Pure mode (docs/design/80-pure.md): the same panel and the same audio, said in Fractonica terms only. Pitch is a
+ * ratio, an octave offset and cents (never Hz or a note name), the base pitch is an offset of the "ground", cycle
+ * lengths are `pure.cycleLength(level)` (`2ζ½`), real-time spans are "beats", frequencies "cycles per beat", every speed
+ * (chips, buttons, the tempo-lock read-out and toasts) is `pure.rateLabel(rate)` ("η per beat", "9ι per beat": never a
+ * bare "×4,547"), and every percentage is a pair of 2-stroke glyphs, spoken as "volume 8 and 0 of 256".
+ * `applyMode()` rebuilds everything that is static when the mode changes; the words themselves live in
+ * audio/words.js (pure, unit-tested).
  */
 import { createEngine } from '../audio/engine.js';
 import { loadSettings, saveSettings, PRESETS, presetLevels, matchPreset, FLOORS, LIMITS } from '../audio/settings.js';
 import { phaseOf, voiceLoudness, cycleHz, tempoRate, tempoInfo, chimeMode, amZone } from '../audio/schedule.js';
 import { physicalLevels, noteOf } from '../audio/tuning.js';
 import { fmtHz, fmtRate, fmtSeconds, fmtSecondsShort, fmtDb, fmtOct, fmtPeriod } from '../audio/format.js';
+import * as W from '../audio/words.js';
 import { createTooltip } from './sound/tooltip.js';
 import { createMixer } from './sound/mixer.js';
 import { createScope } from './sound/scope.js';
@@ -31,6 +40,10 @@ const HOW = [
 
 export function mount(root, ctx) {
   const { model, store, fmt, theme, icons } = ctx;
+  /** ctx.pure while pure mode is on, else null. `curPure` is the mode the DOM was last built for (applyMode). */
+  const getPure = () => (ctx.isPure?.() && ctx.pure) || null;
+  let curPure = null;
+  let modeKey = null;
   const reduced = globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
   const coarse = globalThis.matchMedia?.('(pointer: coarse)').matches ?? false;
 
@@ -129,7 +142,7 @@ export function mount(root, ctx) {
           <select class="select snd-tdepth" aria-label="Depth to lock"></select>
           <span>last</span>
           <input class="input snd-secs mono" type="number" inputmode="decimal" min="${LIMITS.tempoSeconds[0]}" max="${LIMITS.tempoSeconds[1]}" step="0.25" aria-label="Seconds per cycle">
-          <span>s</span>
+          <span class="snd-secs-unit">s</span>
           <button class="btn snd-lock-btn" type="button"><span class="snd-lock-label">Lock tempo</span></button>
         </div>
         <p class="snd-read"></p>
@@ -181,16 +194,19 @@ export function mount(root, ctx) {
   };
   const outFor = (input) => input.parentElement.querySelector('output');
   // DOM writes only when the value changed (render() runs every animation frame)
+  // one cache key for both helpers: a node written as text and later as markup (pure mode) is never taken for unchanged
   const text = (node, value) => {
-    if (node.__t !== value) {
+    const k = `t${value}`;
+    if (node.__k !== k) {
       node.textContent = value;
-      node.__t = value;
+      node.__k = k;
     }
   };
   const html = (node, value) => {
-    if (node.__h !== value) {
+    const k = `h${value}`;
+    if (node.__k !== k) {
       node.innerHTML = value;
-      node.__h = value;
+      node.__k = k;
     }
   };
   const attr = (node, name, value) => {
@@ -206,12 +222,6 @@ export function mount(root, ctx) {
   els.power.innerHTML = `<span class="snd-power-ring"></span><span class="snd-ico snd-ico-off">${icons.soundOff}</span><span class="snd-ico snd-ico-on">${icons.soundOn}</span>`;
   $('.snd-ico-idle').innerHTML = icons.play;
   $('.snd-ico-busy').innerHTML = icons.soundOn;
-  root.querySelector('.snd-how').innerHTML = HOW.map(([h, p]) => `<li><b>${h}</b> ${p}</li>`).join('');
-  els.floor.innerHTML = FLOORS.map((f) => `<option value="${f}">${f} s${FLOOR_LABEL[f] ? ' · ' + FLOOR_LABEL[f] : ''}</option>`).join('');
-  els.depth.innerHTML = rows
-    .slice(1)
-    .map((r) => `<option value="${r.depth}">${r.depth} · ${r.letter} (${fmtPeriod(r.cycleSeconds)})</option>`)
-    .join('');
   els.presets.innerHTML = Object.entries(PRESETS)
     .map(([k, p]) => `<button type="button" data-preset="${k}" aria-pressed="false">${p.label}</button>`)
     .join('');
@@ -226,9 +236,29 @@ export function mount(root, ctx) {
     ['0', 'Pause', '', 'Stop the clock: the drone holds, the bells wait'],
     ['rev', 'Reverse', '', 'Run time backwards at the same speed: the bells play in reverse order'],
   ];
-  els.rates.innerHTML = RATE_PRESETS.map(
-    ([k, l, u, t]) => `<button class="btn btn-sm snd-rate" type="button" data-rate="${k}" aria-pressed="false" title="${t}"><span>${l}</span>${u ? `<small>${u}</small>` : ''}</button>`,
-  ).join('');
+
+  // what differs between the two vocabularies and is built once per mode: lists, options, buttons, legends
+  const buildHow = (pu) => (pu ? W.HOW : HOW).map(([h, p]) => `<li><b>${h}</b> ${p}</li>`).join('');
+  const buildFloors = (pu) =>
+    FLOORS.map((f) => `<option value="${f}">${pu ? W.floorLabel(f, FLOOR_LABEL[f]) : `${f} s${FLOOR_LABEL[f] ? ' · ' + FLOOR_LABEL[f] : ''}`}</option>`).join('');
+  const buildDepths = (pu) =>
+    rows
+      .slice(1)
+      .map((r) => `<option value="${r.depth}">${r.depth} · ${r.letter} (${pu ? pu.cycleLength(r.level) : fmtPeriod(r.cycleSeconds)})</option>`)
+      .join('');
+  const buildRates = (pu) =>
+    (pu ? W.rateButtons(pu).map((b) => [b.key, b.label, b.unit, b.tip]) : RATE_PRESETS)
+      .map(([k, l, u, t]) => `<button class="btn btn-sm snd-rate" type="button" data-rate="${k}" aria-pressed="false" title="${t}"><span>${l}</span>${u ? `<small>${u}</small>` : ''}</button>`)
+      .join('');
+  const secsUnit = $('.snd-secs-unit');
+  const normalTexts = {
+    caption: $('.snd-cap').innerHTML,
+    mixLegend: $('.snd-legend').innerHTML,
+    rhLegend: els.legend.innerHTML,
+    unit: secsUnit.textContent,
+    secsLabel: els.secs.getAttribute('aria-label'),
+    auto: $('.snd-auto').textContent,
+  };
 
   // ---------------------------------------------------------------------------------------------
   // tooltips that teach
@@ -236,17 +266,26 @@ export function mount(root, ctx) {
   const tooltip = createTooltip();
   const tipFor = {
     power: () => '<b>Sound on / off</b> (M)<br>Starts the drone and the bells. Audio can only start after a click, so it is off until you press this.',
-    moment: () => `<b>Hear this moment</b><br>Plays the chord of ${fmt.dateTime(store.t())} as a short arpeggio from α to the finest voice; each note is as loud as its cycle is high right now. Works while the sound is off.`,
+    moment: () =>
+      `<b>Hear this moment</b><br>Plays the chord of ${curPure ? curPure.stamp(store.t(), 'iota') : fmt.dateTime(store.t())} as a short arpeggio from α to the finest voice; each note is as loud as its cycle is high right now. Works while the sound is off.`,
     chord: () => '<b>Chord</b><br>One soft voice per cycle at its just-intonation pitch. It swells to the cycle’s peak and fades to its valley; the fast cycles (μ ν ξ) modulate at their true rates, the clock’s heartbeat.',
     chimes: () => '<b>Chimes</b><br>A bell at every peak, node, valley and end. A cycle end strums all finer cycles that end with it: a major turnover rings as a big chord.',
-    physical: () => '<b>Physical register</b><br>The true oscillation of the deepest cycles (ξ 22.5 Hz, ο 247.7 Hz, π 2.23 kHz, ρ 8.92 kHz) as triangle waves, the glyph wave itself, transposed by whole octaves.',
+    physical: () =>
+      curPure
+        ? W.physicalTip([13, 14, 15, 16].map((L) => [model.levelInfo(L).letter, 1 / model.levelInfo(L).meanSeconds]))
+        : '<b>Physical register</b><br>The true oscillation of the deepest cycles (ξ 22.5 Hz, ο 247.7 Hz, π 2.23 kHz, ρ 8.92 kHz) as triangle waves, the glyph wave itself, transposed by whole octaves.',
     floor: () =>
-      '<b>Chime floor</b><br>A cycle rings a bell on every quarter only while its quarters are at least this far apart in real time. A cycle whose quarters come faster rings only its end, and one shorter than the floor in total rings nothing: up to about 30 Hz it is still heard as the drone’s modulation, faster ones rest at their mean loudness. Protects you from a rattle in a fast time-lapse.',
-    base: () => '<b>Base pitch</b><br>The note of α, the 1/1 of the chord. Every other voice is an exact ratio above it.',
+      `<b>Chime floor</b><br>A cycle rings a bell on every quarter only while its quarters are at least this far apart in real time. A cycle whose quarters come faster rings only its end, and one shorter than the floor in total rings nothing: up to about 30 ${curPure ? 'cycles per beat' : 'Hz'} it is still heard as the drone’s modulation, faster ones rest at their mean loudness. Protects you from a rattle in a fast time-lapse.`,
+    base: () =>
+      curPure
+        ? '<b>Base pitch</b><br>The ground of the chord: α stands on it as 1/1 and every other voice is an exact ratio above it. The slider moves the whole chord up or down in steps of 100 cents, an octave at either end.'
+        : '<b>Base pitch</b><br>The note of α, the 1/1 of the chord. Every other voice is an exact ratio above it.',
     lock: () =>
       lock
-        ? '<b>Unlock tempo</b><br>Releases the lock. The speed stays as it is until you change it; editing the depth or the seconds no longer re-tunes it.'
-        : '<b>Tempo lock</b><br>Sets the time-lapse so that one cycle of the chosen depth lasts the given real seconds. Its quarters become beats; finer cycles become subdivisions. The lock holds while the speed is not changed elsewhere (header, Space, a link); until then, editing the depth or the seconds re-tunes it.',
+        ? `<b>Unlock tempo</b><br>Releases the lock. The speed stays as it is until you change it; editing the depth or the ${curPure ? 'beats' : 'seconds'} no longer re-tunes it.`
+        : curPure
+          ? '<b>Tempo lock</b><br>Sets the time-lapse so that one cycle of the chosen depth lasts the given number of beats. Its quarters become pulses; finer cycles become subdivisions. The lock holds while the speed is not changed elsewhere (header, Space, a link); until then, editing the depth or the beats re-tunes it.'
+          : '<b>Tempo lock</b><br>Sets the time-lapse so that one cycle of the chosen depth lasts the given real seconds. Its quarters become beats; finer cycles become subdivisions. The lock holds while the speed is not changed elsewhere (header, Space, a link); until then, editing the depth or the seconds re-tunes it.',
   };
   tooltip.bind(els.power, tipFor.power, { touch: false });
   tooltip.bind(els.moment, tipFor.moment, { touch: false });
@@ -268,8 +307,13 @@ export function mount(root, ctx) {
     if (els.lockChip.hidden === on) els.lockChip.hidden = !on;
     if (on) {
       const row = rows[lock.depth - 1];
-      text(els.lockTxt, `Locked: one ${row.letter} = ${fmtSecondsShort(lock.seconds)}`);
-      attr(els.lockChip, 'title', `Tempo lock: one ${row.letter} cycle lasts ${fmtSecondsShort(lock.seconds)} of real time at ${fmtRate(lock.rate)}. It holds until the speed is changed.`);
+      if (curPure) {
+        text(els.lockTxt, `Locked: one ${row.letter} = ${W.fmtBeats(lock.seconds)}`);
+        attr(els.lockChip, 'title', `Tempo lock: one ${row.letter} cycle lasts ${W.fmtBeats(lock.seconds)} of real time at ${curPure.rateLabel(lock.rate)}. It holds until the speed is changed.`);
+      } else {
+        text(els.lockTxt, `Locked: one ${row.letter} = ${fmtSecondsShort(lock.seconds)}`);
+        attr(els.lockChip, 'title', `Tempo lock: one ${row.letter} cycle lasts ${fmtSecondsShort(lock.seconds)} of real time at ${fmtRate(lock.rate)}. It holds until the speed is changed.`);
+      }
     }
     els.lock.classList.toggle('is-on', on);
     text(els.lockLabel, on ? 'Unlock tempo' : 'Lock tempo');
@@ -294,7 +338,10 @@ export function mount(root, ctx) {
     lock = { depth, seconds, rate: store.rate };
     syncLock();
     ctx.requestRender();
-    if (announce) ctx.toast(`Tempo locked: one ${rows[depth - 1].letter} cycle = ${fmtSeconds(seconds)} (${fmtRate(rate)})`);
+    if (announce) {
+      const how = curPure ? `${W.fmtBeats(seconds)} (${curPure.rateLabel(rate)})` : `${fmtSeconds(seconds)} (${fmtRate(rate)})`;
+      ctx.toast(`Tempo locked: one ${rows[depth - 1].letter} cycle = ${how}`);
+    }
   }
   /** Lock with the numbers in the controls. */
   function lockTempo() {
@@ -309,7 +356,7 @@ export function mount(root, ctx) {
     lock = null;
     syncLock();
     ctx.requestRender();
-    ctx.toast(`Tempo unlocked. The speed stays at ${fmtRate(rate)} until you change it.`);
+    ctx.toast(`Tempo unlocked. The speed stays at ${curPure ? curPure.rateLabel(rate) : fmtRate(rate)} until you change it.`);
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -333,6 +380,7 @@ export function mount(root, ctx) {
     tooltip,
     getBase: () => S.baseHz,
     getLive: liveOf,
+    getPure: () => curPure,
     onToggle: (L) => commit({ levels: S.levels.map((v, i) => (i === L ? !v : v)) }),
     onSelect: (L) => ctx.select(L),
   });
@@ -377,22 +425,33 @@ export function mount(root, ctx) {
   const fill = (input) => input.style.setProperty('--fill', `${((input.value - input.min) / (input.max - input.min)) * 100}%`);
   function syncControls() {
     els.vol.value = String(S.volumeDb);
-    text(outFor(els.vol), fmtDb(S.volumeDb));
+    if (curPure) html(outFor(els.vol), curPure.pairHTML((S.volumeDb - LIMITS.volumeDb[0]) / (LIMITS.volumeDb[1] - LIMITS.volumeDb[0]), { label: 'volume' }));
+    else text(outFor(els.vol), fmtDb(S.volumeDb));
     els.rev.value = String(Math.round(S.reverb * 100));
-    text(outFor(els.rev), `${Math.round(S.reverb * 100)} %`);
+    if (curPure) html(outFor(els.rev), curPure.pairHTML(S.reverb, { label: 'reverb' }));
+    else text(outFor(els.rev), `${Math.round(S.reverb * 100)} %`);
     const k = semitonesOf(S.baseHz);
     els.base.value = String(k);
-    text(outFor(els.base), `${hzOfSemitones(k).toFixed(hzOfSemitones(k) < 100 ? 1 : 0)} Hz · ${noteOf(S.baseHz).name}`);
+    if (curPure) text(outFor(els.base), W.groundText(k));
+    else text(outFor(els.base), `${hzOfSemitones(k).toFixed(hzOfSemitones(k) < 100 ? 1 : 0)} Hz · ${noteOf(S.baseHz).name}`);
     for (const input of [els.vol, els.rev, els.base]) fill(input);
+    // pure mode: what a screen reader says for a slider is the pair ("volume 10 and 10 of 256") or the ground, not the bare number
+    const say = (input, v) => (v === null ? input.removeAttribute('aria-valuetext') : input.setAttribute('aria-valuetext', v));
+    const range = (v, [lo, hi]) => (v - lo) / (hi - lo);
+    say(els.vol, curPure ? W.pairSay(curPure, range(S.volumeDb, LIMITS.volumeDb), 'volume') : null);
+    say(els.rev, curPure ? W.pairSay(curPure, S.reverb, 'reverb') : null);
+    say(els.base, curPure ? W.groundText(k) : null);
     for (const b of els.layers) b.setAttribute('aria-pressed', String(!!S[b.dataset.layer]));
     const nearest = FLOORS.reduce((a, b) => (Math.abs(b - S.floor) < Math.abs(a - S.floor) ? b : a));
     els.floor.value = String(nearest);
     els.phys.hidden = !S.physical;
-    text(els.oct, fmtOct(S.physShift));
+    text(els.oct, curPure ? W.octaveShift(S.physShift) : fmtOct(S.physShift));
     const audible = physicalLevels(model, S.physShift);
     text(
       els.physList,
-      audible.length ? audible.map((p) => `${p.letter} ${fmtHz(p.hz)}`).join('  ·  ') : 'No cycle falls into the audible band at this transposition.',
+      audible.length
+        ? audible.map((p) => `${p.letter} ${curPure ? W.fmtRatePlain(p.hz) : fmtHz(p.hz)}`).join('  ·  ') + (curPure ? ' cycles per beat' : '')
+        : 'No cycle falls into the audible band at this transposition.',
     );
     const preset = matchPreset(S.levels);
     for (const b of els.presets.children) b.setAttribute('aria-pressed', String(b.dataset.preset === preset));
@@ -427,14 +486,15 @@ export function mount(root, ctx) {
   });
   els.lock.addEventListener('click', () => (lock ? unlockTempo() : lockTempo()));
   els.unlock.addEventListener('click', unlockTempo);
-  for (const b of els.rates.children) {
-    b.addEventListener('click', () => {
-      const k = b.dataset.rate;
-      if (k === 'live') store.goLive();
-      else if (k === 'rev') store.setRate(store.rate === 0 ? -1 : -store.rate);
-      else store.setRate(Number(k));
-    });
-  }
+  // delegated: the buttons are rebuilt when the mode changes
+  els.rates.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-rate]');
+    if (!b || !els.rates.contains(b)) return;
+    const k = b.dataset.rate;
+    if (k === 'live') store.goLive();
+    else if (k === 'rev') store.setRate(store.rate === 0 ? -1 : -store.rate);
+    else store.setRate(Number(k));
+  });
 
   async function powerClick() {
     try {
@@ -447,7 +507,7 @@ export function mount(root, ctx) {
   els.moment.addEventListener('click', async () => {
     try {
       const m = await playMoment();
-      if (!m) ctx.toast('Outside the Saros 141 catalogue: no chord to play');
+      if (!m) ctx.toast(curPure ? 'Outside the catalogue: no chord to play' : 'Outside the Saros 141 catalogue: no chord to play');
     } catch (err) {
       ctx.toast('Audio could not start: ' + (err?.message ?? err));
     }
@@ -477,6 +537,7 @@ export function mount(root, ctx) {
   // ---------------------------------------------------------------------------------------------
   let lastDraw = 0;
   let pendingDraw = true;
+  let forceDraw = false; // the mode changed: repaint both canvases at once
   let drawUntil = 0; // keep painting a moment after the sound stops so the spectrum can fall to silence
   let lastFlash = -1;
   let lastTip = 0;
@@ -504,9 +565,12 @@ export function mount(root, ctx) {
   };
 
   function statusLine(frame, st) {
-    if (!frame.inRange) return ['Outside the Saros 141 catalogue (1613–2857): silent. Jump back inside to hear the clock.', 'warn'];
+    if (!frame.inRange) {
+      const where = curPure ? `the catalogue (${curPure.catalogueText()})` : 'the Saros 141 catalogue (1613–2857)';
+      return [`Outside ${where}: silent. Jump back inside to hear the clock.`, 'warn'];
+    }
     if (engine.enabled) {
-      const sr = st.sampleRate ? `${+(st.sampleRate / 1000).toFixed(1)} kHz` : '';
+      const sr = !curPure && st.sampleRate ? `${+(st.sampleRate / 1000).toFixed(1)} kHz` : '';
       const bits = ['Audio on', sr, `${st.voices} voice${st.voices === 1 ? '' : 's'}`];
       if (st.state !== 'running') bits.push(st.state);
       return [bits.filter(Boolean).join(' · '), 'on'];
@@ -518,9 +582,10 @@ export function mount(root, ctx) {
     const rate = store.rate;
     const on = engine.enabled;
     const out = [];
-    if (store.live) out.push(['live', 'Live · ×1']);
+    if (store.live) out.push(['live', curPure ? 'Live · real time' : 'Live · ×1']);
     else if (rate === 0) out.push(['paused', 'Paused']);
-    else if (rate === 1) out.push(['live', 'Real time · ×1']);
+    else if (rate === 1) out.push(['live', curPure ? 'Real time' : 'Real time · ×1']);
+    else if (curPure) out.push(['lapse', `${Math.abs(rate) < 1 ? 'Slow motion' : 'Time-lapse'} ${curPure.rateLabel(rate)}`]);
     else out.push(['lapse', `${rate < 0 ? 'Backwards' : Math.abs(rate) < 1 ? 'Slow motion' : 'Time-lapse'} ${fmtRate(Math.abs(rate))}`]);
     out.push(['set', depthRange()]);
     const layers = ['chord', 'chimes', 'physical'].filter((k) => S[k]);
@@ -535,9 +600,11 @@ export function mount(root, ctx) {
     const rate = store.rate;
     const L = S.tempo.depth - 1;
     const row = rows[L];
-    if (rate === 0) return { read: 'Paused: the drone holds and the bells wait. Pick a tempo to start the time-lapse: the cycle you choose will last the seconds you enter.', rhythm: '' };
+    if (rate === 0) return { read: `Paused: the drone holds and the bells wait. Pick a tempo to start the time-lapse: the cycle you choose will last the ${curPure ? 'beats' : 'seconds'} you enter.`, rhythm: '' };
     const ti = tempoInfo(model, S.tempo.depth, rate);
-    const read = `${fmtRate(rate)}: one ${row.letter} cycle lasts ${fmtSeconds(ti.cycle)}; a quarter (the beat) ${fmtSeconds(ti.beat)}${ti.beat < 20 ? ` = ${ti.bpm.toFixed(ti.bpm < 100 ? 1 : 0)} BPM` : ''}.`;
+    const read = curPure
+      ? `${curPure.rateLabel(rate)}: one ${row.letter} cycle lasts ${W.fmtBeats(ti.cycle)}; a quarter lasts ${W.fmtBeats(ti.beat)}.`
+      : `${fmtRate(rate)}: one ${row.letter} cycle lasts ${fmtSeconds(ti.cycle)}; a quarter (the beat) ${fmtSeconds(ti.beat)}${ti.beat < 20 ? ` = ${ti.bpm.toFixed(ti.bpm < 100 ? 1 : 0)} BPM` : ''}.`;
     const parts = [];
     let cycle = ti.cycle;
     for (let d = S.tempo.depth; d <= Math.min(rows.length, S.tempo.depth + 4); d++) {
@@ -548,16 +615,17 @@ export function mount(root, ctx) {
       const mark = mode === 'quarters' ? ' <i>♪</i>' : mode === 'ends' ? ' <i>♪ end</i>' : '';
       const hz = 1 / cycle; // this cycle's rate in real time
       const zone = amZone(hz);
+      const hzText = curPure ? W.fmtPerBeat(hz) : fmtHz(hz);
       let title;
       if (off) title = 'switched off in the Depth mixer: silent';
       else if (mode === 'quarters') title = 'rings on every quarter';
       else if (mode === 'ends') title = 'rings on its end only';
       else if (!S.chord) title = S.chimes ? 'too fast to ring; the Chord layer is off: silent' : 'chimes and chord are off: silent';
-      else if (zone === 'full') title = `${S.chimes ? 'too fast to ring: ' : 'chimes are off: '}heard as the drone’s modulation at ${fmtHz(hz)}`;
-      else if (zone === 'fade') title = `${S.chimes ? 'too fast to ring: ' : 'chimes are off: '}its modulation of the drone is fading out here (${fmtHz(hz)})`;
-      else title = `${S.chimes ? 'too fast to ring and too fast to follow' : 'chimes are off'} (${fmtHz(hz)}): the voice rests at its mean loudness`;
+      else if (zone === 'full') title = `${S.chimes ? 'too fast to ring: ' : 'chimes are off: '}heard as the drone’s modulation at ${hzText}`;
+      else if (zone === 'fade') title = `${S.chimes ? 'too fast to ring: ' : 'chimes are off: '}its modulation of the drone is fading out here (${hzText})`;
+      else title = `${S.chimes ? 'too fast to ring and too fast to follow' : 'chimes are off'} (${hzText}): the voice rests at its mean loudness`;
       const cls = `snd-rh${mode ? ' is-bell' : ''}${off ? ' is-off' : ''}`;
-      parts.push(`<span class="${cls}" style="--lv:${theme.levelColor(d - 1, 1, 66)}" title="${title}"><b>${r.letter}</b> ${fmtSeconds(cycle)}${mark}</span>`);
+      parts.push(`<span class="${cls}" style="--lv:${theme.levelColor(d - 1, 1, 66)}" title="${title}"><b>${r.letter}</b> ${curPure ? W.fmtBeats(cycle) : fmtSeconds(cycle)}${mark}</span>`);
       const next = cycle / info.factor;
       if (d >= rows.length || d >= S.tempo.depth + 4 || next < 0.004) break; // the multiplier only appears before a next chip
       parts.push(`<span class="snd-rh-x">×${info.factor}</span>`);
@@ -581,28 +649,67 @@ export function mount(root, ctx) {
       .filter((r) => S.levels[r.level] && S.chord)
       .sort((a, b) => loud[b.level] - loud[a.level])
       .slice(0, 3)
-      .map((r) => `${r.letter} ${Math.round(loud[r.level] * 100)} %`);
-    const base = noteOf(S.baseHz).name;
+      .map((r) => (curPure ? `${r.letter} ${W.pairSay(curPure, loud[r.level], 'loudness')}` : `${r.letter} ${Math.round(loud[r.level] * 100)} %`));
+    const base = curPure ? W.groundPhrase(semitonesOf(S.baseHz)) : `base pitch ${noteOf(S.baseHz).name}`;
     attr(
       els.scope,
       'aria-label',
-      `Live spectrum and waveform of the sound; coloured ticks mark the notes of the cycles. Sound is ${on ? 'on' : 'off'}, base pitch ${base}. ${order.length ? 'Loudest cycles now: ' + order.join(', ') + '.' : 'No cycle is sounding.'}`,
+      `Live spectrum and waveform of the sound; coloured ticks mark the notes of the cycles. Sound is ${on ? 'on' : 'off'}, ${base}. ${order.length ? 'Loudest cycles now: ' + order.join(', ') + '.' : 'No cycle is sounding.'}`,
     );
     const sel = rows[store.state.selectedLevel];
     attr(
       els.ring,
       'aria-label',
-      `Pitch ring: each cycle as a dot at its pitch class, deeper cycles toward the centre. Base pitch ${base}.${sel ? ` Selected: ${sel.letter}, depth ${sel.depth}, ${sel.pcCents.toFixed(1)} cents above the base note.` : ''}`,
+      `Pitch ring: each cycle as a dot at its pitch class, deeper cycles toward the centre. ${curPure ? 'G' + base.slice(1) : 'Base pitch ' + noteOf(S.baseHz).name}.${sel ? ` Selected: ${sel.letter}, depth ${sel.depth}, ${sel.pcCents.toFixed(1)} cents above the ${curPure ? 'ground' : 'base note'}.` : ''}`,
     );
   }
 
+  /**
+   * Build everything that is static for the current vocabulary (lists, options, buttons, legends, the mixer strips)
+   * and drop what was cached from the other one. Runs at mount and whenever pure mode is switched, also while the
+   * panel is hidden, so showing it later never flashes stale labels.
+   */
+  function applyMode() {
+    const pu = getPure();
+    const key = pu ? 'pure' : 'normal';
+    if (key === modeKey) return false;
+    modeKey = key;
+    curPure = pu;
+    if (pu) els.app.setAttribute('data-pure', '');
+    else els.app.removeAttribute('data-pure');
+    root.querySelector('.snd-how').innerHTML = buildHow(pu);
+    els.floor.innerHTML = buildFloors(pu);
+    els.depth.innerHTML = buildDepths(pu);
+    els.rates.innerHTML = buildRates(pu);
+    $('.snd-cap').innerHTML = pu ? W.CAPTION : normalTexts.caption;
+    $('.snd-legend').innerHTML = pu ? W.LEGEND_MIXER : normalTexts.mixLegend;
+    els.legend.innerHTML = pu ? W.LEGEND_RHYTHM : normalTexts.rhLegend;
+    $('.snd-auto').textContent = pu ? `${normalTexts.auto} ${W.GLOSSARY_HINT}` : normalTexts.auto;
+    secsUnit.textContent = pu ? 'beats' : normalTexts.unit;
+    els.secs.setAttribute('aria-label', pu ? 'Beats per cycle' : normalTexts.secsLabel);
+    mixer.setPure(pu);
+    tempoKey = ''; // the tempo read-out and the rhythm chips are rebuilt on the next frame
+    lastSummary = -1e9; // so are the screen-reader summaries of the canvases
+    pendingDraw = true;
+    forceDraw = true;
+    syncControls();
+    syncLock();
+    rateButtons();
+    tooltip.invalidate(); // the hidden descriptions are written again when their element is used
+    tooltip.refresh(); // an open tip is re-worded at once
+    ctx.requestRender();
+    return true;
+  }
+
   function render(frame, info) {
+    applyMode(); // before the early return: a hidden panel is up to date as well
     // the engine runs by itself; paint only while this tab is showing
     if (info.view !== 'sound') {
       wasVisible = false;
       return;
     }
-    const force = !wasVisible;
+    const force = !wasVisible || forceDraw;
+    forceDraw = false;
     wasVisible = true;
     const now = performance.now();
 
@@ -655,8 +762,18 @@ export function mount(root, ctx) {
         on: !!S.levels[r.level] && S.chord,
         flash: flash.has(r.level),
       }));
-      scope.draw({ analyser: engine.analyser, voices, enabled: on, hint: on ? '' : 'Press the speaker to listen' });
-      ring.draw({ rows, on: S.levels, loud: S.chord ? loud : silent, enabled: on, selected: store.state.selectedLevel, baseHz: S.baseHz, reduced, flash });
+      scope.draw({ analyser: engine.analyser, voices, enabled: on, hint: on ? '' : 'Press the speaker to listen', pure: !!curPure, baseHz: S.baseHz });
+      ring.draw({
+        rows,
+        on: S.levels,
+        loud: S.chord ? loud : silent,
+        enabled: on,
+        selected: store.state.selectedLevel,
+        baseHz: S.baseHz,
+        reduced,
+        flash,
+        pure: curPure ? { ground: W.groundWords(semitonesOf(S.baseHz)) } : null,
+      });
     }
     if (now - lastSummary > 1000) {
       lastSummary = now;
@@ -667,7 +784,7 @@ export function mount(root, ctx) {
       tooltip.refresh(); // the "Now:" row of an open tip follows the clock
     }
 
-    const key = `${rate}|${S.tempo.depth}|${S.floor}|${S.chimes}|${S.chord}|${S.levels.map(Number).join('')}`;
+    const key = `${rate}|${S.tempo.depth}|${S.floor}|${S.chimes}|${S.chord}|${S.levels.map(Number).join('')}|${modeKey}`;
     if (key !== tempoKey || force) {
       tempoKey = key;
       const tt = tempoText();
@@ -682,8 +799,7 @@ export function mount(root, ctx) {
     }
   }
 
-  syncControls();
-  syncLock();
+  applyMode(); // builds the lists and options (also in pure mode when the page was opened with ?pure=1) and syncs the controls
 
   return {
     alwaysOn: true,

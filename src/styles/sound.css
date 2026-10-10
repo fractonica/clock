@@ -77,6 +77,8 @@
 /* the tempo lock state: a chip in the header of the card that holds the control (its height is reserved: nothing shifts) */
 .snd-tempo-card .card-h { min-height: 40px; }
 .snd-chip-lock { gap: 8px; min-width: 0; color: var(--teal); border-color: var(--teal-dim); background: rgb(79 209 197 / 0.08); white-space: nowrap; }
+.snd-tempo-card .card-h h3 { white-space: nowrap; }
+.snd-lock-txt { min-width: 0; overflow: hidden; text-overflow: ellipsis; } /* a long lock text gives way, the title and "Unlock" stay whole */
 .snd-unlock {
   appearance: none;
   background: none;
@@ -359,6 +361,14 @@
     vertical-align: 1px;
   }
 }
+
+/* ---------- pure mode: pairs of glyphs instead of percentages, longer words instead of units ---------- */
+.snd-out .pure-pair { justify-content: flex-end; }
+.snd-out .pure-pair svg { height: 26px; } /* two 2-stroke glyphs: 256 states where normal mode prints a number */
+.snd-tip .pure-pair svg { height: 1.35em; }
+.snd[data-pure] .snd-field { grid-template-columns: minmax(0, 1fr) 118px; }
+.snd[data-pure] .snd-out { width: 118px; }
+.snd[data-pure] .snd-oct { min-width: 84px; }
 
 @media (prefers-reduced-motion: reduce) {
   .snd-power-ring { animation: none !important; }

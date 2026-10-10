@@ -21,6 +21,8 @@ await withApp(
     const field = (label) => page.locator(`.cal-conv input[aria-label="${label}"]`);
     const open = async (q) => {
       await page.goto(url(q));
+      // (the model needs a moment to build when the machine is busy: wait for the tab instead of a fixed time only)
+      await page.waitForSelector('#view-calendar .cal-root', { state: 'attached', timeout: 20000 });
       await wait(page, 700);
     };
     const mutations = (sel, ms, opts = { childList: true }) =>

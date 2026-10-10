@@ -34,10 +34,12 @@ import {
 import { createGlyphBook } from './face/glyphs.js';
 import { createScreen } from './face/screen.js';
 import { createTooltip } from './face/tooltip.js';
-import { buildHowTo } from './face/howto.js';
+import { buildHowTo, fillHowTo } from './face/howto.js';
+import { pureInfoLabels, pureInfoSpeech, pureTooltipModel, pureRowAriaLabel, pureCaption, letterName, pureRange, PURE_SOLAR_NA, CAPTION_NOTE } from './face/pure.js';
 
 let uidSeq = 0;
 const OOR_LABEL = 'Fractonica clock face: outside the Saros 141 catalogue, no reading';
+const SOLAR_NA_LABEL = 'Solar sync unavailable within three days of the catalogue ends';
 /** Pointer movement below this keeps a gesture hint on screen. */
 const HINT_JITTER_PX = 6;
 
@@ -60,6 +62,9 @@ function h(tag, cls, html) {
 
 export function mount(el, ctx) {
   const { model, store, fmt, theme } = ctx;
+  const pure = ctx.pure;
+  /** Pure mode: Fractonica terms only (docs/design/80-pure.md). Read live, so an event between two frames already speaks the new mode. */
+  const isPure = () => !!pure && !!store.state.pure;
   const uid = ++uidSeq;
   const glyphBook = createGlyphBook(ctx.F);
   const screen = createScreen({ glyphBook, uid });
@@ -103,7 +108,7 @@ export function mount(el, ctx) {
   const depths = h('span', 'face-depths mono dim');
   foot.append(bHelp, depths);
 
-  const pop = buildHowTo({ glyphBook, id: `face-pop-${uid}` });
+  const pop = buildHowTo({ glyphBook, id: `face-pop-${uid}`, pure: isPure(), pairHTML: pure?.pairHTML });
   bHelp.setAttribute('aria-controls', pop.id);
   const status = h('div', 'sr-only');
   status.setAttribute('role', 'status');
@@ -131,6 +136,7 @@ export function mount(el, ctx) {
     selKey: '',
     caption: '',
     dpr: 0,
+    pure: null, // the mode the DOM was last written for (null = never)
     live: null,
     letters: null,
     lastFrame: null,
@@ -182,7 +188,10 @@ export function mount(el, ctx) {
     // the labels are aria-hidden SVG text: say the same content for screen readers
     const f = ui.lastFrame ?? model.frame(store.t());
     const lTop = f?.inRange ? f.level(levels().top) : null;
-    if (lTop) say(infoSpeech(infoLabels(f, lTop, solarOf(f))));
+    if (lTop) {
+      const m = infoLabels(f, lTop, solarOf(f));
+      say(m.pure ? pureInfoSpeech(m) : infoSpeech(m));
+    }
   }
   function toggleLetters() {
     ui.infoUntil = 0;
@@ -202,6 +211,7 @@ export function mount(el, ctx) {
   // ---- tooltips ----------------------------------------------------------------------------
   function tooltipModel(row, frame, kind) {
     if (!frame?.inRange) return null;
+    if (isPure()) return pureTooltipModel({ model, pure, frame, row, topDepth: store.state.topDepth, by: kind === 'focus' ? 'key' : 'pointer' });
     const t = frame.t;
     if (row === 'solar') {
       const s = solarOf(frame);
@@ -498,9 +508,11 @@ export function mount(el, ctx) {
     document.removeEventListener('keydown', onDocKey, true);
     if (restoreFocus) bHelp.focus({ preventScroll: true });
   }
-  // keys typed in the dialog (Space to scroll, digits, brackets ...) must not reach the global shortcuts
+  // keys typed in the dialog (Space to scroll, digits, brackets ...) must not reach the global shortcuts; "?" is the
+  // exception in pure mode, because the dialog itself ends with "Press ? for the glossary."
   pop.addEventListener('keydown', (e) => {
-    if (e.key !== 'Escape') e.stopPropagation();
+    if (e.key === 'Escape' || (e.key === '?' && isPure())) return;
+    e.stopPropagation();
   });
   bHelp.addEventListener('click', () => (pop.hidden ? openPop() : closePop(true)));
   pop.querySelector('.face-pop-close').addEventListener('click', () => closePop(true));
@@ -557,15 +569,52 @@ export function mount(el, ctx) {
   // ---- info labels ---------------------------------------------------------------------------------
   /** Text of the three info labels (SPEC §8): next threshold of the top period, next solar threshold, sync time. */
   function infoLabels(frame, lTop, sol) {
+    if (isPure()) return pureInfoLabels(pure, frame.t, lTop, sol);
     const next = lTop.next;
     return {
       topCap: thresholdCaption(next.name),
       topVal: next.time != null ? fmt.label(next.time, frame.t) : '\u2014',
       solarCap: sol ? thresholdCaption(sol.threshold.name) : 'SOLAR SYNC',
       solarVal: sol ? fmt.label(sol.threshold.time, frame.t) : '\u2014',
+      syncCap: 'SYNC TIME',
       syncVal: sol ? fmt.label(sol.start, frame.t) : '\u2014',
       solarOk: !!sol,
     };
+  }
+
+  // ---- pure mode ---------------------------------------------------------------------------------
+  /**
+   * Rewrite everything that is text for the mode (normal / pure): the static labels of the screen, the how-to lines,
+   * and forget what the other mode wrote (info values, letter names, the open tooltip, cached labels), so nothing
+   * of the previous vocabulary stays on screen or in the accessibility tree. Runs at mount and on every toggle.
+   */
+  function applyMode(on) {
+    ui.pure = on;
+    if (on) el.dataset.pure = '1';
+    else delete el.dataset.pure;
+    hideTip();
+    tooltip.clear();
+    status.textContent = ''; // the last announcement belongs to the other mode
+    if (on) caption.title = CAPTION_NOTE; // which of the caption's numbers count from 0 and which from 1
+    else caption.removeAttribute('title');
+    screen.setMode(on, on ? { range: pureRange(pure), solarNa: PURE_SOLAR_NA } : null);
+    fillHowTo(pop, { pure: on, pairHTML: pure?.pairHTML });
+    ui.labelKey = ''; // aria labels of the rows and of the screen are derived again
+    ui.cycleKey = '';
+    ui.dirty = true;
+  }
+  /** Letter, depth and (pure mode) the name of the running cycle for the two period rows. */
+  function letterSpecs(frame, lv) {
+    const spec = (level) => ({ letter: letterOf(level), depth: level + 1, name: '' });
+    const top = spec(lv.top);
+    const bottom = spec(lv.bottom);
+    if (isPure() && frame.inRange) {
+      const a = frame.level(lv.top);
+      const b = frame.level(lv.bottom);
+      if (a) top.name = letterName(pure, lv.top, a.local);
+      if (b) bottom.name = letterName(pure, lv.bottom, b.local);
+    }
+    return [top, bottom];
   }
 
   // ---- render ------------------------------------------------------------------------------------
@@ -575,6 +624,8 @@ export function mount(el, ctx) {
     const st = store.state;
     const depth = clampDepth(st.topDepth);
     const lv = levelsFor(depth);
+    const pureOn = isPure();
+    if (pureOn !== ui.pure) applyMode(pureOn);
 
     if (depth !== ui.depth) {
       if (ui.depth !== null) {
@@ -584,7 +635,7 @@ export function mount(el, ctx) {
       ui.depth = depth;
       ui.dirty = true;
       screen.resetPeriodRows();
-      screen.setLetters({ letter: letterOf(lv.top), depth: lv.top + 1 }, { letter: letterOf(lv.bottom), depth: lv.bottom + 1 });
+      screen.setLetters(...letterSpecs(frame, lv));
       syncControls(depth);
     }
     const mode = overlayMode({ now, infoUntil: ui.infoUntil, lettersUntil: ui.lettersUntil, showLetters: st.showLetters });
@@ -610,13 +661,14 @@ export function mount(el, ctx) {
 
     // ---- out of catalogue
     if (!frame.inRange) {
-      screen.setRange(true, fmt.date(model.tMin), fmt.date(model.tMax));
+      const range = pureOn ? pureRange(pure) : null;
+      screen.setRange(true, range ? range.from : fmt.date(model.tMin), range ? range.to : fmt.date(model.tMax));
       screen.setOverlay('none');
       screen.setSelected(null);
       // forget what the screen showed, so the accent and the labels are redrawn when time is back in range
       ui.selKey = '';
       ui.labelKey = '';
-      screen.setLabel(OOR_LABEL);
+      screen.setLabel(range ? range.label : OOR_LABEL);
       screen.setPending(false);
       setText('caption', caption, '');
       hideTip();
@@ -644,13 +696,15 @@ export function mount(el, ctx) {
     const cycleKey = `${lTop.local}|${lBot.local}`;
     if (topChanged || botChanged || cycleKey !== ui.cycleKey || ui.labelKey === '') {
       ui.cycleKey = cycleKey;
-      const mk = (level, odo, lvl) => ({ letter: letterOf(level), depth: level + 1, state: stateInfo(odo.digits[0]), local: lvl.local, siblings: lvl.siblings });
-      screen.setRowLabel('top', rowAriaLabel('top', mk(lv.top, top, lTop)));
-      screen.setRowLabel('bottom', rowAriaLabel('bottom', mk(lv.bottom, bot, lBot)));
+      const mk = (level, odo, lvl) => ({ letter: letterOf(level), depth: level + 1, state: stateInfo(odo.digits[0]), local: lvl.local, siblings: lvl.siblings, name: pureOn ? letterName(pure, level, lvl.local) : '' });
+      const label = pureOn ? (kind, d) => pureRowAriaLabel(kind, d, pure) : rowAriaLabel;
+      screen.setRowLabel('top', label('top', mk(lv.top, top, lTop)));
+      screen.setRowLabel('bottom', label('bottom', mk(lv.bottom, bot, lBot)));
     }
     if (solChanged || ui.solarOk !== !!sol || ui.labelKey === '') {
       ui.solarOk = !!sol;
-      screen.setRowLabel('solar', sol ? rowAriaLabel('solar', { sync: sol.sync, phase: sol.phase, digits: sol.digits3 }) : 'Solar sync unavailable within three days of the catalogue ends');
+      const solar = { sync: sol?.sync, phase: sol?.phase, digits: sol?.digits3 };
+      screen.setRowLabel('solar', sol ? (pureOn ? pureRowAriaLabel('solar', solar, pure) : rowAriaLabel('solar', solar)) : pureOn ? PURE_SOLAR_NA.label : SOLAR_NA_LABEL);
     }
     const labelKey = `${depth}|${sol ? sol.sync : 'n/a'}`;
     if (labelKey !== ui.labelKey) {
@@ -659,6 +713,7 @@ export function mount(el, ctx) {
     }
 
     // ---- overlays
+    screen.setLetters(...letterSpecs(frame, lv));
     screen.setOverlay(mode);
     if (mode === 'info') screen.setInfo(infoLabels(frame, lTop, sol));
 
@@ -672,11 +727,13 @@ export function mount(el, ctx) {
     }
 
     // ---- caption (only when not live)
-    setText('caption', caption, store.live ? '' : `${fmt.dateTime(frame.t)} ${fmt.tag(frame.t)}`);
+    setText('caption', caption, store.live ? '' : pureOn ? pureCaption(pure, frame.t) : `${fmt.dateTime(frame.t)} ${fmt.tag(frame.t)}`);
 
     // ---- tooltip countdowns stay fresh while it is open
     if (tipDue) showRowTip(ui.tip.row, ui.tip.at);
   }
+
+  applyMode(isPure());
 
   function destroy() {
     ro?.disconnect();

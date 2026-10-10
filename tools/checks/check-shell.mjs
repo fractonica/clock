@@ -79,6 +79,39 @@ await withApp(async ({ page, url, errors, context }) => {
   const vis = await page.evaluate(() => { const t = document.querySelector('#tab-sound').getBoundingClientRect(), n = document.querySelector('#tabs').getBoundingClientRect(); return t.left >= n.left - 1 && t.right <= n.right + 1; });
   ok('Sound tab is visible in the tab strip on a phone', vis);
 
+  // ---- pure mode shell behaviour ----
+  await page.goto(url('?t=1'));
+  await page.evaluate(() => localStorage.clear());
+  await page.goto(url('?pure=1&t=1791460800&view=rings'));
+  await page.waitForTimeout(500);
+  const pureState = await page.evaluate(() => ({
+    flag: __fractonica.store.state.pure,
+    attr: document.body.dataset.pure,
+    clock: document.querySelector('#ro-time').textContent,
+    date: document.querySelector('#ro-date').textContent,
+    zoneHidden: getComputedStyle(document.querySelector('#zone')).display === 'none',
+    glossaryBtn: !document.querySelector('#btn-glossary').hidden,
+    brand: document.querySelector('#brand-sub').textContent,
+    rate: [...document.querySelectorAll('#tp-rate option')].map((o) => o.textContent),
+  }));
+  ok('?pure=1 switches the shell', pureState.flag && pureState.attr === '1' && pureState.zoneHidden && pureState.glossaryBtn, JSON.stringify(pureState));
+  ok('pure header clock counts η ι λ and the date is an address', /^\d+η\d+ι\d+λ$/.test(pureState.clock.replace(/\s/g, '')) && /^α#6 β#4 γ#9 · δ½#\d+ · ε½#\d · ζ½#\d$/.test(pureState.date), pureState.clock + ' | ' + pureState.date);
+  ok('speed select is in units per beat', pureState.rate.some((r) => r === 'η per beat') && !pureState.rate.some((r) => /\b(s|min|h|d)\b|\/s|×\d/.test(r)), pureState.rate.join(' | '));
+  await page.keyboard.press('?');
+  await page.waitForTimeout(150);
+  ok('? opens the glossary and Esc closes it', (await page.evaluate(() => !document.querySelector('#glossary').hidden)) && (await page.keyboard.press('Escape'), await page.waitForTimeout(100), await page.evaluate(() => document.querySelector('#glossary').hidden)));
+  await page.click('#btn-link');
+  await page.waitForTimeout(200);
+  const plink = await page.evaluate(() => navigator.clipboard.readText().catch(() => ''));
+  ok('pure link carries pos (12 decimals) and pure=1, not t', /[?&]pos=\d+\.\d{12}\b/.test(plink) && /pure=1/.test(plink) && !/[?&]t=/.test(plink) && !/zone=/.test(plink), plink);
+  await page.goto(url('?pure=banana&solar=banana&pos=0x10&view=rings'));
+  await page.waitForTimeout(300);
+  ok('garbage pure/pos values are ignored', await page.evaluate(() => __fractonica.store.state.pure === true), 'stored flag must stay as it was');
+  await page.goto(url('?pure=0&t=1791460800'));
+  await page.waitForTimeout(300);
+  const back = await page.evaluate(() => ({ pure: __fractonica.store.state.pure, attr: document.body.dataset.pure ?? '', zone: getComputedStyle(document.querySelector('#zone')).display, clock: document.querySelector('#ro-time').textContent, sub: document.querySelector('#brand-sub').textContent, g: document.querySelector('#btn-glossary').hidden }));
+  ok('?pure=0 restores the normal shell', !back.pure && back.attr === '' && back.zone !== 'none' && /\d\d:\d\d:\d\d/.test(back.clock) && /Saros 141/.test(back.sub) && back.g, JSON.stringify(back));
+
   ok('no console errors', errors.length === 0, errors.slice(0, 4).join(' | '));
 });
 console.log(failed ? `${failed} FAILED` : 'all shell checks passed');

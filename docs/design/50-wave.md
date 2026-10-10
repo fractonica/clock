@@ -45,3 +45,7 @@ green `#0d1b14` background; you may call `clock.compose` for a quick overview if
 
 Add pure geometry helpers (point on arc, bounds, per-level markers) in `src/ui/wave/geometry.js` and test them,
 including that the marker of level L lies on the arc of its half-cycle at progress = phase of the half-cycle.
+
+## Solar wave and pure mode
+See docs/design/80-pure.md (final section). Files: `src/ui/wave/solar.js` (geometry/phase), `sun.js` (dial), `words.js`
+(wording incl. pure). Eclipse labels are `#k` like the position; drift reads `drift −623λ`; progress pairs replace percentages.

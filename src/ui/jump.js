@@ -8,11 +8,19 @@
  * rings, which the box reads as a second candidate ("the running ε") next to the ordinal.
  * Keys: "/" (or Ctrl/Cmd+K) focuses the box · ↑/↓ choose · Enter jumps · Esc clears. Touch devices get no key hints.
  * Input is capped at MAX_INPUT characters (maxlength and in parseJump), so a huge paste cannot freeze the page.
+ *
+ * Pure mode (docs/design/80-pure.md): the same box speaks Fractonica only. It reads names (Gamma Difracton), addresses,
+ * stamps (exactly what the header prints, "α#6 β#4 γ#9 · δ½#3 · ε½#2 · ζ½#5 · 3η 17ι 21λ", or any tail of it; the old
+ * spellings "δ½ 3" and "η 5" too), pure offsets (+2ζ½ 3η), positions, syncs, boundaries and glyph states with
+ * ./calendar/pure-parse.js, answers anything Gregorian with one short message, and keeps its own history, placeholder,
+ * examples and toasts. Notation: X#n is an ordinal counted from 1, nX a count of units counted from 0.
  */
 import { h, ICONS, loadPrefs, savePrefs } from './calendar/dom.js';
 import { MAX_INPUT, dayFirstOfLocale, parseJump } from './calendar/parse.js';
+import { PURE_PLACEHOLDER, parsePure, pureExamples } from './calendar/pure-parse.js';
 
 const KEY = 'fractonica-clock/jump/v1';
+const PURE_KEY = 'fractonica-clock/jump/pure/v1';
 const MAX_HISTORY = 8;
 const KIND_LABEL = {
   date: 'Date',
@@ -55,12 +63,15 @@ export function sanitizeHistory(stored) {
 
 export function mount(el, ctx) {
   const { model, store, fmt } = ctx;
-  let history = sanitizeHistory(loadPrefs(KEY, { items: [] }).items);
+  const isPure = () => !!ctx.isPure?.();
+  let pureOn = isPure();
+  // (the two modes keep separate histories: a date typed in the normal mode must never be listed in pure mode)
+  let history = sanitizeHistory(loadPrefs(pureOn ? PURE_KEY : KEY, { items: [] }).items);
 
   const input = h('input.input.jump-input', {
     type: 'text',
     role: 'combobox',
-    'aria-label': 'Jump to a time',
+    'aria-label': pureOn ? 'Jump to a moment' : 'Jump to a time',
     'aria-autocomplete': 'list',
     'aria-expanded': 'false',
     'aria-controls': 'jump-list',
@@ -70,7 +81,7 @@ export function mount(el, ctx) {
     spellcheck: 'false',
     enterkeyhint: 'go',
     maxlength: String(MAX_INPUT),
-    placeholder: PLACEHOLDER,
+    placeholder: pureOn ? PURE_PLACEHOLDER : PLACEHOLDER,
   });
   const kbd = h('kbd.kbd.jump-kbd', { 'aria-hidden': 'true', text: '/' });
   const list = h('ul.jump-list', { id: 'jump-list', role: 'listbox', 'aria-label': 'Interpretations' });
@@ -87,6 +98,9 @@ export function mount(el, ctx) {
 
   const dayFirst = localeDayFirst();
   const options = () => ({ now: store.t(), real: store.realNow(), zone: fmt.zone(), model, fmt, dayFirst, level: store.state.selectedLevel });
+  const pureOptions = () => ({ now: store.t(), real: store.realNow(), model, pure: ctx.pure, level: store.state.selectedLevel });
+  /** The interpretations of a text in the vocabulary of the current mode. */
+  const parse = (text) => (pureOn ? parsePure(text, pureOptions()) : parseJump(text, options()));
   const touch = () => typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
   const selectable = (c) => c && c.time !== null && c.kind !== 'error';
 
@@ -169,21 +183,21 @@ export function mount(el, ctx) {
         items = history.map((x) => ({ kind: 'recent', recent: true, label: x.text, detail: x.label || '', time: 0, text: x.text, saved: x }));
       } else {
         mode = 'recent';
-        items = examples(dayFirst).map(([t, d]) => ({ kind: 'example', label: t, detail: d, time: 0, text: t, example: true }));
+        items = (pureOn ? pureExamples() : examples(dayFirst)).map(([t, d]) => ({ kind: 'example', label: t, detail: d, time: 0, text: t, example: true }));
       }
       active = 0;
       render();
       return;
     }
     mode = 'results';
-    items = parseJump(text, options());
+    items = parse(text);
     active = firstSelectable();
     render();
   }
 
   function remember(text, label, kind) {
     history = [{ text, label, kind }, ...history.filter((x) => x.text !== text)].slice(0, MAX_HISTORY);
-    savePrefs(KEY, { items: history });
+    savePrefs(pureOn ? PURE_KEY : KEY, { items: history });
   }
 
   function close(clear = false) {
@@ -198,10 +212,10 @@ export function mount(el, ctx) {
   function go(c, text) {
     if (c.live) {
       store.goLive(); // "now" is the device clock: the app follows it again instead of freezing on this instant
-      ctx.toast('Back to the device clock');
+      ctx.toast(pureOn ? 'Back to the live clock' : 'Back to the device clock');
     } else {
       ctx.goto(c.time);
-      ctx.toast(`Jumped to ${fmt.long(c.time)}`);
+      ctx.toast(`Jumped to ${pureOn ? ctx.pure.stamp(c.time, 'eta') : fmt.long(c.time)}`);
     }
     remember(text, c.label, c.kind);
     close(true);
@@ -214,7 +228,7 @@ export function mount(el, ctx) {
     if (c.example || c.recent) {
       // history / examples are inputs: run them (relative inputs are re-evaluated now)
       input.value = c.text;
-      const res = parseJump(c.text, options());
+      const res = parse(c.text);
       // replay the interpretation that was chosen then (03/04/2031 read month/day stays month/day)
       const best = (c.saved && res.find((x) => selectable(x) && x.kind === c.saved.kind && x.label === c.saved.label)) || res.find(selectable);
       if (c.example || !best) {
@@ -228,7 +242,7 @@ export function mount(el, ctx) {
     if (!selectable(c)) return;
     // re-parse with a fresh "now" so offsets are relative to this instant
     const text = input.value;
-    const fresh = parseJump(text, options());
+    const fresh = parse(text);
     const same = fresh.find((x) => selectable(x) && x.kind === c.kind && x.label === c.label) ?? c;
     go(same, text.trim());
   }
@@ -238,7 +252,7 @@ export function mount(el, ctx) {
       if (mode === 'recent' && items[active]) choose(active); // a recent jump runs, an example is copied into the box
       return;
     }
-    items = parseJump(input.value, options());
+    items = parse(input.value);
     if (!selectable(items[active])) active = firstSelectable();
     if (selectable(items[active])) choose(active);
     else {
@@ -299,14 +313,30 @@ export function mount(el, ctx) {
     }
   };
   document.addEventListener('keydown', onDocKey);
-  const unsub = store.subscribe((kind) => {
-    if (kind === 'settings' && mode === 'results') refresh();
+  /**
+   * Pure mode switched on or off: the box changes vocabulary at once. Whatever was typed or listed in the other
+   * vocabulary goes away (no date text left in pure mode, no cycle names left behind in the normal mode).
+   */
+  function applyMode(on) {
+    pureOn = on;
+    history = sanitizeHistory(loadPrefs(pureOn ? PURE_KEY : KEY, { items: [] }).items);
+    input.setAttribute('aria-label', pureOn ? 'Jump to a moment' : 'Jump to a time');
+    input.setAttribute('placeholder', pureOn ? PURE_PLACEHOLDER : PLACEHOLDER);
+    close(true);
+    if (document.activeElement === input) refresh();
+  }
+  const unsub = store.subscribe((kind, patch) => {
+    if (kind !== 'settings') return;
+    if (isPure() !== pureOn) applyMode(isPure());
+    else if (mode === 'results' && !(patch && 'pure' in patch)) refresh();
   });
 
   render();
   return {
     alwaysOn: true,
-    render() {},
+    render() {
+      if (isPure() !== pureOn) applyMode(isPure()); // (also when the flag changed without a settings event)
+    },
     /** focus the box (also used by other modules) */
     focus() {
       input.focus();

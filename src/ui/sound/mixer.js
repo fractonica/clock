@@ -3,12 +3,17 @@
  * live loudness of its cycle (the same phase function the engine plays) and names the note it stands for:
  *   epsilon 5 · 1625:1024      349.1 Hz · F4 −1¢ · 16.2 d
  * Hovering, focusing or (on a touch screen) tapping a strip explains where the note comes from.
+ *
+ * Pure mode (`getPure()` returns ctx.pure): the second line reads `octave +1 · 801¢ · 2ε½` (octave offset, cents above the
+ * ground, cycle length counted in Fractonica periods) instead of Hz, note name and an Earth duration, the ratio is
+ * written with a slash ("65/64"), and the tooltip speaks in ratios, cents, periods and glyph pairs.
  */
 import { levelColor } from '../../core/theme.js';
 import { frequencyOf, noteLabel } from '../../audio/tuning.js';
 import { fmtHz, fmtPeriod, fmtInt } from '../../audio/format.js';
+import * as W from '../../audio/words.js';
 
-export function createMixer(root, { rows, model, fmt, tooltip, getBase, getLive, onToggle, onSelect }) {
+export function createMixer(root, { rows, model, fmt, tooltip, getBase, getLive, getPure = () => null, onToggle, onSelect }) {
   const strips = rows.map((row) => {
     const L = row.level;
     const info = model.levelInfo(L);
@@ -34,6 +39,9 @@ export function createMixer(root, { rows, model, fmt, tooltip, getBase, getLive,
       el,
       on: el.querySelector('.snd-strip-on'),
       main: el.querySelector('.snd-strip-main'),
+      ratio: el.querySelector('.snd-ratio'),
+      perN: el.querySelector('.snd-per-n'),
+      per: el.querySelector('.snd-per'),
       hz: el.querySelector('.snd-hz'),
       note: el.querySelector('.snd-note'),
       bar: el.querySelector('.snd-meter i'),
@@ -51,6 +59,8 @@ export function createMixer(root, { rows, model, fmt, tooltip, getBase, getLive,
   });
 
   function tipHtml(row, info) {
+    const pu = getPure();
+    if (pu) return W.voiceTip({ row, info, pure: pu, live: getLive(row.level), int: fmtInt, color: levelColor(row.level, 1, 70) });
     const base = getBase();
     const hz = frequencyOf(row, base);
     const live = getLive(row.level);
@@ -71,6 +81,17 @@ export function createMixer(root, { rows, model, fmt, tooltip, getBase, getLive,
       <div class="snd-tip-row">Now: ${state}</div>`;
   }
 
+  /** Say the static parts of every strip in the vocabulary of the mode (`pu` = ctx.pure or null); the second line follows in update(). */
+  function setPure(pu) {
+    for (const s of strips) {
+      const period = pu ? pu.cycleLength(s.L) : fmtPeriod(model.levelInfo(s.L).meanSeconds);
+      s.ratio.textContent = pu ? W.ratioText(rows[s.L]) : rows[s.L].ratio;
+      s.perN.textContent = period;
+      s.per.textContent = period;
+      s.lastHz = NaN; // rewrite the note line at the next update
+    }
+  }
+
   let lastLive = null;
   let lastQuiet = null;
   /**
@@ -80,13 +101,23 @@ export function createMixer(root, { rows, model, fmt, tooltip, getBase, getLive,
    */
   function update({ on, sounding = true, loud, enabled, selected, flash }) {
     const base = getBase();
+    const pu = getPure();
     for (const s of strips) {
       const L = s.L;
-      const hz = frequencyOf(rows[L], base);
-      if (!(Math.abs(hz - s.lastHz) <= 1e-6)) {
-        s.hz.textContent = fmtHz(hz);
-        s.note.textContent = noteLabel(hz);
-        s.lastHz = hz;
+      if (pu) {
+        // octave offset and cents above the ground do not depend on the base pitch: written once per mode
+        if (s.lastHz !== -1) {
+          s.hz.textContent = W.octaveOffset(rows[L].octave);
+          s.note.textContent = W.cents(rows[L].pcCents);
+          s.lastHz = -1;
+        }
+      } else {
+        const hz = frequencyOf(rows[L], base);
+        if (!(Math.abs(hz - s.lastHz) <= 1e-6)) {
+          s.hz.textContent = fmtHz(hz);
+          s.note.textContent = noteLabel(hz);
+          s.lastHz = hz;
+        }
       }
       if (s.lastOn !== on[L]) {
         s.on.setAttribute('aria-pressed', String(on[L]));
@@ -121,5 +152,5 @@ export function createMixer(root, { rows, model, fmt, tooltip, getBase, getLive,
     }
   }
 
-  return { update, strips, tipHtml: (L) => tipHtml(rows[L], model.levelInfo(L)) };
+  return { update, setPure, strips, tipHtml: (L) => tipHtml(rows[L], model.levelInfo(L)) };
 }

@@ -48,3 +48,9 @@ Show the next ~8 events whose `top ≤ importance`, where **importance** is a se
 
 Both cards must look good in the 340 px column and when the layout puts them side by side at ~600 px (≤1320 px
 viewports) or full-width on mobile.
+
+## Pure mode
+Rows: counter (`5 / 11`), countdown (`in 6ι 43λ`), glyph pair instead of a percentage; detail: names, exact length
+(`pure.cycleLength`), quarter offsets as countdowns and counters. Up next: hero `in 1ζ½ 4η 24ι · → Zeta Pentafracton begins`,
+list rows with the name of the cycle that begins and, on wide cards, the date counters `δ½#6 · ε½#5 · ζ½#4`. Wording lives in
+`src/ui/ladder/pure-text.js`. Actions: "Just before" (end − min(2 beats… of the cycle) at ×1) and "Just after" (1 ms in).

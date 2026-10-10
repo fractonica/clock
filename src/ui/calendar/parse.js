@@ -912,4 +912,14 @@ export function parseJump(text, opts = {}) {
   ];
 }
 
-export { phaseOfPoint, pointId };
+export { phaseOfPoint, pointId, tokenizePath };
+
+/**
+ * Does the text name an IANA zone or a city ("Moscow", "europe/moscow", "new york")? The pure jump box uses this to
+ * recognise Earth-clock input it does not take.
+ */
+export function mentionsZone(text) {
+  const s = normalize(text).toLowerCase();
+  if (!s) return false;
+  return zoneLookup().has(s) || trailingZone(s) !== null;
+}

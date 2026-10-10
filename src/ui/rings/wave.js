@@ -172,9 +172,16 @@ export function createWave(canvas, theme, baseCanvas) {
   // Boundary labels: boxes that never overlap and never leave the canvas however narrow the plot is. Everything
   // except the countdown lives on the static layer (it changes only at quarter boundaries).
   let nextSlot = null;
-  /** Text lines of a boundary label; `stack` puts a trailing year of a time-less date on a line of its own. */
-  function labelLines(l, stack) {
-    const m = stack && !l.time ? /^(.+) (\d{4})$/.exec(l.date) : null;
+  /**
+   * Text lines of a boundary label. 'stack' puts a trailing year of a time-less date on a line of its own; a number
+   * takes the label's n-th shorter wording (`l.alt`, pure mode: a coordinate with less and less context).
+   */
+  function labelLines(l, mode) {
+    if (typeof mode === 'number' && l.alt) {
+      const a = l.alt[Math.min(mode, l.alt.length - 1)];
+      return [a.date, a.time].filter(Boolean);
+    }
+    const m = mode === 'stack' && !l.time ? /^(.+) (\d{4})$/.exec(l.date) : null;
     return m ? [m[1], m[2]] : [l.date, l.time].filter(Boolean);
   }
   function drawLabels(c, s) {
@@ -183,21 +190,26 @@ export function createWave(canvas, theme, baseCanvas) {
     const ly = y1 + 20;
     const nameFont = (l) => font(l.next ? 700 : 600, 9.5);
     const gap = 8;
-    const measure = (stack) =>
+    const measure = (mode) =>
       s.labels.map((l, i) => {
         c.font = nameFont(l);
         const nameText = l.next ? `\u25B8 ${l.name}` : l.name;
         let w = c.measureText(nameText).width;
         c.font = DATE_FONT;
-        const lines = labelLines(l, stack);
+        const lines = labelLines(l, mode);
         for (const ln of lines) w = Math.max(w, c.measureText(ln).width);
         const x = xOf(i / 4);
         const left = i === 0 ? x - 4 : i === 4 ? x + 4 - w : x - w / 2;
         return { l, i, x, w, left, nameText, lines };
       });
-    let boxes = measure(false);
     // five year-scale dates do not fit side by side on a phone: stack the years under the day and month
-    if (boxes.reduce((a, b) => a + b.w, 0) + gap * 4 > W - 4) boxes = measure(true);
+    // (pure mode: five coordinates that do not fit give up their context step by step, down to the last counter)
+    const modes = s.labels.some((l) => l.alt) ? ['', 0, 1] : ['', 'stack'];
+    let boxes;
+    for (const mode of modes) {
+      boxes = measure(mode);
+      if (boxes.reduce((a, b) => a + b.w, 0) + gap * 4 <= W - 4) break;
+    }
     const pushLeft = () => {
       for (let k = boxes.length - 2; k >= 0; k--) {
         const over = boxes[k].left + boxes[k].w + gap - boxes[k + 1].left;
@@ -236,8 +248,9 @@ export function createWave(canvas, theme, baseCanvas) {
         c.strokeStyle = theme.INK_3;
         c.lineWidth = 1;
         c.beginPath();
-        c.moveTo(b.left, ly + 22.5);
-        c.lineTo(b.left + tw, ly + 22.5);
+        const sy = ly + 13 * b.lines.length - 3.5; // through the last line, which is the time
+        c.moveTo(b.left, sy);
+        c.lineTo(b.left + tw, sy);
         c.stroke();
       }
       c.globalAlpha = 1;
@@ -265,7 +278,7 @@ export function createWave(canvas, theme, baseCanvas) {
    * @param {number} s.quarter                 0..3
    * @param {number} s.limit                   highest phase inside the catalogue (1 = complete cycle)
    * @param {string} s.key                     identity of the cycle (level, cycle, zone, ...)
-   * @param {{name:string,date:string,time:string,passed:boolean,next:boolean,in:string}[]} s.labels  5 boundaries
+   * @param {{name:string,date:string,time:string,alt?:{date:string,time:string}[],passed:boolean,next:boolean,in:string}[]} s.labels  5 boundaries
    * @param {null|{phase:number,text:string}} s.hover
    * @param {boolean} s.scrubbing
    * @param {boolean} s.focused
@@ -285,7 +298,7 @@ export function createWave(canvas, theme, baseCanvas) {
           nextSlot ? 1 : 0,
         ].join('~')
       : 'off';
-    const key = `${W}|${H}|${R}|${s.level}|${s.inRange}|${s.key}|${s.limit}|${s.M}|${s.labels.map((l) => `${+l.passed}${+l.next}${l.date}${l.time}`).join(';')}`;
+    const key = `${W}|${H}|${R}|${s.level}|${s.inRange}|${s.key}|${s.limit}|${s.M}|${s.labels.map((l) => `${+l.passed}${+l.next}${l.date}${l.time}${l.alt ? l.alt.map((a) => a.date + a.time).join('~') : ''}`).join(';')}`;
     let repaint = false;
     if (key !== baseKey) {
       if (s.inRange) drawBase(s);

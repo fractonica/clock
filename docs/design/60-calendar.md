@@ -92,3 +92,10 @@ Layout: desktop two columns (converter left, calendar right); under ~1000 px sta
 Ordinals carry a hash everywhere this module prints one (`ε#5`, `α#6 › β#4 › γ#9`); a bare `ε 5` is the depth chip used by
 the ladder, Up next, rings and timeline. Percentages are floored and capped at 99.9 before a cycle ends. A wall time that does
 not exist (DST gap) or happens twice (fold) is flagged inline with the same sentence in the jump box and the converter.
+
+## Pure mode
+The tab becomes a pure converter (`pure-converter.js`: position ⇄ names ⇄ address ⇄ stamp ⇄ glyph states ⇄ sync) and a pure month page
+(`pure-month.js`: one δ½ as 5 rows × 7 cells with η/ι ticks, sync quarters, eclipse `#k` and sync `S<n>` labels). The jump box
+(`pure-parse.js`) takes names (`Gamma Difracton`), addresses (`α#6 β#4`), stamps (`ζ½#6 · 5η`), `pos`, `sync`, `next/prev`, glyph
+states, offsets (`+2ζ½ 3η`); old spellings (`δ½ 3`, `η 5`) still read; Gregorian input gets a pointer. Share links are `?pos=`
+with 12 decimals. Parsing helpers: `src/ui/calendar/pure-conv.js` (stamp ⇄ moment, counters, spans).

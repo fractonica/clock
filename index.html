@@ -23,11 +23,11 @@
     <header class="topbar" id="topbar">
       <div class="brand">
         <svg class="brand-mark" viewBox="-3 -3 6 12" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width=".42" stroke-linecap="round"><path d="M0 0V9M0 0C0 0 0 1 1 1C2 1 2 0 2 0M0 3C0 3 0 2 -1 2C-2 2 -2 3 -2 3M-1 6H1"/></g></svg>
-        <div class="brand-text"><b>Fractonica</b><small>Saros 141 clock</small></div>
+        <div class="brand-text"><b>Fractonica</b><small id="brand-sub"></small></div>
       </div>
 
       <div class="readout" id="readout" aria-label="Displayed time">
-        <div class="readout-time mono" id="ro-time">--:--:--</div>
+        <div class="readout-time mono" id="ro-time">—</div>
         <div class="readout-sub">
           <span id="ro-date">—</span>
           <span id="ro-tz" class="dim"></span>
@@ -44,12 +44,14 @@
         <button class="btn btn-icon" id="tp-play" type="button" title="Play / pause time-lapse (Space)" aria-label="Play or pause"></button>
         <button class="btn btn-icon" id="tp-next" type="button" title="Next cycle of the selected depth (])" aria-label="Next cycle"></button>
         <select class="select" id="tp-rate" title="Time-lapse speed" aria-label="Time-lapse speed"></select>
-        <button class="btn pill" id="tp-live" type="button" title="Return to the device clock (N)"></button>
+        <button class="btn pill" id="tp-live" type="button" title="Return to the live clock (N)"></button>
       </div>
 
       <div class="tools">
         <select class="select" id="zone" title="Time zone for Gregorian display" aria-label="Time zone"></select>
         <button class="btn btn-icon" id="btn-link" type="button" title="Copy a link to this moment" aria-label="Copy link"></button>
+        <button class="btn btn-icon" id="btn-glossary" type="button" title="Glossary of the pure-mode units and notation" aria-label="Pure mode glossary" aria-haspopup="dialog" aria-expanded="false" hidden>?</button>
+        <button class="btn btn-icon" id="btn-pure" type="button" title="Pure mode: Fractonica terms only (P)" aria-label="Pure mode" aria-pressed="false"></button>
         <button class="btn btn-icon" id="btn-sound" type="button" title="Sound on / off (M)" aria-label="Sound" aria-pressed="false"></button>
       </div>
     </header>
@@ -74,6 +76,7 @@
       </aside>
     </main>
 
+    <div class="glossary card" id="glossary" role="dialog" aria-label="Pure mode glossary" hidden></div>
     <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
   </div>
 </body>

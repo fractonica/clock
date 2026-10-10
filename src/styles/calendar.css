@@ -383,9 +383,139 @@
 .jump-foot { padding: 6px 10px 3px; font-size: 11px; color: var(--ink-2); border-top: 1px solid var(--line); margin-top: 4px; }
 
 /* ============================================================================================
+   pure mode: the converter between Fractonica forms and the page of one δ½ (docs/design/80-pure.md)
+   Same cards, same frame; every class below belongs to the pure views (cal-pc-*, cal-pm-*, cal-p*).
+   ========================================================================================== */
+/* ---- converter: moment readout, counters ---- */
+.cal-pc-read { display: flex; flex-direction: column; gap: 5px; padding: 10px 12px 11px; border-radius: 12px; background: var(--bg-2); border: 1px solid var(--line); min-width: 0; }
+.cal-pc-clock { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 30px; line-height: 1.08; color: var(--teal); min-height: 32px; }
+.cal-pc-clock .pure-clock b { font-weight: 600; }
+.cal-pc-date { font-size: 12.5px; color: var(--ink-2); overflow-wrap: anywhere; line-height: 1.4; }
+.cal-pc-names { display: flex; flex-wrap: wrap; gap: 4px 5px; margin-top: 3px; min-height: 22px; }
+.cal-pc-name { font-size: 11px; line-height: 1.5; padding: 0 8px 0 6px; border-radius: 999px; border: 1px solid color-mix(in srgb, var(--lv) 35%, var(--line-2)); background: color-mix(in srgb, var(--lv) 7%, transparent); color: var(--ink-2); white-space: nowrap; }
+.cal-pc-name i { font-style: normal; color: var(--lv); margin-right: 4px; font-size: 12px; }
+.cal-crow { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 4px 16px; padding: 4px 0 2px; }
+.cal-clab { flex: 0 0 100%; font-size: 11px; letter-spacing: 0.03em; color: var(--ink-3); }
+.cal-cstep { grid-template-columns: auto auto; }
+.cal-cstep .cal-sl { font-size: 15px; text-align: left; white-space: nowrap; }
+/* a count is written number first ("3η"): the unit follows the box; an ordinal has its hash first ("δ½#3") */
+.cal-cstep.is-count .cal-so { grid-column: 1; }
+.cal-cstep.is-count .cal-sl { padding-left: 1px; }
+.cal-cstep .cal-sv { width: 40px; }
+.cal-cstep .cal-so { white-space: nowrap; }
+.cal-ta { height: auto; min-height: 56px; resize: none; padding-top: 7px; padding-bottom: 7px; line-height: 1.45; overflow-wrap: anywhere; }
+.cal-inwrap:has(.cal-ta) { align-items: stretch; }
+.cal-inwrap:has(.cal-ta) .cal-copy { top: 6px; }
+.cal-rnames { font-size: 12px; color: var(--ink-3); line-height: 1.35; overflow-wrap: anywhere; }
+.cal-rpos { font-size: 12px; }
+.cal-tt-pair { display: flex; align-items: center; gap: 8px; margin: 2px 0 3px; color: var(--teal); }
+.cal-tt-pair .pure-pair svg { height: 30px; }
+.cal-tt-pair .dim { font-size: 12px; }
+
+/* ---- converter: glyph pairs (two 2-stroke glyphs = 256 states) ---- */
+.cal-pglyphs { grid-template-columns: repeat(auto-fill, minmax(176px, 1fr)); }
+.cal-pgcell { grid-template-columns: 50px minmax(0, 1fr); }
+.cal-gpair { display: grid; place-items: center; height: 42px; color: var(--lv); }
+.cal-gpair .pure-pair { gap: 3px; }
+.cal-gpair .pure-pair svg { height: 40px; width: auto; max-width: 24px; }
+.cal-pgcell .cal-gstate { letter-spacing: 0.02em; }
+.cal-pick-l { font-size: 11px; color: var(--ink-3); letter-spacing: 0.03em; margin: -4px 0 -6px; }
+.cal-states2 { grid-template-columns: repeat(9, minmax(0, 1fr)); }
+.cal-states2 .cal-state svg { height: 28px; }
+.cal-any { justify-content: center; min-height: 40px; }
+.cal-any-t { font-size: 11px; color: var(--ink-2); }
+.cal-any.is-on .cal-any-t { color: var(--ink); }
+.cal-pphase { height: 36px; }
+.cal-pphase .cal-pphase-pair { position: absolute; right: 8px; top: 3px; line-height: 1; font-size: 11px; color: var(--gold); }
+.cal-pphase .pure-pair svg { height: 28px; }
+
+/* ---- the page of one δ½ ---- */
+.cal-pmonth { --cal-c: var(--lv-6); }
+.cal-pm-hsub { font-size: 11.5px; }
+.cal-pm-nav { flex-wrap: wrap; }
+.cal-pm-title { flex: 1 1 130px; min-width: 0; text-align: center; display: flex; flex-direction: column; align-items: center; line-height: 1.2; padding: 0 4px; }
+.cal-pm-tm { font-size: 17px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.cal-pm-ts { font-size: 11px; color: var(--ink-3); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cal-pm-addr { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; }
+.cal-pm-addrf { display: inline-flex; align-items: center; gap: 5px; }
+.cal-pm-step { margin-left: auto; }
+.cal-pm-step button { padding: 4px 10px; color: var(--c); }
+.cal-pm-step button[aria-pressed="true"] { color: var(--ink); }
+.cal-pm-addrl { color: var(--lv); font-size: 15px; min-width: 14px; text-align: center; }
+.cal-pm-sel { width: 72px; padding-right: 22px; }
+.cal-pm-lgs { display: inline-block; width: 7px; height: 7px; background: var(--gold); transform: rotate(45deg); margin: 0 4px 1px 3px; }
+.cal-pm-legend .cal-lg-sw { margin-top: 5px; }
+
+.cal-pm-grid { display: grid; grid-template-columns: 36px repeat(7, minmax(0, 1fr)); gap: 3px; }
+.cal-pm-ch, .cal-pm-rh { font-size: 10.5px; color: var(--ink-3); text-align: center; letter-spacing: 0.04em; padding: 2px 0; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.cal-pm-ch i, .cal-pm-rh i { font-style: normal; opacity: 0.85; }
+.cal-pm-rh { display: flex; align-items: center; justify-content: center; }
+.cal-pm-rh i { margin-right: 0; }
+.cal-pm-cell { position: relative; height: 68px; min-width: 0; border-radius: 8px; border: 1px solid var(--line); background: var(--bg-2); overflow: hidden; transition: border-color .12s, background .12s; }
+.cal-pm-cell:hover { border-color: var(--line-2); }
+.cal-pm-cell.is-out { opacity: 0.35; background: repeating-linear-gradient(135deg, transparent 0 6px, rgb(255 255 255 / 0.035) 6px 12px); }
+.cal-pm-cell.is-out .cal-pm-day { cursor: not-allowed; }
+.cal-pm-cell.is-shown { border-color: var(--cursor); box-shadow: 0 0 0 1px var(--cursor) inset; opacity: 1; }
+.cal-pm-day { position: absolute; inset: 0 0 24px 0; width: 100%; display: flex; align-items: flex-start; justify-content: flex-start; padding: 5px 6px; text-align: left; color: var(--ink); z-index: 2; }
+.cal-pm-day:focus-visible { outline: 2px solid var(--cursor); outline-offset: -2px; border-radius: 7px; }
+.cal-pm-num { min-width: 22px; height: 20px; padding: 0 5px; border-radius: 999px; font-size: 13px; line-height: 20px; text-align: center; font-variant-numeric: tabular-nums; font-weight: 500; }
+.cal-pm-cell.is-live .cal-pm-num { background: var(--now); color: #1a0509; font-weight: 700; }
+.cal-pm-cell.is-shown .cal-pm-num { box-shadow: 0 0 0 1px var(--cursor); }
+.cal-pm-cell.is-live.is-shown .cal-pm-num { box-shadow: none; }
+/* what is in the cell, top right: the eclipse (#22, numbered like the position) and the sync that begins here (S4821) */
+.cal-pm-tags { position: absolute; inset: 0 0 24px 0; pointer-events: none; z-index: 1; font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.cal-pm-tag { position: absolute; right: 5px; top: 6px; font-size: 10px; font-weight: 600; line-height: 13px; letter-spacing: -0.03em; white-space: nowrap; }
+.cal-pm-tag.is-ecl { color: var(--gold); }
+.cal-pm-tag.is-sync { color: color-mix(in srgb, var(--gold) 72%, var(--ink-2)); font-weight: 500; font-size: 9.5px; }
+.cal-pm-tags.has-both .cal-pm-tag.is-sync { display: none; } /* (the rare cell with both: the eclipse wins the corner, the tooltip names the sync) */
+.cal-pm-lgt { font-family: var(--font-mono); font-weight: 600; color: var(--gold); }
+.cal-tt-sync { display: flex; align-items: center; gap: 6px; color: var(--gold); font-size: 12px; margin-top: 3px; }
+.cal-pm-ecl { position: absolute; bottom: 25px; width: 14px; height: 14px; color: var(--gold); z-index: 3; pointer-events: none; }
+.cal-pm-ecl svg { width: 100%; height: 100%; }
+.cal-pm-band { position: absolute; left: 0; right: 0; bottom: 0; height: 24px; background: rgb(0 0 0 / 0.18); }
+.cal-pm-seg { position: absolute; top: 0; bottom: 0; display: block; font-style: normal; border-left: 1px solid transparent; background: color-mix(in srgb, var(--cal-c) 26%, transparent); color: color-mix(in srgb, var(--cal-c) 45%, #fff); overflow: hidden; cursor: pointer; transition: background .1s; }
+.cal-pm-seg.is-odd { background: color-mix(in srgb, var(--cal-c) 14%, transparent); }
+.cal-pm-seg.is-start { border-left-color: color-mix(in srgb, var(--cal-c) 80%, transparent); }
+.cal-pm-seg b { display: block; padding-left: 2px; font-size: 10px; font-weight: 600; line-height: 22px; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; pointer-events: none; white-space: nowrap; }
+.cal-pm-seg.is-cont b { opacity: 0.7; font-weight: 500; }
+.cal-pm-seg.is-hot { background: color-mix(in srgb, var(--cal-c) 50%, transparent); }
+.cal-pm-seg.is-current { background: color-mix(in srgb, var(--cal-c) 46%, transparent); box-shadow: inset 0 -2px 0 var(--cal-c); color: #fff; }
+.cal-pm-seg.is-current.is-hot { background: color-mix(in srgb, var(--cal-c) 58%, transparent); }
+.cal-pm-seg.is-wideseg b { font-size: 11px; }
+.cal-pm-q { position: absolute; bottom: 0; width: 1px; height: 3px; display: block; text-decoration: none; background: rgb(255 255 255 / 0.3); pointer-events: none; }
+.cal-pm-q.q2 { height: 5px; background: rgb(255 255 255 / 0.42); }
+.cal-pm-s { position: absolute; top: -4px; width: 8px; height: 8px; margin-left: -4px; display: block; text-decoration: none; background: var(--bg-2); border: 1.5px solid var(--gold); transform: rotate(45deg); cursor: pointer; z-index: 2; }
+.cal-pm-s.is-start { background: var(--gold); }
+.cal-pm-s:hover { box-shadow: 0 0 0 3px rgb(255 214 10 / 0.25); }
+.cal-pm-cut { position: absolute; top: 0; bottom: 0; right: 0; z-index: 2; pointer-events: none; background: repeating-linear-gradient(135deg, rgb(7 9 13 / 0.78) 0 5px, rgb(7 9 13 / 0.62) 5px 10px); border-left: 1px dashed var(--gold); }
+.cal-pm-elapsed { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; font-size: 12px; color: var(--teal); }
+.cal-pm-elapsed .pure-pair svg { height: 24px; }
+.cal-pm-el { display: inline-flex; min-height: 24px; align-items: center; }
+.cal-dd-list .cal-ddr.is-sync .cal-ddl { color: var(--gold); }
+.cal-pmonth .cal-dd-h { padding-right: 150px; }
+.cal-pmonth .cal-rt { pointer-events: none; }
+.cal-pmonth .cal-ytitle { text-transform: none; letter-spacing: 0.02em; font-size: 13px; }
+.cal-pm-seg.is-wide b { font-size: 8.5px; letter-spacing: -0.08em; }
+.cal-pmonth .cal-rt.is-delta span { top: -2px; }
+
+/* ============================================================================================
    small screens
    ========================================================================================== */
 @container cal (max-width: 560px) {
+  .cal-pm-cell { height: 56px; }
+  .cal-pm-day { inset: 0 0 21px 0; padding: 3px 3px; }
+  .cal-pm-num { min-width: 20px; height: 18px; line-height: 18px; font-size: 12px; padding: 0 4px; }
+  .cal-pm-band { height: 21px; }
+  .cal-pm-seg b { font-size: 9px; line-height: 21px; padding-left: 1px; }
+  .cal-pm-ecl { bottom: 22px; width: 12px; height: 12px; }
+  .cal-pm-tags { inset: 0 0 21px 0; }
+  .cal-pm-tag { right: 3px; top: 5px; font-size: 9px; line-height: 11px; }
+  .cal-pm-tag.is-sync { display: none; } /* (it would not fit next to the number: the diamond and the tooltip say it) */
+  .cal-pm-grid { grid-template-columns: 24px repeat(7, minmax(0, 1fr)); gap: 2px; }
+  .cal-pm-ch i, .cal-pm-rh i { display: none; }
+  .cal-pm-ch.is-first i, .cal-pm-rh.is-first i { display: inline; }
+  .cal-pm-ch, .cal-pm-rh { font-size: 9.5px; letter-spacing: 0; }
+  .cal-pm-hsub { display: none; }
   .cal-cell { height: 56px; }
   .cal-day { inset: 0 0 21px 0; padding: 3px 3px; }
   .cal-dnum { min-width: 20px; height: 18px; line-height: 18px; font-size: 12px; padding: 0 4px; }
@@ -400,6 +530,7 @@
 }
 @container cal (max-width: 420px) {
   .cal-states { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .cal-states2 { grid-template-columns: repeat(5, minmax(0, 1fr)); }
   .cal-kv { grid-template-columns: 1fr; }
 }
 @container conv (max-width: 420px) {
@@ -437,13 +568,18 @@
   .cal-root .input, .cal-root .select, .jump-input { height: 40px; }
   .cal-root .btn-sm, .cal-root .btn-icon.btn-sm { height: 40px; }
   .cal-root .btn-icon.btn-sm { width: 40px; }
-  .cal-wkseg button, .cal-ovseg button, .cal-switch button { min-height: 40px; }
+  .cal-wkseg button, .cal-ovseg button, .cal-switch button, .cal-pm-step button { min-height: 40px; }
   .cal-sb { width: 40px; height: 40px; }
   .cal-sv { height: 40px; width: 52px; font-size: 16px; }
   .cal-syncrow .cal-sv { width: 84px; }
   .cal-dchip { height: 40px; min-width: 44px; }
   .cal-state { min-height: 48px; }
   .cal-pick-x { width: 40px; height: 40px; }
+  .cal-pm-cell { height: 64px; }
+  .cal-pm-day { inset: 0 0 20px 0; }
+  .cal-pm-band { height: 20px; }
+  .cal-pm-seg b { line-height: 20px; }
+  .cal-pm-sel { height: 40px; }
   .cal-inwrap .cal-copy { right: 0; }
   .cal-cell { height: 64px; }
   .cal-day { inset: 0 0 20px 0; }
@@ -454,10 +590,10 @@
   .jump-kbd { display: none; }
 }
 @media (max-height: 1000px) and (min-width: 900px) {
-  .cal-cell { height: 60px; }
+  .cal-cell, .cal-pm-cell { height: 60px; }
 }
 @media (max-height: 920px) and (min-width: 900px) and (pointer: fine) {
-  .cal-cell { height: 54px; } /* a 900 px window shows the whole card, ribbon and inspector included */
+  .cal-cell, .cal-pm-cell { height: 54px; } /* a 900 px window shows the whole card, ribbon and inspector included */
 }
 @media (prefers-reduced-motion: reduce) {
   .cal-dot.is-live::after { animation: none; display: none; }

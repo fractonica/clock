@@ -10,10 +10,19 @@
  * start / end, its Saros-position span and the facts the hover tooltip tells (so touch has them too).
  * Rows go "Just after" the end of their cycle with double-click / Enter, "Just before" it with Shift+Enter.
  *
+ * Pure mode (docs/design/80-pure.md): the same ladder in Fractonica terms only. Counters are cycle names
+ * (Pentafracton), the time left is counted in ladder units (6ι 43λ), the percentage and the phase glyph are one
+ * pair of 2-stroke glyphs (256 states, pure.pairHTML), the end of a cycle is "→ Eta Difracton begins", real-time
+ * leads are beats. Notation as in src/core/pure.js: X#n ordinal (ζ#5), nX count (6ι 43λ, clock 3η 17ι), "η 7" only on
+ * chips. The pair is always the odometer of its cycle at the displayed instant (every row, every frame it changes).
+ * The mode switches live: render() notices ctx.isPure() changing and rebuilds every label.
+ *
  * Contract: export mount(el, ctx) -> { render, alwaysOn, destroy } (docs/ARCHITECTURE.md).
  */
 import {
   DEFAULT_MAX_DEPTH,
+  JUST_AFTER_S,
+  JUST_BEFORE_S,
   MAX_DEPTH,
   MIN_DEPTH,
   clamp,
@@ -37,11 +46,27 @@ import {
   whenFull,
   whenLabel,
 } from './ladder/lib.js';
-import { attrCell, classCell, createTip, esc, glyphFactory, icons, levelVars, reducedMotion, textCell } from './ladder/dom.js';
+import {
+  counterName,
+  cycleWords,
+  depthWords,
+  endsText,
+  leadBeats,
+  leftText,
+  lengthText,
+  levelWord,
+  nextCycle,
+  pathText,
+  periodBeats,
+  phaseWords,
+  quarterWhere,
+  sectorName,
+} from './ladder/pure-text.js';
+import { attrCell, classCell, createTip, esc, glyphFactory, icons, levelVars, pairCell, reducedMotion, textCell } from './ladder/dom.js';
 
 /** Cycles shorter than this (s) are too fast for a ticking countdown: the row shows the length instead. */
 const STATIC_BELOW = 0.5;
-/** Cycles shorter than this (s) update their percent only when their countdown digit does (about 10 times a second), not every frame. */
+/** Cycles shorter than this (s) update their percent only when their countdown digit does (about 10 times a second), not every frame (normal mode; the pure pair is always exact). */
 const PCT_STEADY_BELOW = 10;
 /** Below this (s) a row's accessible name carries its percent in steps of 10, so it is not rewritten dozens of times a second. */
 const LABEL_COARSE_BELOW = 120;
@@ -52,8 +77,13 @@ const ROW_ID = (L) => `ladder-opt-${L}`;
 /** Two clicks closer than this (ms) on the same spot are one double-click, even when the layout moved in between. */
 const DOUBLE_CLICK_MS = 450;
 
+/** The caption under the title and the screen-reader hint, per mode (pure: glyph pair, beats, no Earth word). */
+const CAPTION = { normal: '% through · time left · bars show the sub-cycles', pure: 'phase glyphs · time left · bars show the sub-cycles' };
+
 /** The child level a cycle's bar segments stand for, as "γ 3 " (the finest level has no named child). */
 const childOf = (L) => (L < MAX_DEPTH - 1 ? `${letterOf(L + 1)} ${L + 2} ` : 'finer ');
+/** Pure mode says the child's name, never "γ 3" in a sentence: "Theta " (the finest level has no named child). */
+const childWord = (pure, L) => (L < MAX_DEPTH - 1 ? `${levelWord(pure, L + 1)} ` : 'finer ');
 
 /** "5th of 13 γ 3 sectors · 57 % through it": where the current segment of the bar is, and how full it is. */
 // (no-break spaces after the dot: when the line wraps, it wraps before "· 33 % through it", never inside it)
@@ -63,6 +93,10 @@ export function mount(el, ctx) {
   const { model, store, fmt, theme } = ctx;
   const QN = ctx.QUARTER_NAMES;
   const glyphStyle = theme.glyphStyle('currentColor', 3.05, { thickness: 0.34 });
+  /** Pure vocabulary (ctx.pure) and the mode the DOM is currently built for (null until the first render). */
+  const pure = ctx.pure;
+  const wantPure = () => !!pure && !!ctx.isPure?.();
+  let pureMode = null;
 
   el.classList.add('ladder');
   el.innerHTML = `
@@ -76,17 +110,19 @@ export function mount(el, ctx) {
       </div>
     </div>
     <div class="card-b ladder-body">
-      <p class="ladder-cap">% through · time left · bars show the sub-cycles</p>
+      <p class="ladder-cap"></p>
       <div class="ladder-note" hidden>
         <p class="ladder-note-t"></p>
         <button class="btn btn-sm ladder-edge" type="button"></button>
       </div>
       <div class="ladder-list" role="listbox" tabindex="0" aria-labelledby="ladder-title" aria-describedby="ladder-hint"></div>
-      <p class="sr-only" id="ladder-hint">Up and down arrows choose a depth. Enter is Just after the end of the selected cycle (1 ms into the next one), Shift plus Enter is Just before it (two seconds ahead, or a quarter of a shorter cycle), and the open bracket key goes to its start.</p>
+      <p class="sr-only" id="ladder-hint"></p>
       <button class="ladder-more" type="button"></button>
     </div>`;
 
   const $ = (sel) => el.querySelector(sel);
+  const capEl = $('.ladder-cap');
+  const hintEl = $('#ladder-hint');
   const list = $('.ladder-list');
   const note = $('.ladder-note');
   const noteText = $('.ladder-note-t');
@@ -133,10 +169,10 @@ export function mount(el, ctx) {
     let segs = '';
     for (let i = 0; i < info.factor; i++) segs += '<i class="ladder-seg"></i>';
     row.innerHTML = `
-      <span class="ladder-chip" role="img" aria-label="${esc(info.letter)}, depth ${info.depth}"><b>${esc(info.letter)}</b><span class="mono">${info.depth}</span></span>
+      <span class="ladder-chip" role="img" aria-label="${pureMode ? esc(depthWords(pure, L)) : `${esc(info.letter)}, depth ${info.depth}`}"><b>${esc(info.letter)}</b><span class="mono">${info.depth}</span></span>
       <span class="ladder-count mono"></span>
       <span class="ladder-left mono"></span>
-      <span class="ladder-glyph"></span>
+      <span class="ladder-glyph"${pureMode ? ' aria-hidden="true"' : ''}></span>
       <div class="ladder-prog">
         <div class="ladder-bar">${segs}<span class="ladder-notches" aria-hidden="true"><i></i><i></i><i></i></span></div>
         <span class="ladder-pct mono"></span>
@@ -149,6 +185,7 @@ export function mount(el, ctx) {
       segs: [...row.querySelectorAll('.ladder-seg')],
       glyphCell: q('.ladder-glyph'),
       glyph: glyphFactory(model, glyphStyle),
+      pair: pure ? pairCell(pure, q('.ladder-glyph')) : null,
       glyphIdx: -2,
       setCount: textCell(q('.ladder-count')),
       setLeft: textCell(q('.ladder-left')),
@@ -162,6 +199,8 @@ export function mount(el, ctx) {
       still: info.meanSeconds < STATIC_BELOW,
       steady: info.meanSeconds < PCT_STEADY_BELOW,
       leftText: null,
+      nextFor: -1, // cycle whose successor's name is cached in nextName (pure mode)
+      nextName: null,
       pct: 0, // phase the percent was last written for (rows that update about 10 times a second)
       off: null,
     };
@@ -227,13 +266,14 @@ export function mount(el, ctx) {
       ).join('')}
     </ol>
     <dl class="ladder-facts ladder-facts-now">
-      <div><dt>Through</dt><dd class="ladder-through mono"></dd></div>
-      <div><dt>Sector</dt><dd class="ladder-sector"></dd></div>
+      <div><dt class="ladder-through-k">Through</dt><dd class="ladder-through mono"><span class="ladder-through-p"></span><span class="ladder-through-t"></span></dd></div>
+      <div><dt>Sector</dt><dd class="ladder-sector"><span class="ladder-sector-p"></span><span class="ladder-sector-t"></span></dd></div>
     </dl>
     <dl class="ladder-facts ladder-facts-span">
+      <div class="ladder-pure-only"><dt>Cycle</dt><dd class="ladder-cyc"><span class="ladder-cyc-n"></span><span class="ladder-cyc-a mono dim"></span></dd></div>
       <div><dt>Started</dt><dd class="ladder-started"></dd></div>
       <div><dt>Length</dt><dd class="ladder-length mono"></dd></div>
-      <div><dt>Saros span</dt><dd class="ladder-saros mono"></dd></div>
+      <div><dt class="ladder-saros-k">Saros span</dt><dd class="ladder-saros mono"></dd></div>
     </dl>
     <div class="ladder-actions">
       <button class="btn btn-sm" type="button" data-act="start" tabindex="-1" title="Start: jump to the start of this cycle">${icons.start}<span>Start</span></button>
@@ -241,11 +281,20 @@ export function mount(el, ctx) {
       <button class="btn btn-sm ladder-go" type="button" data-act="after" tabindex="-1">${icons.after}<span>Just after</span></button>
     </div>`;
   const D = {
+    qList: detail.querySelector('.ladder-q'),
     endK: detail.querySelector('.ladder-end-k'),
     endV: detail.querySelector('.ladder-end-v'),
     endZ: detail.querySelector('.ladder-end-z'),
-    through: detail.querySelector('.ladder-through'),
-    sector: detail.querySelector('.ladder-sector'),
+    throughK: detail.querySelector('.ladder-through-k'),
+    throughT: detail.querySelector('.ladder-through-t'),
+    throughP: detail.querySelector('.ladder-through-p'),
+    sectorT: detail.querySelector('.ladder-sector-t'),
+    sectorP: detail.querySelector('.ladder-sector-p'),
+    cycN: detail.querySelector('.ladder-cyc-n'),
+    cycA: detail.querySelector('.ladder-cyc-a'),
+    sarosK: detail.querySelector('.ladder-saros-k'),
+    pairThrough: pure ? pairCell(pure, detail.querySelector('.ladder-through-p')) : null,
+    pairSector: pure ? pairCell(pure, detail.querySelector('.ladder-sector-p')) : null,
     beforeBtn: detail.querySelector('[data-act="before"]'),
     afterBtn: detail.querySelector('[data-act="after"]'),
     started: detail.querySelector('.ladder-started'),
@@ -261,12 +310,15 @@ export function mount(el, ctx) {
   D.setEndK = textCell(D.endK);
   D.setEndV = textCell(D.endV);
   D.setEndZ = textCell(D.endZ);
-  D.setThrough = textCell(D.through);
-  D.setSector = textCell(D.sector);
+  D.setThrough = textCell(D.throughT);
+  D.setSector = textCell(D.sectorT);
+  D.setCycN = textCell(D.cycN);
+  D.setCycA = textCell(D.cycA);
   D.setBeforeTip = attrCell(D.beforeBtn, 'title');
   D.setBeforeName = attrCell(D.beforeBtn, 'aria-label');
   D.setAfterTip = attrCell(D.afterBtn, 'title');
   D.setAfterName = attrCell(D.afterBtn, 'aria-label');
+  D.setThroughHidden = attrCell(D.throughT, 'aria-hidden'); // the pair next to it carries the name; its digits are not read twice
   D.setStarted = textCell(D.started);
   D.setLength = textCell(D.length);
   D.setSaros = textCell(D.saros);
@@ -275,6 +327,11 @@ export function mount(el, ctx) {
     q.setRel = textCell(q.rel);
     q.state = '';
   });
+  /** Every write-only-on-change cell of the detail: a mode switch empties their memory so nothing stale survives. */
+  const detailCells = [
+    D.setEndK, D.setEndV, D.setEndZ, D.setThrough, D.setSector, D.setCycN, D.setCycA, D.setBeforeTip, D.setBeforeName,
+    D.setAfterTip, D.setAfterName, D.setThroughHidden, D.setStarted, D.setLength, D.setSaros, ...D.q.flatMap((q) => [q.setTime, q.setRel]),
+  ];
 
   function applySelection(sel) {
     selLevel = sel;
@@ -308,6 +365,7 @@ export function mount(el, ctx) {
   }
 
   function updateDetail(lv, t) {
+    if (pureMode) return updateDetailPure(lv, t);
     const zone = fmt.zone();
     const key = `${lv.level}:${lv.cycle}:${zone}`;
     if (key !== D.key) {
@@ -358,6 +416,66 @@ export function mount(el, ctx) {
     }
   }
 
+  /**
+   * The detail in pure mode: the cycle that begins where this one ends instead of a date, the length in ladder
+   * units, "started" as a span ago, the quarters as their clock readings (3η 17ι) plus the time to go, the phase
+   * and the sector as glyph pairs. Quarter and fact texts that cannot change inside a cycle are written once per cycle.
+   */
+  function updateDetailPure(lv, t) {
+    const key = `${lv.level}:${lv.cycle}:pure`;
+    const info = model.levelInfo(lv.level);
+    if (key !== D.key) {
+      D.key = key;
+      D.next = nextCycle(model, pure, lv.level, lv.cycleBig);
+      D.setEndK(D.next ? 'Ends' : 'Catalogue ends');
+      D.setEndZ('');
+      D.setCycN(cycleWords(pure, lv.level, lv.local));
+      D.setCycA(pathText(pure, model.cycleToPath(lv.level, lv.cycleBig)));
+      D.setLength(lengthText(model, pure, lv) + (lv.clipped ? ' · clipped' : ''));
+      const name = levelWord(pure, lv.level);
+      const before = `Just before: jump to ${leadBeats(pure, justBeforeLead(lv.duration))} before this ${name} cycle ends and watch it turn over (Shift+Enter)`;
+      const after = `Just after: jump to ${leadBeats(pure, JUST_AFTER_S)} into the next ${name} cycle (Enter, or double-click the row)`;
+      D.setBeforeTip(before);
+      D.setBeforeName(before);
+      D.setAfterTip(after);
+      D.setAfterName(after);
+      const span = positionSpan(lv.cycleBig, info.prefix, model.extent, lv.clipped);
+      D.setSaros(`${span.from} → ${span.to}`);
+      for (let i = 0; i < 4; i++) {
+        const when = lv.thresholds[i + 1]?.time;
+        D.q[i].setTime(when == null ? '—' : quarterWhere(model, pure, when, lv.level));
+      }
+    }
+    D.setEndV(D.next ? endsText(D.next) : `in ${leftText(model, pure, t, lv.end)}`);
+    D.setStarted(`${leftText(model, pure, lv.start, t)} ago`);
+    const still = detailRow.still;
+    if (still) {
+      D.pairThrough.clear();
+      D.pairSector.clear();
+      D.setThroughHidden(false);
+      D.setThrough('too fast to follow');
+      D.setSector('—');
+    } else {
+      const seg = segmentState(detailRow.pct, lv.factor);
+      D.pairThrough.set(detailRow.pct, 'phase');
+      D.setThroughHidden('true');
+      D.setThrough(pure.pairText(detailRow.pct));
+      D.pairSector.set(seg.frac, 'sector phase');
+      D.setSector(`${sectorName(pure, lv.level, seg.index)} · ${seg.index + 1} of ${lv.factor}`);
+    }
+    for (let i = 0; i < 4; i++) {
+      const q = D.q[i];
+      const state = still ? 'later' : i < lv.quarter ? 'past' : i === lv.quarter ? 'next' : 'later';
+      if (state !== q.state) {
+        q.li.className = `ladder-qi is-${state}`;
+        q.state = state;
+      }
+      const when = lv.thresholds[i + 1]?.time;
+      if (still) q.setRel(when == null ? '—' : `+${periodBeats(when - lv.start)}`);
+      else q.setRel(state === 'past' ? 'passed' : when == null ? 'after the end' : leftText(model, pure, t, when));
+    }
+  }
+
   // ---------------------------------------------------------------------------
   // per-frame row update
   // ---------------------------------------------------------------------------
@@ -374,7 +492,8 @@ export function mount(el, ctx) {
       r.setClipped(false);
       r.glyphCell.replaceChildren();
       r.glyphIdx = -2;
-      r.setLabel(`${r.info.letter}, depth ${r.info.depth}: outside the catalogue`);
+      r.pair?.reset();
+      r.setLabel(`${pureMode ? depthWords(pure, r.L) : `${r.info.letter}, depth ${r.info.depth}`}: outside the catalogue`);
       r.labelKey = '';
       if (r.cur >= 0) for (const s of r.segs) s.className = SEG_CLASS[0];
       r.cur = -1;
@@ -382,12 +501,8 @@ export function mount(el, ctx) {
     }
   }
 
-  function updateRow(r, lv) {
-    setRowOff(r, false);
-    r.setCount(counterText(r.L, lv.local, lv.siblings));
-    r.setClipped(lv.clipped);
-
-    // segmented bar
+  /** The segmented bar: complete sectors, the current one filled by its exact sub-phase. */
+  function updateBar(r, lv) {
     const { index, frac } = segmentState(lv.phase, lv.factor);
     if (index !== r.cur) {
       for (let i = 0; i < r.segs.length; i++) r.segs[i].className = SEG_CLASS[i < index ? 1 : i === index ? 2 : 0];
@@ -399,6 +514,54 @@ export function mount(el, ctx) {
       r.segs[index].style.setProperty('--f', fq);
       r.fq = fq;
     }
+  }
+
+  /**
+   * A row in pure mode: the ordinal name of the cycle, the time left counted in ladder units (or, for cycles too
+   * fast to count down, how long one lasts in beats), the bar, and the phase as a pair of glyphs at the right
+   * (the high digit is the glyph normal mode shows). The pair is the odometer of the cycle at the displayed
+   * instant, always: it is rewritten whenever its state changes (a time jump, a fast row), never only with the
+   * countdown's last digit, which would leave it a few states behind after a jump with the same countdown text.
+   */
+  function updateRowPure(r, lv, t) {
+    setRowOff(r, false);
+    r.setCount(counterName(pure, lv.local, lv.siblings));
+    r.setClipped(lv.clipped);
+    updateBar(r, lv);
+
+    r.setLeft(r.still ? periodBeats(r.info.meanSeconds) : leftText(model, pure, t, lv.end));
+    r.setPct('');
+
+    r.pct = lv.phase;
+    r.pair.set(lv.phase);
+
+    // accessible name: the full pair for long cycles, the high digit for short ones, so it is rewritten rarely
+    const ph = pure.pair(lv.phase);
+    const coarse = r.info.meanSeconds < LABEL_COARSE_BELOW;
+    const labelKey = `P${r.still ? 'still' : `${lv.cycle}:${coarse ? ph.hi : ph.index}`}:${lv.clipped}`;
+    if (labelKey !== r.labelKey) {
+      r.labelKey = labelKey;
+      const head = depthWords(pure, r.L);
+      if (r.still) r.setLabel(`${head}: too fast to follow, one cycle lasts ${periodBeats(r.info.meanSeconds)}`);
+      else {
+        if (r.nextFor !== lv.cycle) {
+          // what begins at the end of this cycle: once per cycle (an exact BigInt path, too dear to redo for every phase step of a fast row)
+          r.nextFor = lv.cycle;
+          r.nextName = nextCycle(model, pure, r.L, lv.cycleBig)?.name ?? null;
+        }
+        const phase = coarse ? `phase ${ph.hi} of 16` : phaseWords(pure, lv.phase).label;
+        const clipped = lv.clipped ? ', clipped by the end of the catalogue' : '';
+        r.setLabel(`${head}: ${cycleWords(pure, r.L, lv.local)}, ${lv.local + 1} of ${lv.siblings}, ${phase}, then ${r.nextName ? `${r.nextName} begins` : 'the catalogue ends'}${clipped}`);
+      }
+    }
+  }
+
+  function updateRow(r, lv, t) {
+    if (pureMode) return updateRowPure(r, lv, t);
+    setRowOff(r, false);
+    r.setCount(counterText(r.L, lv.local, lv.siblings));
+    r.setClipped(lv.clipped);
+    updateBar(r, lv);
 
     // time left (or the length, for cycles too fast to count down)
     const leftText = r.still ? `every ${fmt.duration(r.info.meanSeconds)}` : remainingText(fmt, lv.remaining);
@@ -441,8 +604,14 @@ export function mount(el, ctx) {
     note.hidden = !off;
     if (off) {
       const edge = t < model.tMin ? model.tMin : model.tMax;
-      noteText.textContent = `Outside the Saros 141 catalogue (${fmt.parts(model.tMin).year}–${fmt.parts(model.tMax).year}).`;
-      edgeBtn.textContent = `Go to ${t < model.tMin ? 'the start' : 'the end'} (${fmt.date(edge)})`;
+      const side = t < model.tMin ? 'the start' : 'the end';
+      if (pureMode) {
+        noteText.textContent = `Outside the catalogue (${pure.catalogueText()}).`;
+        edgeBtn.textContent = `Go to ${side} (${pure.stamp(edge, 'beta')})`;
+      } else {
+        noteText.textContent = `Outside the Saros 141 catalogue (${fmt.parts(model.tMin).year}–${fmt.parts(model.tMax).year}).`;
+        edgeBtn.textContent = `Go to ${side} (${fmt.date(edge)})`;
+      }
       edgeBtn.dataset.t = String(edge);
       detail.remove();
       detailRow = null;
@@ -462,7 +631,8 @@ export function mount(el, ctx) {
   /** The final cycle of a level has no turnover to travel to: the catalogue stops there. */
   function isLast(lv) {
     if (lv.end < model.tMax - 0.002) return false;
-    ctx.toast(lv.clipped ? `The last ${lv.name} cycle is clipped by the end of the catalogue` : `This is the last ${lv.name} cycle: the catalogue ends with it`);
+    const name = pureMode ? levelWord(pure, lv.level) : lv.name;
+    ctx.toast(lv.clipped ? `The last ${name} cycle is clipped by the end of the catalogue` : `This is the last ${name} cycle: the catalogue ends with it`);
     return true;
   }
   /** "Just after": 1 ms into the cycle that follows this one. */
@@ -562,7 +732,29 @@ export function mount(el, ctx) {
   });
 
   // hover tooltip (mouse only; on touch and keyboard the selected row's open details tell the same facts)
+  /** The tooltip in pure mode: the cycle's name, the phase and sector glyph pairs, what begins at its end, the span left. */
+  function tipHtmlPure(L, lv, t) {
+    const r = byLevel.get(L);
+    if (!r) return '';
+    const info = r.info;
+    const seg = segmentState(lv.phase, lv.factor);
+    const parent = L === 0 ? 'the catalogue' : `its ${levelWord(pure, L - 1)}`;
+    const color = theme.levelColor(L);
+    const ends = endsText(nextCycle(model, pure, L, lv.cycleBig));
+    const left = r.still
+      ? `Too fast to count down: one cycle lasts ${periodBeats(info.meanSeconds)}.`
+      : `${leftText(model, pure, t, lv.end)} left · cycle ${lengthText(model, pure, lv)}${lv.clipped ? ' (clipped: the catalogue ends first)' : ''}`;
+    const through = r.still ? '' : `<div class="ladder-tip-ph">${pure.pairHTML(lv.phase)}<span><b>${pure.pairText(lv.phase)}</b> of 256 through this cycle</span></div>`;
+    const sector = `The bar has one sector per ${childWord(pure, L)}cycle: now in <b>${esc(sectorName(pure, L, seg.index))}</b> (${seg.index + 1} of ${lv.factor}), ${pure.pairHTML(seg.frac, { label: 'sector phase' })} through it.`;
+    return `<div class="ladder-tip-h"><b style="color:${color}">${esc(info.letter)} ${info.depth}</b><span>${esc(cycleWords(pure, L, lv.local))} · ${lv.local + 1} of ${lv.siblings} in ${esc(parent)}</span></div>
+      ${through}
+      <div class="dim">${sector}</div>
+      <div class="ladder-tip-end">${lv.clipped ? 'Catalogue ends' : 'Ends'} <b>${esc(ends)}</b></div>
+      <div class="dim">${esc(left)}</div>
+      <div class="ladder-tip-hint dim">Click to select · double-click for Just after</div>`;
+  }
   function tipHtml(L, lv, t) {
+    if (pureMode) return tipHtmlPure(L, lv, t);
     const r = byLevel.get(L);
     if (!r) return '';
     const info = r.info;
@@ -634,10 +826,45 @@ export function mount(el, ctx) {
   edgeBtn.addEventListener('click', () => ctx.goto(Number(edgeBtn.dataset.t)));
 
   // ---------------------------------------------------------------------------
+  // normal <-> pure mode
+  // ---------------------------------------------------------------------------
+  /**
+   * Switch the whole card to a mode: static labels, the facts' headings, the rows (rebuilt by the next
+   * render, which then writes every text again) and every cell's memory, so nothing of the other mode survives.
+   */
+  function applyMode(next) {
+    pureMode = next;
+    el.classList.toggle('is-pure', next);
+    capEl.textContent = next ? CAPTION.pure : CAPTION.normal;
+    hintEl.textContent = next
+      ? `Up and down arrows choose a depth. Enter is Just after the end of the selected cycle (${leadBeats(pure, JUST_AFTER_S)} into the next one), Shift plus Enter is Just before it (${leadBeats(pure, JUST_BEFORE_S)} ahead, or a quarter of a shorter cycle), and the open bracket key goes to its start. Press ? for the glossary.`
+      : 'Up and down arrows choose a depth. Enter is Just after the end of the selected cycle (1 ms into the next one), Shift plus Enter is Just before it (two seconds ahead, or a quarter of a shorter cycle), and the open bracket key goes to its start.';
+    D.throughK.textContent = next ? 'Phase' : 'Through';
+    D.sarosK.textContent = next ? 'Position' : 'Saros span';
+    for (const c of detailCells) c.reset();
+    for (const [view, cell] of [[D.pairThrough, D.throughP], [D.pairSector, D.sectorP]]) {
+      view?.reset();
+      cell.replaceChildren();
+    }
+    D.throughT.removeAttribute('aria-hidden'); // set beside the pure pair only
+    // the clock readings of the quarters ("0η 9ι") count completed units from 0: said once, where they are listed
+    if (next) D.qList.title = 'Clock readings count completed units from 0. Press ? for the glossary.';
+    else D.qList.removeAttribute('title');
+    D.key = '';
+    D.next = null;
+    for (const q of D.q) q.state = '';
+    rangeSig = ''; // render() rebuilds the rows in the new mode
+    wasOff = null; // and writes the catalogue note again
+    hideTip();
+  }
+
+  // ---------------------------------------------------------------------------
   // frame loop
   // ---------------------------------------------------------------------------
   function render(frame, info) {
     lastFrame = frame;
+    const want = wantPure();
+    if (want !== pureMode) applyMode(want);
     const st = store.state;
     const sig = `${st.minDepth}:${st.maxDepth}`;
     if (sig !== rangeSig || !rows.length) {
@@ -651,7 +878,7 @@ export function mount(el, ctx) {
     setOff(off, t);
     if (off) return;
 
-    for (const r of rows) updateRow(r, frame.level(r.L));
+    for (const r of rows) updateRow(r, frame.level(r.L), t);
 
     const sel = selectedLevel();
     if (sel !== selLevel || (detailRow === null && byLevel.has(sel))) applySelection(sel);

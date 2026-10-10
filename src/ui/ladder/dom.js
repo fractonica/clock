@@ -1,7 +1,7 @@
 /**
  * Small DOM helpers shared by the ladder and upnext modules: write-only-on-change text
- * cells, the cached phase-glyph factory, a hover tooltip built on the shared `.tip`
- * class, icons and the reduced-motion check. Browser only.
+ * cells, the cached phase-glyph factory (normal mode), the pure-mode glyph pair, a hover tooltip built on the
+ * shared `.tip` class, icons and the reduced-motion check. Browser only.
  */
 
 /** HTML-escape a string for innerHTML templates. */
@@ -54,13 +54,17 @@ export function textCell(el) {
 /** Same for an attribute. */
 export function attrCell(el, name) {
   let last = null;
-  return (v) => {
+  const set = (v) => {
     if (v !== last) {
       if (v === null || v === undefined || v === false) el.removeAttribute(name);
       else el.setAttribute(name, v === true ? '' : String(v));
       last = v;
     }
   };
+  set.reset = () => {
+    last = null;
+  };
+  return set;
 }
 
 /** Toggle a class only when the state changed (cheap guard against redundant style work). */
@@ -98,6 +102,43 @@ export function glyphFactory(model, style) {
       cache.set(index, svg);
     }
     return svg;
+  };
+}
+
+/**
+ * The pure-mode phase in one place of the DOM: the pair of 2-stroke glyphs of pure.pairHTML (the library glyphs
+ * with one accessible name, 256 states), written only when the state or its label changes, so a ticking row
+ * costs one parse per visible change and nothing in between. One instance per place.
+ *
+ * `set(fraction, label)` -> true when the DOM was written; `clear()` empties the place; `reset()` forgets what
+ * was written (a mode switch that rebuilt the DOM underneath).
+ */
+export function pairCell(pure, parent) {
+  let last = -1;
+  let lastLabel = '';
+  return {
+    set(fraction, label = 'phase') {
+      const index = pure.pair(fraction).index;
+      if (index === last && label === lastLabel) return false;
+      last = index;
+      lastLabel = label;
+      parent.innerHTML = pure.pairHTML(fraction, { label });
+      return true;
+    },
+    clear() {
+      if (last === -1) return;
+      last = -1;
+      lastLabel = '';
+      parent.replaceChildren();
+    },
+    reset() {
+      last = -1;
+      lastLabel = '';
+    },
+    /** State written now (0..255), or -1. */
+    get index() {
+      return last;
+    },
   };
 }
 

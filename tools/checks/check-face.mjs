@@ -6,6 +6,7 @@
  */
 import path from 'node:path';
 import { withApp, outDir } from '../browse.mjs';
+import { scan, judge } from '../pure-scan.mjs';
 
 const T_A = 1791460800; // SPEC vector A 2026-10-08T12:00:00Z
 const checks = [];
@@ -39,6 +40,48 @@ async function faceCard(page, shot, name) {
   const file = await shot(name, { clip: box, fullPage: true });
   return file;
 }
+
+// ---- pure mode helpers ---------------------------------------------------------------------------
+/**
+ * Everything a user could see, hover or have read out in the given root(s): the scanner's collect() scoped to the
+ * face card. With `all` it also lists what is hidden right now (opacity 0 overlays, a closed popover, a hidden
+ * tooltip) - text that would show up later, so a stale string of the other mode must not hide there either.
+ */
+async function collectScoped(page, rootSel, { all = false } = {}) {
+  return page.evaluate(
+    ([rootSel, all]) => {
+      const visible = (el) => {
+        if (all) return true;
+        if (!el.isConnected || el.closest('[hidden]')) return false;
+        const cs = getComputedStyle(el);
+        return cs.display !== 'none' && cs.visibility !== 'hidden' && el.getClientRects().length > 0;
+      };
+      const items = [];
+      const add = (kind, text, el) => {
+        const t = String(text ?? '').replace(/\s+/g, ' ').trim();
+        if (!t) return;
+        const where = (el.id ? '#' + el.id : '') + [...(el.classList ?? [])].slice(0, 2).map((c) => '.' + c).join('') || el.tagName.toLowerCase();
+        items.push({ kind, text: t, where });
+      };
+      for (const root of document.querySelectorAll(rootSel)) {
+        const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+        for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+          const el = n.parentElement;
+          if (!el || ['SCRIPT', 'STYLE'].includes(el.tagName) || !visible(el)) continue;
+          add('text', n.nodeValue, el);
+        }
+        for (const el of [root, ...root.querySelectorAll('[title],[aria-label],[aria-description],[placeholder],[alt]')]) {
+          if (!visible(el)) continue;
+          for (const a of ['title', 'aria-label', 'aria-description', 'placeholder', 'alt']) if (el.hasAttribute(a)) add('attr:' + a, el.getAttribute(a), el);
+        }
+      }
+      return items;
+    },
+    [rootSel, all],
+  );
+}
+/** What only pure mode says: if any of it is found in normal mode something was left behind. */
+const PURE_MARKERS = /fracton|[αβγδεζηθικλμνξ]#\d|\d[ηιλμνξ](?=\s|$|[,.;:)])|\d(?:δ|ε|ζ)½|solar rhythm|one sync|phase \d+ and \d+|of 256|one cycle =|count from [01]|for the glossary|\bbeat\b|SYNC \d/;
 
 // ------------------------------------------------------------------------------------------------
 await withApp(
@@ -934,6 +977,481 @@ await withApp(
       check('How to read has its own accessible name (the Rings panel has one too)', /^How to read the clock face$/.test(d.help), d.help);
       check('info captions are 10 design px (they were 7.5)', d.cap === 10, String(d.cap));
       check('unlit counter dots keep >= 3:1 contrast with the glass; the footer text >= 4.5:1', d.dotContrast >= 3 && d.depthsContrast >= 4.5, `${d.dotContrast.toFixed(2)} / ${d.depthsContrast.toFixed(2)}`);
+    }
+
+
+    // ---- 10. pure mode: Fractonica terms only (docs/design/80-pure.md) -------------------------------------------
+    {
+      const hard = (ls) => ls.filter((l) => l.severity === 'hard');
+      const fmtLeaks = (ls) => ls.slice(0, 3).map((l) => `${l.rule} "${l.match}" in ${l.kind} ${l.where}: ${l.text}`).join(' | ');
+      /** Hard leaks that belong to the face: the shared scanner (filtered by location) plus the scoped scan of the card. */
+      const faceLeaks = async (state, { all = false } = {}) => {
+        const wide = (await scan(page, state)).filter((l) => /face|slot-face/.test(l.where));
+        const scoped = judge(await collectScoped(page, '#slot-face', { all }), state);
+        return hard([...wide, ...scoped]);
+      };
+      const clean = async (name, { all = false } = {}) => {
+        const ls = await faceLeaks(name, { all });
+        check(`pure: ${name}: no Earth reference ${all ? 'anywhere in the face DOM' : 'in what the face shows'}`, ls.length === 0, fmtLeaks(ls));
+      };
+      const leftover = async (name) => {
+        const items = await collectScoped(page, '#slot-face', { all: true });
+        const hit = items.filter((i) => PURE_MARKERS.test(i.text));
+        check(`normal: ${name}: nothing of pure mode left in the face DOM`, hit.length === 0, hit.slice(0, 3).map((i) => `${i.kind} ${i.where}: ${i.text}`).join(' | '));
+      };
+      const tipFull = async (x, y, wait = 350) => {
+        const c = await f.client(x, y);
+        await page.mouse.move(c.x - 3, c.y);
+        await page.mouse.move(c.x, c.y);
+        await page.waitForTimeout(wait);
+        return page.evaluate(() => {
+          const t = document.querySelector('.face-tip');
+          return {
+            hidden: t.hidden,
+            text: t.innerText.replace(/\n/g, ' / '),
+            lines: [...t.querySelectorAll('.face-tip-l')].map((l) => l.innerText.trim()),
+            title: t.querySelector('b').textContent,
+            aside: t.querySelector('.dim').textContent,
+            pairs: [...t.querySelectorAll('.pure-pair')].map((p) => ({ svgs: p.querySelectorAll('svg').length, label: p.getAttribute('aria-label') })),
+          };
+        });
+      };
+      /** The vocabulary of the shared core, evaluated in the page (an independent route to the expected strings). */
+      const expected = () =>
+        page.evaluate(() => {
+          const { model, store, ctx } = window.__fractonica;
+          const pure = ctx.pure;
+          const t = store.t();
+          const depth = store.state.topDepth;
+          const lvT = model.levelAt(t, depth - 1);
+          const lvB = model.levelAt(t, depth);
+          let sol = null;
+          try {
+            sol = model.solarAt(t);
+          } catch {}
+          const lam = pure.UNITS.find((u) => u.id === 'lambda');
+          return {
+            t,
+            names: [pure.nameAt(t, depth - 1), pure.nameAt(t, depth)],
+            topNext: `in ${pure.between(t, lvT.next.time)}`,
+            topCap: `NEXT ${lvT.next.name.toUpperCase()}`,
+            solarCap: sol ? `NEXT ${sol.threshold.name.toUpperCase()}` : null,
+            solarNext: sol ? `in ${pure.between(t, sol.threshold.time)}` : null,
+            syncCap: sol ? `SYNC ${sol.sync}` : null,
+            driftLambda: sol ? (sol.start - sol.nominalStart) / pure.unitSeconds(lam) : null,
+            sync: sol?.sync,
+            phaseSpeech: sol ? (({ hi, lo }) => `phase ${hi} and ${lo} of 256`)(pure.pair(sol.phase)) : null,
+            stamp: pure.stamp(t, 'lambda'),
+            length: [pure.cycleLength(depth - 1), pure.cycleLength(depth)],
+            ordinals: [pure.cycleShort(depth - 1, lvT.cycle), pure.cycleShort(depth, lvB.cycle)],
+            driftText: sol ? pure.driftText(sol) : null,
+            ends: [lvT.end, lvB.end],
+            caption: pure.stamp(t, 'lambda').split(/[\s·]+/).filter(Boolean),
+            local: [lvT.local, lvB.local],
+            siblings: [lvT.siblings, lvB.siblings],
+          };
+        });
+      const infoTexts = () => page.evaluate(() => [...document.querySelectorAll('.face-info text')].map((t) => t.textContent));
+      const driftOk = (txt, want) => {
+        const m = /^drift ([−+]?)([\d\u202f]+)λ$/.exec(txt);
+        if (!m) return false;
+        const n = Number(m[2].replace(/\u202f/g, '')) * (m[1] === '−' ? -1 : 1);
+        return Math.abs(n - want) <= Math.max(2, Math.abs(want) * 0.005);
+      };
+
+      // ---- 10a. the basics at SPEC vector A, with a foreign zone that must make no difference
+      await open(`?pure=1&t=${T_A}&view=rings&zone=Asia/Tokyo`);
+      await page.waitForTimeout(700);
+      const timeOrigin = await page.evaluate(() => performance.timeOrigin);
+      let pe = await expected();
+      const base = await page.evaluate(() => ({
+        root: document.querySelector('.face-root').dataset.pure,
+        body: document.body.dataset.pure,
+        overlay: document.querySelector('.face-svg').dataset.overlay,
+        names: [...document.querySelectorAll('.face-letter-name')].map((e) => e.textContent),
+        letters: [...document.querySelectorAll('.face-letter')].map((e) => e.textContent),
+        caption: document.querySelector('.face-caption').textContent,
+        captionTitle: document.querySelector('.face-caption').title,
+        depths: document.querySelector('.face-depths').textContent,
+        svgLabel: document.querySelector('.face-svg').getAttribute('aria-label'),
+        rows: Object.fromEntries([...document.querySelectorAll('.face-row')].map((e) => [e.dataset.row, e.getAttribute('aria-label')])),
+        help: document.querySelector('.face-help').getAttribute('aria-label'),
+      }));
+      check('pure: ?pure=1 mounts the face in pure mode (card and body flagged, no reload)', base.root === '1' && base.body === '1');
+      check('pure: the letters overlay carries the name of each running cycle under its letter', base.overlay === 'letters' && base.names.join('|') === pe.names.join('|') && base.names[0] === 'Eta Monofracton' && base.letters.join('') === 'ηθ', `${base.overlay} ${base.names} ${base.letters}`);
+      check('pure: the caption (time is not live) is the address and the counters, not a clock time or a zone', JSON.stringify(base.caption.split(/[\s·]+/).filter(Boolean)) === JSON.stringify(pe.caption) && /^α#\d+ β#\d γ#\d+ · δ½#\d+ ε½#\d ζ½#\d · \d+η \d+ι \d+λ$/.test(base.caption) && !/UTC|\+09|:/.test(base.caption), base.caption);
+      check('pure: ... its hover text says which numbers count from 0 and which from 1, and points to the glossary', /count from 1.*count from 0.*Press \? for the glossary\.$/.test(base.captionTitle), base.captionTitle);
+      check('pure: the screen label names the depths and the sync; the rows are named by cycle', /^Clock face: depth 7 η over depth 8 θ, solar sync 4820$/.test(base.svgLabel) && /^η depth 7 · Eta Monofracton: state 13 of 16, value −3, rising, cycle 1 of 11/.test(base.rows.top) && /^θ depth 8 · Theta Octafracton: state 5 of 16/.test(base.rows.bottom), base.svgLabel + ' | ' + base.rows.top);
+      check('pure: the solar row says "phase a and b of 256" (two numbers, not "a·b") and never "percent"', new RegExp(`^Solar sync 4820, ${pe.phaseSpeech}, glyphs 5, 11, 13\\.`).test(base.rows.solar) && !/percent|%|\d·\d/.test(base.rows.solar), base.rows.solar);
+      await clean('letters overlay at vector A');
+      await clean('letters overlay at vector A', { all: true });
+      await page.waitForTimeout(4200);
+      await page.click('.face-btn[data-act="info"]');
+      await page.waitForTimeout(350);
+      let inf = await infoTexts();
+      check('pure: info labels are countdowns: next threshold of the top period, next solar threshold, sync number', inf[0] === pe.topCap && inf[1] === pe.topNext && inf[2] === pe.solarCap && inf[3] === pe.solarNext && inf[4] === pe.syncCap, JSON.stringify(inf) + ' vs ' + JSON.stringify([pe.topCap, pe.topNext, pe.solarCap, pe.solarNext, pe.syncCap]));
+      check('pure: ... and the sync caption is followed by the drift counted in λ (not a clock time), written like pure.driftText', driftOk(inf[5], pe.driftLambda) && inf[5] === `drift ${pe.driftText}`, `${inf[5]} vs drift ${pe.driftText} (${pe.driftLambda})`);
+      check('pure: the first label reads like "peak in 3η 2ι": a countdown in ladder units', /^in \d+[αβγδεζηιλμνξ½]+ \d+[αβγδεζηιλμνξ½]+$/.test(inf[1]), inf[1]);
+      await clean('info labels at vector A');
+      await faceCard(page, shot, 'face-pure-info.png');
+      const saidPure = await page.evaluate(() => document.querySelector('#slot-face [role=status]').textContent);
+      check('pure: Info announces the countdowns and the sync in the live region', /^Next \w+ of the top period: in \S+ \S+\. Next \w+ of the solar sync: in \S+ \S+\. Solar sync 4820, drift [−+]?[\d\u202f]+λ\.$/.test(saidPure), saidPure);
+      const hardSaid = hard(judge([{ kind: 'text', text: saidPure, where: 'status' }], 'status'));
+      check('pure: ... and the announcement has no Earth reference', hardSaid.length === 0, fmtLeaks(hardSaid));
+      // the foreign zone makes no difference at all
+      const tokyo = { caption: base.caption, info: inf };
+      await page.evaluate(() => window.__fractonica.store.set({ zone: 'UTC' }));
+      await page.waitForTimeout(250);
+      await page.click('.face-btn[data-act="info"]');
+      await page.waitForTimeout(300);
+      check('pure: the time zone has no influence on the caption or the info labels', (await page.textContent('.face-caption')) === tokyo.caption && JSON.stringify(await infoTexts()) === JSON.stringify(tokyo.info));
+
+      // ---- 10b. tooltips: every row, the counter arcs, the gesture hints
+      await page.waitForTimeout(4200);
+      let t1 = await tipFull(96, 80);
+      pe = await expected();
+      check('pure: top row tooltip names and numbers the cycle, gives its length (pure.cycleLength) and when it ends', !t1.hidden && t1.title === 'η · depth 7' && t1.aside === `one cycle = ${pe.length[0]}` && t1.lines[0] === `${pe.names[0]} · ${pe.ordinals[0]} of ${pe.siblings[0]} in its ζ` && /^State 13 of 16: value −3, rising ↗$/.test(t1.lines[1]) && new RegExp(`^Ends in \\S+ \\S+ → Eta Difracton begins$`).test(t1.lines.at(-2)), t1.text);
+      check('pure: ... every time in it is a countdown (in …), none is a clock time; the last line says what counts from 0 and from 1', t1.lines.slice(2, -1).every((l) => /\bin \d+\S+( \d+\S+)?/.test(l)) && !/\d:\d\d/.test(t1.text) && /^Names and # numbers count from 1; states and clock counters \(η ι λ\) count from 0\.$/.test(t1.lines.at(-1)), t1.text);
+      await clean('top row tooltip');
+      await shot('face-pure-tip-top.png', { clip: { x: 0, y: 0, width: 720, height: 760 } });
+      const t2 = await tipFull(96, 410);
+      check('pure: bottom row tooltip: Theta Octafracton, ends → Theta Nonafracton begins', !t2.hidden && t2.title === 'θ · depth 8' && t2.aside === `one cycle = ${pe.length[1]}` && pe.length[1] === '4ι' && /^Theta Octafracton · θ#8 of 9 in its η$/.test(t2.lines[0]) && /→ Theta Nonafracton begins$/.test(t2.lines.at(-2)), t2.text);
+      await clean('bottom row tooltip');
+      const t3 = await tipFull(96, 13);
+      check('pure: the counter arc explains the cycle number with the name', !t3.hidden && /^Eta Monofracton · η#1 of 11 in its ζ$/.test(t3.lines[0]), t3.text);
+      await clean('counter arc tooltip');
+      const t4 = await tipFull(96, 245);
+      pe = await expected();
+      check('pure: solar tooltip: sync number, phase as a glyph pair, drift in λ, next quarter, age', !t4.hidden && t4.title === 'Solar sync #4820' && t4.aside === '19η per sync' && /^Phase\s+of this sync$/.test(t4.lines[0].replace(/\s+/g, ' ')) && t4.pairs.length === 1 && t4.pairs[0].svgs === 2 && t4.pairs[0].label === pe.phaseSpeech && t4.lines[1] === `Drift ${pe.driftText} against the solar rhythm` && /^Drift [−+]?\d{1,3}(\u202f\d{3})*λ against the solar rhythm$/.test(t4.lines[1]) && /^Next node in \S+ \S+$/.test(t4.lines[2]) && /^Sync began \S+ \S+ ago$/.test(t4.lines[3]), t4.text + ' ' + JSON.stringify(t4.pairs));
+      await clean('solar tooltip with the glyph pair');
+      await clean('solar tooltip with the glyph pair', { all: true });
+      await shot('face-pure-tip-solar.png', { clip: { x: 0, y: 0, width: 720, height: 760 } });
+      const hintTop = await tipFull(96, 138, 750);
+      check('pure: the region hint is unchanged (no Earth reference to remove)', !hintTop.hidden && /top becomes ζ, depth 6/.test(hintTop.text), hintTop.text);
+      await clean('region hint');
+      await page.mouse.move(5, 5);
+
+      // ---- 10c. keyboard focus: the tooltip is the description of the row; rows and the dialog have pure names
+      await page.focus('.face-svg');
+      await page.keyboard.press('Tab');
+      await page.waitForTimeout(250);
+      const kt = await page.evaluate(() => {
+        const r = document.activeElement;
+        const tip = document.getElementById(r.getAttribute('aria-describedby') || 'x');
+        return { row: r.dataset.row, hidden: tip?.hidden, hint: tip?.querySelector('.face-tip-hint')?.textContent, first: tip?.querySelector('.face-tip-l')?.textContent };
+      });
+      check('pure: a focused row is described by its pure tooltip (name first, Enter in the hint)', kt.row === 'top' && kt.hidden === false && kt.first === 'Eta Monofracton · η#1 of 11 in its ζ' && /^Enter:/.test(kt.hint), JSON.stringify(kt));
+      await clean('keyboard-focus tooltip');
+      await page.keyboard.press('Tab');
+      await page.keyboard.press('Tab');
+      await page.keyboard.press('Tab');
+      await page.mouse.move(5, 5);
+
+      // ---- 10d. how to read
+      await page.click('.face-help');
+      await page.waitForTimeout(250);
+      const howto = await page.evaluate(() => ({ open: !document.querySelector('.face-pop').hidden, text: document.querySelector('.face-pop').textContent.replace(/\s+/g, ' ').trim(), lis: [...document.querySelectorAll('.face-pop-list li')].map((l) => l.textContent.replace(/\s+/g, ' ').trim()), pairs: document.querySelectorAll('.face-pop-list .pure-pair').length, minis: document.querySelectorAll('.face-mini').length }));
+      check('pure: How to read has the five lines, one on counters from 0 and names from 1, three mini glyphs and the glyph pair example', howto.open && howto.lis.length === 6 && howto.minis === 3 && howto.pairs === 1, JSON.stringify(howto.lis));
+      check('pure: ... the counters line gives the examples "0η 29ι 21λ" (from 0) and "δ½#6" (from 1)', /0η 29ι 21λ/.test(howto.lis[4]) && /δ½#6/.test(howto.lis[4]) && /from 0/.test(howto.lis[4]) && /from 1/.test(howto.lis[4]), howto.lis[4]);
+      check('pure: ... the yellow line says "19η cycles", with no civil days', /19η cycles/.test(howto.lis[5]) && !/civil|4-day|\bs\b|19 η/.test(howto.lis[5]), howto.lis[5]);
+      check('pure: ... the dialog ends with "Press ? for the glossary."', howto.text.endsWith('Press ? for the glossary.'), howto.text.slice(-60));
+      // "?" typed while the dialog has focus still reaches the shell: it opens the glossary
+      await page.keyboard.press('?');
+      await page.waitForTimeout(250);
+      const gl = await page.evaluate(() => ({ glossary: !document.querySelector('#glossary').hidden, popOpen: !document.querySelector('.face-pop').hidden }));
+      check('pure: ... and pressing ? in the dialog opens the glossary', gl.glossary, JSON.stringify(gl));
+      await page.keyboard.press('?'); // toggles it closed again
+      await page.waitForTimeout(150);
+      await clean('How to read');
+      await clean('How to read', { all: true });
+      await faceCard(page, shot, 'face-pure-popover.png');
+      await page.keyboard.press('Escape');
+
+      // ---- 10e. messages: the clamped steps
+      await page.evaluate(() => window.__fractonica.store.set({ topDepth: 11 }));
+      await page.waitForTimeout(150);
+      await page.click('.face-btn[data-act="shorter"]', { force: true }); // aria-disabled at the end of the range: still clickable, it only explains
+      await page.waitForTimeout(150);
+      const toast = await page.evaluate(() => document.querySelector('#toast').textContent);
+      check('pure: the clamped-step toast has no Earth reference', /^Depth 11 over 12 is the shortest pair the face shows$/.test(toast) && hard(judge([{ kind: 'text', text: toast, where: 'toast' }], 'toast')).length === 0, toast);
+      await page.evaluate(() => window.__fractonica.store.set({ topDepth: 2 }));
+      await page.waitForTimeout(150);
+      await page.click('.face-btn[data-act="longer"]', { force: true });
+      await page.waitForTimeout(150);
+      const toast2 = await page.evaluate(() => document.querySelector('#toast').textContent);
+      check('pure: ... and the other end', /^Depth 2 \(β\) is the longest period the face shows$/.test(toast2), toast2);
+
+      // ---- 10f. every depth: names, info labels and tooltips are right and clean
+      const depthProblems = [];
+      for (const d of [2, 3, 4, 5, 6, 7, 8, 9, 10, 11]) {
+        await page.evaluate((d) => window.__fractonica.store.set({ topDepth: d, showLetters: false }), d);
+        await page.waitForTimeout(200);
+        await page.click('.face-btn[data-act="info"]');
+        await page.waitForTimeout(300);
+        const e = await expected();
+        const names = await page.evaluate(() => [...document.querySelectorAll('.face-letter-name')].map((x) => x.textContent));
+        const i2 = await infoTexts();
+        if (names.join('|') !== e.names.join('|')) depthProblems.push(`d${d} names ${names} vs ${e.names}`);
+        if (i2[1] !== e.topNext || i2[0] !== e.topCap) depthProblems.push(`d${d} info ${i2.slice(0, 2)} vs ${e.topCap} ${e.topNext}`);
+        const a = await tipFull(96, 80, 300);
+        const b = await tipFull(96, 410, 300);
+        if (!a.lines[0].startsWith(e.names[0]) || !b.lines[0].startsWith(e.names[1])) depthProblems.push(`d${d} tooltip names ${a.lines[0]} / ${b.lines[0]}`);
+        const ls = await faceLeaks(`depth ${d}`);
+        if (ls.length) depthProblems.push(`d${d} leaks ${fmtLeaks(ls)}`);
+        await page.mouse.move(5, 5);
+      }
+      check('pure: depths 2..11 each show the right names, countdowns and clean tooltips', depthProblems.length === 0, depthProblems.join(' || '));
+      await page.evaluate(() => window.__fractonica.store.set({ topDepth: 7 }));
+
+      // ---- 10g. instants and edge states
+      const inRangeProblems = [];
+      for (const [name, expr] of [
+        ['year 2000', '946684800'],
+        ['year 2061', '2886085800'],
+        ['catalogue start', 'model.tMin + 5'],
+        ['catalogue end', 'model.tMax - 5'],
+        ['a late cycle edge', 'model.levelAt(1791460800, 5).end - 30'],
+      ]) {
+        await page.evaluate((e) => {
+          const { model, store } = window.__fractonica;
+          store.setTime(new Function('model', `return ${e}`)(model));
+        }, expr);
+        await page.waitForTimeout(250);
+        await page.click('.face-btn[data-act="info"]');
+        await page.waitForTimeout(300);
+        const ls = await faceLeaks(name);
+        const all = hard(judge(await collectScoped(page, '#slot-face', { all: true }), name + ' (all)'));
+        const texts = await page.evaluate(() => ({ cap: document.querySelector('.face-caption').textContent, na: document.querySelector('.face-svg').classList.contains('is-solar-na'), naText: [...document.querySelectorAll('.face-na text')].map((t) => t.textContent), solarRow: document.querySelector('.face-row--solar').getAttribute('aria-label') }));
+        await tipFull(96, 245, 250);
+        const tipLeaks = await faceLeaks(name + ' solar tooltip');
+        if (ls.length || all.length || tipLeaks.length) inRangeProblems.push(`${name}: ${fmtLeaks([...ls, ...all, ...tipLeaks])}`);
+        if (texts.na && (texts.naText.join('|') !== 'SOLAR SYNC|not defined within|one sync of the edge' || texts.solarRow !== 'Solar sync unavailable within one sync of the catalogue ends')) inRangeProblems.push(`${name}: solar-na text ${texts.naText} / ${texts.solarRow}`);
+        if (/\d:\d\d/.test(texts.cap)) inRangeProblems.push(`${name}: caption ${texts.cap}`);
+        await page.mouse.move(5, 5);
+        await faceCard(page, shot, `face-pure-${name.replace(/[^a-z0-9]/gi, '')}.png`);
+      }
+      check('pure: other instants and both catalogue edges (solar sync not defined at the ends) are clean', inRangeProblems.length === 0, inRangeProblems.join(' || '));
+      // out of range, driven with an out-of-range frame like the normal-mode check
+      await page.evaluate(() => {
+        const { model, instances } = window.__fractonica;
+        window.__oorFrame = model.frame(model.tMax + 10);
+        const inst = instances.face;
+        inst.__origRender = inst.render;
+        inst.render = (fr, info2) => inst.__origRender(window.__oorFrame, { ...info2, dirty: true });
+      });
+      await page.waitForTimeout(400);
+      const oorPure = await page.evaluate(() => ({ cls: document.querySelector('.face-svg').classList.contains('is-oor'), text: [...document.querySelectorAll('.face-oor text')].map((t) => t.textContent).join(' | '), label: document.querySelector('.face-svg').getAttribute('aria-label'), caption: document.querySelector('.face-caption').textContent }));
+      check('pure: out of range says "outside the catalogue" with the range α#1 to α#18, no years', oorPure.cls && oorPure.text === 'outside the | catalogue | from α#1 | to α#18' && oorPure.label === 'Fractonica clock face: outside the catalogue, no reading' && oorPure.caption === '', JSON.stringify(oorPure));
+      await clean('out of range');
+      await clean('out of range', { all: true });
+      await faceCard(page, shot, 'face-pure-oor.png');
+      // switching back to normal while out of range: the normal wording returns at once
+      await page.keyboard.press('p');
+      await page.waitForTimeout(300);
+      const oorNormal = await page.evaluate(() => [...document.querySelectorAll('.face-oor text')].map((t) => t.textContent).join(' | '));
+      check('normal: out of range after leaving pure mode shows the normal text again', /^outside Saros 141 \| catalogue \| from 1613-05-19 \| to 2857-06-13$/.test(oorNormal), oorNormal);
+      await page.keyboard.press('p');
+      await page.waitForTimeout(300);
+      await page.evaluate(() => {
+        const inst = window.__fractonica.instances.face;
+        inst.render = inst.__origRender;
+      });
+      await page.waitForTimeout(300);
+
+      // ---- 10h. time-lapse and live
+      await open(`?pure=1&t=${T_A}&view=rings&rate=18188.9`);
+      const lapse = [];
+      for (let i = 0; i < 4; i++) {
+        await page.waitForTimeout(700);
+        await page.click('.face-btn[data-act="info"]');
+        await page.waitForTimeout(200);
+        lapse.push(...(await faceLeaks(`time-lapse frame ${i}`)));
+        const cap = await page.textContent('.face-caption');
+        if (!/^α#\d+ β#\d γ#\d+ · δ½#\d+ ε½#\d ζ½#\d · \d+η \d+ι \d+λ$/.test(cap)) lapse.push({ rule: 'caption', match: cap, kind: 'text', where: 'caption', text: cap });
+      }
+      check('pure: time-lapse (one η per beat): every frame is clean and the caption follows', lapse.length === 0, fmtLeaks(lapse));
+      await faceCard(page, shot, 'face-pure-lapse.png');
+      await open('?pure=1&view=rings');
+      await page.waitForTimeout(900);
+      const liveCap = await page.textContent('.face-caption');
+      check('pure: live mode shows no caption (like normal mode)', liveCap === '', JSON.stringify(liveCap));
+      await clean('live');
+      await clean('live', { all: true });
+      await faceCard(page, shot, 'face-pure-live.png');
+
+      // ---- 10i. live switching in both directions: P key, header button, store; no reload, no leftovers
+      await open(`?t=${T_A}&view=rings&zone=UTC&pure=0`); // the store persists the mode: say it explicitly
+      await page.waitForTimeout(500);
+      await page.click('.face-btn[data-act="info"]');
+      await page.waitForTimeout(300);
+      const normalInfo = await infoTexts();
+      check('normal: info labels show clock times before the switch', /\d\d:\d\d/.test(normalInfo[1]) && normalInfo[4] === 'SYNC TIME', normalInfo.join('|'));
+      const hov = await f.client(96, 80);
+      await page.mouse.move(hov.x - 3, hov.y);
+      await page.mouse.move(hov.x, hov.y);
+      await page.waitForTimeout(300);
+      check('normal: a tooltip is open before the switch (with clock times in it)', await page.evaluate(() => !document.querySelector('.face-tip').hidden && /\d\d:\d\d/.test(document.querySelector('.face-tip').innerText)));
+      const origin1 = await page.evaluate(() => performance.timeOrigin);
+      await page.keyboard.press('p'); // focus is on the page (the key is not typed into the dialog or a field)
+      await page.waitForTimeout(400);
+      const sw1 = await page.evaluate(() => ({
+        flagged: document.querySelector('.face-root').dataset.pure === '1',
+        tipHidden: document.querySelector('.face-tip').hidden,
+        tipText: document.querySelector('.face-tip').textContent,
+        status: document.querySelector('#slot-face [role=status]').textContent,
+        info: [...document.querySelectorAll('.face-info text')].map((t) => t.textContent),
+        caption: document.querySelector('.face-caption').textContent,
+        names: [...document.querySelectorAll('.face-letter-name')].map((e) => e.textContent),
+        origin: performance.timeOrigin,
+      }));
+      check('pure: the P key switches live: the card is flagged and the open tooltip is closed and emptied', sw1.flagged && sw1.tipHidden && sw1.tipText === '', JSON.stringify(sw1.tipText));
+      check('pure: ... the info labels that were showing are rewritten (no clock time survives), the caption and the letter names too', !sw1.info.some((x) => /\d:\d\d/.test(x)) && /^in /.test(sw1.info[1]) && !/UTC|:/.test(sw1.caption) && sw1.names.every((n) => /fracton$/.test(n)), sw1.info.join('|') + ' ' + sw1.caption);
+      check('pure: ... without a reload', sw1.origin === origin1);
+      await clean('after switching on with the P key', { all: true });
+      // the dialog is open while the mode changes (the store changes it, e.g. a deep link or another module): it is rewritten in place
+      await page.click('.face-help');
+      await page.waitForTimeout(200);
+      const popPure = await page.evaluate(() => document.querySelector('.face-pop-list li:last-child').textContent);
+      await page.evaluate(() => window.__fractonica.store.set({ pure: false }));
+      await page.waitForTimeout(300);
+      const popNormal = await page.evaluate(() => ({ open: !document.querySelector('.face-pop').hidden, last: document.querySelector('.face-pop-list li:last-child').textContent, pair: document.querySelectorAll('.face-pop-list .pure-pair').length }));
+      check('normal/pure: an open How to read dialog is rewritten in place when the mode changes (and stays open)', /19η cycles\. Its start drifts/.test(popPure) && popNormal.open && /≈ 4 civil days/.test(popNormal.last) && popNormal.pair === 0, popPure + ' => ' + popNormal.last);
+      await leftover('after the dialog was open during the switch');
+      await page.keyboard.press('Escape');
+      await page.evaluate(() => window.__fractonica.store.set({ pure: true }));
+      await page.waitForTimeout(250);
+      await page.click('.face-btn[data-act="info"]');
+      await page.waitForTimeout(300);
+      // back with the header button
+      await page.click('#btn-pure');
+      await page.waitForTimeout(400);
+      const sw2 = await page.evaluate(() => ({ flagged: document.querySelector('.face-root').dataset.pure, names: [...document.querySelectorAll('.face-letter-name')].map((e) => e.textContent).join(''), info: [...document.querySelectorAll('.face-info text')].map((t) => t.textContent), caption: document.querySelector('.face-caption').textContent, pop: document.querySelector('.face-pop-list li:last-child').textContent, rows: [...document.querySelectorAll('.face-row')].map((e) => e.getAttribute('aria-label')), depths: document.querySelector('.face-depths').textContent }));
+      check('normal: the header button switches back: flag gone, names gone, caption and row labels are the normal ones', sw2.flagged === undefined && sw2.names === '' && /UTC/.test(sw2.caption) && /civil days/.test(sw2.pop) && /^Solar sync 4820, 35\.8 percent/.test(sw2.rows[1]) && /^η depth 7: state 13 of 16/.test(sw2.rows[0]), JSON.stringify({ ...sw2, rows: sw2.rows.map((r) => r.slice(0, 40)) }));
+      check('normal: ... the info overlay that was showing holds no pure text (it is emptied until the next Info)', sw2.info.every((x) => !PURE_MARKERS.test(x)), sw2.info.join('|'));
+      await leftover('after the header button');
+      // again with the store (the same path the URL and other modules use), checking the DOM in every state
+      const toggleProblems = [];
+      for (let i = 0; i < 3; i++) {
+        await page.evaluate(() => window.__fractonica.store.set({ pure: true }));
+        await page.waitForTimeout(200);
+        const ls = await faceLeaks(`store toggle ${i} on`, { all: true });
+        await page.evaluate(() => window.__fractonica.store.set({ pure: false }));
+        await page.waitForTimeout(200);
+        const left = (await collectScoped(page, '#slot-face', { all: true })).filter((x) => PURE_MARKERS.test(x.text));
+        if (ls.length) toggleProblems.push(`round ${i} on: ${fmtLeaks(ls)}`);
+        if (left.length) toggleProblems.push(`round ${i} off: ${left.slice(0, 3).map((x) => `${x.where}: ${x.text}`).join(' | ')}`);
+      }
+      check('pure/normal: three round trips through the store leave nothing of the other mode behind', toggleProblems.length === 0, toggleProblems.join(' || '));
+      // pure mode first, then normal: the normal info overlay is fully normal again
+      await open(`?pure=1&t=${T_A}&view=rings&zone=UTC`);
+      await page.click('.face-btn[data-act="info"]');
+      await page.waitForTimeout(300);
+      await page.keyboard.press('p');
+      await page.waitForTimeout(200);
+      await page.click('.face-btn[data-act="info"]');
+      await page.waitForTimeout(300);
+      const back = await infoTexts();
+      check('normal: after pure mode the info labels are the normal ones again (clock times, SYNC TIME)', /^\d\d:\d\d:\d\d$/.test(back[1]) && /^[A-Z][a-z]{2} \d{1,2} \d\d:\d\d$/.test(back[3]) && back[4] === 'SYNC TIME', back.join('|'));
+      await leftover('info labels after pure mode');
+
+      // ---- 10j. narrow screens
+      for (const [w, h] of [
+        [390, 844],
+        [360, 640],
+        [320, 640],
+      ]) {
+        await page.setViewportSize({ width: w, height: h });
+        await open(`?pure=1&t=${T_A}&view=rings`);
+        await page.waitForTimeout(700);
+        const ov = await faceOverflow();
+        check(`pure mobile ${w}: nothing in the face card overflows (caption, letters, buttons)`, ov.worst <= 0.5 && ov.cardRight <= ov.innerW, JSON.stringify(ov));
+        const cap = await page.evaluate(() => { const c = document.querySelector('.face-caption'); return { clipped: c.scrollWidth > c.clientWidth, text: c.textContent }; });
+        check(`pure mobile ${w}: the caption fits on one line without being cut`, !cap.clipped, JSON.stringify(cap));
+        // the longest address that can occur (α#18 β#5 γ#13 · δ½#10 ε½#5 ζ½#7 · 10η 35ι 64λ) must fit as well
+        const longest = await page.evaluate(() => {
+          const c = document.querySelector('.face-caption');
+          const keep = c.textContent;
+          c.textContent = 'α#18 β#5 γ#13 · δ½#10 ε½#5 ζ½#7 · 10η 35ι 64λ';
+          const r = { sw: c.scrollWidth, cw: c.clientWidth };
+          c.textContent = keep;
+          return r;
+        });
+        check(`pure mobile ${w}: ... also the longest possible address`, longest.sw <= longest.cw, JSON.stringify(longest));
+        await faceCard(page, shot, `face-pure-mobile${w}-letters.png`);
+        await page.waitForTimeout(4200);
+        await page.click('.face-btn[data-act="info"]');
+        await page.waitForTimeout(300);
+        await faceCard(page, shot, `face-pure-mobile${w}-info.png`);
+        await clean(`mobile ${w} info`);
+        await page.click('.face-help');
+        await page.waitForTimeout(250);
+        const popBox = await page.evaluate(() => { const r = document.querySelector('.face-pop').getBoundingClientRect(); const c = document.querySelector('#slot-face').getBoundingClientRect(); return { l: r.left - c.left, r: c.right - r.right, sw: document.querySelector('.face-pop').scrollWidth - document.querySelector('.face-pop').clientWidth }; });
+        check(`pure mobile ${w}: the dialog stays inside the card and its lines wrap`, popBox.l >= -0.5 && popBox.r >= -0.5 && popBox.sw <= 0.5, JSON.stringify(popBox));
+        await faceCard(page, shot, `face-pure-mobile${w}-popover.png`);
+        await page.keyboard.press('Escape');
+      }
+      await page.setViewportSize({ width: 1440, height: 900 });
+      await open(`?pure=1&t=${T_A}&view=rings`);
+      await page.waitForTimeout(900);
+      await shot('face-pure-full-1440.png');
+
+      // ---- 10k. touch: press and hold a row in pure mode
+      {
+        const tctx = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, deviceScaleFactor: 3, colorScheme: 'dark' });
+        const tp = await tctx.newPage();
+        tp.on('pageerror', (e) => errors.push('pageerror(touch) stack: ' + (e.stack || e.message)));
+        await tp.goto(url(`?pure=1&t=${T_A}&view=rings`));
+        await tp.addStyleTag({ content: '#slot-jump{display:none!important;} #topbar{max-height:140px;overflow:hidden;}' });
+        await tp.waitForSelector('.face-svg .face-glyph path');
+        await tp.waitForTimeout(600);
+        await tp.locator('.face-svg').scrollIntoViewIfNeeded();
+        const tf = api(tp);
+        const cdp = await tctx.newCDPSession(tp);
+        const p = await tf.client(96, 245);
+        await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: p.x, y: p.y }] });
+        await tp.waitForTimeout(700);
+        const held = await tp.evaluate(() => ({ hidden: document.querySelector('.face-tip').hidden, text: document.querySelector('.face-tip').innerText.replace(/\n/g, ' / '), pair: document.querySelectorAll('.face-tip .pure-pair svg').length }));
+        await tp.screenshot({ path: path.join(outDir, 'face-pure-touch-hold.png') });
+        await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+        const heldLeaks = hard(judge(await collectScoped(tp, '#slot-face'), 'touch'));
+        check('pure touch: press and hold on the solar row shows the tooltip with the glyph pair, clean', !held.hidden && held.pair === 2 && /Solar sync #4820/.test(held.text) && heldLeaks.length === 0, held.text + ' ' + fmtLeaks(heldLeaks));
+        await tctx.close();
+      }
+
+      // ---- 10l. render cost in pure mode (info labels and a tooltip open)
+      await open(`?pure=1&t=${T_A}&view=rings`);
+      await page.waitForTimeout(400);
+      await page.click('.face-btn[data-act="info"]');
+      {
+        const c = await f.client(96, 245);
+        await page.mouse.move(c.x - 3, c.y);
+        await page.mouse.move(c.x, c.y);
+      }
+      await page.waitForTimeout(300);
+      for (const [label, rate] of [['frozen', 0], ['time-lapse x3600', 3600]]) {
+        if (rate) await page.evaluate((r) => window.__fractonica.store.setRate(r), rate);
+        const ms = await page.evaluate(
+          () =>
+            new Promise((resolve) => {
+              const inst = window.__fractonica.instances.face;
+              const orig = inst.render;
+              const times = [];
+              inst.render = (...a) => {
+                const t0 = performance.now();
+                orig(...a);
+                times.push(performance.now() - t0);
+                if (times.length >= 150) {
+                  inst.render = orig;
+                  const sorted = [...times].sort((x, y) => x - y);
+                  resolve({ mean: times.reduce((x, y) => x + y, 0) / times.length, p95: sorted[Math.floor(times.length * 0.95)] });
+                }
+              };
+            }),
+        );
+        check(`pure: render() cost, ${label}, info labels and tooltip open: mean ${ms.mean.toFixed(3)} ms, p95 ${ms.p95.toFixed(3)} ms`, ms.mean < 1 && ms.p95 < 3);
+      }
+      await page.evaluate(() => window.__fractonica.store.pause());
+      await page.mouse.move(5, 5);
     }
 
     // ---- 9. console hygiene ---------------------------------------------------------------------------------

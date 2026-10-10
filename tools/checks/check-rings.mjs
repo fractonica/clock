@@ -444,6 +444,8 @@ await withApp(
     await page.goto(url(`?t=${A}&view=rings&zone=UTC&rate=1`));
     await S(page, () => window.__fractonica.store.set({ minDepth: 1, maxDepth: 14 }));
     await page.addStyleTag({ content: QUIET });
+    // wait for the view instead of a fixed pause: a busy machine mounts the nine modules slower than 600 ms
+    await page.waitForFunction(() => window.__fractonica?.instances?.rings?.inspect?.().layout, null, { timeout: 15000 });
     await page.waitForTimeout(600);
     const a = await S(page, () => window.__fractonica.instances.rings.inspect());
     await page.waitForTimeout(1500);

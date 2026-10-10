@@ -75,3 +75,18 @@ test('time: live, travel, pause, time-lapse, edge stop', () => {
   store.goLive();
   assert.ok(store.live);
 });
+
+test('pure flag: boolean only, persisted, ignored when garbage', () => {
+  const storage = memory();
+  const store = createStore({ model, storage });
+  assert.equal(store.state.pure, false);
+  store.set({ pure: 'yes' });
+  assert.equal(store.state.pure, false, 'only booleans are accepted');
+  store.set({ pure: true });
+  assert.equal(store.state.pure, true);
+  assert.equal(storage.dump().pure, true);
+  const again = createStore({ model, storage });
+  assert.equal(again.state.pure, true, 'reload keeps it');
+  const junk = createStore({ model, storage: memory({ pure: 'on' }) });
+  assert.equal(junk.state.pure, false);
+});

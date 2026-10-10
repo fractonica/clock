@@ -230,7 +230,7 @@ body[data-mode="travel"] .readout-time { color: var(--cursor); }
   .topbar-br.b1 { order: 5; }
   #tp-prev { order: 6; } #tp-play { order: 7; } #tp-next { order: 8; }
   #tp-rate { order: 9; flex: 1 1 0; min-width: 0; max-width: none; }
-  #btn-link { order: 10; }
+  #btn-link, #btn-pure { order: 10; }
   .topbar-br.b2 { order: 11; }
   .jump { order: 12; flex: 1 1 0; min-width: 0; max-width: none; }
   #zone { order: 13; flex: 0 1 136px; min-width: 0; max-width: none; }
@@ -253,3 +253,32 @@ body[data-mode="travel"] .readout-time { color: var(--cursor); }
   }
   .card, .btn, .select, .input, .tabs, .seg { border-color: CanvasText; }
 }
+
+/* ---------- pure mode (Fractonica terms only) ---------- */
+.pure-pair { display: inline-flex; align-items: center; gap: 0.12em; vertical-align: middle; line-height: 1; }
+.pure-pair svg { height: 1.7em; width: auto; display: block; }
+.pure-clock b { font-weight: 600; }
+.pure-clock i { font-style: normal; font-size: 0.62em; font-weight: 600; color: var(--ink-2); margin: 0 0.45em 0 0.1em; vertical-align: 0.18em; }
+.pure-clock i:last-child { margin-right: 0; }
+body[data-pure] #zone { display: none; }
+body[data-pure] .readout-time { color: var(--teal); }
+body[data-pure][data-mode="travel"] .readout-time { color: var(--cursor); }
+body[data-pure] #ro-pos { margin-left: auto; }
+
+/* pure mode on phones: the clock, its date line and the position may wrap instead of clipping */
+@media (max-width: 860px) {
+  body[data-pure] .readout-sub { flex-wrap: wrap; white-space: normal; row-gap: 0; overflow: visible; }
+  body[data-pure] #ro-pos { margin-left: 0; }
+  #btn-glossary { order: 10; }
+}
+#btn-glossary { font-weight: 700; }
+
+/* ---------- pure-mode glossary ---------- */
+.glossary { position: fixed; z-index: 55; right: 14px; top: calc(var(--bar) + 8px); width: min(560px, calc(100vw - 28px)); max-height: calc(100vh - var(--bar) - 28px); overflow: auto; box-shadow: 0 18px 50px rgb(0 0 0 / 0.55); }
+.glossary-b h3 { margin: 12px 0 6px; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-2); }
+.glossary-b p { margin: 6px 0; color: var(--ink-2); }
+.glossary-t { width: 100%; border-collapse: collapse; }
+.glossary-t th { text-align: left; vertical-align: top; white-space: nowrap; padding: 5px 12px 5px 0; color: var(--teal); font-weight: 600; width: 1%; }
+.glossary-t td { padding: 5px 0; color: var(--ink); border-bottom: 1px solid var(--line); }
+.glossary-ratio { font-size: 12px; line-height: 1.7; }
+.glossary-pair .pure-pair svg { height: 2.2em; }

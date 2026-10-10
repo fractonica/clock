@@ -144,7 +144,7 @@ function paintOverview(S) {
     const ax1 = dx(al.end);
     g.fillStyle = al.idx % 2 ? theme.levelColor(0, 0.1, 60) : theme.levelColor(0, 0.22, 60);
     g.fillRect(ax0, y + 2, Math.max(0, ax1 - ax0), bandH);
-    const lab = fit(g, f9, [`α${al.idx + 1}`], ax1 - ax0 - 4);
+    const lab = fit(g, f9, S.isPure ? [`α#${al.idx + 1}`, `#${al.idx + 1}`] : [`α${al.idx + 1}`], ax1 - ax0 - 4);
     if (lab) text(g, lab, (ax0 + ax1) / 2, y + 2 + bandH / 2 + 0.5, f9, theme.levelColor(0, 0.95, 80), 'center');
   }
   // the 70 eclipses
@@ -155,7 +155,7 @@ function paintOverview(S) {
   }
   // century labels
   const f8 = fonts.mono(400, 9);
-  const ticks = data.overviewTicks();
+  const ticks = S.isPure ? data.overviewMarks() : data.overviewTicks(); // pure: eclipse numbers instead of centuries
   let lastX = -1e9;
   for (const tk of ticks) {
     if (tk.t < lim.d0 || tk.t > lim.d1) continue;
@@ -227,7 +227,7 @@ function paintLaneBackdrop(S) {
   g.rect(px0, S.L.axis.y, w, bottom - S.L.axis.y);
   g.clip();
   // weekends (only when a day is wide enough to read)
-  if (S.k * 86400 >= 7 && S.span < 200 * 86400) {
+  if (!S.isPure && S.k * 86400 >= 7 && S.span < 200 * 86400) {
     g.fillStyle = 'rgba(138,180,255,0.045)';
     for (const s of data.weekendsFor(t0, t1)) {
       const a = X(s.t0);
@@ -287,7 +287,7 @@ function paintLane(S, i) {
       g.fillStyle = st.cur;
       g.fillRect(cx, y + 2, cw, h - 4);
     }
-    const msg = `${data.lengthLabel(level)} cycles · zoom in`;
+    const msg = S.isPure ? S.words.denseMsg(level) : `${data.lengthLabel(level)} cycles · zoom in`;
     const mw = tw(g, fontSm, msg);
     const mx = Math.min(Math.max(px0, X(model.tMin)) + 8, px1 - mw - 20);
     if (mx > px0 && X(model.tMax) - mx > mw + 14) {
@@ -346,11 +346,15 @@ function paintLane(S, i) {
     }
     if (w >= 14) {
       const n1 = b.local + 1;
-      const variants = [];
-      if (w > plotW * 0.45) variants.push(`${info.letter} ${info.depth} · ${n1}/${sib} · ends ${data.endLabel(level, b.idx, b.end, S.refYear)}`);
-      if (w >= 120) variants.push(`${info.letter} ${info.depth} · ${n1}/${sib}`);
-      if (w >= 40) variants.push(`${info.letter}${n1}`);
-      variants.push(String(n1));
+      let variants = [];
+      if (S.isPure) {
+        variants = S.words.blockLabels({ level, local: b.local, idx: b.idx, sib, wide: w > plotW * 0.45, w, endsWithCatalogue: b.end >= model.tMax - 1e-3 });
+      } else {
+        if (w > plotW * 0.45) variants.push(`${info.letter} ${info.depth} · ${n1}/${sib} · ends ${data.endLabel(level, b.idx, b.end, S.refYear)}`);
+        if (w >= 120) variants.push(`${info.letter} ${info.depth} · ${n1}/${sib}`);
+        if (w >= 40) variants.push(`${info.letter}${n1}`);
+        variants.push(String(n1));
+      }
       const vis = cx1 - Math.max(cx0, px0 + reserve);
       const lab = fit(g, font, variants, vis - (w < 30 ? 4 : 10));
       if (lab) {
@@ -472,7 +476,7 @@ function paintEclipseLane(S) {
   }
 
   const sarosPx = model.meanSaros * S.k;
-  const stride = eclipseLabelStride(sarosPx);
+  const stride = S.isPure ? eclipseLabelStride(sarosPx, 34) : eclipseLabelStride(sarosPx); // "#23" is much shorter than a date
   const f = fonts.mono(400, 9.5);
   const fb = fonts.mono(600, 9.5);
   let visible = 0;
@@ -498,7 +502,7 @@ function paintEclipseLane(S) {
     g.lineWidth = 1;
     g.stroke();
     if (i % stride === 0 || hov) {
-      const lab = fmt.date(E[i]);
+      const lab = S.isPure ? S.words.eclipseLabel(i) : fmt.date(E[i]);
       const lw = tw(g, alpha ? fb : f, lab);
       if (x - lw / 2 > px0 + 2 && x + lw / 2 < px1 - 2) text(g, lab, x, y + h * 0.82, alpha ? fb : f, alpha ? 'rgba(231,237,243,0.9)' : 'rgba(163,177,191,0.85)', 'center');
     }
@@ -510,8 +514,9 @@ function paintEclipseLane(S) {
     const prev = E.findLastIndex((e) => e < t0);
     const next = E.findIndex((e) => e > t1);
     const cy = base;
-    if (prev >= 0) chip(S, `◂ ${fmt.date(E[prev])}`, px0 + 8, cy, { align: 'left', color: theme.TEAL, tip: 'Previous greatest eclipse of Saros 141 – click to bring it into view', onClick: () => S.actions.reveal(E[prev], 'left') });
-    if (next >= 0) chip(S, `${fmt.date(E[next])} ▸`, px1 - 8, cy, { align: 'right', color: theme.TEAL, tip: 'Next greatest eclipse of Saros 141 – click to bring it into view', onClick: () => S.actions.reveal(E[next], 'right') });
+    const pu = S.isPure;
+    if (prev >= 0) chip(S, pu ? S.words.eclipseChip(prev, false) : `◂ ${fmt.date(E[prev])}`, px0 + 8, cy, { align: 'left', color: theme.TEAL, tip: pu ? S.words.eclipseChipTip(prev, false) : 'Previous greatest eclipse of Saros 141 – click to bring it into view', onClick: () => S.actions.reveal(E[prev], 'left') });
+    if (next >= 0) chip(S, pu ? S.words.eclipseChip(next, true) : `${fmt.date(E[next])} ▸`, px1 - 8, cy, { align: 'right', color: theme.TEAL, tip: pu ? S.words.eclipseChipTip(next, true) : 'Next greatest eclipse of Saros 141 – click to bring it into view', onClick: () => S.actions.reveal(E[next], 'right') });
     const msg = 'Saros 141 · time base of the clock';
     const mw = tw(g, fonts.ui(500, 10), msg);
     if (px1 - px0 > mw + 330) text(g, msg, (px0 + px1) / 2, y + h * 0.82, fonts.ui(500, 10), MUTED, 'center');
@@ -540,7 +545,7 @@ function paintOutOfRange(S) {
     g.stroke();
     g.setLineDash([]);
     const t = side === 'start' ? lim.tMin : lim.tMax;
-    const lab = side === 'start' ? `catalogue starts ${fmt.date(t)}` : `catalogue ends ${fmt.date(t)}`;
+    const lab = S.isPure ? S.words.edgeLabel(side) : side === 'start' ? `catalogue starts ${fmt.date(t)}` : `catalogue ends ${fmt.date(t)}`;
     const lw = tw(g, f, lab);
     const room = side === 'start' ? x - px0 : px1 - x;
     const tx = side === 'start' ? x - 6 : x + 6;
@@ -566,7 +571,7 @@ function paintOutOfRange(S) {
   if (b <= px0 || a >= px1) {
     const msg = 'Outside the Saros 141 catalogue';
     text(g, msg, (px0 + px1) / 2, (top + bottom) / 2, fonts.ui(600, 13), 'rgba(231,237,243,0.9)', 'center');
-    text(g, `${fmt.date(lim.tMin)} – ${fmt.date(lim.tMax)}`, (px0 + px1) / 2, (top + bottom) / 2 + 18, fonts.mono(400, 11), 'rgba(163,177,191,0.9)', 'center');
+    text(g, S.isPure ? S.words.rangeLabel() : `${fmt.date(lim.tMin)} – ${fmt.date(lim.tMax)}`, (px0 + px1) / 2, (top + bottom) / 2 + 18, fonts.mono(400, 11), 'rgba(163,177,191,0.9)', 'center');
   }
 }
 
@@ -613,7 +618,7 @@ function paintAxis(S) {
   }
 
   // weekend tint in the tick row
-  if (S.k * 86400 >= 7 && S.span < 200 * 86400) {
+  if (!S.isPure && S.k * 86400 >= 7 && S.span < 200 * 86400) {
     g.fillStyle = 'rgba(138,180,255,0.07)';
     for (const s of data.weekendsFor(t0, t1)) {
       const a = X(s.t0);
@@ -657,12 +662,16 @@ function paintAxis(S) {
     }
     if (ok) break;
   }
+  S.axisLabels = []; // what this frame labelled (debug / tests: how many labelled ticks a zoom shows)
   for (const { tk, x, room } of vis) {
     g.fillStyle = tk.major ? 'rgba(231,237,243,0.7)' : 'rgba(163,177,191,0.6)';
     g.fillRect(Math.round(x * dpr) / dpr, yTick + (tk.major ? 1 : 4), 1, rowH - (tk.major ? 1 : 4));
     const font = tk.major ? fMajor : fTick;
     const lab = tk.labels[Math.min(variant, tk.labels.length - 1)];
-    if (tw(g, font, lab) <= room + 4 && x + 4 + tw(g, font, lab) <= px1 + 40) text(g, lab, x + 4, yTick + 8, font, tk.major ? 'rgba(231,237,243,0.95)' : 'rgba(163,177,191,0.95)');
+    if (tw(g, font, lab) <= room + 4 && x + 4 + tw(g, font, lab) <= px1 + 40) {
+      text(g, lab, x + 4, yTick + 8, font, tk.major ? 'rgba(231,237,243,0.95)' : 'rgba(163,177,191,0.95)');
+      S.axisLabels.push(lab);
+    }
   }
   // base line under the axis
   g.fillStyle = 'rgba(163,177,191,0.25)';
@@ -775,6 +784,13 @@ function paintGutters(S) {
   if (!L.compact) text(g, S.catLabel, 8, ov.y + ov.h / 2 + 7, fSmall, MUTED);
   text(g, L.compact ? 'Saros' : 'Saros 141', 8, L.eclipse.y + L.eclipse.h * 0.34, fTitle, theme.TEAL);
   text(g, L.compact ? '70' : '70 eclipses', 8, L.eclipse.y + L.eclipse.h * 0.66, fSmall, MUTED);
+  if (S.isPure && S.step) {
+    // the ruler's key: which unit the context row spans and which unit the ticks count (hover for the sentence)
+    const key = S.words.rulerKey(S.step);
+    const fKey = fonts.mono(600, L.compact ? 9.5 : 10.5);
+    if (key.top) text(g, key.top, 8, L.axis.y + L.axis.ctxH / 2 + 0.5, fKey, MUTED);
+    text(g, key.bottom, 8, L.axis.y + L.axis.ctxH + L.axis.tickH / 2 + 0.5, fKey, theme.TEAL);
+  }
 
   for (let i = 0; i < S.levels.length; i++) {
     const level = S.levels[i];
@@ -802,15 +818,15 @@ function paintGutters(S) {
     const depthRoom = x1 - 8 - (11 + lw + 4);
     const depth = fit(g, fDepth, depthHeadVariants(info), depthRoom) ?? String(info.depth);
     text(g, depth, 11 + lw + 4, ly + 1, fDepth, sel ? 'rgba(231,237,243,0.95)' : 'rgba(163,177,191,0.8)');
-    const len = data.lengthLabel(level);
+    const len = S.isPure ? S.words.cycleLength(level) : data.lengthLabel(level);
     if (two) {
       // the compact gutter is 56 px: a smaller mono font keeps "33.7 min" clear of the divider
       const fLen = L.compact ? fonts.mono(400, 9) : fSmall;
-      text(g, L.compact ? len : `≈ ${len}`, L.compact ? 8 : 11, y + L.laneH * (snug ? 0.8 : 0.74) + 0.5, fLen, MUTED);
+      text(g, L.compact ? len : `${S.isPure ? '=' : '≈'} ${len}`, L.compact ? 8 : 11, y + L.laneH * (snug ? 0.8 : 0.74) + 0.5, fLen, MUTED);
     } else if (!L.compact) {
       // one line (never at the standard lane heights): the length only if it clears the depth number
       const room = x1 - 8 - (11 + lw + 4 + tw(g, fDepth, depth) + 8);
-      const lab = fit(g, fSmall, [`≈ ${len}`, len], room);
+      const lab = fit(g, fSmall, [`${S.isPure ? '=' : '≈'} ${len}`, len], room);
       if (lab) text(g, lab, x1 - 8, ly, fSmall, MUTED, 'right');
     }
   }
@@ -857,14 +873,15 @@ function planSelChip(S) {
   const cy = laneIdx >= 0 ? L.lanesY + laneIdx * L.laneH + L.laneH / 2 : L.axis.y + L.axis.ctxH + L.axis.tickH + L.axis.markH / 2;
   const right = ex > L.px1;
   // the arrow says where the end is; the countdown is from the cursor ("the cursor's cycle ends in ...")
-  const label = right ? `${info.letter} ends ${fmt.countdown(sel.end - S.cursorT)} ▸` : `◂ ${info.letter} ends ${fmt.countdown(sel.end - S.cursorT)}`;
+  const rel = S.isPure ? S.ruler.relText(sel.end, S.cursorT) : fmt.countdown(sel.end - S.cursorT);
+  const label = S.isPure ? S.words.endsChip(info.letter, rel, right) : right ? `${info.letter} ends ${rel} ▸` : `◂ ${info.letter} ends ${rel}`;
   return {
     right,
     cy,
     label,
     w: chipWidth(S, label),
     color: theme.levelColor(S.selected, 1, 72),
-    tip: turnoverTip(info, right),
+    tip: S.isPure ? S.words.turnoverTip(S.selected, sel.idx, right, sel.end >= model.tMax - 1e-3) : turnoverTip(info, right),
     end: sel.end,
   };
 }
@@ -893,8 +910,8 @@ function paintChips(S) {
   const clear = (x0, x1) => !S.flagRects.some((r) => x0 < r.x1 + 4 && x1 > r.x0 - 4);
   const offscreen = (t, name, color, tip, onClick) => {
     const right = S.X(t) > L.px1;
-    const lab = `${name} ${fmt.short(t, S.chipYear)}`;
-    const variants = right ? [`${lab} ▸`, `${name} ▸`] : [`◂ ${lab}`, `◂ ${name}`];
+    const lab = `${name} ${S.isPure ? S.ruler.flagText(t, S.step.u) : fmt.short(t, S.chipYear)}`;
+    const variants = S.isPure ? S.words.markerChip(name, S.ruler.flagText(t, S.step.u), right) : right ? [`${lab} ▸`, `${name} ▸`] : [`◂ ${lab}`, `◂ ${name}`];
     for (const v of variants) {
       const w = chipWidth(S, v);
       const x0 = right ? edge.right - w : edge.left;

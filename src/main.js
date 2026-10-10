@@ -12,6 +12,7 @@
  */
 import { createModel, QUARTER_NAMES, MAX_LEVEL } from './core/model.js';
 import { createStore } from './core/store.js';
+import { createPure } from './core/pure.js';
 import { createFormatter, SYSTEM_ZONE } from './core/format.js';
 import * as theme from './core/theme.js';
 
@@ -56,12 +57,37 @@ export const icons = {
   wave: svg('<path d="M1.5 8c1.5-5 3-5 4 0s2.5 5 4 0 2.5-5 4 0"/>'),
   calendar: svg('<rect x="2" y="3" width="12" height="11" rx="2"/><path d="M2 6.5h12M5.5 1.8v2.4M10.5 1.8v2.4"/>'),
   sound: svg('<path d="M2 8h1.5M5 5v6M8 2.5v11M11 5v6M14 8h-1.2"/>'),
+  pure: svg('<path d="M8 1.5v13M8 3.5c0 0 0 1.5 2.5 1.5S13 3.5 13 3.5M8 8.5c0 0 0-1.5-2.5-1.5S3 8.5 3 8.5M6 13h4"/>'),
 };
 
 // ---------- shared context ----------
 const model = createModel();
 const store = createStore({ model });
-const fmt = createFormatter(() => store.state.zone || SYSTEM_ZONE);
+const fmtBase = createFormatter(() => store.state.zone || SYSTEM_ZONE);
+const pure = createPure(model, { now: () => store.t() });
+const isPure = () => store.state.pure;
+/**
+ * The formatter every module uses. In pure mode every Gregorian / Earth-unit formatter answers in Fractonica terms
+ * instead (cycle addresses, odometer counters, durations counted in Fractonica periods), so a module that forgets
+ * to special-case pure mode still cannot print a date, a zone or "3 h 20 min". `parts`, `toUnix` and `zone` stay
+ * available for calculations: never display their results in pure mode.
+ */
+const fmt = {
+  ...fmtBase,
+  date: (t, ...a) => (isPure() ? pure.dateText(t) : fmtBase.date(t, ...a)),
+  time: (t, ...a) => (isPure() ? pure.clockText(t) : fmtBase.time(t, ...a)),
+  dateTime: (t, ...a) => (isPure() ? pure.stamp(t, 'lambda') : fmtBase.dateTime(t, ...a)),
+  long: (t, ...a) => (isPure() ? pure.stamp(t, 'iota') : fmtBase.long(t, ...a)),
+  short: (t, ...a) => (isPure() ? pure.stamp(t, 'eta') : fmtBase.short(t, ...a)),
+  label: (t, ref) => (isPure() ? (pure.dateText(t) === pure.dateText(ref) ? pure.clockText(t) : pure.stamp(t, 'eta')) : fmtBase.label(t, ref)),
+  tag: (t) => (isPure() ? '' : fmtBase.tag(t)),
+  iso: (t) => (isPure() ? pure.stamp(t, 'lambda') : fmtBase.iso(t)),
+  inputValue: (t) => (isPure() ? '' : fmtBase.inputValue(t)),
+  parseInput: (v) => (isPure() ? null : fmtBase.parseInput(v)),
+  duration: (sec, o) => (isPure() ? pure.duration(sec, { parts: o?.parts ?? 2 }) : fmtBase.duration(sec, o)),
+  countdown: (sec) => (isPure() ? pure.countdown(sec) : fmtBase.countdown(sec)),
+  relative: (t, ref) => (isPure() ? pure.countdown(t - ref, { at: ref }) : fmtBase.relative(t, ref)),
+};
 const instances = {};
 let dirty = true;
 const requestRender = () => {
@@ -109,6 +135,8 @@ const ctx = Object.freeze({
   model,
   store,
   fmt,
+  pure,
+  isPure,
   theme,
   icons,
   goto,
@@ -122,8 +150,12 @@ const ctx = Object.freeze({
 });
 
 // ---------- URL parameters ----------
-// ?t=<unix seconds | ISO with zone>  &view=rings|timeline|wave|calendar|sound  &zone=<IANA>  &rate=<n>
+// ?t=<unix seconds | ISO with zone> | ?pos=<Saros position>  &pure=1  &view=rings|timeline|wave|calendar|sound  &zone=<IANA>  &rate=<n>
 //   &depth=<top depth>  &sel=<selected depth>
+const flagParam = (v) => {
+  const x = String(v ?? '').trim().toLowerCase();
+  return x === '1' || x === 'true' ? true : x === '0' || x === 'false' ? false : null;
+};
 function applyUrl() {
   const q = new URLSearchParams(location.search);
   const patch = {};
@@ -132,13 +164,24 @@ function applyUrl() {
   if (q.has('zone')) patch.zone = q.get('zone'); // invalid zones are ignored by the store
   if (q.has('depth')) patch.topDepth = Math.round(Number(q.get('depth')));
   if (q.has('sel')) patch.selectedLevel = Math.round(Number(q.get('sel'))) - 1;
+  const pureFlag = flagParam(q.get('pure'));
+  if (pureFlag !== null) patch.pure = pureFlag;
   if (Object.keys(patch).length) store.set(patch);
+  // a moment: ?pos=<Saros position> (pure links) or ?t=<unix seconds | ISO with zone>; in pure mode pos wins
+  const decimal = /^\d+(\.\d+)?$/;
+  const pp = q.get('pos');
+  const posOk = pp !== null && decimal.test(pp) && Number(pp) <= model.extent;
   const tp = q.get('t');
-  if (tp) {
+  const timeFromT = () => {
+    if (!tp) return false;
     const asNum = Number(tp);
     const t = Number.isFinite(asNum) ? asNum : Date.parse(tp) / 1000;
-    if (Number.isFinite(t)) store.setTime(t, 'url');
-  }
+    if (!Number.isFinite(t)) return false;
+    store.setTime(t, 'url');
+    return true;
+  };
+  if (posOk && (store.state.pure || !tp)) store.setTime(model.timeOfPosition(Number(pp)), 'url');
+  else timeFromT();
   const rp = q.get('rate');
   if (rp !== null && rp !== '' && Number.isFinite(Number(rp))) store.setRate(Number(rp), 'url');
 }
@@ -239,21 +282,32 @@ const RATES = [
 ];
 let chosenRate = 3600; // the speed Play uses; mirrors store.rate whenever a time-lapse runs
 
+/** Fill the speed select for the current mode (values are the same numeric rates; only the labels differ). */
+function buildRateOptions() {
+  const rate = $('#tp-rate');
+  const fwd = isPure() ? pure.RATES.map((p) => [String(p.rate), p.label]) : RATES;
+  const back = fwd.slice(1);
+  rate.innerHTML =
+    '<optgroup label="Forward">' +
+    fwd.map(([v, l]) => `<option value="${v}">${l}</option>`).join('') +
+    '</optgroup><optgroup label="Backward">' +
+    back.map(([v, l]) => `<option value="-${v}">${isPure() ? l + ' backward' : '−' + l}</option>`).join('') +
+    '</optgroup>';
+  syncRateSelect();
+}
+
 function buildHeader() {
   $('#tp-prev').innerHTML = icons.prev;
   $('#tp-next').innerHTML = icons.next;
   $('#tp-play').innerHTML = icons.play;
   $('#btn-link').innerHTML = icons.link;
+  $('#btn-pure').innerHTML = icons.pure;
   $('#btn-sound').innerHTML = icons.soundOff;
+  $('#btn-pure').addEventListener('click', togglePure);
+  $('#btn-glossary').addEventListener('click', () => ($('#glossary').hidden ? openGlossary() : closeGlossary()));
 
   const rate = $('#tp-rate');
-  rate.innerHTML =
-    '<optgroup label="Forward">' +
-    RATES.map(([v, l]) => `<option value="${v}">${l}</option>`).join('') +
-    '</optgroup><optgroup label="Backward">' +
-    RATES.slice(1).map(([v, l]) => `<option value="-${v}">−${l.replace('×', '×')}</option>`).join('') +
-    '</optgroup>';
-  syncRateSelect();
+  buildRateOptions();
 
   const zone = $('#zone');
   let zones = [];
@@ -272,7 +326,7 @@ function buildHeader() {
   $('#tp-prev').addEventListener('click', () => stepCycle(-1));
   $('#tp-next').addEventListener('click', () => stepCycle(+1));
   $('#tp-live').addEventListener('click', () => {
-    if (store.live) toast('Showing the device clock');
+    if (store.live) toast('Showing the live clock');
     else store.goLive();
   });
   $('#tp-play').addEventListener('click', togglePlay);
@@ -292,7 +346,7 @@ function togglePlay() {
   if (store.playing) return store.pause();
   const t = store.t();
   if ((chosenRate > 0 && t >= model.tMax - 1) || (chosenRate < 0 && t <= model.tMin + 1)) {
-    return toast(chosenRate > 0 ? 'Already at the end of the catalogue (2857)' : 'Already at the start of the catalogue (1613)');
+    return toast(isPure() ? (chosenRate > 0 ? 'Already at the end of the catalogue' : 'Already at the start of the catalogue') : chosenRate > 0 ? 'Already at the end of the catalogue (2857)' : 'Already at the start of the catalogue (1613)');
   }
   store.setRate(chosenRate);
 }
@@ -318,7 +372,7 @@ function syncRateSelect() {
     }
     opt.value = v;
     const abs = Math.abs(r);
-    opt.textContent = `×${abs >= 100 ? Math.round(abs).toLocaleString('en') : Number(abs.toPrecision(3))} (custom${r < 0 ? ', backward' : ''})`;
+    opt.textContent = isPure() ? pure.rateLabel(r) : `×${abs >= 100 ? Math.round(abs).toLocaleString('en') : Number(abs.toPrecision(3))} (custom${r < 0 ? ', backward' : ''})`;
   }
   sel.value = v;
 }
@@ -336,6 +390,90 @@ function syncZoneSelect() {
   sel.value = z;
 }
 
+/** The speed Play uses by default: one η per beat in pure mode, one hour per real second otherwise. */
+const ETA_RATE = pure.RATES.find((p) => p.id === 'eta').rate;
+function followModeSpeed() {
+  if (isPure() && chosenRate === 3600) chosenRate = ETA_RATE;
+  else if (!isPure() && Math.abs(chosenRate - ETA_RATE) < 1e-6) chosenRate = 3600;
+}
+
+/**
+ * In pure mode the address bar must not carry a Unix time or a zone: an arrival link (?t=…&zone=…) becomes the same
+ * moment as a Saros position (?pos=…). Live URLs without t/zone are left alone (a reload should stay live).
+ */
+function purifyUrl() {
+  if (!store.state.pure) return;
+  const u = new URL(location.href);
+  const had = u.searchParams.has('t') || u.searchParams.has('zone');
+  if (!had) return;
+  const tp = u.searchParams.get('t');
+  const t = tp !== null && Number.isFinite(Number(tp)) ? Number(tp) : tp ? Date.parse(tp) / 1000 : NaN;
+  const pos = Number.isFinite(t) ? model.positionOf(t) : null;
+  u.searchParams.delete('t');
+  u.searchParams.delete('zone');
+  if (pos !== null && !u.searchParams.has('pos')) u.searchParams.set('pos', pos.toFixed(12));
+  try {
+    history.replaceState(null, '', u);
+  } catch {
+    /* sandboxed frames may refuse; the address bar is cosmetic */
+  }
+}
+
+function togglePure() {
+  store.set({ pure: !store.state.pure });
+  purifyUrl();
+  toast(store.state.pure ? 'Pure mode: Fractonica terms only' : 'Pure mode off');
+}
+
+// ---------- pure-mode glossary ----------
+function buildGlossary() {
+  const el = $('#glossary');
+  const U = Object.fromEntries(pure.UNITS.map((u) => [u.id, u.sym]));
+  const row = (sym, text) => `<tr><th scope="row" class="mono">${sym}</th><td>${text}</td></tr>`;
+  el.innerHTML = `
+    <div class="card-h"><h2>Pure mode glossary</h2><span class="spacer"></span><button class="btn btn-sm" type="button" id="glossary-close" aria-label="Close the glossary">Close</button></div>
+    <div class="card-b glossary-b">
+      <p>Everything here is counted in Fractonica periods.</p>
+      <h3>Units</h3>
+      <table class="glossary-t"><tbody>
+        ${row(`${U.alpha} ${U.beta} ${U.gamma}`, 'one cycle of depth 1, 2, 3')}
+        ${row(`${U['delta-half']} ${U['epsilon-half']} ${U['zeta-half']}`, 'half of a depth-4, depth-5, depth-6 cycle')}
+        ${row(`${U.eta} ${U.iota} ${U.lambda}`, 'one cycle of depth 7, 9, 11 (θ and κ, depths 8 and 10, are skipped)')}
+        ${row(`${U.mu} ${U.nu} ${U.xi}`, 'one cycle of depth 12, 13, 14')}
+      </tbody></table>
+      <p class="mono glossary-ratio">1γ = 10 δ½ · 1δ½ = 5 ε½ · 1ε½ = 7 ζ½ · 1ζ½ = 5½ η · 1η = 36 ι · 1ι = 65 λ · 1λ = 5 μ · 1μ = 5 ν · 1ν = 7 ξ</p>
+      <h3>Reading what you see</h3>
+      <table class="glossary-t"><tbody>
+        ${row('6ι 43λ', 'a span: six ι and forty-three λ. "in 6ι 43λ" counts down to a moment, "6ι 43λ ago" back from it.')}
+        ${row('0η 29ι 21λ', 'where you are inside the current ζ cycle: completed η, ι, λ, counted from 0.')}
+        ${row('ζ#5', 'the 5th ζ cycle inside its ε. A # number is an ordinal and counts from 1.')}
+        ${row('Zeta Pentafracton', 'the same cycle by name. Monofracton is 1st, Difracton 2nd, Trifracton 3rd … Tridecafracton 13th.')}
+        ${row('α#6 β#4 γ#9', 'an address: the 6th α, its 4th β, its 9th γ. δ½#6 · ε½#4 · ζ½#7 continues it in halves.')}
+        ${row(`<span class="glossary-pair">${pure.pairHTML(0.8125 + 0.0156)}</span>`, 'phase through a cycle: two glyphs, 16 × 16 = 256 states. The left glyph is the coarse position, the right glyph the fine one; a dot marks the falling half.')}
+        ${row('η per beat', 'a speed: one η passes per beat. A beat is one tick of real time; "real time" is one beat per beat.')}
+        ${row('→ Eta Difracton begins', 'what starts the moment this cycle ends.')}
+        ${row('sync #4820', 'the solar sync: 19 η cycles, counted from the anchor sync (#0). Its yellow glyphs are on the face.')}
+        ${row('drift −623λ', 'how far this solar sync\'s start has slipped against the solar rhythm, counted in λ; a minus sign means earlier.')}
+        ${row('#22', 'an eclipse of the catalogue, numbered like the position: #0 is the first, #69 the last (eclipse #22 sits at pos 22).')}
+        ${row('pos 22.927850', 'the clock\'s own coordinate: how many Saros intervals have passed since the first eclipse of the catalogue.')}
+      </tbody></table>
+    </div>`;
+  el.querySelector('#glossary-close').addEventListener('click', closeGlossary);
+}
+function openGlossary() {
+  const el = $('#glossary');
+  buildGlossary();
+  el.hidden = false;
+  $('#btn-glossary').setAttribute('aria-expanded', 'true');
+  el.querySelector('#glossary-close').focus();
+}
+function closeGlossary() {
+  const el = $('#glossary');
+  if (el.hidden) return;
+  el.hidden = true;
+  $('#btn-glossary').setAttribute('aria-expanded', 'false');
+}
+
 async function toggleSound() {
   const s = instances.sound;
   if (!s?.toggle) return toast('Sound module not available');
@@ -350,9 +488,15 @@ async function copyLink() {
   const u = new URL(location.href);
   u.search = '';
   u.hash = '';
-  u.searchParams.set('t', store.t().toFixed(3));
+  if (isPure()) {
+    // pure links carry a Saros position, not a Unix time
+    u.searchParams.set('pos', model.positionOf(store.t())?.toFixed(12) ?? '0');
+    u.searchParams.set('pure', '1');
+  } else {
+    u.searchParams.set('t', store.t().toFixed(3));
+  }
   u.searchParams.set('view', store.state.view);
-  if (store.state.zone) u.searchParams.set('zone', store.state.zone);
+  if (store.state.zone && !isPure()) u.searchParams.set('zone', store.state.zone);
   if (store.state.selectedLevel !== 6) u.searchParams.set('sel', String(store.state.selectedLevel + 1));
   if (store.state.topDepth !== 7) u.searchParams.set('depth', String(store.state.topDepth));
   if (store.playing) u.searchParams.set('rate', String(store.rate));
@@ -389,6 +533,8 @@ const roEls = {
   prev: $('#tp-prev'),
   next: $('#tp-next'),
   sound: $('#btn-sound'),
+  pureBtn: $('#btn-pure'),
+  brandSub: $('#brand-sub'),
 };
 const last = {};
 const setText = (key, el, text) => {
@@ -406,10 +552,38 @@ function setHtml(key, el, html) {
 
 function updateHeader(frame) {
   const t = frame.t;
-  setText('time', roEls.time, fmt.time(t, { seconds: true }));
-  setText('date', roEls.date, fmt.long(t).split(',')[0]);
-  setText('tz', roEls.tz, fmt.tag(t));
-  setText('pos', roEls.pos, frame.inRange ? `pos ${frame.pos.toFixed(6)}` : 'outside catalogue');
+  const pureMode = isPure();
+  if (last.pure !== pureMode) {
+    last.pure = pureMode;
+    document.body.dataset.pure = pureMode ? '1' : '';
+    if (!pureMode) delete document.body.dataset.pure;
+    roEls.brandSub.textContent = pureMode ? 'Pure mode' : 'Saros 141 clock';
+    roEls.pureBtn.setAttribute('aria-pressed', String(pureMode));
+    $('#readout').title = pureMode ? 'η ι λ count completed units inside the current ζ cycle, from 0. # numbers and names count from 1. Press ? for the glossary.' : '';
+    roEls.pureBtn.classList.toggle('is-on', pureMode);
+    followModeSpeed();
+    buildRateOptions();
+    $('#btn-glossary').hidden = !pureMode;
+    if (!pureMode) closeGlossary();
+    // force the readout to repaint in the new vocabulary
+    for (const k of ['time', 'date', 'tz', 'pos']) delete last[k];
+  }
+  if (pureMode) {
+    const c = frame.inRange ? pure.clock(t) : null;
+    setHtml(
+      'time',
+      roEls.time,
+      c ? `<span class="pure-clock" role="text" aria-label="${c.eta} η, ${c.iota} ι, ${c.lambda} λ completed in the current ζ"><b>${c.eta}</b><i>η</i><b>${c.iota}</b><i>ι</i><b>${c.lambda}</b><i>λ</i></span>` : '—',
+    );
+    setText('date', roEls.date, frame.inRange ? pure.dateText(t) : 'outside the catalogue');
+    setText('tz', roEls.tz, '');
+    setText('pos', roEls.pos, frame.inRange ? `pos ${frame.pos.toFixed(6)}` : '');
+  } else {
+    setText('time', roEls.time, fmt.time(t, { seconds: true }));
+    setText('date', roEls.date, fmt.long(t).split(',')[0]);
+    setText('tz', roEls.tz, fmt.tag(t));
+    setText('pos', roEls.pos, frame.inRange ? `pos ${frame.pos.toFixed(6)}` : 'outside catalogue');
+  }
   const sel = store.state.selectedLevel;
   if (last.sel !== sel) {
     last.sel = sel;
@@ -423,7 +597,7 @@ function updateHeader(frame) {
   document.body.dataset.mode = live ? 'live' : 'travel';
   roEls.live.className = 'btn pill ' + (live ? 'is-live' : 'is-travel');
   setHtml('live', roEls.live, live ? '<span class="dot"></span>LIVE' : '<span class="dot"></span>NOW ↩');
-  roEls.live.title = live ? 'Showing the device clock' : 'Return to the device clock (N)';
+  roEls.live.title = live ? 'Showing the live clock' : 'Return to the live clock (N)';
   setHtml('play', roEls.play, store.playing ? icons.pause : icons.play);
   const s = instances.sound;
   const on = !!s?.enabled;
@@ -437,7 +611,8 @@ function onKey(e) {
   if (e.metaKey || e.ctrlKey || e.altKey) return;
   const tag = e.target?.tagName;
   if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || e.target?.isContentEditable) return;
-  if (e.repeat && (e.key === 'm' || e.key === 'M')) return;
+  if (e.key === 'Escape') return closeGlossary();
+  if (e.repeat && /^[mMpP]$/.test(e.key)) return;
   if (e.key === ' ' && tag !== 'BUTTON') {
     e.preventDefault();
     togglePlay();
@@ -445,6 +620,8 @@ function onKey(e) {
   else if (e.key === '[') stepCycle(-1);
   else if (e.key === ']') stepCycle(+1);
   else if (e.key === 'm' || e.key === 'M') toggleSound();
+  else if (e.key === 'p' || e.key === 'P') togglePure();
+  else if (e.key === '?' && isPure()) ($('#glossary').hidden ? openGlossary() : closeGlossary());
   else if (/^[1-5]$/.test(e.key)) store.set({ view: TAB_IDS[Number(e.key) - 1] });
 }
 
@@ -485,6 +662,12 @@ function frameLoop(nowMs) {
 // ---------- boot ----------
 async function boot() {
   applyUrl();
+  if (store.state.pure) {
+    document.body.dataset.pure = '1';
+    $('#btn-glossary').hidden = false;
+  }
+  $('#brand-sub').textContent = store.state.pure ? 'Pure mode' : 'Saros 141 clock';
+  purifyUrl();
   buildTabs();
   buildHeader();
   store.subscribe((kind, patch) => {
@@ -494,7 +677,7 @@ async function boot() {
     if (kind === 'settings' && patch && 'zone' in patch) syncZoneSelect();
   });
   store.onTime((reason) => {
-    if (reason === 'edge') toast('Time-lapse stopped at the end of the catalogue');
+    if (reason === 'edge') toast(store.t() <= model.tMin + 1 ? 'Time-lapse stopped at the start of the catalogue' : 'Time-lapse stopped at the end of the catalogue');
   });
   document.addEventListener('keydown', onKey);
   window.addEventListener('resize', requestRender);

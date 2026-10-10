@@ -213,6 +213,69 @@
   .ladder-row { transition: none; }
 }
 
+/* ---------- pure mode (.ladder.is-pure) ----------
+   Names instead of counters, ladder-unit countdowns, and the phase as a pair of 2-stroke glyphs (256 states,
+   the shared .pure-pair of pure.pairHTML): the pair takes the glyph column of the row (it replaces both the
+   single glyph and the percent). */
+.ladder-tip .pure-pair, .upnext-tip .pure-pair { color: var(--teal); gap: 2px; }
+.ladder-tip .pure-pair svg, .upnext-tip .pure-pair svg { height: 18px; width: auto; display: block; overflow: visible; }
+.ladder-facts > .ladder-pure-only { display: none; }
+.ladder.is-pure .ladder-facts > .ladder-pure-only { display: grid; }
+
+.ladder.is-pure .ladder-row {
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  grid-template-areas:
+    "chip count left glyph"
+    "bar  bar   bar  glyph";
+}
+.ladder.is-pure .ladder-row.is-selected {
+  grid-template-areas:
+    "chip count left glyph"
+    "bar  bar   bar  glyph"
+    "detail detail detail detail";
+}
+.ladder.is-pure .ladder-count {
+  font-family: var(--font-ui); font-size: 12.5px; letter-spacing: 0.01em;
+  min-width: 0; overflow: hidden; text-overflow: ellipsis;
+}
+.ladder.is-pure .ladder-left { min-width: 0; }
+.ladder.is-pure .ladder-left.is-still { font-size: 11.5px; }
+.ladder.is-pure .ladder-pct { display: none; }
+.ladder.is-pure .ladder-glyph { justify-content: flex-end; }
+.ladder.is-pure .ladder-glyph .pure-pair { gap: 3px; }
+.ladder.is-pure .ladder-glyph svg { height: 28px; }
+
+.ladder.is-pure .ladder-facts-now > div { align-items: center; }
+.ladder.is-pure .ladder-facts dd.ladder-through,
+.ladder.is-pure .ladder-sector { display: flex; align-items: center; flex-wrap: nowrap; gap: 3px 8px; min-width: 0; }
+.ladder.is-pure .ladder-sector-t { min-width: 0; }
+.ladder.is-pure .ladder-through-p,
+.ladder.is-pure .ladder-sector-p { display: inline-flex; color: var(--teal); }
+.ladder.is-pure .ladder-through-p .pure-pair,
+.ladder.is-pure .ladder-sector-p .pure-pair { gap: 2px; }
+.ladder.is-pure .ladder-through-p svg,
+.ladder.is-pure .ladder-sector-p svg { height: 22px; width: auto; display: block; overflow: visible; }
+.ladder.is-pure .ladder-through-t { font-size: 12px; color: var(--ink); }
+.ladder-cyc { display: grid; gap: 1px; }
+.ladder-cyc-n { color: var(--ink); font-weight: 600; }
+.ladder-cyc-a { font-size: 11px; }
+.ladder.is-pure .ladder-end-v { font-weight: 600; }
+
+.ladder-tip-ph { display: flex; align-items: center; gap: 8px; }
+.ladder-tip-ph .pure-pair svg { height: 22px; }
+
+@container ladder (min-width: 640px) {
+  .ladder.is-pure .ladder-row {
+    grid-template-columns: 52px 11em minmax(80px, 1fr) 10ch auto;
+    grid-template-areas: "chip count bar left glyph";
+  }
+  .ladder.is-pure .ladder-row.is-selected {
+    grid-template-areas:
+      "chip count bar left glyph"
+      "detail detail detail detail detail";
+  }
+}
+
 /* =====================================================================
    UP NEXT
    ===================================================================== */
@@ -346,4 +409,35 @@
   .upnext-hero { padding: 12px 10px; }
   .upnext-hero-main { gap: 10px; }
   .upnext-badge { width: 46px; height: 46px; }
+}
+
+/* ---------- pure mode (.upnext.is-pure) ----------
+   The hero names what begins (and its address chain) instead of a date; the list rows carry the name of the cycle
+   that begins; the phase is a glyph pair. */
+.upnext-hero .upnext-pct { display: inline-flex; align-items: center; justify-content: flex-end; min-height: 1px; }
+.upnext.is-pure .upnext-pct { margin: -4px 0 -2px; color: var(--teal); }
+.upnext.is-pure .upnext-pct .pure-pair { gap: 2px; }
+.upnext.is-pure .upnext-pct svg { height: 22px; width: auto; display: block; overflow: visible; }
+.upnext.is-pure .upnext-when { font-weight: 600; color: var(--ink); }
+.upnext.is-pure .upnext-zone { display: block; margin-top: 1px; font-weight: 400; font-size: 11px; line-height: 1.35; overflow-wrap: anywhere; }
+.upnext.is-pure .upnext-zone:empty { display: none; }
+.upnext.is-pure .upnext-day { color: var(--ink); }
+.upnext.is-pure .upnext-clock { display: none; color: var(--mute); font-size: 11px; }
+.upnext.is-pure .upnext-in-s { letter-spacing: -0.01em; }
+
+/* narrow cards (320 px phones): the name of what begins wraps to a second line instead of being cut */
+@container upnext (max-width: 340px) {
+  .upnext.is-pure .upnext-dt { white-space: normal; }
+  .upnext.is-pure .upnext-day { overflow: visible; text-overflow: clip; line-height: 1.25; }
+}
+
+@container upnext (min-width: 520px) {
+  .upnext.is-pure .upnext-dt { justify-content: flex-start; }
+  .upnext.is-pure .upnext-day { min-width: 0; overflow: visible; }
+}
+/* the date counters of a turnover (δ½ 6 · ε½ 5 · ζ½ 4) need the room of a full-width card */
+@container upnext (min-width: 640px) {
+  .upnext.is-pure .upnext-dt { justify-content: space-between; gap: 12px; }
+  .upnext.is-pure .upnext-day { flex: none; }
+  .upnext.is-pure .upnext-clock { display: block; min-width: 0; margin-left: auto; overflow: hidden; text-overflow: ellipsis; }
 }

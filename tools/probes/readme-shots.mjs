@@ -6,11 +6,22 @@ import { fileURLToPath } from 'node:url';
 const img = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'docs', 'img');
 fs.mkdirSync(img, { recursive: true });
 const t = 1791460800; // SPEC test vector A, 2026-10-08T12:00:00Z
+const shots = [
+  ['rings', 'view=rings&zone=UTC'],
+  ['timeline', 'view=timeline&zone=UTC'],
+  ['wave', 'view=wave&zone=UTC'],
+  ['calendar', 'view=calendar&zone=UTC'],
+  ['sound', 'view=sound&zone=UTC'],
+  ['wave-solar', 'view=wave&solar=1&zone=UTC&sel=5'],
+  ['pure-rings', 'view=rings&pure=1'],
+  ['pure-timeline', 'view=timeline&pure=1'],
+  ['pure-calendar', 'view=calendar&pure=1'],
+];
 await withApp(async ({ page, url, errors }) => {
-  for (const tab of ['rings', 'timeline', 'wave', 'calendar', 'sound']) {
-    await page.goto(url(`?t=${t}&view=${tab}&zone=UTC`));
-    await page.waitForTimeout(1200);
-    await page.screenshot({ path: path.join(img, `${tab}.jpg`), type: 'jpeg', quality: 84 });
+  for (const [name, q] of shots) {
+    await page.goto(url(`?t=${t}&${q}`));
+    await page.waitForTimeout(1300);
+    await page.screenshot({ path: path.join(img, `${name}.jpg`), type: 'jpeg', quality: 84 });
   }
   console.log(errors.length ? errors : 'no errors');
 }, { viewport: { width: 1440, height: 900 } });
