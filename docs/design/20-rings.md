@@ -56,21 +56,22 @@ glyph (2-stroke, from the library) next to it. Dragging the cursor scrubs time w
 - Out of range: dial greyed with the catalogue range message.
 - Rendering must stay under ~3 ms: precompute geometry on resize/range change; per frame only draw arcs + text that changed.
 
-## Pure mode (revision 2: whole cycles, named units, the Blink)
-Same view, Fractonica terms only (docs/design/80-pure.md). Strings live in `src/ui/rings/pure-text.js`; `rings.js` asks the mode on every frame.
+## Pure mode (revision 3: major periods in words, minor ones in counts; SPEC §15)
+Same view, Fractonica terms only. Strings live in `src/ui/rings/pure-text.js`; `rings.js` asks the mode on every frame.
 
-- **Centre**: `ENDS IN 1θ 2ι 3κ` with `→ Eta Difracton` under it. Two non-zero counts (`pure.durationPos`), plus a third while it is steady
-  (never finer than λ: a λ or coarser changes at most every 7.8 s of real time); a compact dial and a span that leads with λ or finer have two.
-- **Quarter chips**: countdown (negative once passed: `−5θ 1κ`) and the place on the header clock (`ε#5 · ζ#4 · 0η 9ι`, the ordinals left to the header
-  while they do not change).
-- **Coordinates** (wave labels, chips, facts): the digits of the header clock: ordinals α β γ δ ε ζ, then the counters η ι λ and μ ν. θ and κ are
-  units of the ladder but not digits of the clock. The resolution follows the cycle it labels (a quarter is the step: an η cycle resolves to ι, a κ
-  cycle to λ); below one Blink (the ν and ξ rings) the ν counter has decimals (`3.2ν`, `3.43ν`) so the five boundaries still differ.
-- **Phase card**: the glyph pair (`phase 13 and 0 of 256`) instead of a percentage; Started / Ends as ordinals + counters + "→ the cycle that begins";
-  Length is the exact nominal length from `pure.cycleLength` and the unit's name (`1η (Helion)`, `1γ`, the ξ ring `0.14ν`); only a cycle clipped by
-  the catalogue is measured.
-- **Real time is counted in Blinks** (`blinkSpan`): "one turn takes about 325 Blinks" in the help, `about 58 500 Blinks per cycle` on a ring too
-  fast to follow. Whole numbers, because the ladder is a product of whole factors.
-- **Tooltips** name the cycle and its child (`Kappa Monofracton · ends → Kappa Difracton begins · lasts 1κ (Chromon) · started 1κ 8λ ago`).
-- **Help**: names from 1, counters from 0, spans are counts, the units have names (Helion, Preon, Flavon, Blink), real time is Blinks, glossary pointer.
-- Toolbar / depth-range / ring labels are depth chips (`η 7`) and need no translation.
+- **Major rings (α β γ δ)** are said in words with their quarter: the centre reads `Delta Trifracton End`, the phase card shows the quarter
+  word (`End`, "quarter") where a minor ring shows its glyph pair, the Glyph fact says `End quarter`, the slider `Falling, End quarter of
+  Delta Trifracton`. No phase pair is ever drawn for a major ring.
+- **Minor rings** are named by where they start in their Nuclide (`ε#5 33η`, `ε#5 33η 28ι`; ε itself `ε#5`), with the phase pair. ζ θ κ μ are
+  no units: their length is `11η`, `4ι`, `13λ`, `5ν`; ξ is `0.14ν`.
+- **Centre**: `ENDS IN 6ι 43λ` and `→ 34η begins` (what begins, as briefly as the context allows: only the counts that change inside one
+  Nuclide, the full placing across one, `→ ε#1 of Delta Tetrafracton begins`, `→ Delta Tetrafracton begins`). Two counts, plus a third while it
+  is steady (never finer than λ); a compact dial has two.
+- **Coordinates** (wave labels, chips, facts) are the stamp cut to a resolution: the ordinals α# β# γ# δ# ε#, then the counts η (0–76 in the
+  Nuclide) ι λ ν. The resolution follows the cycle (a quarter is the step); below one Blink the ν count has decimals (`3.43ν`). A label's
+  context is the tokens just before its counts (a λ ring reads `ε#5 33η` / `29ι 21λ 0ν`), so the two always join into a piece of the stamp.
+- **Facts**: Length is the exact length with what one cycle is made of (`1δ = 5ε`, `1η (Helion) = 36ι`, `11η`), Address the stamp of the
+  cycle's start (`α#6 › β#4 › γ#9 › δ#3 › ε#5 › 33η`).
+- **Real time is counted in Blinks** (`blinkSpan`, whole Blinks from 100 on): "one turn takes about 325 Blinks", `about 58 500 Blinks per cycle`.
+- **Help**: majors in words with their quarter, minors by their start, counts from 0 / ordinals from 1, the units below Delta skip every other
+  depth, Blinks, glossary pointer. Toolbar, depth range and ring labels are depth chips (`η 7 · 1/11`).

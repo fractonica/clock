@@ -1,5 +1,6 @@
 /**
- * Pure mode of the Sound panel, checked in headless Chromium (docs/design/80-pure.md, revision 2: Blinks and pB):
+ * Pure mode of the Sound panel, checked in headless Chromium (docs/design/80-pure.md and SPEC §15, revision 3: major
+ * periods in words with their quarter, minor units ε η ι λ ν, Blinks and pB):
  *
  *   node tools/checks/check-sound-pure.mjs            run the checks (exit code 1 on failure; screenshots in tools/out/)
  *   node tools/checks/check-sound-pure.mjs --dump F   only write the visible text of every state in the current mode to F
@@ -458,8 +459,8 @@ async function main() {
       {
         const depths = await page.$$eval('.snd-tdepth option', (o) => o.map((x) => x.textContent));
         check(
-          depths.slice(0, 7).join('|') === '2 · β|3 · γ|4 · δ|5 · ε|6 · ζ|7 · η|8 · θ' && depths.at(-1) === '14 · ξ (0.14ν)',
-          'depth options: every depth is one unit (no "1η" tautology); ξ, finer than a Blink, carries its length 0.14ν',
+          depths.join('|') === 'β 2 · Beta|γ 3 · Gamma|δ 4 · Delta|ε 5 · Nuclide|ζ 6 · 11η|η 7 · Helion|θ 8 · 4ι|ι 9 · Preon|κ 10 · 13λ|λ 11 · Flavon|μ 12 · 5ν|ν 13 · Blink|ξ 14 · 0.14ν',
+          'depth options: majors and units by name, the depths between by their length (ζ 6 · 11η), ξ 0.14ν',
           depths.join('|'),
         );
       }
@@ -477,11 +478,17 @@ async function main() {
       check(/^108\.\d pB · octave \+1 · (799|800)¢ · 1ε$/.test(strip5), 'a mixer strip reads pitch in pB · octave offset · cents · cycle length', strip5);
       const stripNu = await page.$eval('.snd-strip[data-level="12"] .snd-l2', (e) => [...e.children].map((c) => c.textContent).filter(Boolean).join(' · '));
       check(/^932\.\d pB · octave \+4 · \d+¢ · 1ν$/.test(stripNu), 'the finest mixer strip: 932.6 pB, a Blink long', stripNu);
+      const lengths = await page.$$eval('.snd-strip .snd-per', (e) => e.map((x) => x.textContent));
+      check(
+        lengths.join(' ') === '1α 1β 1γ 1δ 1ε 11η 1η 4ι 1ι 13λ 1λ 5ν 1ν 0.14ν',
+        'mixer strips: the depths between the units are counts of the next unit (ζ 11η, θ 4ι, κ 13λ, μ 5ν)',
+        lengths.join(' '),
+      );
       check((await q(page, '.snd-strip[data-level="2"] .snd-ratio')) === '65/64', 'ratios use a slash (65:64 would read as a time of day)');
       const rateBtns = await page.$$eval('.snd-rate', (b) => b.map((x) => [...x.children].map((c) => c.textContent).join(' ')));
-      check(rateBtns.join('|') === 'Live follow now|real time|λ per Blink|ι per Blink|η per Blink|ζ per Blink|δ per Blink|Pause|Reverse', 'speed buttons are the helper\'s units per Blink, "real time" for ×1 (no bare multiplier)', rateBtns.join(' | '));
+      check(rateBtns.join('|') === 'Live follow now|real time|λ per Blink|ι per Blink|η per Blink|ε per Blink|δ per Blink|Pause|Reverse', 'speed buttons are the helper\'s units per Blink, "real time" for ×1 (no bare multiplier)', rateBtns.join(' | '));
       const rateTips = await page.$$eval('.snd-rate', (b) => b.map((x) => x.getAttribute('title')));
-      check(rateTips.slice(2, 7).join('|') === 'One Flavon passes every Blink|One Preon passes every Blink|One Helion passes every Blink|One Hadron passes every Blink|One Atom passes every Blink', 'speed tooltips name the unit: "One Helion passes every Blink"', rateTips.join(' | '));
+      check(rateTips.slice(2, 7).join('|') === 'One Flavon passes every Blink|One Preon passes every Blink|One Helion passes every Blink|One Nuclide passes every Blink|One Delta passes every Blink', 'speed tooltips name the unit: "One Helion passes every Blink"', rateTips.join(' | '));
       // every speed button says exactly what the header's speed select says for the same rate
       const headerSays = await page.evaluate(() => {
         const sel = document.querySelector('#tp-rate');
@@ -590,14 +597,36 @@ async function main() {
 
       // tooltips that carry pairs, a voice and the ring
       await page.evaluate(() => window.__fractonica.store.setRate(0));
+      await page.evaluate((t) => window.__fractonica.store.setTime(t), T);
       await page.hover('.snd-strip[data-level="4"]');
       await page.waitForTimeout(150);
-      const tip = await page.$eval('.snd-tip', (e) => ({ text: e.textContent.replace(/\s+/g, ' '), pairs: e.querySelectorAll('.pure-pair svg').length }));
+      const tipNow = () => page.$eval('.snd-tip', (e) => ({ text: e.textContent.replace(/\s+/g, ' '), pairs: e.querySelectorAll('.pure-pair svg').length, phase: !!e.querySelector('[aria-label^="phase"]') }));
+      const tip = await tipNow();
       check(
-        tip.pairs === 4 && /one cycle = 1ε/.test(tip.text) && /Placed 1 octave above the ground: 108\.5 pB/.test(tip.text) && /True rate of this cycle: 1 per 4 504 500 Blinks/.test(tip.text),
-        'voice tooltip: ratio, period, placed pitch in pB, rate per Blink, phase and loudness as glyph pairs',
+        tip.pairs === 4 && /^ε depth 5 · Nuclide, a minor unit · one cycle = 1ε/.test(tip.text) && /Placed 1 octave above the ground: 108\.5 pB/.test(tip.text) && /True rate of this cycle: 1 per 4 504 500 Blinks/.test(tip.text),
+        'voice tooltip: unit, period, placed pitch in pB, rate per Blink, phase and loudness as glyph pairs',
         tip.text,
       );
+      await page.mouse.move(2, 2);
+      // a major period: its running cycle in words with the quarter, and no phase pair (only the loudness pair)
+      await page.hover('.snd-strip[data-level="3"]');
+      await page.waitForTimeout(150);
+      const tipD = await tipNow();
+      check(
+        tipD.pairs === 2 && !tipD.phase && /^δ depth 4 · Delta, a major period · one cycle = 1δ/.test(tipD.text) && /Now: Delta Trifracton End \((rising|falling|at its peak|in its valley)\), loudness/.test(tipD.text),
+        'voice tooltip of δ: "Delta Trifracton End" (SPEC §15.6, vector A), no phase pair',
+        tipD.text,
+      );
+      await page.mouse.move(2, 2);
+      await page.hover('.snd-strip[data-level="5"]');
+      await page.waitForTimeout(150);
+      const tipZ = await tipNow();
+      check(tipZ.phase && /^ζ depth 6 · between two units · one cycle = 11η/.test(tipZ.text) && !/fracton/.test(tipZ.text), 'voice tooltip of ζ: between two units, 11η, its phase pair, no fracton name', tipZ.text);
+      await page.mouse.move(2, 2);
+      await page.hover('.snd-moment');
+      await page.waitForTimeout(150);
+      const tipM = await tipNow();
+      check(/Plays the chord of Delta Trifracton End ε#5 33η 29ι as a short arpeggio/.test(tipM.text), '"Hear this moment" names the moment by the short date (SPEC §15.6)', tipM.text);
       await page.mouse.move(2, 2);
 
       // switching the mode while a tooltip is open re-words it at once

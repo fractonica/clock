@@ -6,11 +6,12 @@
  * cycle and lets the cursor be dragged to scrub time inside it. Geometry and cycle maths live in
  * ./rings/geometry.js, text formatting in ./rings/text.js, the two renderers in dial.js and wave.js.
  *
- * Pure mode (docs/design/80-pure.md): the same view in Fractonica terms only. Every sentence that would carry a
- * Gregorian date, a clock time, an Earth unit or a percentage is written again in ./rings/pure-text.js (cycle names,
- * coordinates on the unit ladder, countdowns counted in whole-cycle units "1θ 2ι", real time in Blinks,
- * "→ the cycle that begins") and the percentage becomes a pair of two-stroke glyphs. The mode is read on every
- * frame, so switching is live in both directions.
+ * Pure mode (docs/design/80-pure.md, SPEC §15): the same view in Fractonica terms only. Every sentence that would carry a
+ * Gregorian date, a clock time, an Earth unit or a percentage is written again in ./rings/pure-text.js: the major rings
+ * (α β γ δ) in words with their quarter ("Delta Trifracton End", the quarter word where a percentage would be), the minor
+ * rings by where their cycle starts in its Nuclide ("ε#5 33η") with a pair of two-stroke glyphs for the percentage,
+ * coordinates as pieces of the stamp, countdowns on the ladder ("6ι 43λ"), real time in Blinks, "→ 34η begins". The mode
+ * is read on every frame, so switching is live in both directions.
  */
 import { createDial } from './rings/dial.js';
 import { createWave } from './rings/wave.js';
@@ -526,8 +527,9 @@ export function mount(el, ctx) {
     const toNext = lv.next.time !== null ? ` · to ${lv.next.name}` : '';
     const pillCore = `${PHASE_MARK[pw.word]} ${pw.word}${toNext}`;
     if (pm) {
-      // the big name is the cycle's own (Eta Monofracton); a small hole keeps the short tag and leaves the name to the card below
-      const name = PT.cycleName(P, sel, lv);
+      // the big name is the cycle's own: a major one in words with its quarter ("Delta Trifracton End"), a minor one by
+      // where it starts in its Nuclide ("ε#5 33η"); a small hole keeps the short tag and leaves the name to the card below
+      const name = PT.displayName(P, sel, lv);
       setText(nodes.name, compactNow ? cycleTag(info, lv) : name);
       setText(nodes.phase, compactNow ? pillCore : `${cycleTag(info, lv)} · ${pillCore}`);
       setText(nodes.fullName, name);
@@ -607,7 +609,12 @@ export function mount(el, ctx) {
     setText(nodes.whName, pm ? PT.cycleName(P, sel, lv) : cycleTag(info, lv));
     setAttr(nodes.whName, 'title', `${levelTag(info)}: cycle ${lv.local + 1} of ${lv.siblings}${info.siblings === null ? ' in the catalogue' : ' inside its parent cycle'}`);
     setText(nodes.whSub, `${pw.word} · value ${valueText(lv.value)}`);
-    if (pm) {
+    if (pm && P.isMajor(sel)) {
+      // a major period is read by its quarter, never by a phase pair (its phase follows from the Nuclide and Helion count)
+      setHTML(nodes.whPct, `<span class="rings-quarter">${esc(PT.quarterWord(P, lv))}</span>`);
+      setText(nodes.whPctL, 'quarter');
+      setAttr(nodes.whPctL, 'aria-hidden', null);
+    } else if (pm) {
       // two glyphs (16 x 16 = 256 states) instead of a percentage; the first one is the glyph the cycle shows now
       setHTML(nodes.whPct, P.pairHTML(lv.phase, { label: 'phase' }));
       setText(nodes.whPctL, `phase ${P.pairText(lv.phase)}`);
@@ -630,9 +637,9 @@ export function mount(el, ctx) {
       const f = cycleStrings(frame, lv).facts;
       const when = (p) => `<span class="mono">${esc(p.date)}</span>${p.time ? `<span class="mono">${esc(p.time)}</span>` : ''}`;
       setHTML(nodes.fStart, `${when(f.start)}<span class="dim">${esc(PT.inText(P, frame.t, lv.start))}</span>`);
-      setHTML(nodes.fEnd, `${when(f.end)}<span class="mono">${esc(f.endLine)}</span><span class="dim">${esc(PT.inText(P, frame.t, lv.end))}</span>`);
+      setHTML(nodes.fEnd, `${when(f.end)}<span class="mono rings-f-next">${esc(f.endLine)}</span><span class="dim">${esc(PT.inText(P, frame.t, lv.end))}</span>`);
       setText(nodes.fLen, `${f.lengthNamed}${lv.clipped ? ' (clipped by the catalogue)' : ''}`);
-      setHTML(nodes.fGlyph, `<span>${esc(PT.stateText(P, lv.phase))}</span><span>value ${valueText(lv.value)}${lv.dotted ? ' · dotted' : ''}</span>`);
+      setHTML(nodes.fGlyph, `<span>${esc(PT.stateText(P, lv.phase, sel))}</span><span>value ${valueText(lv.value)}${lv.dotted ? ' · dotted' : ''}</span>`);
     } else {
       const rel = (t) => countdownBody(fmt, t - frame.t);
       const startRel = frame.t >= lv.start ? `${rel(lv.start)} ago` : `in ${rel(lv.start)}`;
@@ -648,10 +655,13 @@ export function mount(el, ctx) {
     }
     const addrKey = `${sel}:${lv.cycleBig}:${pm ? 'p' : 'n'}`;
     if (memoOf(nodes.fAddr).k !== addrKey) {
-      const path = model.cycleToPath(sel, lv.cycleBig);
-      // pure mode writes an address chain with ordinals (α#6 › β#4 …); the Gregorian-side view keeps the depth chips
-      nodes.fAddr.innerHTML = path
-        .map((n, l) => `<span class="rings-addr" style="--c:${theme.levelColor(l, 1, 72)}">${esc(pm ? P.shortName(l, n) : `${model.levelInfo(l).letter} ${n}`)}</span>`)
+      // pure mode writes the stamp of the cycle's start: the ordinals of the majors and the Nuclide (α#6 › … › ε#5), then the
+      // counts that place a minor cycle in its Nuclide (33η › 29ι); the Gregorian-side view keeps the depth chips
+      const tokens = pm
+        ? PT.addressTokens(P, model, sel, lv.cycleBig)
+        : model.cycleToPath(sel, lv.cycleBig).map((n, l) => ({ level: l, text: `${model.levelInfo(l).letter} ${n}` }));
+      nodes.fAddr.innerHTML = tokens
+        .map(({ level: l, text }) => `<span class="rings-addr" style="--c:${theme.levelColor(l, 1, 72)}">${esc(text)}</span>`)
         .join('<span class="rings-addr-sep" aria-hidden="true">›</span>');
       memoOf(nodes.fAddr).k = addrKey;
       memoOf(nodes.fAddr).c = null;
@@ -660,7 +670,7 @@ export function mount(el, ctx) {
     if (pm) {
       setAttr(waveCanvas, 'aria-valuemax', '255');
       setAttr(waveCanvas, 'aria-valuenow', String(P.pair(lv.phase).index));
-      setAttr(waveCanvas, 'aria-valuetext', PT.sliderText(P, pw.word, lv.phase, PT.cycleName(P, sel, lv)));
+      setAttr(waveCanvas, 'aria-valuetext', PT.sliderText(P, pw.word, lv.phase, PT.cycleName(P, sel, lv), sel));
     } else {
       const pct = Math.round(lv.phase * 100);
       setAttr(waveCanvas, 'aria-valuemax', '100');
@@ -765,7 +775,11 @@ export function mount(el, ctx) {
       return `<div class="rings-tip-h"><b style="color:${color}">${esc(levelTag(info))}</b><span class="dim">about ${esc(pm ? PT.aboutTurn(P, info) : fmt.duration(info.meanSeconds))} per cycle</span></div><div class="rings-tip-row dim">Too fast to follow at this speed: drawn as a glow</div><div class="rings-tip-hint">${click} to select this ring</div>`;
     }
     const head = pm
-      ? `<div class="rings-tip-h"><b style="color:${color}">${esc(PT.cycleName(P, L, lv))}</b><span class="dim">${esc(cycleTag(info, lv))}</span></div><div class="rings-tip-row rings-tip-phase"><span aria-hidden="true">phase</span> ${P.pairHTML(lv.phase, { label: 'phase' })}</div>`
+      ? `<div class="rings-tip-h"><b style="color:${color}">${esc(PT.cycleName(P, L, lv))}</b><span class="dim">${esc(cycleTag(info, lv))}</span></div>` +
+        // a major ring is read by its quarter word, a minor one by its phase pair
+        (P.isMajor(L)
+          ? `<div class="rings-tip-row rings-tip-phase">quarter <b>${esc(PT.quarterWord(P, lv))}</b></div>`
+          : `<div class="rings-tip-row rings-tip-phase"><span aria-hidden="true">phase</span> ${P.pairHTML(lv.phase, { label: 'phase' })}</div>`)
       : `<div class="rings-tip-h"><b style="color:${color}">${esc(cycleTag(info, lv))}</b><span class="dim">${esc(percentText(lv.phase))} through this cycle</span></div>`;
     const ends = `<div class="rings-tip-row dim">${lv.clipped ? 'catalogue ends' : 'ends'} in ${esc(pm ? PT.between(P, frame.t, lv.end) : countdownBody(fmt, lv.remaining))}</div>`;
     if (hover.label) {
@@ -781,12 +795,12 @@ export function mount(el, ctx) {
       const hint = `<div class="rings-tip-hint">${touch ? (running ? 'Tap again to jump back to its start' : 'Tap again to jump to its start') : running ? (L === view.sel ? 'Click to jump back to its start' : 'Click to select this ring') : 'Click to jump to its start'}</div>`;
       if (pm) {
         // the child is named, then what follows it; spans and distances are counted on the ladder
-        const follower = PT.followerName(P, model, ch.level, { cycle: ch.index, clipped: ch.clipped, end: ch.end });
+        const follower = PT.followerName(P, model, ch.level, { cycle: ch.index, cycleBig: BigInt(ch.index), clipped: ch.clipped, end: ch.end });
         body =
           `<div class="rings-tip-sep"></div>` +
-          `<div class="rings-tip-h"><b style="color:${theme.levelColor(L + 1, 1, 72)}">${esc(P.cycleName(ch.level, ch.index))}</b><span class="dim">child · ${esc(cInfo.letter)} ${cInfo.depth} · ${j + 1}/${info.factor}</span></div>` +
+          `<div class="rings-tip-h"><b style="color:${theme.levelColor(L + 1, 1, 72)}">${esc(P.cycleName(ch.level, BigInt(ch.index)))}</b><span class="dim">child · ${esc(cInfo.letter)} ${cInfo.depth} · ${j + 1}/${info.factor}</span></div>` +
           `<div class="rings-tip-row mono">${esc(follower ? `ends → ${follower} begins` : 'the catalogue ends here')}</div>` +
-          `<div class="rings-tip-row dim">lasts ${esc(PT.lengthWithName(P, ch.level, ch, cInfo))} · ${esc(PT.startPhrase(P, ch.start, ch.end, frame.t))}</div>` +
+          `<div class="rings-tip-row dim">lasts ${esc(PT.lengthWithName(P, ch.level, ch))} · ${esc(PT.startPhrase(P, ch.start, ch.end, frame.t))}</div>` +
           hint;
       } else {
         body =
@@ -1362,7 +1376,7 @@ export function mount(el, ctx) {
         const pwd = phaseWord(slv.index, slv.derivative, M).word.toLowerCase();
         announce(
           pm
-            ? `Selected ${PT.cycleName(P, sel, slv)}, ${cycleTag(view.selInfo, slv)}, ${pwd}, ${slv.clipped ? 'the catalogue ends' : 'ends'} in ${PT.between(P, frame.t, slv.end)}`
+            ? `Selected ${PT.displayName(P, sel, slv)}, ${cycleTag(view.selInfo, slv)}, ${pwd}, ${slv.clipped ? 'the catalogue ends' : 'ends'} in ${PT.between(P, frame.t, slv.end)}`
             : `Selected ${cycleTag(view.selInfo, slv)}, ${pwd}, ${slv.clipped ? 'the catalogue ends' : 'ends'} in ${countdownBody(fmt, slv.remaining)}`,
         );
       }

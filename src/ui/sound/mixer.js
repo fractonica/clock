@@ -4,10 +4,11 @@
  *   epsilon 5 · 1625:1024      349.1 Hz · F4 −1¢ · 16.2 d
  * Hovering, focusing or (on a touch screen) tapping a strip explains where the note comes from.
  *
- * Pure mode (`getPure()` returns ctx.pure): the second line reads `108.6 pB · octave +1 · 799¢ · 1ε` (the pitch in
- * cycles per Blink, octave offset, cents above the ground, cycle length counted in Fractonica periods) instead of Hz,
- * note name and an Earth duration, the ratio is written with a slash ("65/64"), and the tooltip speaks in ratios,
- * pB, cents, periods and glyph pairs.
+ * Pure mode (`getPure()` returns ctx.pure, revision 3): the second line reads `108.5 pB · octave +1 · 799¢ · 1ε` (the
+ * pitch in cycles per Blink, octave offset, cents above the ground, cycle length on the unit ladder: `1δ`, `1η`, and for
+ * the depths between the units `11η` (ζ), `4ι` (θ), `13λ` (κ), `5ν` (μ), `0.14ν` (ξ)) instead of Hz, note name and an
+ * Earth duration, the ratio is written with a slash ("65/64"), and the tooltip speaks in ratios, pB, cents, periods and
+ * glyph pairs; a major period (α β γ δ) says its running cycle in words with its quarter instead of a phase pair.
  */
 import { levelColor } from '../../core/theme.js';
 import { frequencyOf, noteLabel } from '../../audio/tuning.js';

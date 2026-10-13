@@ -35,7 +35,7 @@ import { createGlyphBook } from './face/glyphs.js';
 import { createScreen } from './face/screen.js';
 import { createTooltip } from './face/tooltip.js';
 import { buildHowTo, fillHowTo } from './face/howto.js';
-import { pureInfoLabels, pureInfoSpeech, pureTooltipModel, pureRowAriaLabel, pureCaption, letterName, pureRange, PURE_SOLAR_NA, CAPTION_NOTE } from './face/pure.js';
+import { pureInfoLabels, pureInfoSpeech, pureTooltipModel, pureRowAriaLabel, pureCaption, letterName, placeText, bigOf, pureRange, PURE_SOLAR_NA, CAPTION_NOTE } from './face/pure.js';
 
 let uidSeq = 0;
 const OOR_LABEL = 'Fractonica clock face: outside the Saros 141 catalogue, no reading';
@@ -531,8 +531,27 @@ export function mount(el, ctx) {
     s.top = `${L.top}px`;
     ui.dpr = dpr;
   }
-  const ro = typeof ResizeObserver === 'function' ? new ResizeObserver(fit) : null;
+  /**
+   * Pure mode: the caption is the short date in words ("Delta Trifracton End ε#5 33η 29ι 21λ"), or in letters
+   * ("δ#3 ε#5 33η 29ι 21λ") where the words do not fit the card. Measured on a canvas with the caption's own font, so
+   * deciding costs no layout; the width and the font are read again when the card or the mode changes.
+   */
+  let measureCtx = null;
+  function measureCaption() {
+    ui.capW = caption.clientWidth;
+    ui.capFont = getComputedStyle(caption).font;
+  }
+  function pureCaptionFor(t) {
+    const words = pureCaption(pure, t);
+    if (!ui.capW || !words) return words;
+    measureCtx ??= document.createElement('canvas').getContext('2d');
+    if (!measureCtx) return words;
+    measureCtx.font = ui.capFont;
+    return measureCtx.measureText(words).width <= ui.capW ? words : pureCaption(pure, t, { letters: true });
+  }
+  const ro = typeof ResizeObserver === 'function' ? new ResizeObserver(() => (fit(), measureCaption(), (ui.dirty = true))) : null;
   ro?.observe(stage);
+  ro?.observe(caption);
   fit();
 
   // ---- small DOM caches -------------------------------------------------------------------------
@@ -598,6 +617,7 @@ export function mount(el, ctx) {
     if (on) caption.title = CAPTION_NOTE; // which of the caption's numbers count from 0 and which from 1
     else caption.removeAttribute('title');
     screen.setMode(on, on ? { range: pureRange(pure), solarNa: PURE_SOLAR_NA } : null);
+    measureCaption(); // pure mode sets the caption in a smaller font
     fillHowTo(pop, { pure: on, pairHTML: pure?.pairHTML });
     ui.labelKey = ''; // aria labels of the rows and of the screen are derived again
     ui.cycleKey = '';
@@ -611,8 +631,8 @@ export function mount(el, ctx) {
     if (isPure() && frame.inRange) {
       const a = frame.level(lv.top);
       const b = frame.level(lv.bottom);
-      if (a) top.name = letterName(pure, lv.top, a.local);
-      if (b) bottom.name = letterName(pure, lv.bottom, b.local);
+      if (a) top.name = letterName(pure, lv.top, bigOf(a));
+      if (b) bottom.name = letterName(pure, lv.bottom, bigOf(b));
     }
     return [top, bottom];
   }
@@ -693,10 +713,13 @@ export function mount(el, ctx) {
     screen.setCounter('top', lTop.siblings, lTop.local);
     screen.setCounter('bottom', lBot.siblings, lBot.local);
 
-    const cycleKey = `${lTop.local}|${lBot.local}`;
+    const quarterOf = (l) => Math.min(3, Math.floor(l.phase * 4));
+    const cycleKey = `${lTop.local}|${lBot.local}|${quarterOf(lTop)}|${quarterOf(lBot)}`;
     if (topChanged || botChanged || cycleKey !== ui.cycleKey || ui.labelKey === '') {
       ui.cycleKey = cycleKey;
-      const mk = (level, odo, lvl) => ({ letter: letterOf(level), depth: level + 1, state: stateInfo(odo.digits[0]), local: lvl.local, siblings: lvl.siblings, name: pureOn ? letterName(pure, level, lvl.local) : '' });
+      // pure mode: a major cycle in words with its quarter, a minor one by where it sits ("33η of 77 in ε#5")
+      const place = (level, lvl) => placeText(pure, level, lvl, pure.isMajor(level) ? pure.QUARTER_WORDS[quarterOf(lvl)] : null);
+      const mk = (level, odo, lvl) => ({ letter: letterOf(level), depth: level + 1, state: stateInfo(odo.digits[0]), local: lvl.local, siblings: lvl.siblings, place: pureOn ? place(level, lvl) : '' });
       const label = pureOn ? (kind, d) => pureRowAriaLabel(kind, d, pure) : rowAriaLabel;
       screen.setRowLabel('top', label('top', mk(lv.top, top, lTop)));
       screen.setRowLabel('bottom', label('bottom', mk(lv.bottom, bot, lBot)));
@@ -727,7 +750,7 @@ export function mount(el, ctx) {
     }
 
     // ---- caption (only when not live)
-    setText('caption', caption, store.live ? '' : pureOn ? pureCaption(pure, frame.t) : `${fmt.dateTime(frame.t)} ${fmt.tag(frame.t)}`);
+    setText('caption', caption, store.live ? '' : pureOn ? pureCaptionFor(frame.t) : `${fmt.dateTime(frame.t)} ${fmt.tag(frame.t)}`);
 
     // ---- tooltip countdowns stay fresh while it is open
     if (tipDue) showRowTip(ui.tip.row, ui.tip.at);

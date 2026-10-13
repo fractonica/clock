@@ -1,28 +1,29 @@
 /**
- * The pure converter (left half of the Calendar tab in pure mode): Fractonica forms only.
+ * The pure converter (left half of the Calendar tab in pure mode): Fractonica forms only (SPEC §15, revision 3).
  *
- * One moment T is the single source of truth, exactly like the normal converter. Editing any field (a stamp or a
- * name, a date / clock counter, the Saros position, a cycle address, a glyph pair, a solar sync) parses it, pins the
- * converter on the result and repaints every other field. Unpinned, T follows the shown moment.
+ * One moment T is the single source of truth, exactly like the normal converter. Editing any field (a date in words or
+ * letters, a major period by its fracton name, the Nuclide or a count, the Saros position, a cycle address, a glyph pair,
+ * a solar sync) parses it, pins the converter on the result and repaints every other field. Unpinned, T follows the shown
+ * moment.
  *
- *   Moment  - the stamp (date + clock counters), a stamp / name / offset field, six odometer counters, the names of the
- *             running cycles, the eclipses around it counted in ladder units
- *   Cycles  - position (ordinal + fraction + exact), cycle address with a stepper per depth, the glyph PAIR (256 states)
- *             at every depth with a picker for "when does depth d show this pair", the solar sync
+ *   Moment  - the Helion reading (count, phase pair, Preons, Flavons, Blinks), the full date in words, the stamp field
+ *             (reads every date form, counts and offsets), the four major periods by name with their quarter word, the
+ *             Nuclide ε#1–5 and the counts η 0–76, ι 0–35, λ 0–64, ν 0–24, the eclipses around it in ladder units
+ *   Cycles  - position (ordinal + fraction + exact), cycle address (majors and the Nuclide by number, finer depths by
+ *             where they start in their Nuclide), the phase at every depth (major periods: their quarter word; every
+ *             other depth: its glyph PAIR, with a picker for "when does depth d show this pair"), the solar sync
  *
- * Nothing here prints a Gregorian date, a zone, an Earth unit or a percentage: durations are counted in the ladder
- * α β γ δ ε ζ η θ ι κ λ μ ν (src/core/pure.js, one whole cycle per depth), phases are two 2-stroke glyphs, distances are
- * exact position spans. Offsets typed into the stamp field may use any unit, Blinks included (+4 Blinks, +0.5ν).
+ * Major periods (α β γ δ) are said in words with a quarter word and never get a phase pair. Nothing here prints a
+ * Gregorian date, a zone, an Earth unit or a percentage: spans are counted over α β γ δ ε η ι λ ν (src/core/pure.js),
+ * phases are two 2-stroke glyphs, distances are exact position spans. Offsets typed into the stamp field may use any
+ * unit, Blinks included (+2ε 5η, +4 Blinks, +0.5ν).
  *
- * Notation (core/pure.js): X#n is an ordinal counted from 1 (δ#6, the names and addresses), nX a count of completed
- * units counted from 0 (the clock counters 3η 17ι 21λ, spans 6ι 3κ). The counters of the Counters section are written
- * exactly like that: "δ#" before the number box for the date (δ 1–5 in γ, ε 1–5 in δ, ζ 1–7 in ε), the unit after it
- * for the clock (η 0–10 in ζ, ι 0–35 in η, λ 0–64 in ι). Eclipses are named like positions, #22 for the one at
- * position 22; the drift of a sync is pure.driftText. Unit names (Atom, Helion …) appear in tooltips and hints.
+ * Notation: X#n is an ordinal counted from 1 (δ#3, ε#2), nX a count of completed units counted from 0 (33η 29ι 21λ 3ν).
+ * Eclipses are named like positions, #22 for the one at position 22; the drift of a sync is pure.driftText.
  */
 import { h, ICONS, esc, setText, setHtml, setStyle, setAttr, toggleClass, copyText, prefersReducedMotion, hasSound, hearMoment } from './dom.js';
 import { levelColor, GOLD } from '../../core/theme.js';
-import { LEVEL_NAMES } from '../../core/pure.js';
+import { LEVEL_NAMES, ORDINAL_NAMES, QUARTER_WORDS } from '../../core/pure.js';
 import {
   LETTERS,
   MAX_DEPTH,
@@ -47,7 +48,7 @@ import {
   timeOfPositionText,
 } from './convert.js';
 import { parsePure } from './pure-parse.js';
-import { COUNTERS, LEVEL_OF, countersAt, firstMs, landCycleAt, landPath, madeOf, pureEclipseContext, pureShareQuery, pureSolarInfo, setCounter, shiftUnits, spanText } from './pure-conv.js';
+import { COUNTERS, LEVEL_OF, MAJORS, countersAt, firstMs, landCycleAt, landPath, madeOf, pureEclipseContext, pureShareQuery, pureSolarInfo, setCounter, shiftUnits, spanText } from './pure-conv.js';
 
 const FOLLOW_MS = 100; // repaint interval while following a moving clock
 const PURE_POINTS = POINTS.map((p) => (p.id === 'phase' ? { ...p, label: 'Same phase as this moment' } : p));
@@ -79,13 +80,13 @@ export function createPureConverter(ctx, { tip }) {
   let nextId = 0;
   const uid = (p) => `cal-pc-${p}-${++nextId}`;
   const catalogue = () => pure.catalogueText();
-  /** "in 2ζ 3η" / "5λ ago" between the converter's moment and t. */
+  /** "in 2ε 5η" / "5λ ago" between the converter's moment and t. */
   const relTo = (t) => {
     if (Math.abs(t - S.T) < 0.0005) return 'at this moment';
     const text = spanText(model, pure, Math.min(S.T, t), Math.max(S.T, t));
     return t > S.T ? `in ${text}` : `${text} ago`;
   };
-  const stampOf = (t) => pure.stamp(t, 'lambda');
+  const stampOf = (t) => pure.stamp(t, 'nu');
 
   function flash(btn) {
     btn.__orig ??= btn.innerHTML;
@@ -226,8 +227,8 @@ export function createPureConverter(ctx, { tip }) {
   // ---- stamp / name / offset field
   const fStamp = field({
     label: 'Stamp or name',
-    placeholder: 'Gamma Difracton · α#6 β#4 γ#9 · ζ#5 · 3η',
-    hint: 'A name, an address, a stamp or an offset such as +2ζ 3η or +4 Blinks',
+    placeholder: 'Delta Trifracton Node ε#2 20η · α#6 β#4 γ#9 δ#3 ε#5 33η · 5η 17ι',
+    hint: 'A date in words or letters, counts such as 5η 17ι, or an offset such as +2ε 5η or +4 Blinks',
     copy: () => stampOf(S.T),
     multiline: true,
     parse: (txt) => {
@@ -239,22 +240,63 @@ export function createPureConverter(ctx, { tip }) {
     apply: ({ t }) => setT(t, 'stamp'),
   });
 
-  /** "Helion: one η cycle, 11 in a ζ, lasts 36ι": what a unit letter stands for (tooltips on the counters and depth chips). */
+  /**
+   * What a level is, in words (tooltips on the entries and the depth chips): "Helion · η: one whole cycle of depth 7, 77
+   * in a Nuclide, lasts 36ι"; a depth between units: "ζ: depth 6, not a unit; one cycle is 11η".
+   */
   const unitTip = (level) => {
     const sym = LETTERS[level];
+    const u = pure.unitOf(level);
+    if (!u) return `${sym}: depth ${level + 1}, not a unit; one cycle is ${pure.cycleLength(level)}`;
+    const i = pure.UNITS.indexOf(u);
+    const parent = pure.UNITS[i - 1];
+    const per = parent ? `, ${Math.round(pure.unitPos(parent) / pure.unitPos(u))} in ${an(parent.name)} ${parent.name}` : '';
     const made = madeOf(model, pure, level);
-    const per = level > 0 ? `, ${model.levelInfo(level).siblings} in ${an(LEVEL_NAMES[level - 1])} ${LETTERS[level - 1]}` : '';
-    return `${pure.unitName(sym)} · ${sym}: one whole cycle of depth ${level + 1}${per}${made ? `, lasts ${made}` : ''}`;
+    return `${u.name} · ${sym}: one whole cycle of depth ${level + 1}${per}${made ? `, lasts ${made}` : ''}`;
   };
 
-  // ---- odometer counters: δ ε ζ · η ι λ
+  /** The word of a numbered level of the address: Alpha … Delta, then the Nuclide. */
+  const stepWord = (L) => (L <= 3 ? LEVEL_NAMES[L] : 'Nuclide');
+
+  // ---- the major periods by name, with their quarter word: Alpha … Delta
+  function makeMajor(spec) {
+    const name = LEVEL_NAMES[spec.level];
+    const sel = h('select.select.cal-msel', { 'aria-label': `${name} of this moment, by its fracton name` });
+    const count = spec.id === 'alpha' ? Number(model.clock.count(0)) : spec.max;
+    for (let n = 1; n <= count; n++) sel.append(h('option', { value: String(n), text: ORDINAL_NAMES[n] ?? `#${n}` }));
+    const quarter = h('span.cal-mq');
+    const err = h('div.cal-serr', { role: 'alert', hidden: true });
+    const lab = h('span.cal-sl', { text: name, title: unitTip(spec.level) });
+    const el = h('div.cal-mstep', { style: `--lv:${levelColor(spec.level)}` }, lab, sel, quarter, err);
+    const api = { spec, el, sel, quarter, value: 1 };
+    api.msg = (m) => {
+      err.textContent = m || '';
+      err.hidden = !m;
+    };
+    sel.addEventListener('change', () => {
+      api.msg('');
+      const n = Number(sel.value);
+      if (n === api.value) return;
+      const r = setCounter(model, pure, S.T, spec.id, n);
+      if (r.error) {
+        sel.value = String(api.value);
+        return api.msg(r.error);
+      }
+      setT(r.t, 'counter');
+    });
+    return api;
+  }
+  const majors = MAJORS.map(makeMajor);
+
+  // ---- the Nuclide and the counts: ε# · η ι λ ν
   function makeCounter(spec) {
     const level = LEVEL_OF[spec.id];
-    // the date entries are ordinals ("δ#" + the number box, from 1), the clock entries counts (the number box + "η", from 0)
-    const kind = spec.ordinal ? 'number' : 'counter';
-    const input = h('input.cal-sv.mono', { type: 'text', inputmode: 'numeric', autocomplete: 'off', 'aria-label': `${spec.sym} ${kind}, ${spec.min} to ${spec.max}`, size: 3 });
-    const dec = h('button.cal-sb', { type: 'button', html: '−', title: `One ${spec.sym} back`, 'aria-label': `One ${spec.sym} back` });
-    const inc = h('button.cal-sb', { type: 'button', html: '+', title: `One ${spec.sym} forward`, 'aria-label': `One ${spec.sym} forward` });
+    // the Nuclide is an ordinal ("ε#" + the number box, from 1), the others counts (the number box + "η", from 0)
+    const kind = spec.ordinal ? 'number' : 'count';
+    const word = pure.unitName(spec.sym);
+    const input = h('input.cal-sv.mono', { type: 'text', inputmode: 'numeric', autocomplete: 'off', 'aria-label': `${word} ${kind}, ${spec.min} to ${spec.max}`, size: 3 });
+    const dec = h('button.cal-sb', { type: 'button', html: '−', title: `One ${word} back`, 'aria-label': `One ${word} back` });
+    const inc = h('button.cal-sb', { type: 'button', html: '+', title: `One ${word} forward`, 'aria-label': `One ${word} forward` });
     const err = h('div.cal-serr', { role: 'alert', hidden: true });
     const range = h('span.cal-so', null, h('span.cal-sn', { text: `${spec.min}–${spec.max}` }));
     const lab = h('span.cal-sl', { text: spec.ordinal ? `${spec.sym}#` : spec.sym, title: unitTip(level), 'aria-hidden': 'true' });
@@ -304,8 +346,8 @@ export function createPureConverter(ctx, { tip }) {
     return api;
   }
   const counters = COUNTERS.map(makeCounter);
-  const dateRow = h('div.cal-crow', null, h('span.cal-clab', { text: 'Date · # numbers, counted from 1' }), ...counters.slice(0, 3).map((c) => c.el));
-  const clockRow = h('div.cal-crow', null, h('span.cal-clab', { text: 'Clock · completed units, counted from 0' }), ...counters.slice(3).map((c) => c.el));
+  const majorRow = h('div.cal-crow.cal-mrow', null, h('span.cal-clab', { text: 'Major periods · by name, with the quarter they are in' }), ...majors.map((m) => m.el));
+  const clockRow = h('div.cal-crow', null, h('span.cal-clab', { text: 'Nuclide (# from 1) and counts of completed units (from 0)' }), ...counters.map((c) => c.el));
 
   const readDate = h('div.cal-pc-date.mono');
   const readClock = h('div.cal-pc-clock');
@@ -388,19 +430,28 @@ export function createPureConverter(ctx, { tip }) {
     depthBar.append(b);
   }
   const chainBox = h('div.cal-chain');
+  // the numbered levels of an address are α β γ δ and the Nuclide; a finer cycle is placed by its counts in the Nuclide
   const steppers = [];
-  for (let L = 0; L < MAX_DEPTH; L++) steppers.push(makeStepper(L));
+  for (let L = 0; L <= 4; L++) steppers.push(makeStepper(L));
   steppers.forEach((s) => chainBox.append(s.el));
+  const placeLab = h('span.cal-sl', { 'aria-hidden': 'true' });
+  const placeTxt = h('span.cal-placet.mono', { 'aria-live': 'polite' });
+  const placeDec = h('button.cal-sb', { type: 'button', html: '−', title: 'The cycle before', 'aria-label': 'The cycle of this depth before' });
+  const placeInc = h('button.cal-sb', { type: 'button', html: '+', title: 'The next cycle', 'aria-label': 'The next cycle of this depth' });
+  const placeEl = h('div.cal-step.cal-place', { hidden: true }, placeLab, h('div.cal-sbox', null, placeDec, placeTxt, placeInc), h('span.cal-so', null, h('span.cal-sn', { text: 'where it starts in its Nuclide' })));
+  placeDec.addEventListener('click', () => stepLevel(S.depth - 1, -1));
+  placeInc.addEventListener('click', () => stepLevel(S.depth - 1, 1));
+  chainBox.append(placeEl);
 
   function makeStepper(L) {
-    const input = h('input.cal-sv.mono', { type: 'text', inputmode: 'numeric', autocomplete: 'off', 'aria-label': `${LEVEL_NAMES[L]} number`, size: 3 });
-    const dec = h('button.cal-sb', { type: 'button', html: '−', title: `Previous ${LEVEL_NAMES[L]}`, 'aria-label': `Previous ${LEVEL_NAMES[L]}` });
-    const inc = h('button.cal-sb', { type: 'button', html: '+', title: `Next ${LEVEL_NAMES[L]}`, 'aria-label': `Next ${LEVEL_NAMES[L]}` });
+    const input = h('input.cal-sv.mono', { type: 'text', inputmode: 'numeric', autocomplete: 'off', 'aria-label': `${stepWord(L)} number`, size: 3 });
+    const dec = h('button.cal-sb', { type: 'button', html: '−', title: `Previous ${stepWord(L)}`, 'aria-label': `Previous ${stepWord(L)}` });
+    const inc = h('button.cal-sb', { type: 'button', html: '+', title: `Next ${stepWord(L)}`, 'aria-label': `Next ${stepWord(L)}` });
     const ofTxt = h('span.cal-sn');
     const ofNote = h('span.cal-snote', { hidden: true });
     const of = h('span.cal-so', null, ofTxt, ofNote);
     const err = h('div.cal-serr', { role: 'alert', hidden: true });
-    const el = h('div.cal-step', { style: `--lv:${levelColor(L)}`, hidden: true }, h('span.cal-sl', { text: `${LETTERS[L]}#`, title: LEVEL_NAMES[L], 'aria-hidden': 'true' }), h('div.cal-sbox', null, dec, input, inc), of, err);
+    const el = h('div.cal-step', { style: `--lv:${levelColor(L)}`, hidden: true }, h('span.cal-sl', { text: `${LETTERS[L]}#`, title: stepWord(L), 'aria-hidden': 'true' }), h('div.cal-sbox', null, dec, input, inc), of, err);
     const api = { el, input, of, ofTxt, ofNote, err, L, max: 1, nominal: 1, value: 1, shown: '' };
     const msg = (m) => {
       err.textContent = m || '';
@@ -422,7 +473,7 @@ export function createPureConverter(ctx, { tip }) {
       if (n > api.max) {
         if (final || String(n).length >= String(api.max).length) {
           const sooner = api.max < api.nominal ? `, the catalogue ends after ${cycleLabel(L, api.max)}` : '';
-          msg(L === 0 ? `Only ${api.max} Alpha cycles exist in the catalogue` : `${LEVEL_NAMES[L]} has only ${api.max} cycles here (${cycleLabel(L, 1)} … ${cycleLabel(L, api.max)}${sooner})`);
+          msg(L === 0 ? `Only ${api.max} Alphas exist in the catalogue` : `There are only ${api.max} ${stepWord(L)}s here (${cycleLabel(L, 1)} … ${cycleLabel(L, api.max)}${sooner})`);
         }
         return;
       }
@@ -494,7 +545,7 @@ export function createPureConverter(ctx, { tip }) {
   const addrGo = goButton(() => addrTimeNow, 'the addressed point');
 
   // ---- glyph pairs
-  const glyphGrid = h('div.cal-glyphs.cal-pglyphs', { role: 'group', 'aria-label': 'Glyph pair at every depth' });
+  const glyphGrid = h('div.cal-glyphs.cal-pglyphs', { role: 'group', 'aria-label': 'Phase at every depth' });
   const glyphCells = [];
   for (let L = 0; L < MAX_DEPTH; L++) {
     const pairBox = h('span.cal-gpair', { 'aria-hidden': 'true' });
@@ -505,8 +556,9 @@ export function createPureConverter(ctx, { tip }) {
     const b = h('button.cal-gcell.cal-pgcell', { type: 'button', style: `--lv:${levelColor(L)}`, 'aria-haspopup': 'true', 'aria-expanded': 'false' }, pairBox, h('span.cal-gtxt', null, nm, st, mean), bar);
     b.addEventListener('click', () => {
       ctx.select(L);
-      openPicker(L);
+      if (L > 3) openPicker(L); // (a major period has no glyph pair: its quarter word is all it shows)
     });
+    if (L <= 3) b.removeAttribute('aria-haspopup');
     b.addEventListener('pointerenter', (e) => {
       if (e.pointerType !== 'touch') showGlyphTip(L, e.clientX, e.clientY);
     });
@@ -525,9 +577,24 @@ export function createPureConverter(ctx, { tip }) {
     glyphCells.push({ el: b, pairBox, nm, st, mean, bar: bar.firstChild, sig: '' });
   }
   let lastRows = null;
+  /** A major period: its name, its quarter and the thresholds that end the quarters, no phase. */
+  function majorTipHtml(L) {
+    const l = model.levelAt(S.T, L);
+    if (!l) return '';
+    const q = Math.min(3, Math.floor(l.phase * 4));
+    const pts = [1, 2, 3, 4].map((k) => ({ k, t: pointOfCycle(model, L, l.cycle, k / 4) }));
+    const rows = pts.map(({ k, t }) => `<dt>${QUARTER_WORDS[k - 1]} ends</dt><dd${k - 1 === q ? ' class="is-next"' : ''}>${t === null ? 'after the catalogue ends' : esc(relTo(t))}</dd>`).join('');
+    return (
+      `<div class="cal-tt-h" style="color:${levelColor(L)}">${esc(pure.majorText(S.T, L))}<span class="dim"> · depth ${L + 1}</span></div>` +
+      `<div class="dim">${esc(unitTip(L))}</div>` +
+      `<dl class="cal-tt-dl">${rows}</dl>` +
+      `<div class="dim cal-tt-hint">A major period is read by its quarter (named by the threshold that ends it), not by glyphs.</div>`
+    );
+  }
   function showGlyphTip(L, x, y) {
     const r = lastRows?.[L];
     if (!r || !S.active) return;
+    if (L <= 3) return tip.show(majorTipHtml(L), x, y);
     const m = stateMeaning(model, r.index);
     const od = model.odometerAt(S.T, L, { strokes: 2, digits: 2 });
     const trits = (r.trits ?? []).map((t) => (t > 0 ? '+' : t < 0 ? '−' : '0')).join(' ');
@@ -536,8 +603,8 @@ export function createPureConverter(ctx, { tip }) {
       `<div class="cal-tt-h" style="color:${levelColor(L)}">${LETTERS[L]} · depth ${L + 1}<span class="dim"> ${LEVEL_NAMES[L]}</span></div>` +
       `<div class="cal-tt-pair">${pure.pairHTML(r.phase, { label: `${LETTERS[L]} phase` })}<span class="mono">${esc(pure.pairText(r.phase))}</span></div>` +
       `<div>Coarse glyph: state <b>${r.index}</b> of ${r.states} · ${esc(m.text)} ${m.arrow}${r.dotted ? ' <span class="dim">(dot = falling branch)</span>' : ''}</div>` +
-      `<div class="dim">${esc(pure.cycleName(L, r.cycle))} · ${esc(cycleLabel(L, r.local))} of ${r.siblings}${L ? ' in ' + esc(cycleLabel(L - 1, lastRows[L - 1]?.local ?? '')) : ''}</div>` +
-      `<dl class="cal-tt-dl"><dt>cycle</dt><dd>${esc(pure.stamp(r.start, 'lambda'))} → ${esc(pure.stamp(r.end, 'lambda'))}${madeOf(model, pure, L) ? ` (lasts ${esc(madeOf(model, pure, L))})` : ''}</dd>`;
+      `<div class="dim">${esc(pure.cycleName(L, r.cycle))} · ${esc(unitTip(L))}</div>` +
+      `<dl class="cal-tt-dl"><dt>cycle</dt><dd>${esc(pure.stamp(r.start, pure.resolutionOf(L)))} → ${esc(pure.stamp(r.end, pure.resolutionOf(L)))}</dd>`;
     html += `<dt>trits</dt><dd class="mono">${esc(trits)} <span class="dim">(msb first)</span></dd>`;
     if (od) html += `<dt>odometer</dt><dd class="mono">[${od.digits.join(', ')}] <span class="dim">coarse · fine</span></dd>`;
     if (next) html += `<dt>pair changes</dt><dd>${esc(relTo(next))}</dd>`;
@@ -579,6 +646,7 @@ export function createPureConverter(ctx, { tip }) {
     pickRes,
   );
   function openPicker(L) {
+    if (L <= 3) return;
     if (S.pick.level === L && !picker.hidden) {
       S.pick = { level: null, index: null, index2: null };
       S.force = true;
@@ -729,16 +797,16 @@ export function createPureConverter(ctx, { tip }) {
     h('h3.cal-ph', null, h('span', { text: 'Moment' }), h('span.cal-ph-sub', { text: 'in cycles' })),
     readout,
     fStamp.el,
-    section('Counters', null, h('p.cal-help', { text: 'Edit a counter: the moment moves by whole units of it, so what is finer keeps its place. Names and # numbers count from 1, clock counters from 0. Press ? for the glossary.' }), dateRow, clockRow),
+    section('Date', null, h('p.cal-help', { text: 'Edit an entry: the moment moves by whole units of it, so what is finer keeps its place. A major period ends its Peak, Node, Valley and End quarters at its thresholds. Press ? for the glossary.' }), majorRow, clockRow),
     section('Saros 141 around this moment', null, ctxBox),
   );
   let syncCopyText = '';
   const syncCopy = copyButton(() => syncCopyText, 'solar sync summary');
   const glyphCopy = copyButton(() =>
     levelRows(model, S.T)
-      .map((r, L) => (r ? `depth ${L + 1} ${LETTERS[L]}: pair ${pure.pairText(r.phase)} (coarse glyph ${r.index}/${r.states}, ${stateMeaning(model, r.index).text})` : `depth ${L + 1} ${LETTERS[L]}: outside the catalogue`))
+      .map((r, L) => (!r ? `depth ${L + 1} ${LETTERS[L]}: outside the catalogue` : L <= 3 ? `depth ${L + 1} ${LETTERS[L]}: ${pure.majorText(S.T, L)}` : `depth ${L + 1} ${LETTERS[L]}: pair ${pure.pairText(r.phase)} (coarse glyph ${r.index}/${r.states}, ${stateMeaning(model, r.index).text})`))
       .join('\n'),
-  'all glyph pairs');
+  'the phase at every depth');
   const pointId = uid('pt');
   pointSel.id = pointId;
   const cyclesPanel = h(
@@ -758,9 +826,9 @@ export function createPureConverter(ctx, { tip }) {
       addrResult,
     ),
     section(
-      'Glyph pair at every depth',
+      'Phase at every depth',
       glyphCopy,
-      h('p.cal-help', { text: 'Each depth shows its phase as two glyphs: 16 × 16 = 256 states. Click a pair to see when its depth shows any other.' }),
+      h('p.cal-help', { text: 'Alpha, Beta, Gamma and Delta say the quarter they are in (Peak, Node, Valley, End). Every finer depth shows its phase as two glyphs, 16 × 16 = 256 states: click a pair to see when its depth shows any other.' }),
       glyphGrid,
       picker,
     ),
@@ -777,7 +845,11 @@ export function createPureConverter(ctx, { tip }) {
   // ------------------------------------------------------------------------------------------
   // painting
   // ------------------------------------------------------------------------------------------
-  const clockHtml = (c) => `<span class="pure-clock"><b>${c.eta}</b><i>η</i><b>${c.iota}</b><i>ι</i><b>${c.lambda}</b><i>λ</i></span>`;
+  /** The Helion reading: its count and its phase pair, then the Preons, Flavons and Blinks (the basic reading, SPEC §15.3). */
+  const clockHtml = (c, T) => {
+    const helion = model.levelAt(T, 6);
+    return `<span class="pure-clock"><b>${c.eta}</b><i>η</i>${helion ? pure.pairHTML(helion.phase, { label: 'Helion phase' }) : ''}<b>${c.iota}</b><i>ι</i><b>${c.lambda}</b><i>λ</i><b>${c.nu}</b><i>ν</i></span>`;
+  };
 
   function paint() {
     const T = S.T;
@@ -792,8 +864,8 @@ export function createPureConverter(ctx, { tip }) {
 
     const cs = inRange ? countersAt(pure, T) : null;
     // the readout
-    setHtml(readClock, cs ? clockHtml(cs) : '<span class="dim">—</span>');
-    setText(readDate, cs ? pure.dateText(T) : '—');
+    setHtml(readClock, cs ? clockHtml(cs, T) : '<span class="dim">—</span>');
+    setText(readDate, cs ? pure.dateText(T, { form: 'full', upTo: 'nu' }) : '—');
     const ff = S.forceFields;
     S.forceFields = false;
     fStamp.set(cs ? stampOf(T) : '', ff);
@@ -805,6 +877,13 @@ export function createPureConverter(ctx, { tip }) {
         c.msg('');
       }
       c.input.disabled = !cs;
+    }
+    for (const m of majors) {
+      m.value = cs ? cs[m.spec.key] : 1;
+      if (document.activeElement !== m.sel && cs && m.sel.value !== String(m.value)) m.sel.value = String(m.value);
+      m.sel.disabled = !cs;
+      setText(m.quarter, cs ? cs.quarter[m.spec.key] : '—');
+      setAttr(m.quarter, 'title', cs ? `${pure.periodName(m.spec.level, m.value)} is in its ${cs.quarter[m.spec.key]} quarter (the one that ends at its ${cs.quarter[m.spec.key].toLowerCase()})` : null);
     }
     paintEclipses(T, inRange);
 
@@ -848,15 +927,11 @@ export function createPureConverter(ctx, { tip }) {
     pickerPaint(rows);
   }
 
+  /** The major periods in words with their quarter, then the Nuclide (the minor part is the clock above). */
   function paintNames(rows) {
-    const n = Math.min(rows.length, Math.max(S.depth, 6));
-    setHtml(
-      readNames,
-      rows
-        .slice(0, n)
-        .map((r, L) => `<span class="cal-pc-name" style="--lv:${levelColor(L)}" title="${esc(LEVEL_NAMES[L])}, depth ${L + 1}"><i>${LETTERS[L]}</i>${esc(pure.cycleName(L, r.cycle))}</span>`)
-        .join(''),
-    );
+    const major = rows.slice(0, 4).map((r, L) => `<span class="cal-pc-name" style="--lv:${levelColor(L)}" title="${esc(unitTip(L))}"><i>${LETTERS[L]}</i>${esc(pure.majorText(S.T, L))}</span>`);
+    const eps = rows[4] ? `<span class="cal-pc-name" style="--lv:${levelColor(4)}" title="${esc(unitTip(4))}"><i>ε</i>Nuclide ${esc(pure.cycleName(4, rows[4].cycle))}</span>` : '';
+    setHtml(readNames, major.join('') + eps);
   }
 
   const clockMoves = () => store.mode === 'live' || store.playing;
@@ -898,6 +973,7 @@ export function createPureConverter(ctx, { tip }) {
     pointSel.value = S.point;
     if (!rows) {
       for (const s of steppers) s.el.hidden = true;
+      placeEl.hidden = true;
       setHtml(addrResult, '');
       addrTimeNow = null;
       addrTextNow = '';
@@ -911,7 +987,7 @@ export function createPureConverter(ctx, { tip }) {
       S.addr.phaseRef = rows[S.depth - 1].phase;
     } else S.addr.path = S.addr.path.slice(0, S.depth);
     const path = S.addr.path;
-    for (let L = 0; L < MAX_DEPTH; L++) {
+    for (let L = 0; L < steppers.length; L++) {
       const s = steppers[L];
       s.el.hidden = L >= S.depth;
       if (L >= S.depth) continue;
@@ -922,37 +998,50 @@ export function createPureConverter(ctx, { tip }) {
       s.value = path[L];
       s.shown = String(path[L]);
       if (document.activeElement !== s.input && s.input.value !== s.shown) s.input.value = s.shown;
-      setText(s.ofTxt, `/ ${nominal}`);
+      setText(s.ofTxt, L <= 3 && ORDINAL_NAMES[path[L]] ? ORDINAL_NAMES[path[L]] : `/ ${nominal}`);
       const clipped = max < nominal;
       setText(s.ofNote, clipped ? `catalogue ends after ${max}` : '');
       if (s.ofNote.hidden === clipped) s.ofNote.hidden = !clipped;
-      setAttr(s.of, 'title', clipped ? `The catalogue ends after ${max} of these ${nominal} cycles` : null);
+      setAttr(s.of, 'title', clipped ? `The catalogue ends after ${max} of these ${nominal}` : `${path[L]} of ${nominal}`);
       if (document.activeElement !== s.input) s.msg('');
-      setAttr(s.input, 'aria-label', `${LEVEL_NAMES[L]} number, 1 to ${max}${clipped ? ` of ${nominal}: the catalogue ends after ${max}` : ''}`);
+      setAttr(s.input, 'aria-label', `${stepWord(L)} number, 1 to ${max}${clipped ? ` of ${nominal}: the catalogue ends after ${max}` : ''}`);
     }
     const level = S.depth - 1;
     const cyc = cycleOfPath(model, path);
+    // a cycle finer than the Nuclide: its place in the Nuclide ("33η 28ι"), stepped one cycle of its depth at a time
+    placeEl.hidden = level < 5 || !cyc;
+    if (level >= 5 && cyc) {
+      setText(placeLab, `${LETTERS[level]}`);
+      setAttr(placeLab, 'title', unitTip(level));
+      setText(placeTxt, pure.cycleName(level, cyc.idx, { short: true }));
+      setStyle(placeEl, '--lv', levelColor(level));
+    }
     const pt = PURE_POINTS.find((p) => p.id === S.point);
     const t0 = cyc ? pointTime(model, path, S.point, S.addr.phaseRef) : null;
     addrTimeNow = t0 === null ? null : landPath(model, path, S.point, S.addr.phaseRef);
-    const label = S.point === 'phase' ? `Same phase (${esc(pure.pairText(S.addr.phaseRef))}) of` : `${pt.label} of`;
-    const names = path.map((n, L) => pure.periodName(L, n)).join(' › ');
+    // a major period has no phase to show: "the same point of its quarter" instead of a glyph pair
+    const label = S.point === 'phase' ? (level <= 3 ? 'Same place in the cycle as this moment, of' : `Same phase (${esc(pure.pairText(S.addr.phaseRef))}) of`) : `${pt.label} of`;
+    // letters for the numbered levels, then the place of a finer cycle in its Nuclide
+    const chain = level >= 5 && cyc ? `${chainText(path.slice(0, 5))} › ${pure.cycleName(level, cyc.idx, { short: true })}` : chainText(path);
+    const names = [...path.slice(0, 4).map((n, L) => pure.periodName(L, n)), ...(level >= 4 && cyc ? [pure.cycleName(level, cyc.idx)] : [])].join(' › ');
     if (t0 === null) {
-      setHtml(addrResult, `<div class="cal-rline"><span class="cal-rlab">${label} ${esc(chainText(path))}</span><span class="dim">lies beyond the end of the catalogue (clipped last cycle)</span></div>`);
+      setHtml(addrResult, `<div class="cal-rline"><span class="cal-rlab">${label} ${esc(chain)}</span><span class="dim">lies beyond the end of the catalogue (clipped last cycle)</span></div>`);
       addrTextNow = '';
     } else {
       const pos = model.positionOf(addrTimeNow);
       const made = madeOf(model, pure, level);
-      const lasts = made || cyc?.clipped ? `<span class="chip cal-chip" style="--lv:${levelColor(level)}">${LETTERS[level]} lasts ${esc(made || '1' + LETTERS[level])}${cyc?.clipped ? ' (clipped)' : ''}</span>` : '';
+      const lasts = made || cyc?.clipped ? `<span class="chip cal-chip" style="--lv:${levelColor(level)}">${level <= 3 ? LEVEL_NAMES[level] : LETTERS[level]} lasts ${esc(made || '1' + LETTERS[level])}${cyc?.clipped ? ' (clipped)' : ''}</span>` : '';
+      const words = pure.dateText(addrTimeNow, { upTo: level <= 3 ? 'delta' : pure.resolutionOf(level) });
       setHtml(
         addrResult,
-        `<div class="cal-rline"><span class="cal-rlab">${label} <b style="color:${levelColor(level)}">${esc(chainText(path))}</b></span></div>` +
+        `<div class="cal-rline"><span class="cal-rlab">${label} <b style="color:${levelColor(level)}">${esc(chain)}</b></span></div>` +
           `<div class="cal-rnames">${esc(names)}</div>` +
           `<div class="cal-rtime mono">${esc(stampOf(addrTimeNow))}</div>` +
+          `<div class="cal-rnames">${esc(words)}</div>` +
           `<div class="cal-rpos mono dim">pos ${pos === null ? '–' : pos.toFixed(12)}</div>` +
-          `<div class="cal-rmeta">${lasts}<span class="chip cal-chip" title="0-based index among all ${LETTERS[level]} cycles of the catalogue (the jump box reads it as d${level + 1}#${cyc ? cyc.idx : ''})">global index ${cyc ? cyc.idx : '–'}</span></div>`,
+          `<div class="cal-rmeta">${lasts}<span class="chip cal-chip" title="0-based index among all cycles of depth ${level + 1} in the catalogue (the jump box reads it as d${level + 1}#${cyc ? cyc.idx : ''})">global index ${cyc ? cyc.idx : '–'}</span></div>`,
       );
-      addrTextNow = `${pathText(path)} ${pt.label.toLowerCase()} · ${stampOf(addrTimeNow)} · pos ${pos === null ? '–' : pos.toFixed(12)}`;
+      addrTextNow = `${chain} ${pt.label.toLowerCase()} · ${stampOf(addrTimeNow)} · pos ${pos === null ? '–' : pos.toFixed(12)}`;
     }
     addrGo.disabled = addrTimeNow === null;
     addrCopy.disabled = addrTextNow === '';
@@ -973,13 +1062,24 @@ export function createPureConverter(ctx, { tip }) {
         setStyle(c.bar.parentElement, '--p', '0%');
         continue;
       }
+      if (L <= 3) {
+        // a major period: its quarter word, never a phase (no pair, no bar)
+        const q = Math.min(3, Math.floor(r.phase * 4));
+        setHtml(c.pairBox, `<span class="cal-gq">${QUARTER_WORDS[q].slice(0, 1)}</span>`);
+        setText(c.nm, `${LEVEL_NAMES[L]} · depth ${L + 1}`);
+        setText(c.st, QUARTER_WORDS[q]);
+        setText(c.mean, `${pure.periodName(L, r.local)}, quarter ${q + 1} of 4`);
+        toggleClass(c.el, 'is-major', true);
+        setAttr(c.el, 'aria-label', `Depth ${L + 1}: ${pure.majorText(S.T, L)}, the quarter that ends at its ${QUARTER_WORDS[q].toLowerCase()}`);
+        continue;
+      }
       const m = stateMeaning(model, r.index);
       setHtml(c.pairBox, pure.pairHTML(r.phase, { label: `${LETTERS[L]} phase` }));
       setText(c.nm, `${LETTERS[L]} · depth ${L + 1}`);
       setText(c.st, pure.pairText(r.phase));
       setText(c.mean, `${m.text} ${m.arrow}`);
       setStyle(c.bar.parentElement, '--p', (Math.min(0.999, r.phase) * 100).toFixed(2) + '%');
-      setAttr(c.el, 'aria-label', `Depth ${L + 1}, ${LEVEL_NAMES[L]}: glyph pair ${pure.pairText(r.phase)} of 256, coarse glyph ${m.text}. Opens a list of other moments this pair shows.`);
+      setAttr(c.el, 'aria-label', `Depth ${L + 1}, ${LETTERS[L]}: glyph pair ${pure.pairText(r.phase)} of 256, coarse glyph ${m.text}. Opens a list of other moments this pair shows.`);
     }
   }
 

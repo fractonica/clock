@@ -7,11 +7,12 @@
  * pure maths lives in timeline/helpers.js, cached model queries in timeline/data.js and all
  * drawing in timeline/paint.js.
  *
- * Pure mode (docs/design/80-pure.md, revision 2): the Gregorian axis is replaced by a ruler of the unit ladder
- * α β γ δ ε ζ η θ ι κ λ μ ν (timeline/ruler.js; one unit per depth, whole cycles, the Blink ν the finest), every
- * sentence by its Fractonica wording (timeline/words.js, timeline/tips.js) and the percentages of the hover read-out
- * by glyph pairs. Spans of real time are counted in Blinks and below one Blink as decimals ("0.4ν"). The mode is read
- * on every frame (`applyMode`), so switching is live in both directions.
+ * Pure mode (SPEC §15, docs/design/80-pure.md revision 3): the Gregorian axis is replaced by a ruler of the unit
+ * ladder α β γ δ ε η ι λ ν (timeline/ruler.js): the major periods α–δ in words with their quarter words, the minor
+ * units ε η ι λ ν in letters and counts (the header clock "33η 29ι 21λ"). Every sentence is said in Fractonica words
+ * (timeline/words.js, timeline/tips.js): a major period's phase is its quarter word, a minor depth's phase a glyph
+ * pair. Spans below ten Blinks are decimals ("0.4ν"). The mode is read on every frame (`applyMode`), so switching is
+ * live in both directions.
  */
 import {
   PRESETS,
@@ -82,7 +83,7 @@ export function mount(el, ctx) {
   const selLevel = () => validLevel(store.state.selectedLevel);
 
   // ---- DOM -------------------------------------------------------------------------------------
-  /** Zoom preset buttons: Day … All in normal mode, the ladder units ν λ ι η ζ ε δ γ β α and All in pure mode. */
+  /** Zoom preset buttons: Day … All in normal mode, the ladder units ν λ ι η ε δ γ β α and All in pure mode. */
   function presetsHTML(pureOn) {
     if (pureOn) {
       return ruler.PRESETS.map((p) => `<button type="button" data-preset="${p.id}" aria-pressed="false" title="${esc(words.presetTitle(p))}">${esc(words.presetLabel(p))}</button>`).join('');
@@ -1179,7 +1180,10 @@ export function mount(el, ctx) {
         out.push('The cursor is outside the Saros 141 catalogue.');
         return out.join(' ');
       }
-      out.push(`Cursor at ${ruler.stampText(t, ruler.below(u, 1))}${store.live ? ', live' : store.playing ? ', in time-lapse' : ''}.`);
+      // the date in words: every major period with its quarter over major ticks, else the short date one unit finer than the ticks
+      const delta = ruler.unitIndex('delta');
+      const date = pure.dateText(t, { form: u <= delta ? 'full' : 'short', upTo: ruler.units[Math.max(delta, ruler.below(u, 1))].id });
+      out.push(`Cursor at ${date}${store.live ? ', live' : store.playing ? ', in time-lapse' : ''}.`);
       const L = selLevel();
       const cyc = data.cycleAt(L, t);
       if (cyc) out.push(words.selectedSentence(L, cyc.idx, cyc.local, model.levelInfo(L).siblings ?? data.alpha.length, cyc.end >= model.tMax - 1e-3));

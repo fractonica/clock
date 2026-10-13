@@ -46,14 +46,14 @@ green `#0d1b14` background; you may call `clock.compose` for a quick overview if
 Add pure geometry helpers (point on arc, bounds, per-level markers) in `src/ui/wave/geometry.js` and test them,
 including that the marker of level L lies on the arc of its half-cycle at progress = phase of the half-cycle.
 
-## Solar wave and pure mode (revision 2: whole cycles, named units, the Blink)
-See docs/design/80-pure.md (REVISION 2 and the final section). Files: `src/ui/wave/solar.js` (geometry/phase), `sun.js` (dial), `words.js`
-(wording incl. pure). "Half-arc" is the view's own geometry (a cycle is a crest followed by a trough), not a unit; every length is counted in
-whole-cycle units.
+## Solar wave and pure mode (revision 3: major periods in words, minor ones in counts; SPEC §15)
+See docs/design/80-pure.md. Files: `src/ui/wave/solar.js` (geometry/phase), `sun.js` (dial), `words.js` (wording incl. pure). "Half-arc" is
+the view's own geometry (a cycle is a crest followed by a trough), not a unit.
 
-- Eclipse labels are `#k` like the position; drift reads `drift −6 236λ` (`pure.driftText`); progress pairs replace percentages.
-- Spans are the core's (`pure.durationPos`): `ends in 1θ 2ι`, a half-arc "lasts" half a cycle counted in units (`4θ 2ι`, `3ζ 5η`), below one Blink a
-  decimal (`0.071ν`). A depth button says `one cycle = 1η (Helion)`.
-- The time next to the focus marker is three consecutive parts of the pure date / clock by the depth of the arc (`α#6 β#4 γ#9`, `δ#3 ε#5 ζ#4`,
-  `ε#5 ζ#4 · 0η`, `0η 29ι 21λ`), the same groups as the face caption.
-- Solar: `one sync = 19η` (19 Helions in tooltips and the caption), `node in 2η 6θ`, drift in λ.
+- **Major arcs (α β γ δ)**: the cycle in words (`closing half of Delta Trifracton · 3 of 5 in γ`); the read-out shows the quarter word of the
+  cycle (`End`, "quarter of this δ cycle") where a minor arc shows its two pairs; tooltips and the depth button say `now in its End quarter`.
+- **Minor arcs**: placed by where their cycle starts (`closing half of ε#5 33η`), half-arc and cycle phases as glyph pairs.
+- Addresses are the stamp of the cycle's start (`α#6 β#4 γ#9 δ#3 ε#5 33η`), the time next to the focus marker three consecutive tokens of the
+  stamp (`δ#3 ε#5 33η`, `33η 29ι 21λ`); spans are the core's (`ends in 6ι 43λ`, a half-arc `18ι long`); depth buttons say what one cycle is
+  (`1η (Helion) = 36ι`, `11η`).
+- Eclipse labels are `#k` like the position; drift reads `drift −6 236λ`; the solar texts are unchanged (`19η`, 19 Helions).

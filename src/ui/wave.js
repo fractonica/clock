@@ -10,10 +10,11 @@
  * tooltip text.
  *
  * Two additions share the file with the original view:
- *   - pure mode (docs/design/80-pure.md): every text is asked from wave/words.js, which answers in Fractonica
- *     terms only (cycle names and address chains, durations counted in ladder units, a pair of glyphs instead of
- *     a percentage, numbered eclipses). The mode is re-read each frame; a switch rebuilds the static labels and
- *     drops every cached text.
+ *   - pure mode (docs/design/80-pure.md, SPEC §15): every text is asked from wave/words.js, which answers in Fractonica
+ *     terms only (the major periods α β γ δ in words with their quarter word instead of a percentage, the minor cycles
+ *     placed by counts with a pair of glyphs instead of a percentage, address chains, durations counted in ladder
+ *     units, numbered eclipses). The mode is re-read each frame; a switch rebuilds the static labels and drops every
+ *     cached text.
  *   - the optional yellow solar wave (the Solar button): a ripple of one sync (19 η cycles) along the focused
  *     arc where it fits, a pin at the present phase (drag it to travel within the sync), and a dial that shows
  *     the sync at every depth (wave/solar.js, wave/sun.js; the drawing is in wave/draw.js). A ?solar= link is a
@@ -1145,7 +1146,9 @@ export function mount(el, ctx) {
       setHTML('pct', R.pct, words.share(pos, 'catalogue phase', 1));
       setText('what', R.what, 'of the catalogue');
       R.bar.style.transform = `scaleX(${pos})`;
-      setHTML('pct2', R.pct2, pctRow(throughOf(d, h.local, t, model.tMax), 0, 'of this α half-arc', 'half-arc phase'));
+      // α is a major period: pure mode says its quarter, never a pair
+      if (words.isMajor(0)) setHTML('pct2', R.pct2, `<b>${words.quarter(d, h.local)}</b><span class="dim">quarter of this α cycle</span>`);
+      else setHTML('pct2', R.pct2, pctRow(throughOf(d, h.local, t, model.tMax), 0, 'of this α half-arc', 'half-arc phase'));
       setHTML('n1', R.n1, `<span class="dim">now in</span> α half-arc ${d.signed} <span class="dim">${d.crest ? 'crest' : 'trough'}</span>`);
       setHTML('n2', R.n2, words.alphaSpan(d));
       setHTML('glyph', R.glyph, glyphMarkup(0, cur[0].reading.index));
@@ -1170,10 +1173,17 @@ export function mount(el, ctx) {
     setText('cyc', R.cyc, cap(words.cycle(d)));
     // progress through the part of the half-arc that lies inside the catalogue, and through the whole cycle (as every other view counts it)
     const through = throughOf(d, h.local, t, model.tMax);
-    setHTML('pct', R.pct, words.share(through, 'half-arc phase'));
-    setText('what', R.what, 'of this half-arc');
     R.bar.style.transform = `scaleX(${through})`;
-    setHTML('pct2', R.pct2, pctRow(h.reading.phase, 1, `of this ${d.letter} cycle`, 'cycle phase'));
+    if (words.isMajor(L)) {
+      // a major period (α β γ δ) is read by its quarter word, never by a pair: its phase follows from the Nuclide and Helion count
+      setHTML('pct', R.pct, `<span class="wave-quarter">${words.quarter(d, h.local)}</span>`);
+      setText('what', R.what, `quarter of this ${d.letter} cycle`);
+      setHTML('pct2', R.pct2, '');
+    } else {
+      setHTML('pct', R.pct, words.share(through, 'half-arc phase'));
+      setText('what', R.what, 'of this half-arc');
+      setHTML('pct2', R.pct2, pctRow(h.reading.phase, 1, `of this ${d.letter} cycle`, 'cycle phase'));
+    }
     const [l1, l2] = words.nextLines(eng, d, h, t);
     setHTML('n1', R.n1, `<span class="dim">${l1.dim}</span>${l1.text ? ' ' + l1.text : ''}`);
     setHTML('n2', R.n2, `<span class="dim">${l2.dim}</span>${l2.text ? ' ' + l2.text : ''}`);

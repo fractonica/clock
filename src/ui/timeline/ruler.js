@@ -1,20 +1,23 @@
 /**
- * Pure ruler: the Fractonica replacement of the Gregorian axis (docs/design/80-pure.md, revision 2, and
+ * Pure ruler: the Fractonica replacement of the Gregorian axis (SPEC §15, docs/design/80-pure.md revision 3, and
  * docs/design/40-timeline.md).
  *
- * Everything here is presentation of the clock's own units. The ladder is `pure.UNITS`: one unit per depth, whole
- * cycles only, α β γ δ ε ζ η θ ι κ λ μ ν (index 0..12 = depth 1..13; the Blink ν is the finest). A tick is the start of
- * a unit and is written in the notation of `pure.stamp` (src/core/pure.js, "NOTATION"):
- *   - α β γ δ ε ζ are ORDINALS, 1-based:                    α#6  β#4  γ#9  δ#3  ε#2  ζ#5
- *   - η θ ι κ λ μ ν are COUNTS of whole units gone by, 0-based:   9η  5θ  17ι  3κ  42λ  2μ  12ν
- * so a tick can never be mistaken for a lane block ("η#10" is the 10th η, "9η" the nine that have passed).
+ * Everything here is presentation of the clock's own units. The ladder is `pure.UNITS`, index 0..8:
+ *   major (ultrahelion)   α β γ δ         depth 1-4, said in WORDS: "Delta Trifracton", with a quarter word
+ *                                         (Peak, Node, Valley, End) where a stretch of one is meant
+ *   minor (infrahelion)   ε η ι λ ν       depth 5 7 9 11 13 (every other depth), said in letters and counts
+ * The depths between (ζ θ κ μ) and finer than the Blink (ξ …) are lanes, never ruler units.
  *
- * WHAT A COUNT IS COUNTED INSIDE. The header clock counts η inside ζ (0..10), ι inside η (0..35) and λ inside ι
- * (0..64): the "atomic cadence" ν -25-> λ -65-> ι -36-> η. The ruler uses the same counters, so a flag reads exactly
- * like the header. The units that sit between those steps (θ κ μ) are counted inside the same parent as the unit
- * that follows them: θ inside η (0..8, four ι each), κ inside ι (0..4, thirteen λ each), μ inside λ (0..4, five ν
- * each); ν is counted inside λ (0..24). A count therefore runs on across the in-between units: the four ι of "5θ" are
- * 20ι 21ι 22ι 23ι.
+ * A tick is the start of a unit and is written in the notation of `pure.stamp` (SPEC §15.3):
+ *   - α β γ δ ε are ORDINALS, 1-based: a major tick reads "Delta Trifracton" where there is room, else "δ#3" / "#3";
+ *     a Nuclide tick reads "ε#2" / "#2"
+ *   - η ι λ ν are COUNTS of whole units gone by, 0-based: η inside its Nuclide (0..76), ι inside its Helion (0..35), λ
+ *     inside its Preon (0..64), ν inside its Flavon (0..24) – exactly the header clock "33η 29ι 21λ"
+ * so a tick can never be mistaken for a lane block.
+ *
+ * The CONTEXT ROW above the ticks names the next coarser unit. Where that is a major period and the ticks are whole
+ * units, the row is cut into its four quarters and says them in words ("Gamma Nonafracton · Delta Trifracton Node"):
+ * the quarter words take the place of the major periods' phase, which is never drawn.
  *
  * No DOM, no canvas, no formatter: `createRuler({ model, pure })` only reads the model's catalogue and the helper
  * vocabulary, so every function is unit tested (test/timeline.test.js).
@@ -28,47 +31,25 @@
  *     tolerance that grows with the unit.
  *
  * The finest step is the Blink itself: nothing on the ladder is finer, so its unlabelled minor ticks cut every Blink
- * into tenths (`nu/10`), and spans below one Blink are read as decimals by the pure helper ("0.4ν").
+ * into tenths (`nu/10`), and spans below ten Blinks are read as decimals by the pure helper ("0.4ν", "6.4ν").
  */
 
 /** Float noise of a position near 70 is ~1.4e-14 Saros; this absolute tolerance (60 µs) is above it for every unit. */
 const EPS_POS = 1e-13;
-/** Units from this index on (η θ ι κ λ μ ν) are counts ("9η", from 0); the earlier ones are ordinals ("ζ#5", from 1). */
-const FIRST_COUNT_UNIT = 6;
-/** The units that sit between the atomic steps η ι λ ν; their counts run inside the same parent as the next step's. */
-const IN_BETWEEN = ['theta', 'kappa', 'mu'];
-/** The unit whose cycle a count restarts in (α: the catalogue). See "WHAT A COUNT IS COUNTED INSIDE". */
-const COUNTED_IN = {
-  beta: 'alpha',
-  gamma: 'beta',
-  delta: 'gamma',
-  epsilon: 'delta',
-  zeta: 'epsilon',
-  eta: 'zeta',
-  theta: 'eta',
-  iota: 'eta',
-  kappa: 'iota',
-  lambda: 'iota',
-  mu: 'lambda',
-  nu: 'lambda',
-};
 
 /**
- * Multiples of a unit a ruler step may use, by unit id. A multiple m labels every m-th unit of each parent cycle,
- * counted from the parent's start for as long as a full step still fits before the parent ends: m does not have to
- * divide the count (13 γ make a β, 11 η a ζ cycle), only 2·m <= count (see `multiplesOf`). Together with the whole
- * units they make a ladder whose neighbours are at most 2.6 apart (the κ step after λ×5), which is what keeps 4 to
- * 12 labelled ticks on the plot at every zoom.
+ * Multiples of a unit a ruler step may use, by unit id. A multiple m labels every m-th unit of each parent, counted
+ * from the parent's start for as long as a full step still fits before the parent ends: m does not have to divide the
+ * count (13 γ make a β, 77 η a Nuclide), only 2·m <= count (see `multiplesOf`). The multiples of η are those of the
+ * ζ grid (11η) and of ι those of the θ grid (4ι), of λ the κ grid (13λ) and of ν the μ grid (5ν), so the labelled
+ * ticks fall where the lanes in between start. Neighbouring steps are at most 2.6 apart, which keeps 4 to 12
+ * labelled ticks on the plot at every zoom.
  */
 const MULTIPLES = {
-  nu: [1, 2],
-  mu: [1, 2],
-  lambda: [1, 2, 5],
-  kappa: [1, 2],
-  iota: [1, 2],
-  theta: [1, 2, 3, 4],
-  eta: [1, 2, 3, 5],
-  zeta: [1, 2, 3],
+  nu: [1, 2, 5, 10],
+  lambda: [1, 2, 5, 13, 26],
+  iota: [1, 2, 4, 6, 12, 18],
+  eta: [1, 2, 3, 5, 11, 22, 33],
   epsilon: [1, 2],
   delta: [1, 2],
   gamma: [1, 2, 3, 6],
@@ -78,14 +59,10 @@ const MULTIPLES = {
 /** The finer step drawn as unlabelled small ticks between the labelled ones of a whole unit (m = 1). */
 const MINOR_OF_UNIT = {
   nu: 'nu/10', // a tenth of a Blink: the ladder has nothing finer
-  mu: 'nu',
-  lambda: 'mu',
-  kappa: 'lambda',
-  iota: 'kappa',
-  theta: 'iota',
-  eta: 'theta',
-  zeta: 'eta',
-  epsilon: 'zeta',
+  lambda: 'nu×5', // the μ grid: 5 to a Flavon
+  iota: 'lambda×13', // the κ grid: 5 to a Preon
+  eta: 'iota×4', // the θ grid: 9 to a Helion
+  epsilon: 'eta×11', // the ζ grid: 7 to a Nuclide
   delta: 'epsilon',
   gamma: 'delta',
   beta: 'gamma',
@@ -98,11 +75,13 @@ const BLINK_PARTS = 10;
  * Zoom presets of the toolbar, finest first: the unit that fills the view (the last one fills the whole catalogue).
  * ν is the deepest zoom: the narrowest window (a few Blinks across) is the finest the clock can be read at.
  */
-const PRESET_UNITS = ['nu', 'lambda', 'iota', 'eta', 'zeta', 'epsilon', 'delta', 'gamma', 'beta', 'alpha'];
+const PRESET_UNITS = ['nu', 'lambda', 'iota', 'eta', 'epsilon', 'delta', 'gamma', 'beta', 'alpha'];
 
 /** The most labelled ticks a plot shows at once, and the plot width below which ordinals may use their short form. */
 const MAX_LABELS = 12;
 const NARROW_PLOT = 520;
+/** A whole unit with at least this many ticks across the plot is preferred to a multiple of the unit below it. */
+const PREFER_LABELS = 4.8;
 
 const digits = (n) => String(Math.max(0, Math.trunc(n))).length;
 const roundMs = (t) => Math.round(t * 1000) / 1000;
@@ -119,25 +98,32 @@ export function createRuler({ model, pure }) {
   const alphaCount = Number(model.clock.count(0));
   const idOf = (i) => U[i].id;
   const unitIndex = (id) => U.findIndex((u) => u.id === id);
-  /** Index of the unit a count restarts in (null for α). */
-  const countedIn = U.map((u) => (COUNTED_IN[u.id] ? unitIndex(COUNTED_IN[u.id]) : null));
-  /** How many of this unit make one of the unit it is counted in (the catalogue's α count for α itself). */
-  const per = U.map((u, i) => (countedIn[i] === null ? null : Math.round(len[countedIn[i]] / len[i])));
+  /** The ladder index of a depth (0-based level) when that depth is a unit, else -1. */
+  const unitOfLevel = (level) => U.findIndex((u) => u.level === level);
+  /** Majors (α β γ δ) and the Nuclide are ordinals; from the Helion on the ladder counts. */
+  const FIRST_COUNT_UNIT = unitIndex('eta');
+  const GAMMA = unitIndex('gamma');
+  const isMajorUnit = (i) => !!U[i]?.major;
+  /** How many of this unit make one of the previous unit (the catalogue's α count for α itself). */
+  const per = U.map((u, i) => (i === 0 ? null : Math.round(len[i - 1] / len[i])));
   const perOf = (i) => (i === 0 ? alphaCount : per[i]);
-  /** The units of the main chain (every unit except θ κ μ): what an address is written in, like `pure.stamp`. */
-  const inBetween = (i) => IN_BETWEEN.includes(idOf(i));
-  const MAIN = U.map((u, i) => i).filter((i) => !inBetween(i));
 
   // ---- counters and addresses ---------------------------------------------------------------------
-  /** The counter shown for the unit with global index `idx`: an ordinal from 1 (α β γ δ ε ζ), a count from 0. */
+  /** The counter shown for the unit with global index `idx`: an ordinal from 1 (α β γ δ ε), a count from 0. */
   function counterOf(i, idx) {
     const n = perOf(i);
     return ((idx % n) + n) % n + (i < FIRST_COUNT_UNIT ? 1 : 0);
   }
-  /** "α#6", "ζ#5" (ordinals) or "9η", "42λ" (counts). */
+  /** "α#6", "δ#3", "ε#5" (ordinals) or "33η", "21λ" (counts). */
   const tokenText = (i, c) => (i < FIRST_COUNT_UNIT ? `${U[i].sym}#${c}` : `${c}${U[i].sym}`);
-  /** The shortest form of a tick label: the ordinal without its unit ("#5"); a count is as short as it gets. */
-  const shortText = (i, c) => (i < FIRST_COUNT_UNIT ? `#${c}` : null);
+  /** "Delta Trifracton": a major period's ordinal in words. */
+  const wordsOf = (i, c) => pure.periodName(U[i].level, c);
+  /** The labels of a tick, longest first: "Delta Trifracton" → "δ#3" → "#3"; "ε#5" → "#5"; "33η". */
+  function tickLabels(i, c) {
+    if (isMajorUnit(i)) return [wordsOf(i, c), tokenText(i, c), `#${c}`];
+    if (i < FIRST_COUNT_UNIT) return [tokenText(i, c), `#${c}`];
+    return [tokenText(i, c)];
+  }
 
   /** Index (0-based, from the start of the catalogue) of the unit running at position p; absolute tolerance. */
   const indexAtPos = (i, p) => Math.floor(((p + EPS_POS) * prefix[i]) / 4);
@@ -163,67 +149,44 @@ export function createRuler({ model, pure }) {
 
   const tokenOf = (i, idx) => {
     const c = counterOf(i, idx);
-    return { u: i, c, text: tokenText(i, c) };
+    return { u: i, c, idx, text: tokenText(i, c) };
   };
-  // ---- which units an address is written in ---------------------------------------------------------
+  /** The units of the address down to unit `to` (all of them: the ladder has no gaps). */
+  const unitsTo = (to) => U.map((u, i) => i).filter((i) => i <= to);
   /**
-   * The units of the address down to unit `to`: every unit of the main chain above it, then `to` itself. For a main
-   * chain unit that is exactly what `pure.stamp` writes ("… · 3η 17ι"); an in-between unit is inserted at its place
-   * ("… · 3η 5θ"). `include` names more units to write (the tick unit of a tooltip), each at its place.
-   */
-  function unitsTo(to, include = []) {
-    const out = MAIN.filter((i) => i <= to);
-    for (const i of [to, ...include]) if (i <= to && !out.includes(i)) out.push(i);
-    return out.sort((a, b) => a - b);
-  }
-  /**
-   * The units of the compact three-unit address of the cursor / now / hover flags for ticks of unit `u`: the tick
-   * unit with the main-chain unit above it and the one below it ("3η 17ι 21λ" while the ticks are ι, "7η 5θ 22ι"
-   * while they are θ), so the header's own counters appear wherever the ticks have them.
+   * The units of the compact address of the cursor / now / hover flags for ticks of unit `u`. From the Preon on it is
+   * the header clock "33η 29ι 21λ" (with the Blinks "… 3ν" while the ticks are λ or ν); coarser ticks show the tick
+   * unit between its neighbours: "ε#5 33η 29ι" for η, "δ#3 ε#5 33η" for ε, "γ#9 δ#3 ε#5" for δ.
    */
   function flagUnits(u) {
-    const p = MAIN.indexOf(u);
-    if (p >= 0) {
-      const a = Math.max(0, Math.min(p - 1, MAIN.length - 3));
-      return MAIN.slice(a, a + 3);
-    }
-    const above = MAIN.filter((i) => i < u).pop();
-    const below = MAIN.find((i) => i > u);
-    return [above, u, below].filter((x) => x !== undefined);
+    const eta = unitIndex('eta');
+    const iota = unitIndex('iota');
+    if (u >= iota) return u > iota ? [eta, iota, iota + 1, iota + 2] : [eta, iota, iota + 1];
+    const a = Math.max(0, Math.min(u - 1, N - 3));
+    return [a, a + 1, a + 2];
   }
-  /** The k-th main-chain unit below `u` (the finest, ν, when there are not that many): how far a tooltip runs on. */
-  function below(u, k = 1) {
-    const deeper = MAIN.filter((i) => i > u);
-    return deeper.length ? deeper[Math.min(k, deeper.length) - 1] : u;
-  }
+  /** The unit k steps finer than `u` (the Blink at most): how far a tooltip runs on. */
+  const below = (u, k = 1) => Math.min(N - 1, u + k);
 
-  /** Tokens {u, c, text} of the given units at time t; [] outside the catalogue. */
+  /** Tokens {u, c, idx, text} of the given units at time t; [] outside the catalogue. */
   function tokens(t, units) {
     if (positionRational(t) === null) return [];
     return units.map((i) => tokenOf(i, indexAtTime(i, t)));
   }
   /** Same at a float position (use it far from a boundary, or exactly on the grid). */
   const tokensAtPos = (p, units) => units.map((i) => tokenOf(i, indexAtPos(i, p)));
-  /** Tokens of the address down to unit `to` (and not above `from`) at time t; [] outside the catalogue. */
+  /** Tokens of the address down to unit `to` (not above `from`) at time t; [] outside the catalogue. */
   const tokensAtTime = (t, from = 0, to = N - 1) => tokens(t, unitsTo(to).filter((i) => i >= from));
 
-  /**
-   * The separator between two neighbouring tokens, as `pure.stamp` writes them: α β γ and the odometer counters
-   * η θ ι κ λ … sit side by side, the cycle ordinals and the two groups are set apart by a middle dot.
-   */
-  const gap = (a, b) => ((a < FIRST_COUNT_UNIT && b < 3) || (a >= FIRST_COUNT_UNIT && b >= FIRST_COUNT_UNIT) ? ' ' : ' · ');
-  /** "α#6 β#4 γ#9 · δ#3 · ε#2 · 3η 17ι" */
-  const joinTokens = (toks) => toks.map((t, j) => (j === 0 ? '' : gap(toks[j - 1].u, t.u)) + t.text).join('');
+  /** "α#6 β#4 γ#9 δ#3 ε#5 33η 29ι": the letter address, as `pure.stamp` writes it (single spaces). */
+  const joinTokens = (toks) => toks.map((t) => t.text).join(' ');
   /** The address chain at time t down to unit `to` (not above `from`); '' outside the catalogue. */
   const chainAtTime = (t, from = 0, to = N - 1) => joinTokens(tokensAtTime(t, from, to));
   /** Position of an instant, or null outside the catalogue. */
   const posOf = (t) => model.positionOf(t);
-  /** Same as pure.stamp(t, ...) down to unit `to` (any unit, down to the Blink); '' outside the catalogue. */
+  /** Same as pure.stamp(t, U[to].id) for any unit from δ down to the Blink; '' outside the catalogue. */
   const stampText = (t, to = unitIndex('iota')) => chainAtTime(t, 0, to);
-  /**
-   * The three-unit compact address used by the cursor / now / hover flags (see `flagUnits`), e.g. "3η 17ι 21λ"
-   * while the ticks are ι.
-   */
+  /** The compact address of the cursor / now / hover flags (see `flagUnits`): "33η 29ι 21λ" while the ticks are ι. */
   const flagText = (t, u) => joinTokens(tokens(t, flagUnits(u)));
   /** Position of any instant: outside the catalogue it continues at the mean Saros length (for lengths only). */
   function posExt(t) {
@@ -238,10 +201,10 @@ export function createRuler({ model, pure }) {
     return model.timeOfPosition(p);
   }
   /**
-   * A length of time counted in ladder units around the instants t0 < t1 ("1ζ 2η"), measured in position; a span of
-   * only a few Blinks keeps a decimal ("2.6ν"). `slack` is the relative width of what the eye cannot tell apart (half
+   * A length of time counted in ladder units around the instants t0 < t1 ("2ε 10η"), measured in position; a span of
+   * only a few Blinks keeps a decimal ("6.4ν"). `slack` is the relative width of what the eye cannot tell apart (half
    * a pixel of the plot): a window that is one unit across to within a pixel reads "1α", not "4β 12γ" and not
-   * "1α 5ζ": the fewest leading parts that come within the slack of the span are written, the rest is dropped.
+   * "1α 3ε": the fewest leading parts that come within the slack of the span are written, the rest is dropped.
    */
   function spanText(t0, t1, parts = 2, slack = 0) {
     const span = posExt(t1) - posExt(t0);
@@ -259,8 +222,8 @@ export function createRuler({ model, pure }) {
     return pure.durationPos(span, { parts });
   }
   /**
-   * "in 3ζ 2η" / "3ζ 2η ago" for t relative to ref, measured in position (exact across eclipse intervals); below
-   * one Blink a decimal ("in 0.4ν"). "now" only within the same millisecond, the clock's resolution.
+   * "in 2ε 10η" / "6ι 43λ ago" for t relative to ref, measured in position (exact across eclipse intervals); below
+   * ten Blinks a decimal ("in 0.32ν"). "now" only within the same millisecond, the clock's resolution.
    */
   function relText(t, ref) {
     if (Math.abs(t - ref) < 0.001) return 'now';
@@ -268,8 +231,8 @@ export function createRuler({ model, pure }) {
   }
 
   /**
-   * "from → to" of a window, the shared leading part of both addresses written once:
-   * "α#6 β#4 γ#9 · δ#3 · ε#2 · ζ#4 · 7η → ζ#5 · 2η". An edge outside the catalogue says so.
+   * "from → to" of a window in letters, the shared leading part of both addresses written once:
+   * "α#6 β#4 γ#9 δ#3 ε#5 32η 30ι → 34η 1ι". An edge outside the catalogue says so.
    */
   function rangeText(t0, t1, to = unitIndex('iota')) {
     const edge = (t) => (positionRational(t) !== null ? null : t < model.tMin ? 'before the catalogue' : 'after the catalogue');
@@ -281,12 +244,12 @@ export function createRuler({ model, pure }) {
     const B = tokensAtTime(t1, 0, to);
     let common = 0;
     while (common < A.length - 1 && A[common].text === B[common].text) common++;
-    const head = common ? joinTokens(A.slice(0, common)) + gap(A[common - 1].u, A[common].u) : '';
+    const head = common ? joinTokens(A.slice(0, common)) + ' ' : '';
     return `${head}${joinTokens(A.slice(common))} → ${joinTokens(B.slice(common))}`;
   }
 
   // ---- unit boundaries -----------------------------------------------------------------------------
-  /** Time of the start of the unit with global index idx, or null beyond the catalogue. */
+  /** Time of the start of the unit with global index idx (fractions allowed: quarters, tenths), or null beyond the catalogue. */
   const startTime = (i, idx) => model.cycleStartTime(U[i].level, idx);
 
   // ---- steps (the zoom ladder of the ruler) --------------------------------------------------------
@@ -295,18 +258,34 @@ export function createRuler({ model, pure }) {
   const multiplesOf = (i) => (MULTIPLES[idOf(i)] ?? [1]).filter((m) => m === 1 || 2 * m <= perOf(i));
   /** Largest counter a unit shows (an ordinal counts to its parent's size, a count to one less). */
   const topCounter = (i) => (i < FIRST_COUNT_UNIT ? perOf(i) : perOf(i) - 1);
-  /** Width of the longest label of a unit in characters: "δ#5", "α#18", "35ι", "4μ". */
+  /**
+   * Width of the label a tick must at least be able to show, in characters: the letter form "δ#5", "α#18", "76η"
+   * (a major period's words are shown only where they fit).
+   */
   const charsOf = (i) => U[i].sym.length + (i < FIRST_COUNT_UNIT ? 1 : 0) + digits(topCounter(i));
   /** … and of its short form (an ordinal without its unit, "#10"), which the painter falls back to. */
   const charsShortOf = (i) => (i < FIRST_COUNT_UNIT ? 1 + digits(topCounter(i)) : charsOf(i));
   /**
-   * All ruler steps, finest first: {id, u, m, sym, nominal (s), chars, charsShort, ctx (unit of the context row or -1),
-   * pure}.
+   * All ruler steps, finest first: {id, u, level, m, sym, nominal (s), chars, charsShort, ctx (unit index of the context
+   * row or -1), quarters (the context row is cut into the quarters of a major period), pure}.
    */
   const STEPS = [];
   for (let i = N - 1; i >= 0; i--) {
     for (const m of multiplesOf(i)) {
-      STEPS.push({ id: stepId(i, m), u: i, m, sym: U[i].sym, nominal: sec[i] * m, chars: charsOf(i), charsShort: charsShortOf(i), ctx: i - 1, pure: true });
+      const ctx = i - 1;
+      STEPS.push({
+        id: stepId(i, m),
+        u: i,
+        level: U[i].level,
+        m,
+        sym: U[i].sym,
+        nominal: sec[i] * m,
+        chars: charsOf(i),
+        charsShort: charsShortOf(i),
+        ctx,
+        quarters: ctx >= 0 && isMajorUnit(ctx) && m === 1,
+        pure: true,
+      });
     }
   }
   const STEP_BY_ID = new Map(STEPS.map((s) => [s.id, s]));
@@ -315,11 +294,12 @@ export function createRuler({ model, pure }) {
    * not in STEPS). `div` marks a step that cuts every unit into that many equal parts.
    */
   const NU = unitIndex('nu');
-  STEP_BY_ID.set('nu/10', { id: 'nu/10', u: NU, m: 1, div: BLINK_PARTS, sym: U[NU].sym, nominal: sec[NU] / BLINK_PARTS, chars: 0, charsShort: 0, ctx: NU - 1, pure: true });
+  STEP_BY_ID.set('nu/10', { id: 'nu/10', u: NU, level: U[NU].level, m: 1, div: BLINK_PARTS, sym: U[NU].sym, nominal: sec[NU] / BLINK_PARTS, chars: 0, charsShort: 0, ctx: NU - 1, quarters: false, pure: true });
   const stepById = (id) => STEP_BY_ID.get(id) ?? null;
   /**
-   * The unlabelled finer step between the labelled ticks: for a whole unit the finer unit that cuts it into 5 to 13
-   * pieces (MINOR_OF_UNIT); for a multiple the smaller multiple of the same unit that divides it into about four.
+   * The unlabelled finer step between the labelled ticks: for a whole unit the grid of the depth between (MINOR_OF_UNIT:
+   * 4ι under η, 11η under ε …) or the next unit; for a multiple the smaller multiple of the same unit that divides it
+   * into about four.
    */
   function minorOf(step) {
     if (step.div) return null;
@@ -339,21 +319,31 @@ export function createRuler({ model, pure }) {
    * plot, where the key in the gutter and the context row carry the unit) and a plot never shows more than
    * MAX_LABELS of them. The ladder's ratio is at most 2.6, so a plot of 520 px or more shows between 4 and 12 labels
    * at every zoom.
+   *
+   * A multiple gives way to the next whole unit above it as soon as that unit shows PREFER_LABELS ticks itself: one
+   * Delta across reads ε#1 … ε#5 under its quarters, not "0η 33η 0η 33η". The switch happens once on the way out, so
+   * the choice still coarsens monotonically.
    */
   function pickStep(pxPerSec, plotW = 1000, charW = 6.6) {
     const roomy = plotW / MAX_LABELS;
     const narrow = plotW < NARROW_PLOT;
-    for (const s of STEPS) {
+    for (let k = 0; k < STEPS.length; k++) {
+      const s = STEPS[k];
       const need = Math.max((narrow ? s.charsShort : s.chars) * charW + (narrow ? 10 : 18), roomy);
-      if (s.nominal * pxPerSec >= need) return s;
+      if (s.nominal * pxPerSec < need) continue;
+      if (s.m > 1) {
+        const whole = STEPS.find((x, j) => j > k && x.m === 1);
+        if (whole && plotW / (whole.nominal * pxPerSec) >= PREFER_LABELS) return whole;
+      }
+      return s;
     }
     return STEPS[STEPS.length - 1];
   }
 
   /**
-   * Ticks of a step in [from, to]: {t, idx, counter, labels (long → short), major}. Every parent cycle (a ζ cycle for
-   * η, a δ for ε, the catalogue for α …) is counted from its own start: ticks at 0, m, 2m … for as long as a full
-   * step of m still fits before the parent ends, so no label is ever squeezed against the next parent's first one.
+   * Ticks of a step in [from, to]: {t, idx, counter, labels (long → short), major}. Every parent (a Nuclide for η, a
+   * Delta for ε, the catalogue for α …) is counted from its own start: ticks at 0, m, 2m … for as long as a full step
+   * of m still fits before the parent ends, so no label is ever squeezed against the next parent's first one.
    * `major` marks the starts of the parent. Nothing is generated outside the catalogue.
    */
   function ticksIn(step, from, to, limit = 6000) {
@@ -376,8 +366,7 @@ export function createRuler({ model, pure }) {
         if (t === null || t >= model.tMax) return out;
         if (t < from - 1e-6 || t > to + 1e-6) continue;
         const c = counterOf(i, k);
-        const short = shortText(i, c);
-        out.push({ t, idx: k, counter: c, labels: short ? [tokenText(i, c), short] : [tokenText(i, c)], major: i === 0 || o === 0 });
+        out.push({ t, idx: k, counter: c, labels: tickLabels(i, c), major: i === 0 || o === 0 });
       }
     }
     return out;
@@ -398,33 +387,56 @@ export function createRuler({ model, pure }) {
     return out;
   }
 
+  // ---- the context row -------------------------------------------------------------------------------
   /**
-   * Spans of unit c overlapping [from, to] (the context row): {t0, t1, ord, labels (long → short)}. The labels are the
-   * address of the span with its leading parts dropped one by one ("α#6 β#4 γ#9 · δ#3 · ε#2" … "ε#2" … "#2").
+   * The labels of a stretch whose address at position p runs down to unit c, longest first: the major periods in words
+   * (joined by " · "), then the minor letters and counts, with the leading parts dropped one by one; then the letter
+   * form of the last part and its bare ordinal. `quarter` (a word) is the quarter of the last major period when the
+   * stretch is one of its quarters. A minor stretch starts its words at the Gamma, like a short date.
+   *   δ quarter   "Alpha Hexafracton · … · Delta Trifracton Node" … "Delta Trifracton Node" → "δ#3 Node" → "Node"
+   *   ε           "Gamma Nonafracton · Delta Trifracton · ε#5" … "ε#5" → "#5"
+   *   ι           "Gamma Nonafracton · Delta Trifracton · ε#5 33η 29ι" … "33η 29ι" → "29ι"
    */
-  function spansIn(c, from, to, limit = 4000) {
+  function stretchLabels(p, c, quarter = null) {
+    const toks = tokensAtPos(p, unitsTo(c).filter((i) => isMajorUnit(c) || i >= GAMMA));
+    const parts = toks.map((tk) => (isMajorUnit(tk.u) ? { text: wordsOf(tk.u, tk.c), major: true } : { text: tk.text, major: false }));
+    if (quarter) parts[parts.length - 1].text += ` ${quarter}`;
+    const join = (ps) => ps.map((x, j) => (j === 0 ? '' : ps[j - 1].major ? ' · ' : ' ') + x.text).join('');
+    const labels = [];
+    for (let j = 0; j < parts.length; j++) labels.push(join(parts.slice(j)));
+    const last = toks[toks.length - 1];
+    if (isMajorUnit(c)) {
+      labels.push(quarter ? `${last.text} ${quarter}` : last.text);
+      labels.push(quarter ?? `#${last.c}`);
+    } else if (c < FIRST_COUNT_UNIT) labels.push(`#${last.c}`);
+    return labels;
+  }
+  /**
+   * Spans of unit c overlapping [from, to]: {t0, t1, ord, labels (long → short)} (see `stretchLabels`). With `quarters`
+   * (c a major period) every cycle is cut into its four quarters, each named by its quarter word (SPEC §15.2: the
+   * quarter is named by the threshold that ends it); `ord` is then the global quarter number.
+   */
+  function spansIn(c, from, to, { quarters = false, limit = 4000 } = {}) {
     if (c < 0) return [];
     const a = Math.max(from, model.tMin);
     const b = Math.min(to, model.tMax);
     if (!(b >= a)) return [];
-    const k0 = Math.max(0, Math.floor(posOf(a) / len[c]));
-    const k1 = Math.max(k0, Math.ceil(posOf(b) / len[c]) - 1);
+    const q = quarters ? 4 : 1;
+    const k0 = Math.max(0, Math.floor((posOf(a) / len[c]) * q));
+    const k1 = Math.max(k0, Math.ceil((posOf(b) / len[c]) * q) - 1);
     const out = [];
     for (let k = k0; k <= k1 && out.length < limit; k++) {
-      const t0 = startTime(c, k);
+      const t0 = startTime(c, k / q);
       if (t0 === null) break;
-      const t1 = startTime(c, k + 1) ?? model.tMax;
+      const t1 = startTime(c, (k + 1) / q) ?? model.tMax;
       if (!(t1 > t0)) continue;
-      const toks = tokensAtPos(Math.min(ext - 10 * EPS_POS, (k + 0.5) * len[c]), unitsTo(c));
-      const labels = [];
-      for (let j = 0; j < toks.length; j++) labels.push(joinTokens(toks.slice(j)));
-      const last = toks[toks.length - 1];
-      const short = shortText(c, last.c);
-      if (short) labels.push(short);
-      out.push({ t0, t1, ord: k, labels });
+      const mid = Math.min(ext - 10 * EPS_POS, ((k + 0.5) / q) * len[c]);
+      out.push({ t0, t1, ord: k, labels: stretchLabels(mid, c, quarters ? pure.QUARTER_WORDS[k % 4] : null) });
     }
     return out;
   }
+  /** The context row of a step: the quarters of the major period above whole-unit ticks, else the next coarser unit. */
+  const contextIn = (step, from, to) => spansIn(step.ctx, from, to, { quarters: !!step.quarters });
 
   // ---- overview: eclipse numbers --------------------------------------------------------------------
   /** Labels of the catalogue map: "#10", "#20" … at the eclipse instants (eclipse k sits at position k). */
@@ -482,11 +494,11 @@ export function createRuler({ model, pure }) {
     len,
     sec,
     per,
-    countedIn,
     alphaCount,
     unitIndex,
-    isInBetween: inBetween,
-    mainChain: MAIN,
+    unitOfLevel,
+    isMajorUnit,
+    FIRST_COUNT_UNIT,
     unitsTo,
     flagUnits,
     below,
@@ -495,6 +507,7 @@ export function createRuler({ model, pure }) {
     indexAtTime,
     counterOf,
     tokenText,
+    tickLabels,
     tokensAtTime,
     tokensAtPos,
     joinTokens,
@@ -512,7 +525,9 @@ export function createRuler({ model, pure }) {
     minorStepOf,
     pickStep,
     ticksIn,
+    stretchLabels,
     spansIn,
+    contextIn,
     overviewMarks,
     PRESETS,
     presetSpan,

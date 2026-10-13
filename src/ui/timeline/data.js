@@ -4,7 +4,8 @@
  *
  *  - blocksFor(L, t0, t1)   cycle blocks of a lane covering a window (cached on a padded window)
  *  - cycleAt(L, t)         the cycle of level L that contains t (cached until t leaves it)
- *  - ticksFor / contextFor / weekendsFor   Gregorian axis items for a window (cached per step)
+ *  - ticksFor / contextFor / weekendsFor   axis items for a window (cached per step): the Gregorian axis, or the
+ *                          pure ruler's ticks and context row (timeline/ruler.js)
  *  - alpha, eclipses       static lists for the overview and the eclipse lane
  *
  * Block lists only hold what the model's float boundary arithmetic returns (`boundaries`,
@@ -116,7 +117,7 @@ export function createData({ model, fmt, pure = null }) {
     return m ? { step: m, ticks: ticksFor(m, t0, t1) } : null;
   };
   const contextFor = (step, t0, t1) =>
-    spans('ctx', step.id, t0, t1, (a, b) => (step.pure ? ruler.spansIn(step.ctx, a, b) : generateContext(step, a, b, fmt)));
+    spans('ctx', step.id, t0, t1, (a, b) => (step.pure ? ruler.contextIn(step, a, b) : generateContext(step, a, b, fmt)));
   const weekendsFor = (t0, t1) =>
     spans('wk', 'day', t0, t1, (a, b) => civilSpans('day', a, b, fmt).filter((s) => s.weekday === 0 || s.weekday === 6));
 

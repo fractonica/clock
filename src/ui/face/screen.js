@@ -135,7 +135,7 @@ export function createScreen({ glyphBook, uid }) {
   // ---- letters & info labels ------------------------------------------------------------
   const cy = SCREEN.cy;
   const text = (cls, x, y, anchor = 'middle') => node('text', { class: cls, x, y, 'text-anchor': anchor });
-  // pure mode adds the name of the running cycle ("Eta Monofracton") on the side of the letter that faces the solar row
+  // pure mode adds the name of the running cycle ("Delta Trifracton", "ε#5 33η") on the side of the letter that faces the solar row
   const NAME_DY = 23;
   const letters = {
     top: { l: text('face-letter', SCREEN.cx, cy - LABEL_DY), d: text('face-letter-depth', SCREEN.cx + 15, cy - LABEL_DY + 5, 'start'), n: text('face-letter-name', SCREEN.cx, cy - LABEL_DY + NAME_DY), key: '' },
@@ -273,7 +273,7 @@ export function createScreen({ glyphBook, uid }) {
     }
   }
 
-  /** `name` (pure mode: "Eta Monofracton") is drawn under the letter; '' in normal mode. */
+  /** `name` (pure mode: "Delta Trifracton" or "ε#5 33η") is drawn under the letter; '' in normal mode. */
   function setLetters(top, bottom) {
     for (const [slot, v] of [
       ['top', top],

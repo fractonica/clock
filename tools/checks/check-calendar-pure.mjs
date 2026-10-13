@@ -1,8 +1,8 @@
 // Pure-mode check for the calendar tab and the header jump box (headless Chromium).
 //   node tools/checks/check-calendar-pure.mjs [--soft] [--shots]
 //
-// Revision 2 of pure mode: whole cycles (no halves), one δ page = 5 ε x 7 ζ = 35 ζ cells, offsets in every unit and
-// Blinks. 1. Leak scan: the shared scanner (tools/pure-scan.mjs) over the pure converter, the pure δ page and the jump box in
+// Revision 3 of pure mode (SPEC §15): major periods in words with quarter words, the Nuclide and counts of Helions,
+// Preons, Flavons and Blinks; one page = one Delta = 5 Nuclide rows x 7 columns of 11 Helions. 1. Leak scan: the shared scanner (tools/pure-scan.mjs) over the pure converter, the pure δ page and the jump box in
 //    states it cannot reach by itself: open glyph picker, typed errors in every field, every jump-box input class
 //    (names, addresses, stamps, offsets, boundaries, glyph states, Earth input, errors, examples, history), tooltips of
 //    cells / η bands / sync marks / ribbon, keyboard-only tooltips, toasts, out-of-range moments, phone width.
@@ -100,22 +100,31 @@ await withApp(
       await field('Stamp or name').fill('Gamma Difracton');
       await field('Stamp or name').press('Enter');
       await page.waitForTimeout(250);
-      ok(/^α#6 β#4 γ#2 · δ#1 · ε#1 · ζ#1 · 0η 0ι 0λ$/.test(await stampNow()), `a name sets the moment: ${await stampNow()}`);
+      ok(/^α#6 β#4 γ#2 δ#1 ε#1 0η 0ι 0λ$/.test(await stampNow()), `a name sets the moment: ${await stampNow()}`);
       ok((await page.locator('.cal-pconv .cal-pin').getAttribute('aria-pressed')) === 'true', 'an edit pins the converter');
       ok(/α#6 β#4 γ#2/.test(await field('Stamp or name').inputValue()), 'the stamp field shows the new moment');
       ok(Math.abs((await t()) - T) < 1, 'the app itself did not move until Apply');
-      // counters: + on δ moves by one δ
+      // the Nuclide: + moves by one Nuclide; the counts are typed
       const c0 = await conv();
       await page.locator('.cal-pconv .cal-cstep').first().locator('button').nth(1).click();
       await page.waitForTimeout(200);
-      ok(/δ#2 · ε#1/.test(await stampNow()), `δ + 1: ${await stampNow()}`);
+      ok(/δ#1 ε#2 0η/.test(await stampNow()), `ε + 1: ${await stampNow()}`);
       ok((await conv()) > c0, 'the counter moved the moment forward');
-      await field('δ number, 1 to 5').fill('4');
+      await field('Helion count, 0 to 76').fill('40');
       await page.waitForTimeout(250);
-      ok(/δ#4/.test(await stampNow()), 'typing a counter sets it');
-      // the Counters section is written in the notation: δ# before the number, the unit after it for the clock
-      ok((await page.locator('.cal-pconv .cal-cstep.is-ord .cal-sl').allInnerTexts()).join(' ') === 'δ# ε# ζ#', 'the date counters are labelled δ# ε# ζ#');
-      ok((await page.locator('.cal-pconv .cal-cstep.is-count .cal-sl').allInnerTexts()).join(' ') === 'η ι λ', 'the clock counters are labelled η ι λ after the number');
+      ok(/ε#2 40η/.test(await stampNow()), 'typing a Helion count sets it: ' + (await stampNow()));
+      // a major period by its fracton name: the Delta select, with the quarter word beside it
+      await page.selectOption('.cal-pconv select[aria-label="Delta of this moment, by its fracton name"]', '4');
+      await page.waitForTimeout(250);
+      ok(/δ#4 ε#2 40η/.test(await stampNow()), 'the Delta picker sets δ#4 and keeps what is finer: ' + (await stampNow()));
+      const quarters = await page.locator('.cal-pconv .cal-mq').allInnerTexts();
+      ok(quarters.length === 4 && quarters.every((q) => /^(Peak|Node|Valley|End)$/.test(q)), 'each major period shows its quarter word: ' + quarters.join(' '));
+      ok((await page.locator('.cal-pconv .cal-mstep .cal-sl').allInnerTexts()).join(' ') === 'Alpha Beta Gamma Delta', 'the majors are named in words');
+      // the minor entries are written in the notation: ε# before the number, the unit after a count
+      ok((await page.locator('.cal-pconv .cal-cstep.is-ord .cal-sl').allInnerTexts()).join(' ') === 'ε#', 'the Nuclide is labelled ε#');
+      ok((await page.locator('.cal-pconv .cal-cstep.is-count .cal-sl').allInnerTexts()).join(' ') === 'η ι λ ν', 'the counts are labelled η ι λ ν after the number');
+      ok((await page.locator('.cal-pconv .cal-pc-clock .pure-pair').count()) === 1, 'the Helion reading carries its phase pair');
+      ok((await page.locator('.cal-pconv .cal-pgcell.is-major').count()) === 4 && (await page.locator('.cal-pconv .cal-pgcell.is-major .pure-pair').count()) === 0, 'Alpha … Delta show a quarter word, no glyph pair');
       ok(/Press \? for the glossary/.test(await page.locator('.cal-pconv .cal-pc-moment .cal-help').first().innerText()), 'the converter help points to the glossary');
       // address steppers: ε + carries
       await page.locator('.cal-pconv .cal-dchip').nth(4).click();
@@ -124,7 +133,16 @@ await withApp(
       await page.locator('.cal-pconv .cal-chain .cal-step:not([hidden])').nth(4).locator('button').nth(1).click();
       await page.waitForTimeout(250);
       ok((await stampNow()) !== before, `ε + changes the moment (${before} -> ${await stampNow()})`);
-      ok(/Begin of/.test(await page.locator('.cal-pconv .cal-result').innerText()) && /Epsilon \w+fracton/.test(await page.locator('.cal-pconv .cal-result').innerText()), 'the result names the cycles');
+      const res = await page.locator('.cal-pconv .cal-result').innerText();
+      ok(/Begin of/.test(res) && /Delta \w+fracton/.test(res) && !/Epsilon \w*fracton/.test(res), 'the result names the majors in words and the Nuclide by number: ' + res.replace(/\s+/g, ' '));
+      // a depth finer than the Nuclide is placed by its counts
+      await page.locator('.cal-pconv .cal-dchip').nth(8).click();
+      await page.waitForTimeout(200);
+      ok(/^\d+η \d+ι$/.test(await page.locator('.cal-pconv .cal-placet').innerText()), 'an ι cycle is placed by its counts: ' + (await page.locator('.cal-pconv .cal-placet').innerText()));
+      const pBefore = await stampNow();
+      await page.locator('.cal-pconv .cal-place button').nth(1).click();
+      await page.waitForTimeout(200);
+      ok((await stampNow()) !== pBefore, 'the place stepper moves one cycle of its depth');
       // glyph picker: rows with stamps and countdowns
       await page.locator('.cal-pconv .cal-gcell').nth(6).click();
       await page.waitForTimeout(300);
@@ -162,9 +180,9 @@ await withApp(
       note(await scan(page, `${label} ← ${text}`));
       await loc.press('Escape');
     };
-    for (const bad of ['2031-06-01', '+3d', 'Moscow', 'xyz', '14:30', 'next ζ½ peak', 'δ½ 3', '+2ξ', 'ζ#9', 'δ#6', 'α#19', 'η 3 ζ 5', '3η ζ#5', '11η', '3γ', '3η 4ν', 'tomorrow', '1791460800', '3 beats']) await typeIn('Stamp or name', bad);
-    // offsets in every unit, Blinks and unit names included, are read by the stamp field
-    for (const good of ['+4 Blinks', '+2 Hadrons 3 Helions', '+2ζ 3η', '+0.14ν', '-1ι']) await typeIn('Stamp or name', good);
+    for (const bad of ['2031-06-01', '+3d', 'Moscow', 'xyz', '14:30', 'next ζ½ peak', 'δ½ 3', '+2ξ', '+2ζ', 'ζ#5', 'δ#6', 'α#19', 'Delta Trifracton Node ε#2 5η', '3γ', '77η', '33η 4ν', 'tomorrow', '1791460800', '3 beats', '+2 Hadrons', 'next Atom', 'Eta Difracton', '50%']) await typeIn('Stamp or name', bad);
+    // every date form, counts and offsets in every unit (Blinks and unit names included) are read by the stamp field
+    for (const good of ['+4 Blinks', '+2 Nuclides 5 Helions', '+2ε 5η', '+0.14ν', '-3ι', 'Delta Trifracton Node', 'Delta Trifracton End ε#5 33η 29ι', 'ε#2 5η', '33η 17ι']) await typeIn('Stamp or name', good);
     await typeIn('Eclipse number', '99');
     await typeIn('Fraction', 'abc');
     await typeIn('Exact position (Saros units)', '1e9');
@@ -245,12 +263,12 @@ await withApp(
     console.log('pure page: navigation, clicks, keys, selects');
     await goto(`?pure=1&t=${T}&view=calendar`);
     const v0 = await view();
-    await page.locator('.cal-pmonth .cal-nb[aria-label="Forward one δ"]').click();
+    await page.locator('.cal-pmonth .cal-nb[aria-label="Forward one Delta"]').click();
     await page.waitForTimeout(250);
     const v1 = await view();
-    ok(v1.hv === v0.hv + 1, `forward one δ moves the page (${v0.hv} -> ${v1.hv})`);
+    ok(v1.hv === v0.hv + 1, `forward one Delta moves the page (${v0.hv} -> ${v1.hv})`);
     note(await scan(page, 'next page'));
-    for (const [sym, pages] of [['γ', 5], ['β', 65], ['α', 325]]) {
+    for (const [sym, pages] of [['Gamma', 5], ['Beta', 65], ['Alpha', 325]]) {
       await page.locator(`.cal-pm-step button:has-text("${sym}")`).click();
       const before = (await view()).hv;
       await page.locator('.cal-pmonth .cal-nb').nth(1).click();
@@ -260,22 +278,31 @@ await withApp(
       await page.locator('.cal-pmonth .cal-nb').nth(0).click();
       await page.waitForTimeout(150);
     }
-    await page.locator('.cal-pm-step button:has-text("δ")').click();
+    await page.locator('.cal-pm-step button:has-text("Delta")').click();
     await page.waitForTimeout(100);
     await page.selectOption('.cal-pmonth select[aria-label="Alpha of the page"]', '9');
     await page.waitForTimeout(250);
     note(await scan(page, 'alpha 9'));
     ok((await view()).info.alpha === 9, 'the α select jumps to α#9');
-    ok((await page.locator('.cal-pm-cell').count()) === 35, 'a page is 35 ζ cells (5 ε rows x 7 ζ columns)');
+    ok((await page.locator('.cal-pm-cell').count()) === 35, 'a page is 35 cells (5 Nuclide rows x 7 columns of 11 Helions)');
+    ok((await page.locator('.cal-pm-ch').allInnerTexts()).map((x) => x.replace(/\s+/g, '')).join(' ') === '0η 11η 22η 33η 44η 55η 66η', 'the columns are labelled by their first Helion count');
+    ok(/Gamma \w+fracton\s·\s+Delta \w+fracton/.test(await page.locator('.cal-pm-tm').innerText()), 'the page is named in words: ' + (await page.locator('.cal-pm-tm').innerText()));
+    // the quarter bar: Peak Node Valley End of the page's Delta; a click goes to where the quarter begins
+    ok((await page.locator('.cal-pm-qseg').allInnerTexts()).join(' ') === 'Peak Node Valley End', 'the quarter bar names the four quarters');
+    ok((await page.locator('.cal-pm-qline').count()) === 3, 'three quarter thresholds are marked inside the grid');
+    await page.locator('.cal-pm-qseg').nth(2).click();
+    await page.waitForTimeout(250);
+    ok(/ Valley$/.test(await page.evaluate(() => window.__fractonica.ctx.pure.majorText(window.__fractonica.store.t(), 3))), 'a click on Valley goes to where the Valley quarter begins');
+    ok((await page.locator('.cal-pm-qseg.is-cur').innerText()) === 'Valley', 'the current quarter is marked');
     // the band level: δ ε ζ cycles are whole cells, η cycles are inside them; the choice is the app-wide selected depth
-    for (const [i, level] of [[0, 3], [1, 4], [2, 5], [3, 6]]) {
+    for (const [i, level] of [[0, 3], [1, 4], [2, 6]]) {
       await page.locator('.cal-pmonth .cal-ovseg button').nth(i).click();
       await page.waitForTimeout(250);
-      ok((await page.evaluate(() => window.__fractonica.store.state.selectedLevel)) === level, `the band level ${'δεζη'[i]} is the selected depth ${level + 1}`);
-      ok((await page.locator('.cal-pm-seg').count()) >= 35, `the band has segments at level ${'δεζη'[i]}`);
+      ok((await page.evaluate(() => window.__fractonica.store.state.selectedLevel)) === level, `the band level ${'δεη'[i]} is the selected depth ${level + 1}`);
+      ok((await page.locator('.cal-pm-seg').count()) >= 35, `the band has segments at level ${'δεη'[i]}`);
       await page.locator('.cal-pm-seg').nth(14).hover({ force: true });
       await page.waitForTimeout(120);
-      note(await scan(page, `band ${'δεζη'[i]}`));
+      note(await scan(page, `band ${'δεη'[i]}`));
     }
     await page.evaluate(() => window.__fractonica.store.set({ selectedLevel: 4 }));
     await page.waitForTimeout(250);
@@ -364,43 +391,44 @@ await withApp(
     note(await hoverSweep(page, 'jump list', { cols: 3, rows: 8, dwell: 40, box: (await page.locator('.jump-pop').boundingBox()) ?? undefined }));
     const inputs = [
       'Gamma Difracton', 'Gamma Difracton in Beta Tetrafracton', 'Alpha Hexafracton Beta Tetrafracton Gamma Nonafracton', 'Difracton', 'Omega Monofracton',
-      'α#6 β#4 γ#9', 'ε#5', 'ζ 6', 'a6 b3 g11', 'α#19', 'β#6', 'γ#14',
-      'δ#3 · ε#2 · ζ#5', 'δ 3 · ε 2 · ζ 5', 'η 3', 'ζ 5 η 3', 'ζ#6 · 5η', '3η 17ι 21λ', '0η29ι21λ', 'δ#6', 'ε#6', 'ζ#8', 'η 11', '11η', '3γ', 'ν#3 · 3η',
-      '+2ζ 3η', '-1ι', '3η ago', '+3', '+2δ', '+2θ', '+9999α', '+4 Blinks', '+0.14ν', '+2ξ', '+2 Hadrons 3 Helions', '3 Preons ago', 'in 5 Flavons', '+7ν',
-      'δ½ 3', 'δ½#3', 'ζ½', 'next ζ½', '+2ζ½ 3η', 'delta half 3', '3 beats',
+      'Delta Trifracton', 'Delta Trifracton Node', 'Delta Trifracton Node ε#2 20η 12ι', 'Delta Trifracton Node ε#2 5η', 'Delta Trifracton End ε#5 33η 29ι',
+      'Alpha Hexafracton Valley, Beta Tetrafracton Valley, Gamma Nonafracton Valley, Delta Trifracton End, ε#5 33η 29ι 21λ 3ν',
+      'α#6 β#4 γ#9 δ#3 ε#5 33η 29ι 21λ 3ν', 'δ#3 ε#5 33η 29ι', 'α#6 β#4 γ#9', 'ε#5', 'ζ 6', 'a6 b3 g11', 'α#19', 'β#6', 'γ#14',
+      'ε#2 5η', '33η 17ι', 'δ 3 ε 2 η 5', 'η 3', '33η29ι21λ3ν', 'δ#6', 'ε#6', '77η', '3γ', 'ν#3', '33η 4ν',
+      '+2ε 5η', '-3ι', '3η ago', '+3', '+2δ', '+9999α', '+4 Blinks', '+0.14ν', '+2 Nuclides 5 Helions', '3 Preons ago', 'in 5 Flavons', '+12ν',
+      'δ½ 3', 'ζ½', 'next ζ½', 'delta half 3', '+2ζ', '5ζ', 'ζ#5', 'θ#3', '+2θ', '+2ξ', '+2 Hadrons', 'next Atom', '3 Quarks ago', 'Eta Difracton', 'Epsilon Trifracton', '3 beats', '50%',
       'pos 22.9', 'pos 99', 'sync 4820', 'S4820 node', 'sync 99999999',
-      'next ε', 'prev ζ', 'next Helion', 'next peak η', 'next 3 ε', 'next peak', 'next Nuclide', 'prev Atom', 'next Blink', 'ε', 'Helion',
-      'η [13,0]', 'η 13·4', 'η [16,0]', 'd7#717211', 'd7#99999999999', 'd20 1,2', 'now',
+      'next ε', 'prev η', 'next Helion', 'next Delta', 'next Delta node', 'next node of Delta', 'next peak η', 'next 3 ε', 'next peak', 'next Nuclide', 'next Blink', 'next ζ', 'ε', 'Helion', 'Delta',
+      'η [13,0]', 'η 13·4', 'η [16,0]', 'δ [3,0]', 'd7#717211', 'd7#99999999999', 'd20 1,2', 'now',
       '2031-06-01 14:30', 'Thu 8 Oct 2026', '+3d', 'in 2 weeks', 'tomorrow', '14:30 Tokyo', '1791460800', 'UTC',
       'xyz', '???', 'x'.repeat(300),
     ];
     for (const text of inputs) await typeJump(text);
-    // the stamp the header prints is accepted at every η of a ζ ("ζ#6 · 5η": the clock counts inside the whole ζ)
+    // what the header prints is read back: the short date in words (with the quarter word) and the stamp in letters,
+    // also in a Nuclide that straddles two quarters of its Delta
     {
       const inst = await page.evaluate(() => {
         const { model, ctx } = window.__fractonica;
-        for (let k = 1000; k < 1400; k++) {
-          const a = model.cycleStartTime(5, k);
-          const b = model.cycleStartTime(5, k + 1);
-          const t = Math.round((a + 0.523 * (b - a)) * 1000) / 1000;
-          const c = ctx.pure.clock(t);
-          if (c && c.eta === 5 && model.levelAt(t, 5).phase >= 0.5) return { t, stamp: ctx.pure.stamp(t, 'eta') };
-        }
-        return null;
+        const d = model.levelAt(1791460800, 3).cycle;
+        const t = Math.round(model.cycleStartTime(3, d) + 0.3 * (model.cycleStartTime(3, d + 1) - model.cycleStartTime(3, d))) / 1;
+        return { t, words: ctx.pure.dateText(t, { upTo: 'epsilon' }), short: ctx.pure.dateText(t), stamp: ctx.pure.stamp(t, 'iota') };
       });
-      ok(!!inst && / · 5η$/.test(inst.stamp), `a stamp inside the middle η of a ζ: ${inst?.stamp}`);
+      ok(/^Delta \w+fracton Node ε#2$/.test(inst.words), `the header's short date in a straddling Nuclide: ${inst.words}`);
       await goto(`?pure=1&t=${inst.t}&view=rings`);
-      await jump.fill(inst.stamp);
-      await page.waitForTimeout(250);
-      const kind = await page.locator('.jump-item').first().locator('.jump-kind').innerText();
-      ok(/^cycle$/i.test(kind), `the jump box reads the header stamp "${inst.stamp}" (${kind})`);
-      note(await scan(page, 'jump ← the header stamp'));
-      await jump.press('Enter');
-      await page.waitForTimeout(350);
-      const shown = await page.evaluate(() => window.__fractonica.ctx.pure.stamp(window.__fractonica.store.t(), 'eta'));
-      ok(shown === inst.stamp, `Enter lands on the same stamp: ${shown}`);
-      // the old spelling of the same stamp
-      const old = inst.stamp.replace(/δ#(\d+)/, 'δ $1').replace(/ε#(\d+)/, 'ε $1').replace(/ζ#(\d+)/, 'ζ $1').replace(/ · (\d+)η$/, ' · η $1');
+      for (const [what, text, upTo] of [['words', inst.words, null], ['short date', inst.short, null], ['stamp', inst.stamp, 'iota']]) {
+        await jump.fill(text);
+        await page.waitForTimeout(250);
+        const kind = await page.locator('.jump-item').first().locator('.jump-kind').innerText();
+        ok(/^cycle$/i.test(kind), `the jump box reads the ${what} "${text}" (${kind})`);
+        note(await scan(page, `jump ← the header ${what}`));
+        await jump.press('Enter');
+        await page.waitForTimeout(350);
+        const shown = await page.evaluate(([w, u]) => (u ? window.__fractonica.ctx.pure.stamp(window.__fractonica.store.t(), u) : w === 'words' ? window.__fractonica.ctx.pure.dateText(window.__fractonica.store.t(), { upTo: 'epsilon' }) : window.__fractonica.ctx.pure.dateText(window.__fractonica.store.t())), [what, upTo]);
+        ok(shown === text, `Enter lands on the same ${what}: ${shown}`);
+        await goto(`?pure=1&t=${inst.t}&view=rings`);
+      }
+      // the old spelling of the stamp without hashes
+      const old = inst.stamp.replace(/δ#(\d+)/, 'δ $1').replace(/ε#(\d+)/, 'ε $1').replace(/ (\d+)η (\d+)ι$/, ' η $1 ι $2');
       await jump.fill(old);
       await page.waitForTimeout(250);
       ok(/^cycle$/i.test(await page.locator('.jump-item').first().locator('.jump-kind').innerText()), `the old spelling "${old}" is still read`);
@@ -458,7 +486,7 @@ await withApp(
     ok(await page.evaluate(() => document.body.dataset.pure === '1'), 'P switches pure mode on');
     note(await scan(page, 'toggled on with the P key (calendar)'));
     ok((await page.locator('.cal-pconv').isVisible()) && !(await page.locator('.cal-conv:not(.cal-pconv)').isVisible()), 'pure converter shown, Gregorian converter hidden');
-    ok(/Jump to a moment/.test(await jump.getAttribute('aria-label')) && /Difracton/.test(await jump.getAttribute('placeholder')), 'the jump box changed vocabulary at once');
+    ok(/Jump to a moment/.test(await jump.getAttribute('aria-label')) && /Delta \w+fracton/.test(await jump.getAttribute('placeholder')), 'the jump box changed vocabulary at once');
     await jump.fill('Gamma Difracton');
     await page.waitForTimeout(150);
     await page.keyboard.press('Escape');
@@ -476,7 +504,7 @@ await withApp(
     ok(await page.evaluate(() => document.body.dataset.pure === '1'), 'pure again');
     note(await scan(page, 'toggled on again'));
     const stampNow = await page.locator('.cal-pconv [aria-label="Stamp or name"]').inputValue();
-    ok(/^α#\d+ β#\d γ#\d+ · δ#\d · ε#\d · ζ#\d · \d+η \d+ι \d+λ$/.test(stampNow), `pure converter stamp: ${stampNow}`);
+    ok(/^α#\d+ β#\d γ#\d+ δ#\d ε#\d \d+η \d+ι \d+λ \d+ν$/.test(stampNow), `pure converter stamp: ${stampNow}`);
     }
 
     // ---------------------------------------------------------------- report

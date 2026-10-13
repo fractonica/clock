@@ -1,6 +1,6 @@
 # Fractonica Clock Specification
 
-Version 2.0.0. Reference implementation: `fractonica.js` 2.0.0.
+Version 2.1.0. Reference implementation: `fractonica.js` 2.0.0 (§1–§14); the time units and notation of §15 are implemented by the web client in `src/core/pure.js`.
 
 This document specifies an eclipse-anchored harmonic clock and its glyph display, independent of platform. It has everything needed to build a client (iOS, watchOS, web, embedded) that produces the same readings as the reference library and the Zepp watch face. Section 12 lists test vectors to check an implementation against.
 
@@ -20,6 +20,7 @@ Contents:
 12. Test vectors
 13. Pitfalls
 14. Reference data
+15. Time units and notation
 
 ## 1. Concepts
 
@@ -30,6 +31,7 @@ Contents:
 - **Glyph**: a balanced-ternary drawing of a phase state. It has one or more **strokes** (trits) stacked on a vertical stem.
 - **Odometer**: two or more glyphs side by side. The left glyph is the coarse phase, and each glyph to its right runs a full cycle inside one state of its left neighbour.
 - **Solar sync**: a run of N cycles at one level that nearly equals a whole number of days. The run is compared with real days, and the slow mismatch accumulates as **drift**.
+- **Major and minor periods**: depths 1–4 (α β γ δ, Alpha to Delta) are the **major** (ultrahelion) periods, said in words. Below them the **minor** (infrahelion) units Nuclide, Helion, Preon, Flavon and Blink take every other depth (5, 7, 9, 11, 13) and are said in letters and counts. §15 defines the notation.
 
 ## 2. Time base
 
@@ -108,26 +110,26 @@ local(L)  = cycle(L) mod siblings(L)        // 0 = first period of the parent
 
 These figures use the 2010–2028 Saros 141 interval. Lengths change slightly between intervals.
 
-| Depth | Level | Name | P(L) | Siblings | Cycle length |
-|---|---|---|---|---|---|
-| 1 | 0 | α | 1 | — | 72.12 y |
-| 2 | 1 | β | 5 | 5 | 14.42 y |
-| 3 | 2 | γ | 65 | 13 | 1.11 y |
-| 4 | 3 | δ | 325 | 5 | 81.050 d |
-| 5 | 4 | ε | 1,625 | 5 | 16.210 d |
-| 6 | 5 | ζ | 11,375 | 7 | 2.316 d |
-| 7 | 6 | η | 125,125 | 11 | 5.052 h |
-| 8 | 7 | θ | 1,126,125 | 9 | 33.683 min |
-| 9 | 8 | ι | 4,504,500 | 4 | 8.421 min |
-| 10 | 9 | κ | 22,522,500 | 5 | 1.684 min |
-| 11 | 10 | λ | 292,792,500 | 13 | 7.773 s |
-| 12 | 11 | μ | 1,463,962,500 | 5 | 1.555 s |
-| 13 | 12 | ν | 7,319,812,500 | 5 | 310.92 ms |
-| 14 | 13 | ξ | 51,238,687,500 | 7 | 44.42 ms |
+| Depth | Level | Name | Unit (§15) | P(L) | Siblings | Cycle length |
+|---|---|---|---|---|---|---|
+| 1 | 0 | α | Alpha | 1 | — | 72.12 y |
+| 2 | 1 | β | Beta | 5 | 5 | 14.42 y |
+| 3 | 2 | γ | Gamma | 65 | 13 | 1.11 y |
+| 4 | 3 | δ | Delta | 325 | 5 | 81.050 d |
+| 5 | 4 | ε | Nuclide | 1,625 | 5 | 16.210 d |
+| 6 | 5 | ζ | — | 11,375 | 7 | 2.316 d |
+| 7 | 6 | η | Helion | 125,125 | 11 | 5.052 h |
+| 8 | 7 | θ | — | 1,126,125 | 9 | 33.683 min |
+| 9 | 8 | ι | Preon | 4,504,500 | 4 | 8.421 min |
+| 10 | 9 | κ | — | 22,522,500 | 5 | 1.684 min |
+| 11 | 10 | λ | Flavon | 292,792,500 | 13 | 7.773 s |
+| 12 | 11 | μ | — | 1,463,962,500 | 5 | 1.555 s |
+| 13 | 12 | ν | Blink | 7,319,812,500 | 5 | 310.92 ms |
+| 14 | 13 | ξ | — | 51,238,687,500 | 7 | 44.42 ms |
 
 ### 3.4 Period names
 
-Level L is named with Greek letter `L mod 24` of `αβγδεζηθικλμνξοπρστυφχψω`. After ω the letters repeat with a numeric suffix: level 24 is α1, level 49 is β2. The library function is `F.periodName(level)`.
+Level L is named with Greek letter `L mod 24` of `αβγδεζηθικλμνξοπρστυφχψω`. After ω the letters repeat with a numeric suffix: level 24 is α1, level 49 is β2. The library function is `F.periodName(level)`. The time units built on these levels, and the names of individual cycles, are defined in §15.
 
 ## 4. Phase glyphs
 
@@ -409,3 +411,110 @@ Solar Saros 141, greatest eclipse in **Unix seconds** (UTC), derived as in §2.1
 ```
 
 The TT source values (NASA/GSFC, Espenak and Meeus) are `F.defaults.timestamps` in `fractonica.js`, and the Unix values are `F.defaults.unixTimestamps`. Unix = TT − 69.184 s for every ordinal from 23 on.
+
+## 15. Time units and notation
+
+This section defines how a client says a moment and a span **in Fractonica terms only**, without Gregorian dates, Earth time units or percentages. The web client's pure mode uses it throughout. The arithmetic is §3; nothing here changes a reading.
+
+### 15.1 Major and minor periods
+
+The ladder has two parts with a clear break between them.
+
+- **Major (ultrahelion) periods** are depths 1–4: Alpha, Beta, Gamma and Delta. They are said in **words**, with a fracton ordinal and a quarter word (§15.2). Their phase is never drawn, because it follows from the Nuclide and Helion count below them.
+- **Minor (infrahelion) units** take **every other depth** below Delta: Nuclide (depth 5), Helion (7), Preon (9), Flavon (11) and Blink (13). They are said in **letters and counts**. The depths in between (ζ θ κ μ, and ξ and finer) remain levels of the hierarchy but are not units and have no names of their own.
+
+| Unit | Symbol | Depth | Made of | Mean length (§3.3) | Everyday analogue |
+|---|---|---|---|---|---|
+| Alpha | α | 1 | 5 Beta | 72.12 y | an era |
+| Beta | β | 2 | 13 Gamma | 14.42 y | |
+| Gamma | γ | 3 | 5 Delta | 1.11 y | a year |
+| Delta | δ | 4 | 5 Nuclide | 81.05 d | a month |
+| Nuclide | ε | 5 | 77 Helion (7 ζ × 11 η) | 16.21 d | a week |
+| **Helion** | η | 7 | 36 Preon (9 θ × 4 ι) | 5.052 h | an hour |
+| **Preon** | ι | 9 | 65 Flavon (5 κ × 13 λ) | 8.421 min | a minute |
+| **Flavon** | λ | 11 | 25 Blink (5 μ × 5 ν) | 7.773 s | a second |
+| Blink | ν | 13 | — | 310.92 ms | the finest unit; one tick of real time |
+
+Helion, Preon and Flavon are the everyday units, used like hours, minutes and seconds. The Helion is the unit that locks to the Sun: 19 Helions make one solar sync of about 4 days (§7.2). The analogues are for orientation only; a client in Fractonica-only mode never shows them.
+
+### 15.2 Names of major periods
+
+A major cycle is named by its level name and a **fracton ordinal**: its 1-based position inside its parent, `local(L) + 1` (for Alpha the global `cycle(0) + 1`).
+
+| n | Ordinal | n | Ordinal | n | Ordinal |
+|---|---|---|---|---|---|
+| 1 | Monofracton | 7 | Heptafracton | 13 | Tridecafracton |
+| 2 | Difracton | 8 | Octafracton | 14 | Tetradecafracton |
+| 3 | Trifracton | 9 | Nonafracton | 15 | Pentadecafracton |
+| 4 | Tetrafracton | 10 | Decafracton | 16 | Hexadecafracton |
+| 5 | Pentafracton | 11 | Didecafracton | 17 | Heptadecafracton |
+| 6 | Hexafracton | 12 | Dodecafracton | 18 | Octadecafracton |
+
+So "Delta Trifracton" is the 3rd Delta of its Gamma. Saros 141 needs ordinals up to 18 for Alpha, 5 for Beta, 13 for Gamma and 5 for Delta. Only the four major levels have fracton names.
+
+The name is followed by the **quarter** the cycle is in, named by the threshold that ends it (§6.2):
+
+```
+quarter(L) = floor(4 · phase(L))        phase(L) = frac(position · P(L) / 4)
+0 → Peak    1 → Node    2 → Valley    3 → End
+```
+
+"Delta Trifracton Node" is the second quarter of the 3rd Delta, the one that ends at its node.
+
+### 15.3 Counts, ordinals and the date
+
+Two kinds of number appear, and they are written differently:
+
+- `X#n` is an **ordinal**, counted from 1: `δ#3`, `ε#2`. Majors in letter form, and the Nuclide, use it.
+- `nX` is a **count** of completed units, counted from 0: `5η`, `29ι`. The minor clock and every span use it.
+
+The minor reading of a moment is the Nuclide ordinal and four counts, from the local indices of §3.2:
+
+```
+ε  = local(4) + 1                       1 … 5    Nuclide inside its Delta
+η  = 11 · local(5) + local(6)           0 … 76   Helions completed in the Nuclide
+ι  = 4  · local(7) + local(8)           0 … 35   Preons completed in the Helion
+λ  = 13 · local(9) + local(10)          0 … 64   Flavons completed in the Preon
+ν  = 5  · local(11) + local(12)         0 … 24   Blinks completed in the Flavon
+```
+
+A **date** is the major periods in words, then the minor reading. Flavons and Blinks are optional, like seconds.
+
+| Form | Example |
+|---|---|
+| Full | `Alpha Pentafracton Peak, Beta Tetrafracton Valley, Gamma Difracton End, Delta Trifracton Node, ε#2 5η 5ι 5λ 5ν` |
+| Short | `Delta Trifracton Node ε#2 5η 5ι` |
+| Letters | `α#5 β#4 γ#2 δ#3 ε#2 5η 5ι 5λ` |
+| Short letters | `δ#3 ε#2 5η 5ι` |
+
+The letter forms omit the quarter words, which the counts imply. The full letter form is the **stamp**: it identifies a moment exactly and can be read back. The Nuclide ordinal is required because a Delta has 5 Nuclides but 4 quarters, so a quarter alone does not say which Nuclide a Helion count belongs to.
+
+The basic reading on screen is the **Helion**: its count in the Nuclide and its phase as an odometer of two 2-stroke glyphs (§5 at depth 7, 256 states of about 71 s each). Preons and Flavons give the fine time.
+
+A minor cycle has no name of its own; it is identified by where it starts in its Nuclide. For example, a depth-9 cycle is `ε#2 5η 9ι`, a depth-8 cycle `ε#2 5η 8ι` (θ starts on multiples of 4ι), and a depth-14 cycle `… 3.43ν` (finer than a Blink, so a decimal).
+
+### 15.4 Spans
+
+A span is a list of counts over the ladder α β γ δ ε η ι λ ν, taken greedily from the largest unit that fits. Units with a zero count are skipped, so a span reads `3η 5λ`, never `3η 0ι 5λ`. Two non-zero parts are the default precision. Spans shorter than one Flavon that are led by the Blink keep a decimal (`2.6ν`, `0.14ν`). Measure spans in position, not in seconds, so they stay exact across Saros intervals.
+
+Exact cycle lengths: depths 1–5, 7, 9, 11 and 13 are one unit each. The depths between are whole counts of the next unit: ζ = `11η`, θ = `4ι`, κ = `13λ`, μ = `5ν`, and ξ = `0.14ν`.
+
+### 15.5 Real time: Blinks and pB
+
+Real time is counted in **Blinks**; one Blink is the mean ν cycle, 310.92 ms.
+
+- **Speed.** A time-lapse rate r (displayed seconds per real second) is said as units per Blink: `r · T(ν) / T(unit)`. The natural presets are whole counts: `5ν` (5×), `λ` (25×), `13λ` (325×), `ι` (1,625×), `4ι` (6,500×), `η` (58,500×), `11η` (643,500×), then `ε`, `δ`, `γ` per Blink. Real time itself is one Blink per Blink.
+- **Frequency.** A frequency is said in **cycles per Blink (pB)**: `f_pB = f_Hz · T(ν)`. The true rates of the depths below the Blink are whole numbers: ξ 7, ο 77, π 693 and ρ 2,772 pB. A 110 Hz tone is 34.2 pB.
+
+### 15.6 Test vectors
+
+These use the vectors of §12. The Helion pair is the depth-7 odometer of §12, and the minor reading is §15.3 with Blinks.
+
+| Vector | Full date | Short date | Helion pair |
+|---|---|---|---|
+| A | `Alpha Hexafracton Valley, Beta Tetrafracton Valley, Gamma Nonafracton Valley, Delta Trifracton End, ε#5 33η 29ι 21λ 3ν` | `Delta Trifracton End ε#5 33η 29ι` | [13, 0] |
+| B | `Alpha Hexafracton Node, Beta Difracton End, Gamma Didecafracton Node, Delta Trifracton Node, ε#2 20η 12ι 6λ 5ν` | `Delta Trifracton Node ε#2 20η 12ι` | [5, 6] |
+| C | `Alpha Heptafracton Peak, Beta Difracton Peak, Gamma Monofracton End, Delta Pentafracton Peak, ε#2 0η 23ι 1λ 21ν` | `Delta Pentafracton Peak ε#2 0η 23ι` | [10, 3] |
+| Anchor + 1 s | `Alpha Hexafracton Peak, Beta Monofracton Peak, Gamma Monofracton Peak, Delta Monofracton Peak, ε#1 0η 0ι 0λ 3ν` | `Delta Monofracton Peak ε#1 0η 0ι` | [0, 0] |
+
+The stamp at A is `α#6 β#4 γ#9 δ#3 ε#5 33η 29ι 21λ 3ν`. At A the depth-7 end is 3,372.428 s away (§12), which is the span `6ι 43λ`.

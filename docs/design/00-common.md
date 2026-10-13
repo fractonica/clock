@@ -7,8 +7,8 @@ A web app for the **Fractonica clock**: an eclipse-anchored harmonic clock. The 
 units is linear in time between eclipses. A harmonic hierarchy `S = [5,13,5,5,7,11,9,4]` (repeating) divides each
 4-Saros "α cycle" into ever shorter cycles (β ≈ 14 y, γ ≈ 1.1 y, δ ≈ 81 d, ε ≈ 16 d, ζ ≈ 2.3 d, η ≈ 5 h,
 θ ≈ 34 min, ι ≈ 8.4 min, κ ≈ 1.7 min, λ ≈ 7.8 s, μ ≈ 1.6 s, ν ≈ 0.31 s, ξ ≈ 44 ms). In pure mode depths 4–13 are
-named units (δ Atom, ε Nuclide, ζ Hadron, η Helion, θ Quark, ι Preon, κ Chromon, λ Flavon, μ Somon, ν Blink; see
-`docs/design/80-pure.md`). Each cycle at each level is
+the major periods Alpha … Delta (depths 1–4) and the minor units ε Nuclide, η Helion, ι Preon, λ Flavon, ν Blink
+(every other depth below; see SPEC.md §15 and `docs/design/80-pure.md`). Each cycle at each level is
 displayed as a balanced-ternary **phase glyph** (a wave: rising 0→peak, falling peak→valley, rising back to 0).
 Odometers of 2–3 glyphs read a cycle with finer and finer resolution. A **solar sync** compares 19 depth-7
 cycles with 4 civil days and tracks the accumulated drift. The full definition is `SPEC.md`; the reference

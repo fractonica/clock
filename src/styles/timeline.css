@@ -118,4 +118,6 @@
 /* ---------- pure mode (Fractonica terms only: a ruler of units, glyph pairs instead of percentages) ---------- */
 .tl-tip .pure-pair svg { height: 1.55em; }
 .tl-tip-row .pure-pair { margin-left: auto; }
+/* a major period's quarter word takes the place of its phase pair */
+.tl-tip-row .tl-tip-q { margin-left: auto; color: var(--ink-2); font-size: 11.5px; }
 .tl-tip-sub { margin-top: 2px; font-size: 11.5px; line-height: 1.4; font-weight: 400; }

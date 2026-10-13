@@ -13,7 +13,7 @@ import fs from 'node:fs';
 import { createPure } from '../src/core/pure.js';
 import { RULES } from '../tools/pure-scan.mjs';
 import * as SUN from '../src/ui/wave/solar.js';
-import { chainText, cycleNamedPure, cyclePure, createWords, eclipseLabels, halfLengthPure, nextLinesPure, nowLabelPure, pairSpoken, pureCountdown, pureSpan, tipHTMLPure, whenPure } from '../src/ui/wave/words.js';
+import { chainText, cycleNamedPure, cyclePhaseOf, cyclePure, createWords, eclipseLabels, halfLengthPure, nextLinesPure, nowLabelPure, pairSpoken, pureCountdown, pureSpan, quarterWord, tipHTMLPure, whenPure } from '../src/ui/wave/words.js';
 
 const model = createModel();
 const clock = model.clock;
@@ -1807,7 +1807,7 @@ test('a ?solar= link is a per-page override: the remembered setting and what is 
   assert.deepEqual(storedSettings({ overview: 1, solarRemembered: 0 }), { overview: true, solar: false });
 });
 
-test('revision 2: no half-cycle unit and no "beat" anywhere in the wave view (text or comments)', () => {
+test('revisions 2 and 3: no half unit, no "beat", no retired unit name, no minor fracton name anywhere in the wave view', () => {
   const dir = new URL('../src/ui/wave/', import.meta.url);
   const files = [new URL('../src/ui/wave.js', import.meta.url), new URL('../src/styles/wave.css', import.meta.url), ...fs.readdirSync(dir).map((f) => new URL(f, dir))];
   const half = new RegExp(`[αβγδεζηθικλμνξ]\u00bd`);
@@ -1815,6 +1815,8 @@ test('revision 2: no half-cycle unit and no "beat" anywhere in the wave view (te
     const src = fs.readFileSync(f, 'utf8');
     assert.doesNotMatch(src, half, `${f.pathname}: a half-cycle unit`);
     assert.doesNotMatch(src, /\bbeats?\b/i, `${f.pathname}: the retired word "beat"`);
+    assert.doesNotMatch(src, /\b(Hadron|Quark|Chromon|Somon|Atom)s?\b/, `${f.pathname}: a retired unit name`);
+    assert.doesNotMatch(src, /\b(Epsilon|Zeta|Eta|Theta|Iota|Kappa|Lambda|Mu|Nu|Xi)\s+\w*fracton\b/, `${f.pathname}: a minor fracton name`);
   }
 });
 
@@ -1840,27 +1842,29 @@ function assertClean(str, where) {
   }
 }
 
-test('pureSpan counts in whole-cycle units, skips empty parts and writes what is shorter than a Blink as a decimal', () => {
+test('pureSpan counts on the ladder α β γ δ ε η ι λ ν, skips empty parts and writes what is shorter than ten Blinks as a decimal', () => {
   // half of a ζ cycle is 5.5 η: the span of one ζ half-arc
-  assert.equal(pureSpan(pureT, 2 / 11375), '5η 4θ');
-  assert.equal(pureSpan(pureT, 2 / 11375, 3), '5η 4θ 2ι');
-  assert.equal(pureSpan(pureT, (2 / 11375) * 1.5), '8η 2θ');
+  assert.equal(pureSpan(pureT, 2 / 11375), '5η 18ι');
+  assert.equal(pureSpan(pureT, (2 / 11375) * 1.5), '8η 9ι');
   assert.equal(pureSpan(pureT, 4), '1α');
   assert.equal(pureSpan(pureT, 0), '0ν', 'nothing is nothing');
-  assert.equal(pureSpan(pureT, -(2 / 11375) * 1.5), '−8η 2θ');
+  assert.equal(pureSpan(pureT, -(2 / 11375) * 1.5), '−8η 9ι');
   const nu = pureT.unitPos(pureT.unitOf('nu'));
   assert.equal(pureSpan(pureT, 0.5 * nu), '0.5ν', 'below one Blink: a decimal count of it, not "0ν"');
   assert.equal(pureSpan(pureT, 0.004 * nu), '0.004ν');
   assert.equal(pureSpan(pureT, 3.4 * nu, 1), '3.4ν', 'a few Blinks keep a decimal as well');
   assert.equal(pureSpan(pureT, 0.00004 * nu), '0ν');
-  // every depth is a unit of its own: a whole cycle is "1X" at every depth, ξ is a seventh of a Blink
   assert.deepEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13].map((l) => words.cycleLength(model.levelInfo(l)) && 0), new Array(14).fill(0));
   flag.on = true;
-  assert.deepEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13].map((l) => words.cycleLength(model.levelInfo(l))), ['1α', '1β', '1γ', '1δ', '1ε', '1ζ', '1η', '1θ', '1ι', '1κ', '1λ', '1μ', '1ν', '0.14ν']);
-  // ... and the unit's name follows where it has one (α β γ read as their level names)
-  assert.deepEqual([0, 2, 3, 6, 9, 12, 13].map((l) => cycleNamedPure(pureT, model.levelInfo(l))), ['1α', '1γ', '1δ (Atom)', '1η (Helion)', '1κ (Chromon)', '1ν (Blink)', '0.14ν']);
-  assert.equal(words.chipTitle(model.levelInfo(6)), 'η · depth 7 · one cycle = 1η (Helion) · 9 child half-arcs per half-arc');
-  assert.equal(words.chipAria(model.levelInfo(6)), 'Depth 7, η, one cycle is 1η (Helion)');
+  // SPEC §15.4: depths 1–5, 7, 9, 11, 13 are one unit each; the depths between are whole counts of the next unit
+  assert.deepEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13].map((l) => words.cycleLength(model.levelInfo(l))), ['1α', '1β', '1γ', '1δ', '1ε', '11η', '1η', '4ι', '1ι', '13λ', '1λ', '5ν', '1ν', '0.14ν']);
+  assert.deepEqual(
+    [0, 3, 4, 5, 6, 9, 12, 13].map((l) => cycleNamedPure(pureT, model.levelInfo(l))),
+    ['1α = 5β', '1δ = 5ε', '1ε (Nuclide) = 77η', '11η', '1η (Helion) = 36ι', '13λ', '1ν (Blink)', '0.14ν'],
+  );
+  assert.equal(words.chipTitle(model.levelInfo(6)), 'η · depth 7 · one cycle = 1η (Helion) = 36ι · 9 child half-arcs per half-arc');
+  assert.equal(words.chipAria(model.levelInfo(6)), 'Depth 7, η, one cycle is 1η (Helion) = 36ι');
+  assert.equal(words.chipTitle(model.levelInfo(7)), 'θ · depth 8 · one cycle = 4ι · 4 child half-arcs per half-arc', 'θ is no unit');
   flag.on = false;
   assert.match(words.chipTitle(model.levelInfo(6)), /^η · depth 7 · cycle ≈ 5 h 3 min · 9 child half-arcs per half-arc$/);
   assert.equal(words.chipAria(model.levelInfo(6)), 'Depth 7, η, cycle about 5 h 3 min');
@@ -1870,62 +1874,55 @@ test('pureCountdown measures in position, so it is exact across eclipse interval
   const cyc = model.levelAt(TIMES.A, 6);
   assert.equal(pureCountdown(pureT, model, cyc.start, cyc.end, 1), 'in 1η');
   assert.equal(pureCountdown(pureT, model, cyc.end, cyc.start, 1), '1η ago');
-  assert.equal(pureCountdown(pureT, model, TIMES.A, TIMES.A + 3372), 'in 1θ 2ι');
+  assert.equal(pureCountdown(pureT, model, TIMES.A, cyc.end), 'in 6ι 43λ', 'SPEC §15.6');
   assert.match(pureCountdown(pureT, model, model.tMin - 1e9, model.tMin + 5, 1), /^in \d+[αβγ]/, 'outside the catalogue it still counts');
 });
 
-test('chainText names the address of a cycle, the same chain pure.addressAt gives', () => {
-  for (const L of [0, 2, 4]) {
+test('chainText is the stamp of the start of a cycle: majors and the Nuclide as ordinals, then the counts that place it', () => {
+  for (const L of [3, 4, 6]) {
     const cur = model.levelAt(TIMES.A, L);
     assert.equal(chainText(pureT, model, L, cur.cycle, 9), pureT.addressAt(TIMES.A, L), `depth ${L + 1}`);
   }
+  for (const L of [0, 2]) assert.ok(pureT.addressAt(TIMES.A, L).startsWith(chainText(pureT, model, L, model.levelAt(TIMES.A, L).cycle, 9)));
   assert.equal(chainText(pureT, model, 4, model.levelAt(TIMES.A, 4).cycle), 'α#6 β#4 γ#9 δ#3 ε#5');
+  assert.equal(chainText(pureT, model, 7, model.levelAt(TIMES.A, 7).cycle, 9), 'α#6 β#4 γ#9 δ#3 ε#5 33η 28ι', 'a θ starts at 28ι');
   const deep = chainText(pureT, model, 9, model.levelAt(TIMES.A, 9).cycle);
-  assert.match(deep, /^… [α-ω]#\d+ [α-ω]#\d+ [α-ω]#\d+ [α-ω]#\d+ κ#\d+$/, 'a long address keeps its last five links');
-  assert.equal(deep.split(' ').length, 6);
+  assert.equal(deep, '… δ#3 ε#5 33η 29ι 13λ', 'a long address keeps its last five links');
+  assert.doesNotMatch(chainText(pureT, model, 9, model.levelAt(TIMES.A, 9).cycle, 9), /[ζθικ]#/, 'no ordinals for minor depths');
 });
 
-test('nowLabelPure writes three parts of the pure date / clock by the depth of the arc: ordinals X#n, counters nX', () => {
-  // updated deliberately: the old spellings were "δ 3" and "η 3 · ι 17"
-  const d = pureT.date(TIMES.A);
-  const c = pureT.clock(TIMES.A);
-  // whole-cycle ordinals (revision 2): α β γ, δ ε ζ and the counters η ι λ are the three groups, as in the face caption
-  assert.equal(nowLabelPure(pureT, TIMES.A, 0), `α#${d.alpha} β#${d.beta} γ#${d.gamma}`);
-  assert.equal(nowLabelPure(pureT, TIMES.A, 1), `β#${d.beta} γ#${d.gamma} · δ#${d.delta}`);
-  assert.equal(nowLabelPure(pureT, TIMES.A, 2), `γ#${d.gamma} · δ#${d.delta} ε#${d.epsilon}`);
-  assert.equal(nowLabelPure(pureT, TIMES.A, 3), `δ#${d.delta} ε#${d.epsilon} ζ#${d.zeta}`);
-  assert.equal(nowLabelPure(pureT, TIMES.A, 4), `ε#${d.epsilon} ζ#${d.zeta} · ${c.eta}η`);
-  assert.equal(nowLabelPure(pureT, TIMES.A, 5), `ζ#${d.zeta} · ${c.eta}η ${c.iota}ι`);
-  assert.equal(nowLabelPure(pureT, TIMES.A, 3), 'δ#3 ε#5 ζ#4');
-  assert.equal(nowLabelPure(pureT, TIMES.A, 6), `${c.eta}η ${c.iota}ι ${c.lambda}λ`);
-  assert.equal(nowLabelPure(pureT, TIMES.A, 13), nowLabelPure(pureT, TIMES.A, 6), 'the clock for every deeper arc');
+test('nowLabelPure writes three consecutive tokens of the stamp, chosen by the depth of the arc', () => {
+  const t = TIMES.A;
+  assert.deepEqual([0, 1, 2, 3, 4, 5, 6, 13].map((L) => nowLabelPure(pureT, t, L)), ['α#6 β#4 γ#9', 'β#4 γ#9 δ#3', 'γ#9 δ#3 ε#5', 'δ#3 ε#5 33η', 'ε#5 33η 29ι', '33η 29ι 21λ', '33η 29ι 21λ', '33η 29ι 21λ']);
   assert.equal(nowLabelPure(pureT, model.tMax + 10, 6), '—');
-  // it is a piece of the stamp the shell, the face and the calendar write for the same instant
   for (const L of [0, 1, 2, 3, 4, 5, 6]) {
-    for (const t of [TIMES.A, TIMES.B, TIMES.C, 125593320.5]) {
-      const label = nowLabelPure(pureT, t, L);
-      // the stamp separates its ordinals with " · " where the label sits them side by side: compare their tokens
-      const tokens = (str) => str.split(/[\s·]+/).filter(Boolean).join(' ');
-      assert.ok(tokens(pureT.stamp(t, 'lambda')).includes(tokens(label)), `depth ${L + 1} @ ${t}: "${label}" in "${pureT.stamp(t, 'lambda')}"`);
-      assert.doesNotMatch(label, /(?<!\d)(?:[δεζ]|[ηιλ]) \d/, 'no "δ 3" or "η 3": an ordinal has a #, a counter has its unit after the number');
+    for (const time of [TIMES.A, TIMES.B, TIMES.C, 125593320.5]) {
+      const label = nowLabelPure(pureT, time, L);
+      assert.ok(pureT.stamp(time, 'lambda').includes(label), `depth ${L + 1} @ ${time}: "${label}" in "${pureT.stamp(time, 'lambda')}"`);
+      assert.doesNotMatch(label, /(?<!\d)(?:[δεζ]|[ηιλ]) \d/, 'no "δ 3" or "η 3": an ordinal has a #, a count has its unit after the number');
     }
   }
 });
 
-test('cyclePure and whenPure: opening / closing half, names and countdowns', () => {
+test('cyclePure and whenPure: a major cycle in words, a minor one by where it starts; countdowns on the ladder', () => {
   const plain = (str) => str.replace(/\u00a0/g, ' '); // "6 of 18" never breaks across lines
   assert.ok(cyclePure(pureT, eng.describe(0, 11)).includes('6\u00a0of\u00a018'));
   const cur = eng.readHalves(model.frame(TIMES.A));
-  const d = eng.describe(6, cur[6].idx); // the closing (trough) half of the first η cycle of its ζ
-  assert.equal(plain(cyclePure(pureT, d)), 'closing half of Eta Monofracton · 1 of 11 in ζ');
-  const e = eng.describe(4, 18628);
-  assert.equal(plain(cyclePure(pureT, e)), 'opening half of Epsilon Pentafracton · 5 of 5 in δ');
+  const d = eng.describe(6, cur[6].idx); // the closing (trough) half of the Helion 33η of ε#5
+  assert.equal(plain(cyclePure(pureT, d)), 'closing half of ε#5 33η');
+  const e = eng.describe(4, cur[4].idx);
+  assert.equal(plain(cyclePure(pureT, e)), 'opening half of ε#5');
+  assert.equal(plain(cyclePure(pureT, eng.describe(3, cur[3].idx))), 'closing half of Delta Trifracton · 3 of 5 in γ');
   assert.equal(plain(cyclePure(pureT, eng.describe(0, 11))), 'closing half of Alpha Hexafracton · 6 of 18');
-  assert.equal(whenPure(pureT, model, d, TIMES.A), 'ends in 1θ 2ι');
+  assert.equal(plain(cyclePure(pureT, eng.describe(7, cur[7].idx))), 'opening half of ε#5 33η 28ι', 'θ is no unit: it is placed by its start');
+  assert.equal(whenPure(pureT, model, d, TIMES.A), 'ends in 6ι 43λ');
   assert.match(whenPure(pureT, model, d, d.start - 100), /^starts in /);
   assert.match(whenPure(pureT, model, d, d.end + 100), /^ended .* ago$/);
-  assert.equal(halfLengthPure(pureT, model, d), '4θ 2ι', 'half of an η cycle: η = 9 θ, so 4.5 θ');
-  assert.equal(halfLengthPure(pureT, model, e), '3ζ 5η', 'half of an ε cycle: ε = 7 ζ, so 3.5 ζ');
+  assert.equal(halfLengthPure(pureT, model, d), '18ι', 'half of a Helion: 18 Preons');
+  assert.equal(halfLengthPure(pureT, model, e), '38η 18ι', 'half of a Nuclide: 38.5 Helions');
+  // the quarter word of a half-arc reading: the crest holds Peak and Node, the trough Valley and End
+  assert.deepEqual([0.1, 0.6].map((x) => quarterWord(pureT, cyclePhaseOf({ crest: true }, x))), ['Peak', 'Node']);
+  assert.deepEqual([0.1, 0.6].map((x) => quarterWord(pureT, cyclePhaseOf({ crest: false }, x))), ['Valley', 'End']);
 });
 
 test('nextLinesPure takes the decisions of nextLines with pure countdowns', () => {
@@ -1969,7 +1966,11 @@ test('pure mode: every text the wave module can produce is free of Gregorian, Ea
   let n = 0;
   const check = (str, where) => {
     assertClean(str, where);
-    for (const text of seen(str)) assert.doesNotMatch(text, /(?<!\d)(?:[δεζ]|[ηιλ]) \d|\u00bd/, `${where}: an old-style "δ 3" / "η 3" or a half unit in "${text}"`);
+    for (const text of seen(str)) {
+      assert.doesNotMatch(text, /(?<!\d)(?:[δεζ]|[ηιλ]) \d|\u00bd/, `${where}: an old-style "δ 3" / "η 3" or a half unit in "${text}"`);
+      assert.doesNotMatch(text, /\b(Epsilon|Zeta|Eta|Theta|Iota|Kappa|Lambda|Mu|Nu|Xi)\s+\w*fracton\b|\b(Hadron|Quark|Chromon|Somon|Atom)\b/, `${where}: a retired name in "${text}"`);
+      assert.doesNotMatch(text, /[ζθκμ]#\d/, `${where}: an ordinal for a depth that is no unit in "${text}"`);
+    }
     n++;
   };
   const instants = [TIMES.A, TIMES.B, TIMES.C, TIMES.early, TIMES.late, TIMES.mid, 125593320.5];
@@ -2040,13 +2041,23 @@ test('pure mode: the readings are Fractonica names, durations and glyph pairs', 
   const tip = words.tip({ d, p: 0.3, at: eng.timeAt(4, d.idx, 0.3), now: t, marker: false, action: 'Click or drag to travel along this arc' });
   assert.match(tip, /half-arc \+4/);
   assert.match(tip, /α#6 β#4 γ#9 δ#3 ε#5/);
-  assert.match(tip, /Epsilon Pentafracton/);
-  assert.match(tip, /3ζ 5η long/);
-  assert.match(tip, /pure-pair/, 'the share of the half-arc is a pair of glyphs');
+  // a major arc: words and its quarter, never a pair
+  const dd = eng.describe(3, cur[3].idx);
+  const dtip = words.tip({ d: dd, p: 0.3, at: eng.timeAt(3, dd.idx, 0.3), now: t, marker: false, action: 'x' });
+  assert.match(dtip, /closing half of Delta Trifracton/);
+  assert.match(dtip, /2ε 38η long · now in its End quarter/);
+  assert.doesNotMatch(dtip, /pure-pair/, 'no glyph pair for a major period');
+  assert.match(words.chipLive('Depth 4', dd, cur[3]), /in the End quarter of its cycle\. Closing half of Delta Trifracton/);
+  assert.equal(words.isMajor(3), true);
+  assert.equal(words.isMajor(4), false);
+  assert.equal(words.quarter(dd, cur[3].local), 'End');
+  assert.match(tip, /opening half of ε#5/);
+  assert.match(tip, /38η 18ι long/);
+  assert.match(tip, /pure-pair/, 'the share of a minor half-arc is a pair of glyphs');
   assert.doesNotMatch(seen(tip).join(' '), /%/);
   assert.match(tip, /ends in /);
   assert.match(tip, /glyph index \d+ \(0–15\)/);
-  assert.match(tip, /ε#\d+ ζ#\d+ · \d+η/, 'the instant under the pointer (an ε arc: ε ζ then the η counter): ordinals with a #, the clock counter with its unit');
+  assert.match(tip, /ε#\d+ \d+η \d+ι/, 'the instant under the pointer (an ε arc): the Nuclide and the counts in it');
   assert.doesNotMatch(tip, /(?<!\d)(?:[δεζ]|[ηιλ]) \d|\u00bd/);
   flag.on = false;
 });
@@ -2103,7 +2114,7 @@ test('solar words: the sync, its phase, the next quarter and the drift in both v
   assert.match(words.sunAria(s, TIMES.A), /^Solar sync 4820, phase 35 percent, next node in \d+ h \d+ min, drift against civil days −\d+ h \d+ min\.$/);
   assert.equal(words.sunPhaseText(s), '35 percent of sync 4820');
   flag.on = true;
-  assert.match(words.sunNext(s, TIMES.A), /^node in \d+η \d+θ$/);
+  assert.match(words.sunNext(s, TIMES.A), /^node in \d+η \d+ι$/);
   assert.equal(words.sunDrift(s, TIMES.A), pureT.driftText(s), 'the drift is pure.driftText, counted in λ, the same everywhere');
   assert.match(words.sunDrift(s, TIMES.A), /^−\d{1,3}(\u202f\d{3})*λ$/);
   assert.equal(words.sunDriftLine(s, TIMES.A), `Drift ${pureT.driftText(s)}`);
@@ -2114,7 +2125,7 @@ test('solar words: the sync, its phase, the next quarter and the drift in both v
   assert.match(tip, /Drift −[\d\u202f]+λ</);
   assert.match(tip, /One sync is 19η: 19 Helions</, 'the unit name where the tooltip explains the sync');
   assert.doesNotMatch(tip, /civil|day|%|steady|beat/);
-  assert.match(words.sunAria(s, TIMES.A), /^Solar sync 4820, phase 5 and \d+ of 256, next node in \d+η \d+θ, drift −[\d\u202f]+λ\.$/);
+  assert.match(words.sunAria(s, TIMES.A), /^Solar sync 4820, phase 5 and \d+ of 256, next node in \d+η \d+ι, drift −[\d\u202f]+λ\.$/);
   assert.match(words.sunPhaseText(s), /^sync 4820, phase 5 and \d+ of 256$/);
   assert.equal(words.sunPhaseText(s), `sync 4820, ${pairSpoken(pureT, s.phase, 'phase')}`);
   assert.match(words.sunToggleTitle(), /one yellow wave of 19η \(19 Helions\)\./);

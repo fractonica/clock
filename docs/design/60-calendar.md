@@ -93,64 +93,78 @@ Ordinals carry a hash everywhere this module prints one (`ε#5`, `α#6 › β#4 
 the ladder, Up next, rings and timeline. Percentages are floored and capped at 99.9 before a cycle ends. A wall time that does
 not exist (DST gap) or happens twice (fold) is flagged inline with the same sentence in the jump box and the converter.
 
-## Pure mode (revision 2: whole cycles, named units, Blinks)
+## Pure mode (revision 3: major periods in words, minor units by counts)
 
-Owner decision, see the REVISION 2 block of `80-pure.md`: the half-cycle units δ½ ε½ ζ½ are gone, the ladder is one unit per
-depth (α β γ δ ε ζ η θ ι κ λ μ ν; ids `alpha … nu`, names Atom δ, Nuclide ε, Hadron ζ, Helion η, Quark θ, Preon ι, Chromon κ,
-Flavon λ, Somon μ, Blink ν; α β γ have no particle name), γ = 5δ, δ = 5ε, ε = 7ζ, ζ = 11η. Compact text keeps the Greek
-symbols (`+2ζ 3η`, `6ι 43λ`); unit names are for prose (legend, tooltips that explain a unit, examples). Notation: `X#n` is an
-ordinal from 1, `nX` a count from 0, `η 7` only a depth chip.
+The vocabulary is **SPEC §15** (see also `80-pure.md`). Major (ultrahelion) periods α Alpha, β Beta, γ Gamma, δ Delta are
+said in **words** with a fracton ordinal and a **quarter word** ("Delta Trifracton Node"; the quarter is named by the
+threshold that ends it: Peak, Node, Valley, End) and never get a phase pair. The minor (infrahelion) units skip every
+other depth: ε Nuclide (ordinal `ε#1–5` in its Delta), η Helion (count 0–76 in the Nuclide), ι Preon (0–35), λ Flavon (0–64),
+ν Blink (0–24). ζ θ κ μ are depths, not units: a ζ is 11η, a θ 4ι, a κ 13λ, a μ 5ν. Notation: `X#n` is an ordinal from 1,
+`nX` a count from 0, `η 7` only a depth chip. The stamp is the full letter form `α#6 β#4 γ#9 δ#3 ε#5 33η 29ι 21λ 3ν`.
 
-The tab becomes a pure converter (`pure-converter.js`: position ⇄ names ⇄ address ⇄ stamp ⇄ glyph pairs ⇄ sync) and a pure
-month page (`pure-month.js`). The jump box (`pure-parse.js`) speaks Fractonica only. Pure maths (stamps, counters, page
-geometry, landings) is `pure-conv.js`; nothing here prints a Gregorian date, a zone, an Earth unit, a percentage or the word
-"beat" (the leak scanner, `node tools/checks/check-pure-leaks.mjs calendar`, must report 0 hard leaks).
+The tab becomes a pure converter (`pure-converter.js`) and a pure month page (`pure-month.js`). The jump box
+(`pure-parse.js`) speaks Fractonica only. Pure maths (dates ⇄ moments, counters, page geometry, landings) is
+`pure-conv.js`; nothing here prints a Gregorian date, a zone, an Earth unit, a percentage, "beat", a half-cycle symbol, a
+retired unit name or a fracton name below the Delta (`node tools/checks/check-pure-leaks.mjs calendar`: 0 hard leaks).
 
-### Stamp and counters
-`α#6 β#4 γ#9 · δ#3 · ε#2 · ζ#5 · 3η 17ι 21λ`: six ordinals (α 1–18, β 1–5, γ 1–13, δ 1–5, ε 1–5, ζ 1–7) and three counters
-(η 0–10, ι 0–35, λ 0–64) that count inside the **ζ cycle** (a whole cycle of 11 η). There is no "straddling" η any more: a
-stamp always names exactly one first millisecond, `resolveParts` reads it back with an exact landing, and `3η 17ι` alone is
-read inside the ζ of the shown moment. The converter edits the six entries `δ# ε# ζ#` · `η ι λ` in place (the odometer way:
-what is finer keeps its place) and every field funnels through one moment `T`.
+### Dates and entries (`pure-conv.js`)
+`resolveParts` reads any tail of a date, the periods above its first entry taken from the shown moment, and lands on the
+**first millisecond** that shows the finest entry. Counts alone ("33η 17ι") are read in the shown Nuclide. A quarter word
+on a major period is checked against the rest of the date and only has to meet it somewhere: "Delta Trifracton Node ε#2" is
+the part of ε#2 that lies in the Node quarter (so every short date the header prints reads back, even in a Nuclide that
+straddles two quarters); on the finest entry it is the start of that quarter ("Delta Trifracton Node" = the Delta's peak,
+`ε#2 19η 9ι`). A quarter word that does not meet the date is answered with the quarter it does lie in. The converter edits
+the four majors by fracton name (a select each, with the quarter word beside it), the Nuclide `ε#` and the counts η ι λ ν in
+place (the odometer way: what is finer keeps its place).
 
-### The δ page (`pure-conv.js` geometry, `pure-month.js` view)
-* One page = one **δ cycle** (an Atom) = **5 rows (ε) × 7 columns (ζ) = 35 ζ cells**; page index = the global δ cycle index
-  (`viewCount` = 5607). Header ◀ ▶ step by δ (1 page), γ (5), β (65 = 13 γ) or α (325 = 5 β); PageUp/PageDown the same cell
-  of the next page (Shift: a γ); selects for α β γ δ; "Now", "Shown cell".
-* A cell is a whole ζ: number 1–35, row `ε#`, column `ζ#`. The band at its foot carries the **11 η** at their exact
-  fractional position with the counter 0–10 (every one when the cell is wide, 0 2 4 6 8 10 or 0 5 10 as it narrows, by a
-  container query), the node mark (18ι of 36) of each η, the solar sync quarters (gold diamonds) and, for the δ ε ζ band
-  levels, one segment per cell (a δ is 35 cells, an ε 7, a ζ 1). The shown moment is a cursor; the live clock marks its cell.
-* **Eclipses** sit at the integer positions k, which is k × 2843.75 ζ cells, so one falls at 0, ¼, ½ or ¾ of its cell
-  (k mod 4 = 0, 1, 2, 3 gives 0, ¾, ½, ¼). The cell shows `#k` in its corner, the eclipse icon and a gold hairline at that
-  fraction; one page in about 81 has one.
-* Cell tooltip: stamp, name (`Zeta Pentafracton`), the ε phase at the start as a glyph pair, countdown, eclipse and sync facts.
-  Inspector of the shown cell: the cycles of the band level with go buttons (the 11 η in a 3-column grid) and the sync
-  quarters. Ribbon: the **5 δ of the γ** with the ε rhythm (4 inner ticks per δ) and the shown position.
+### The Delta page (`pure-conv.js` geometry, `pure-month.js` view)
+* One page = one **Delta** = **5 Nuclide rows (ε#1–5) × 7 columns of 11 Helions** (the ζ cycles, labelled by their first
+  Helion count `0η 11η 22η … 66η`, never `ζ#`); page index = the global Delta index (`viewCount` 5607). Header: the page in
+  words "Gamma Nonafracton · Delta Trifracton" with the letters `α#6 β#4 γ#9 δ#3` under it; ◀ ▶ step by Delta (1 page),
+  Gamma (5), Beta (65) or Alpha (325); selects of the four fracton names; "Now", "Shown cell"; PageUp/PageDown the same cell
+  of the next page (Shift: a Gamma).
+* A cell holds 11 Helions: its band shows them at their exact position with their counts in the Nuclide (every fifth
+  labelled where the cell is narrow), the node mark of each (18ι of 36), the solar sync quarters (gold diamonds). Band
+  choices: δ (the Delta's quarters), ε (the Nuclide rows), η (the Helions; default); the choice is the app-wide selected level.
+* **Delta quarters**: a quarter is 8¾ cells; Peak Node Valley End begin at 0, 1¼, 2½ and 3¾ Nuclides (`ε#2 19η 9ι`,
+  `ε#3 38η 18ι`, `ε#4 57η 27ι`). A **quarter bar** above the grid shows the four quarters (the current one marked, a click
+  goes to where it begins) with the five Nuclides under it; inside the grid a line in the Delta colour marks each threshold.
+* **Eclipses** sit at the integer positions k = k × 2843.75 cells: one falls at 0, ¼, ½ or ¾ of its cell (k mod 4 = 0, 1,
+  2, 3 gives 0, ¾, ½, ¼); the cell shows `#k`, the eclipse icon and a gold hairline at that fraction.
+* Cell tooltip: `ε#5 · 33η–43η`, the Delta quarter(s), the stamp, the Nuclide phase pair at the start, countdown, eclipse
+  and sync facts. Inspector of the shown cell: the Helions (3-column grid), or the Nuclide, or the Delta quarters, with go
+  buttons and countdowns, and the sync quarters. Ribbon: the **5 Deltas of the Gamma** (fracton names, `δ#n` on a phone)
+  with the Nuclide rhythm (4 inner ticks per Delta) and the shown position.
+
+### Converter (`pure-converter.js`)
+Moment: the Helion reading (`33η ‹pair› 29ι 21λ 3ν`), the full date in words, chips of the majors with their quarter and the
+Nuclide, the stamp field (reads every date form, counts and offsets), the majors by name, `ε#` and η ι λ ν, the eclipses
+around it. Cycles: position; cycle address (α β γ δ ε numbered, a finer cycle placed by its counts in its Nuclide with a ±
+stepper, the result in letters and in words); the phase at every depth (α–δ: their quarter word, no pair and no bar; every
+other depth: its glyph pair with the "when does it show this pair" picker); the solar sync (19 Helions).
 
 ### Jump grammar (`pure-parse.js`)
 | Input | Meaning |
 |---|---|
-| `Gamma Difracton`, `α#6 β#4 γ#9`, `δ#3 · ε#2 · ζ#5`, `6.4.9`, `d7#717211` | cycle by name / address (ancestors from the shown moment); a date as the header prints it |
-| `α#6 β#4 γ#9 · δ#3 · ε#2 · ζ#5 · 3η 17ι 21λ`, `ζ#5 · 3η`, `3η 17ι 21λ` | stamp or any tail of it; the first millisecond that shows the finest entry |
-| `+2ζ 3η`, `-1ι`, `in 5λ`, `3η ago`, `+0.5ν`, `+4 Blinks`, `+2 Hadrons 3 Helions` | offsets in **any unit α … ν**, decimals allowed; below one Blink a decimal (`0.14ν`; a ξ cycle is 0.14ν) |
-| `next ε`, `prev ζ`, `next Helion`, `next peak η`, `next 3 Atoms`, `Helion` | boundaries by letter, level name or unit name |
-| `pos 22.9`, `sync 4820 node`, `η [13,0]`, `now` | position, sync, glyph state, live clock |
+| `Alpha Hexafracton Valley, …, Delta Trifracton End, ε#5 33η 29ι 21λ 3ν`, `Delta Trifracton End ε#5 33η 29ι` | dates in words, full or short |
+| `α#6 β#4 γ#9 δ#3 ε#5 33η 29ι 21λ 3ν`, `δ#3 ε#5 33η 29ι`, `a6 b4 g9`, `6.4.9` | dates in letters (the stamp), or any tail |
+| `Gamma Difracton`, `Delta Trifracton`, `Delta Trifracton Node`, `ε#2 5η`, `33η 17ι` | partial names, a quarter start, the Nuclide and counts, counts alone |
+| `+2ε 5η`, `-3ι`, `in 5λ`, `3η ago`, `+0.5ν`, `+4 Blinks`, `+2 Nuclides 5 Helions` | offsets over α β γ δ ε η ι λ ν (decimals below ten Blinks) |
+| `next Helion`, `next Delta`, `next Delta node`, `next node of Delta`, `next peak η`, `next ζ`, `Helion` | boundaries by letter, level or unit name (ζ θ κ μ stay boundaries of their depth) |
+| `pos 22.9`, `sync 4820 node`, `η [13,0]`, `d7#717211`, `now` | position, sync, glyph state (not for α–δ), global index, live clock |
 
-Unit names are aliases wherever a unit letter is read (offsets, boundaries, a lone unit, glyph states) and are *not* cycle names:
-"Gamma Difracton" is the 2nd γ in its β, "a Helion" is the unit of length one η. Old half spellings (`δ½ 3`, `ζ½`, `next ζ½`,
-`delta half 3`) are answered with one short pointer ("Half-cycle units are gone: write δ, ε or ζ", detail names Atom,
-Nuclide, Hadron; the text itself never prints a half). The retired word for a real-time tick gets the same kind of pointer
-to Blinks; Gregorian input ("2031-06-01", "+3d", a city) is answered with "Dates and clock times are off in pure mode".
-Old spellings without halves (`δ 3 · ε 2 · ζ 5`, `η 5`, `ι 17`) and the header clock (`3η17ι21λ`) are still read. `ν` counts are
-spans, never clock entries (the clock is η ι λ).
+Unit names Delta, Nuclide, Helion, Preon, Flavon, Blink (and Alpha, Beta, Gamma) are read wherever a unit letter is. Old forms
+get one short pointer whose text passes the scanner: half-cycle units, the depths ζ θ κ μ used as units (`+2ζ` → "a ζ is 11η:
+write +22η", `ζ#5` → "begins at 44η of its Nuclide"), the retired unit names (never echoed), fracton names below the Delta
+("Only Alpha, Beta, Gamma and Delta have fracton names"; `Epsilon Trifracton` → `ε#3`), the retired word for a real-time
+tick. Gregorian input is answered with "Dates and clock times are off in pure mode".
 
 ### Soft leaks kept on purpose
-The word "Saros" and "eclipse" (the clock's own base unit and the numbered eclipses `#22`), 4-digit sync numbers (`S4820`) that
-look like years to the scanner.
+The words "Saros" and "eclipse" (the clock's base unit and the numbered eclipses `#22`) and 4-digit sync numbers (`S4820`)
+that look like years to the scanner.
 
 ### Tests and checks
-`test/calendar.test.js` (pure section: ranges, counters, stamps with no straddle, 35 cells / 5 pages per γ, eclipse
-fractions for all 69 eclipses, unit names, decimal Blinks, half pointer, leak rules over many inputs),
-`tools/checks/check-calendar-pure.mjs` (leak scan of the tab, tooltips, typed errors, picker, page navigation, jump box,
-live switching both ways).
+`test/calendar.test.js` (pure section: ranges, entries, every date form read back at the first millisecond, quarter words,
+the 35 cells and the quarter thresholds of a page, eclipse fractions for all 69 eclipses, ribbon, unit names, decimal Blinks,
+pointers for old forms, scanner rules over many inputs), `tools/checks/check-calendar-pure.mjs` (leak scan of the tab,
+tooltips, typed errors, majors and counts, picker, quarter bar, page navigation, jump box, live switching both ways).

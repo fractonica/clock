@@ -50,12 +50,15 @@
 .wave-caption-sun { color: var(--ink-2); }
 .wave-card:not([data-solar]) .wave-legend [data-for="sun"] { display: none; }
 
-/* ---------- pure mode: a pair of glyphs (256 states) stands where a percentage would be ---------- */
+/* ---------- pure mode: a pair of glyphs (256 states) stands where a percentage would be (minor periods) ---------- */
 .wave-card[data-pure] .wave-r-pct, .wave-card[data-pure] .wave-r-pct2 { align-items: center; }
 .wave-card .pure-pair { gap: 5px; color: inherit; }
 .wave-r-pct b, .wave-r-pct2 b { display: inline-flex; align-items: center; }
 .wave-r-pct .pure-pair svg { height: 34px; }
 .wave-r-pct2 .pure-pair svg { height: 26px; }
+/* ... except for a major period (α β γ δ), which is read by its quarter word */
+.wave-quarter { font-family: var(--font-ui); letter-spacing: 0.01em; }
+.wave-card[data-pure] .wave-r-pct2:empty { display: none; }
 .wave-sun-ph .pure-pair svg { height: 26px; }
 .wave-tip .pure-pair { vertical-align: middle; gap: 3px; }
 .wave-tip .pure-pair svg { height: 20px; }

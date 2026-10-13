@@ -148,7 +148,7 @@
 .face-pop-eg { white-space: nowrap; }
 .face-pop-eg .pure-pair { margin-left: 0.3em; vertical-align: -0.55em; color: var(--teal); }
 .face-pop-eg .pure-pair svg { height: 1.9em; }
-.face-root[data-pure] .face-caption { font-size: 10px; font-variant-numeric: tabular-nums; cursor: help; } /* the longest address (α#18 β#5 γ#13 · δ#5 ε#5 ζ#7 · 10η 35ι 64λ) fits the narrowest card */
+.face-root[data-pure] .face-caption { font-size: 10px; font-variant-numeric: tabular-nums; cursor: help; } /* the short date in words ("Delta Pentafracton Valley ε#5 76η 35ι 64λ"), in letters where the words do not fit (face.js measures) */
 
 /* touch: the footer button and the popover's close button reach 40 px (the main buttons are 46) */
 @media (pointer: coarse) {

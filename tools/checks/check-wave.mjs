@@ -1057,6 +1057,21 @@ async function pureCheck() {
     }
     ok('pure: no hard leak in any depth / instant / solar state', hard.length === 0, '\n' + formatLeaks(hard));
 
+    // revision 3: a major arc (α β γ δ) reads its quarter word, never a glyph pair; a minor arc keeps the pairs and is placed by counts
+    const readout = () =>
+      page.evaluate(() => ({
+        pct: document.querySelector('.wave-r-pct b').textContent,
+        pairs: document.querySelectorAll('.wave-r-pct .pure-pair, .wave-r-pct2 .pure-pair').length,
+        what: document.querySelector('.wave-r-what').textContent,
+        cyc: document.querySelector('.wave-r-cyc').textContent,
+      }));
+    await go(`?pure=1&t=${T.A}&view=wave&sel=4&solar=0`, 600);
+    const major = await readout();
+    ok('pure: a major arc (δ) reads its quarter word in words, never a pair', major.pct === 'End' && major.pairs === 0 && major.what === 'quarter of this δ cycle' && /half of Delta Trifracton/.test(major.cyc), JSON.stringify(major));
+    await go(`?pure=1&t=${T.A}&view=wave&sel=7&solar=0`, 600);
+    const minor = await readout();
+    ok('pure: a minor arc (η) reads its phase pairs and is placed by counts (ε#5 33η)', minor.pairs === 2 && /half of ε#5 33η$/.test(minor.cyc), JSON.stringify(minor));
+
     // ---- 2. hovering: arcs, loops, dots, the pin, the dial, chips, buttons ------------------------------------
     const hoverHard = [];
     for (const [sel, solar] of [[5, 1], [4, 1], [7, 1], [3, 0], [1, 1]]) {

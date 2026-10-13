@@ -9,12 +9,14 @@
  *   strip  next quarter threshold of the level selected in the ladder
  *   list   the following turnovers, grouped by civil day
  *
- * Pure mode (docs/design/80-pure.md, revision 2): the hero says what begins ("→ Zeta Pentafracton begins", with its
- * address chain) instead of a date, every countdown is counted in ladder units, one per depth and whole cycles only
- * (1ζ 4η 3θ: two non-zero parts in the list, three at most in the hero, zero parts skipped), the phase is a pair of
- * glyphs (pure.pairHTML), real-time leads are counted in Blinks (6.43 Blinks) and the list is grouped by the ζ (one
- * Hadron) an event falls in instead of by civil day, its date counters written δ#6 · ε#5 · ζ#4 (wide cards on every
- * row, narrow ones as the heading of a group of several events). It switches live.
+ * Pure mode (docs/design/80-pure.md, SPEC §15, revision 3): the hero says what begins instead of a date: a major
+ * period in words ("→ Delta Tetrafracton begins"), a minor cycle by its ordinal or count ("→ ε#3 begins",
+ * "→ 34η begins"), with its letter address (α#6 β#4 γ#9 δ#3 ε#5 34η). Every countdown is a span over
+ * α β γ δ ε η ι λ ν (two non-zero parts in the list, three at most in the hero: 43η 6ι 43λ). The phase is a pair of
+ * glyphs for a minor cycle and the quarter word for a major one (never a pair); real-time leads are counted in Blinks.
+ * The list is grouped by the Nuclide an event falls in: a separator between groups, the group's Nuclide in words as
+ * the heading of a group of several events on narrow cards ("Delta Trifracton ε#5"), the short letter date on every
+ * row of a wide card ("δ#3 ε#5 34η"). The strip of a major level says which quarter begins ("→ Valley"). It switches live.
  *
  * Contract: export mount(el, ctx) -> { render, alwaysOn, destroy } (docs/ARCHITECTURE.md).
  */
@@ -46,17 +48,21 @@ import {
 } from './ladder/lib.js';
 import {
   depthWords,
-  groupByZeta,
+  groupByNuclide,
   heroLeft,
   leadBlinks,
   leftText,
+  levelSay,
   levelWord,
+  nextCycle,
   phaseWords,
   quarterWhere,
+  quarterWord,
   turnoverInfo,
   turnoverWords,
   unitClause,
   unitSentence,
+  unitWord,
 } from './ladder/pure-text.js';
 import { attrCell, classCell, createTip, esc, icons, levelVars, pairCell, reducedMotion, textCell } from './ladder/dom.js';
 
@@ -264,7 +270,7 @@ export function mount(el, ctx) {
     li.className = 'upnext-item';
     li.style.cssText = levelVars(theme, ev.top);
     li.innerHTML = `
-      <span class="upnext-grp mono" hidden></span>
+      <span class="upnext-grp" hidden></span>
       <button class="upnext-go" type="button">
         <span class="upnext-chip" role="img" aria-label="${esc(depthName(ev.top))}"><b>${esc(info.letter)}</b><span class="mono">${info.depth}</span></span>
         <span class="upnext-in-s mono"></span>
@@ -349,7 +355,7 @@ export function mount(el, ctx) {
       } else {
         r.setDay(ev.day ?? '');
       }
-      // pure: the date counters head a group of several events (narrow cards); nothing in normal mode
+      // pure: the Nuclide in words heads a group of several events (narrow cards); nothing in normal mode
       r.setHead(pureMode ? (ev.head ?? '') : '');
       r.grp.hidden = !(pureMode && ev.head);
       r.setClock(ev.clock);
@@ -384,7 +390,7 @@ export function mount(el, ctx) {
     H.badge.setAttribute('aria-label', depthName(ev.top));
     H.badge.title = depthName(ev.top);
     const lead = leadOf(ev.top);
-    const name = pureMode ? levelWord(pure, ev.top) : `${letterOf(ev.top)} ${ev.top + 1}`;
+    const name = pureMode ? levelSay(pure, ev.top) : `${letterOf(ev.top)} ${ev.top + 1}`;
     const before = `Just before: jump to ${lead} before the ${name} turnover and watch it happen in real time`;
     const after = `Just after: jump to ${afterLead()} into the next ${name} cycle, after the turnover`;
     for (const [btn, text] of [[heroBefore, before], [heroAfter, after]]) {
@@ -400,12 +406,13 @@ export function mount(el, ctx) {
       H.when(whenFull(fmt, ev.time));
       H.zone(fmt.tag(ev.time));
     }
-    H.sentence(pureMode ? turnoverWords(ev.top, maxLevel()) : turnoverSentence(ev.top, maxLevel()));
+    H.sentence(pureMode ? turnoverWords(pure, ev.top, maxLevel()) : turnoverSentence(ev.top, maxLevel()));
     const cur = frame.level(ev.top);
+    if (pureMode) H.cycleName = cur ? pure.cycleName(ev.top, cur.cycleBig) : '';
     heroStart = cur ? cur.start : ev.time;
     heroEnd = ev.time;
     if (!pureMode) H.since(`since ${whenLabel(fmt, heroStart, frame.t, Math.max(1, heroEnd - heroStart))}`);
-    H.prog.setAttribute('aria-label', `Progress through the current ${pureMode ? levelWord(pure, ev.top) : `${info.letter} ${info.depth}`} cycle`);
+    H.prog.setAttribute('aria-label', `Progress through the current ${pureMode ? levelSay(pure, ev.top) : `${info.letter} ${info.depth}`} cycle`);
     if (animate && !reducedMotion()) {
       hero.animate(
         [
@@ -422,7 +429,7 @@ export function mount(el, ctx) {
     const t = frame.t;
     const prevKeys = events.length ? events : [];
     const built = buildEvents(model, t, { importance, maxLevel: maxLevel(), count: COUNT });
-    const grouped = pureMode ? groupByZeta(model, pure, built.slice(1)) : groupByDay(built.slice(1), fmt, t);
+    const grouped = pureMode ? groupByNuclide(model, pure, built.slice(1)) : groupByDay(built.slice(1), fmt, t);
     const fin = frame.level(importance.top);
     validFrom = fin ? fin.start : -Infinity;
     validUntil = built.length ? built[0].time : Infinity;
@@ -460,6 +467,8 @@ export function mount(el, ctx) {
     for (const c of cells) c.reset();
     H.pair?.reset();
     H.pctEl.replaceChildren();
+    H.major = null; // which kind of phase the hero caption shows (pure): the quarter word or the pair
+    H.cycleName = '';
     H.prog.setAttribute('aria-valuemax', next ? '255' : '100');
     H.prog.removeAttribute('aria-valuetext'); // pure writes the phase words each frame; normal mode has none
     H.p = -1;
@@ -541,9 +550,24 @@ export function mount(el, ctx) {
       }
       if (pureMode) {
         const ph = phaseWords(pure, p);
-        H.pair.set(p, 'phase');
-        H.now(String(ph.index));
-        H.nowText(ph.label);
+        const major = pure.isMajor(ev.top);
+        if (major !== H.major) {
+          // a major period's phase is its quarter word, a minor one's the glyph pair: never both in the caption
+          H.major = major;
+          H.pair.reset();
+          H.pct.reset();
+          H.pctEl.replaceChildren();
+        }
+        if (major) {
+          const q = quarterWord(pure, p);
+          H.pct(`${q} quarter`);
+          H.now(String(ph.index));
+          H.nowText(`${q} quarter of ${H.cycleName}`);
+        } else {
+          H.pair.set(p, 'phase');
+          H.now(String(ph.index));
+          H.nowText(ph.label);
+        }
         H.since(`began ${leftText(model, pure, heroStart, t)} ago`);
         for (const r of rows.values()) r.setIn(leftText(model, pure, t, r.ev.time));
       } else {
@@ -567,28 +591,43 @@ export function mount(el, ctx) {
     if (lv && lv.next.time != null) {
       S.none(false);
       S.q(QN[lv.quarter]);
+      S.off(false);
       if (pureMode) {
         S.inEl(`in ${leftText(model, pure, t, lv.next.time)}`);
-        // the clock reading of the threshold ("at 1η 0ι": a position, next to the countdown, a duration) is an
-        // exact model read: only when the threshold or the level changes
+        // where the threshold falls is an exact read: only when the threshold or the level changes
         const whereKey = `${sel}:${lv.next.time}`;
         if (whereKey !== S.whereKey) {
           S.whereKey = whereKey;
-          const where = quarterWhere(model, pure, lv.next.time, sel);
-          S.clock(where ? `at ${where}` : '');
+          if (pure.isMajor(sel)) {
+            // a major period: its quarter ends and the next one begins ("Delta Trifracton Node ends → Valley")
+            const QW = pure.QUARTER_WORDS;
+            const name = pure.cycleName(sel, lv.cycleBig);
+            S.clock(`→ ${lv.quarter < 3 ? QW[lv.quarter + 1] : QW[0]}`);
+            if (lv.quarter < 3) S.title(`Just after: ${name} ${QW[lv.quarter]} ends and its ${QW[lv.quarter + 1]} begins; jump to ${afterLead()} past it`);
+            else {
+              // its End quarter ends with the cycle: the next one begins (in its Peak)
+              const next = nextCycle(model, pure, sel, lv.cycleBig);
+              S.title(`Just after: ${name} ends and ${next ? `${next.name} begins` : 'the catalogue ends'}; jump to ${afterLead()} past it`);
+            }
+          } else {
+            // a minor one: where the threshold falls ("at 34η 0ι": a position, next to the countdown, a span)
+            const where = quarterWhere(model, pure, lv.next.time, sel);
+            S.clock(where ? `at ${where}` : '');
+            S.title(`Just after: jump to ${afterLead()} past the next ${QN[lv.quarter]} of the current ${levelSay(pure, sel)} cycle`);
+          }
         }
       } else {
         S.inEl(`in ${countdownText(fmt, lv.next.time - t)}`);
         S.clock(whenLabel(fmt, lv.next.time, t, lv.duration));
+        S.title(`Just after: jump to ${afterLead()} past the next ${QN[lv.quarter]} of ${letterOf(sel)} ${sel + 1}`);
       }
-      S.off(false);
-      S.title(`Just after: jump to ${afterLead()} past the next ${QN[lv.quarter]} of ${pureMode ? `the current ${levelWord(pure, sel)} cycle` : `${letterOf(sel)} ${sel + 1}`}`);
     } else {
       S.none(true);
       S.q('');
       S.inEl('No further threshold before the catalogue ends');
       S.clock('');
       S.off(true);
+      S.whereKey = '';
       S.title('No further quarter threshold before the catalogue ends');
     }
 
@@ -606,10 +645,10 @@ export function mount(el, ctx) {
     const color = theme.levelColor(ev.top);
     if (pureMode) {
       const ti = turnoverInfo(model, pure, ev);
-      return `<div class="upnext-tip-h"><b style="color:${color}">${esc(info.letter)} ${info.depth}</b><span class="upnext-tip-d dim">${esc(levelWord(pure, ev.top))}</span><span>${esc(heroLeft(model, pure, t, ev.time))}</span></div>
+      return `<div class="upnext-tip-h"><b style="color:${color}">${esc(info.letter)} ${info.depth}</b><span class="upnext-tip-d dim">${esc(unitWord(pure, ev.top) || levelWord(pure, ev.top))}</span><span>${esc(heroLeft(model, pure, t, ev.time))}</span></div>
       <div><b>${esc(ti.name ? `→ ${ti.name} begins` : '→ the catalogue ends')}</b></div>
       ${ti.address ? `<div class="dim mono">${esc(ti.address)}</div>` : ''}
-      <div class="dim">${esc(turnoverWords(ev.top, maxLevel()))}</div>
+      <div class="dim">${esc(turnoverWords(pure, ev.top, maxLevel()))}</div>
       <div class="upnext-tip-hint dim">Click: Just after · arrow button: Just before (${leadOf(ev.top)} ahead, then real time)</div>`;
     }
     return `<div class="upnext-tip-h"><b style="color:${color}">${esc(info.letter)} ${info.depth}</b><span class="upnext-tip-d dim">depth ${info.depth}</span><span>${esc(countdownLong(fmt, ev.time - t))}</span></div>

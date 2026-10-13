@@ -1659,10 +1659,11 @@ test('pure wording: counts and spans of Blinks', () => {
   for (const n of [0.5, 1, 3.5, 12, 36, 250]) assert.equal(W.blinkSpan(pure, pure.blinksToSeconds(n)), pure.blinks(pure.blinksToSeconds(n)));
 });
 
-test('pure wording: every depth is a whole unit, written by the helper (pure.cycleLength)', () => {
+test('pure wording: every depth is one unit or a whole count of the next one, written by the helper (pure.cycleLength)', () => {
+  // revision 3: the ladder skips every other depth below δ; ζ θ κ μ are counts of the next unit, ξ a decimal Blink
   assert.deepEqual(
     rowsT.map((r) => pure.cycleLength(r.level)),
-    ['1α', '1β', '1γ', '1δ', '1ε', '1ζ', '1η', '1θ', '1ι', '1κ', '1λ', '1μ', '1ν', '0.14ν'],
+    ['1α', '1β', '1γ', '1δ', '1ε', '11η', '1η', '4ι', '1ι', '13λ', '1λ', '5ν', '1ν', '0.14ν'],
   );
   // and the counts give the cycle's length back exactly (in Saros position units); ξ is a decimal count of a Blink
   const len = new Map(pure.UNITS.map((u) => [u.sym, pure.unitPos(u)]));
@@ -1677,6 +1678,19 @@ test('pure wording: every depth is a whole unit, written by the helper (pure.cyc
   }
   // the words module has no length formatter of its own
   assert.equal(W.cycleLength, undefined);
+  // what a depth is: majors and units by name, the depths between by their length (the tempo lock's depth list)
+  assert.deepEqual(
+    rowsT.slice(1).map((r) => W.depthOption(pure, r)),
+    ['β 2 · Beta', 'γ 3 · Gamma', 'δ 4 · Delta', 'ε 5 · Nuclide', 'ζ 6 · 11η', 'η 7 · Helion', 'θ 8 · 4ι', 'ι 9 · Preon', 'κ 10 · 13λ', 'λ 11 · Flavon', 'μ 12 · 5ν', 'ν 13 · Blink', 'ξ 14 · 0.14ν'],
+  );
+  assert.deepEqual(
+    [3, 6, 5, 13].map((L) => W.depthKind(pure, L)),
+    ['Delta, a major period', 'Helion, a minor unit', 'between two units', 'finer than a Blink'],
+  );
+  for (const r of rowsT) {
+    noLeak(W.depthOption(pure, r), `depth option ${r.depth}`);
+    noLeak(W.depthKind(pure, r.level), `depth kind ${r.depth}`);
+  }
 });
 
 test('pure wording: the spectrum is labelled by the octaves of the ground, in pB and ratios', () => {
@@ -1700,12 +1714,12 @@ test('pure wording: the spectrum is labelled by the octaves of the ground, in pB
 
 test('pure wording: speed buttons are the helper\'s rateLabel (units per Blink) and agree with the header', () => {
   const buttons = W.rateButtons(pure);
-  assert.deepEqual(buttons.map((b) => b.label), ['Live', 'real time', 'λ', 'ι', 'η', 'ζ', 'δ', 'Pause', 'Reverse']);
+  assert.deepEqual(buttons.map((b) => b.label), ['Live', 'real time', 'λ', 'ι', 'η', 'ε', 'δ', 'Pause', 'Reverse']);
   assert.deepEqual(buttons.map((b) => b.unit), ['follow now', '', 'per Blink', 'per Blink', 'per Blink', 'per Blink', 'per Blink', '', '']);
   // the tooltip says what passes, in prose, by the unit's name
   assert.deepEqual(
     buttons.slice(2, 7).map((b) => b.tip),
-    ['One Flavon passes every Blink', 'One Preon passes every Blink', 'One Helion passes every Blink', 'One Hadron passes every Blink', 'One Atom passes every Blink'],
+    ['One Flavon passes every Blink', 'One Preon passes every Blink', 'One Helion passes every Blink', 'One Nuclide passes every Blink', 'One Delta passes every Blink'],
   );
   // the keys are the rates of the header's speed select, read back exactly (the pressed state compares them with ===)
   for (const b of buttons.slice(1, 7)) {
@@ -1719,7 +1733,36 @@ test('pure wording: speed buttons are the helper\'s rateLabel (units per Blink) 
     assert.doesNotMatch(b.tip, /clock time/);
     assert.doesNotMatch(`${b.label} ${b.unit}`, /×|\d{3}/, `${b.key}: no ×N`);
   }
-  assert.deepEqual(W.RATE_BUTTON_UNITS, ['lambda', 'iota', 'eta', 'zeta', 'delta']);
+  assert.deepEqual(W.RATE_BUTTON_UNITS, ['lambda', 'iota', 'eta', 'epsilon', 'delta']);
+  for (const id of W.RATE_BUTTON_UNITS) assert.ok(pure.RATES.some((r) => r.id === id), `${id} is a preset of the helper`);
+});
+
+test('pure wording: every speed reads in prose with the unit\'s name, counted presets included', () => {
+  const tip = (id) => W.rateTip(pure, pure.RATES.find((r) => r.id === id).rate);
+  assert.deepEqual(
+    pure.RATES.map((r) => [r.id, W.rateTip(pure, r.rate)]),
+    [
+      ['real', 'Real time: one Blink passes every Blink'],
+      ['nu5', 'Five Blinks pass every Blink'],
+      ['lambda', 'One Flavon passes every Blink'],
+      ['lambda13', 'Thirteen Flavons pass every Blink'],
+      ['iota', 'One Preon passes every Blink'],
+      ['iota4', 'Four Preons pass every Blink'],
+      ['eta', 'One Helion passes every Blink'],
+      ['eta11', 'Eleven Helions pass every Blink'],
+      ['epsilon', 'One Nuclide passes every Blink'],
+      ['delta', 'One Delta passes every Blink'],
+      ['gamma', 'One Gamma passes every Blink'],
+    ],
+  );
+  assert.equal(tip('iota4'), W.rateTip(pure, pure.PLAY_RATE), 'the default Play speed of pure mode');
+  // any other rate: the helper's count, in digits when it is not a small whole number
+  assert.equal(W.rateTip(pure, tempoRate(model, 7, pure.blinksToSeconds(12))), 'Three Preons pass every Blink');
+  assert.equal(W.rateTip(pure, -pure.RATES.find((r) => r.id === 'eta').rate), 'One Helion passes every Blink, backward');
+  assert.match(W.rateTip(pure, 2.5 * pure.RATES.find((r) => r.id === 'iota').rate), /^2\.5 Preons pass every Blink$/);
+  assert.match(W.rateTip(pure, 0.5), /^0\.5 Blinks pass every Blink$/);
+  for (const r of pure.RATES) noLeak(W.rateTip(pure, r.rate), r.id);
+  for (const k of [3, 60, 3600, 86400, 2629800, 0.011]) noLeak(W.rateTip(pure, k), String(k));
 });
 
 test('pure wording: a tempo lock is counted in Blinks and reads as a count of one unit per Blink, never as a bare multiplier', () => {
@@ -1730,7 +1773,8 @@ test('pure wording: a tempo lock is counted in Blinks and reads as a count of on
     for (const blinks of [0.8, 1, 4, 12, 13.5, 60, 600, 1930]) {
       const rate = tempoRate(model, depth, pure.blinksToSeconds(blinks));
       const say = pure.rateLabel(rate);
-      assert.match(say, /^(real time|(\d+(\.\d+)?)?(α|β|γ|δ|ε|ζ|η|θ|ι|κ|λ|μ|ν) per Blink)$/, `depth ${depth} in ${blinks} Blinks`);
+      // only units are counted (revision 3: ζ θ κ μ are not units)
+      assert.match(say, /^(real time|(\d+(\.\d+)?)?(α|β|γ|δ|ε|η|ι|λ|ν) per Blink)$/, `depth ${depth} in ${blinks} Blinks`);
       assert.doesNotMatch(say, /×|,/, 'no bare multiplier, no digit grouping that looks like one');
       noLeak(say, `lock ${depth}/${blinks}`);
       // the count is honest: count x unit lasts (within the 3 digits shown) as long as the clock moves per Blink
@@ -1754,10 +1798,12 @@ test('pure wording: a tempo lock is counted in Blinks and reads as a count of on
   assert.equal(lines[0], '3ι per Blink: one η cycle lasts 12 Blinks; a quarter lasts 3 Blinks.');
   assert.equal(lines[1], 'Tempo locked: one η cycle = 12 Blinks (3ι per Blink)');
   for (const l of lines) { noLeak(l, l); assert.doesNotMatch(l, /×\d/); }
-  // clean locks are exactly named presets: one η in 36 Blinks is one ι per Blink, one ζ in 11 Blinks one η per Blink,
-  // one η in 58 500 Blinks is real time itself
+  // clean locks are exactly named presets: one η in 36 Blinks is one ι per Blink, one ζ (11η) in 11 Blinks one η per Blink,
+  // one η in 9 Blinks the default Play speed (4ι per Blink), one η in 58 500 Blinks real time itself
   assert.equal(pure.rateLabel(tempoRate(model, 7, pure.blinksToSeconds(36))), 'ι per Blink');
   assert.equal(pure.rateLabel(tempoRate(model, 6, pure.blinksToSeconds(11))), 'η per Blink');
+  assert.equal(pure.rateLabel(tempoRate(model, 7, pure.blinksToSeconds(9))), '4ι per Blink');
+  assert.equal(pure.rateLabel(tempoRate(model, 5, pure.blinksToSeconds(7))), '11η per Blink', 'one ε in 7 Blinks');
   assert.equal(pure.rateLabel(tempoRate(model, 7, pure.blinksToSeconds(58500))), 'real time');
   assert.equal(pure.rateLabel(tempoRate(model, 9, pure.blinksToSeconds(1625))), 'real time');
   // backwards: the same words and "backward"; one ι lasts 1 625 Blinks at real time, so 65 Blinks is λ per Blink... times 25 slower
@@ -1845,7 +1891,9 @@ test('pure wording: every static text and every tooltip is free of Earth referen
       const html = W.voiceTip({ row: r, info, pure, live, int: pure.groupDigits, color: '#fff', hz: frequencyOf(r, 110) });
       noLeak(plainText(html), `tip of depth ${r.depth}`);
       assert.doesNotMatch(plainText(html), /Hz|%|\bbeats?\b|\b[A-G][#♯]?\d\b/);
-      assert.equal((html.match(/class="pure-pair"/g) ?? []).length, live ? 2 : 0, 'phase and loudness are glyph pairs');
+      // loudness is a pair; so is the phase of a minor level. A major period never draws its phase: its quarter instead
+      assert.equal((html.match(/class="pure-pair"/g) ?? []).length, live ? (pure.isMajor(r.level) ? 1 : 2) : 0, 'phase and loudness are glyph pairs');
+      if (live && pure.isMajor(r.level)) assert.match(plainText(html), new RegExp(`Now: (${pure.QUARTER_WORDS.join('|')}) quarter \\(`));
       assert.match(html, new RegExp(`one cycle = ${pure.cycleLength(r.level).replace('.', '\\.')}`));
       assert.match(plainText(html), /Placed .*: [\d. ]+ pB/, 'the placed pitch is in pB');
     }
@@ -1857,7 +1905,7 @@ test('pure wording: the voice tooltip teaches ratio, register, pitch and rate in
   const r = rowsT[4]; // epsilon, depth 5
   const html = W.voiceTip({ row: r, info: model.levelInfo(4), pure, live: { phase: 0.3, loud: 0.5, state: 'falling' }, int: pure.groupDigits, color: '#0ff', hz: frequencyOf(r, 110) });
   const text = plainText(html);
-  assert.match(text, /^ε depth 5 · one cycle = 1ε /);
+  assert.match(text, /^ε depth 5 · Nuclide, a minor unit · one cycle = 1ε /);
   assert.match(text, new RegExp(`1${NN}625 such cycles fit in one α cycle`));
   assert.match(text, /Folded into one octave: 1625\/1024 = ×1\.59 \(799\.5¢\)/);
   assert.match(text, /Placed 1 octave above the ground: 108\.5 pB, sounding at 3\.17 : 1 to α/);
@@ -1870,6 +1918,20 @@ test('pure wording: the voice tooltip teaches ratio, register, pitch and rate in
   const xi = W.voiceTip({ row: rowsT[13], info: model.levelInfo(13), pure, live: null, int: pure.groupDigits, color: '#0ff', hz: frequencyOf(rowsT[13], 110) });
   assert.match(plainText(xi), /one cycle = 0\.14ν/);
   assert.match(plainText(xi), /True rate of this cycle: 7 pB/);
+  // a depth between two units: its length is a count of the next unit
+  const zeta = W.voiceTip({ row: rowsT[5], info: model.levelInfo(5), pure, live: null, int: pure.groupDigits, color: '#0ff', hz: frequencyOf(rowsT[5], 110) });
+  assert.match(plainText(zeta), /^ζ depth 6 · between two units · one cycle = 11η /);
+  assert.match(plainText(zeta), new RegExp(`True rate of this cycle: 1 per 643${NN}500 Blinks`));
+  // a major period: named in words with its quarter, never a phase pair (the caller passes pure.majorText)
+  const major = pure.majorText(VECTOR_A, 3);
+  assert.equal(major, 'Delta Trifracton End', 'SPEC §15.6 vector A');
+  const delta = W.voiceTip({ row: rowsT[3], info: model.levelInfo(3), pure, live: { phase: 0.9, loud: 0.4, state: 'rising', major }, int: pure.groupDigits, color: '#0ff', hz: frequencyOf(rowsT[3], 110) });
+  assert.match(plainText(delta), /^δ depth 4 · Delta, a major period · one cycle = 1δ /);
+  assert.match(plainText(delta), /Now: Delta Trifracton End \(rising\), loudness/);
+  assert.equal((delta.match(/class="pure-pair"/g) ?? []).length, 1, 'only the loudness pair');
+  assert.doesNotMatch(delta, /aria-label="phase/);
+  // a minor level keeps its phase pair and never gets a fracton name
+  assert.doesNotMatch(plainText(html), /fracton/);
   // without a pitch the sentence stays whole (no "undefined", no stray colon)
   assert.doesNotMatch(plainText(W.voiceTip({ row: r, info: model.levelInfo(4), pure, live: null, int: pure.groupDigits, color: '#0ff' })), /undefined|NaN|: ,/);
 });

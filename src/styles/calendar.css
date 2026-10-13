@@ -383,13 +383,15 @@
 .jump-foot { padding: 6px 10px 3px; font-size: 11px; color: var(--ink-2); border-top: 1px solid var(--line); margin-top: 4px; }
 
 /* ============================================================================================
-   pure mode: the converter between Fractonica forms and the page of one δ (docs/design/80-pure.md, revision 2)
+   pure mode: the converter between Fractonica forms and the page of one Delta (SPEC §15, docs/design/80-pure.md, revision 3)
    Same cards, same frame; every class below belongs to the pure views (cal-pc-*, cal-pm-*, cal-p*).
    ========================================================================================== */
 /* ---- converter: moment readout, counters ---- */
 .cal-pc-read { display: flex; flex-direction: column; gap: 5px; padding: 10px 12px 11px; border-radius: 12px; background: var(--bg-2); border: 1px solid var(--line); min-width: 0; }
 .cal-pc-clock { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 30px; line-height: 1.08; color: var(--teal); min-height: 32px; }
 .cal-pc-clock .pure-clock b { font-weight: 600; }
+.cal-pc-clock .pure-pair { margin: 0 6px 0 2px; vertical-align: -3px; }
+.cal-pc-clock .pure-pair svg { height: 0.95em; width: auto; }
 .cal-pc-date { font-size: 12.5px; color: var(--ink-2); overflow-wrap: anywhere; line-height: 1.4; }
 .cal-pc-names { display: flex; flex-wrap: wrap; gap: 4px 5px; margin-top: 3px; min-height: 22px; }
 .cal-pc-name { font-size: 11px; line-height: 1.5; padding: 0 8px 0 6px; border-radius: 999px; border: 1px solid color-mix(in srgb, var(--lv) 35%, var(--line-2)); background: color-mix(in srgb, var(--lv) 7%, transparent); color: var(--ink-2); white-space: nowrap; }
@@ -398,11 +400,21 @@
 .cal-clab { flex: 0 0 100%; font-size: 11px; letter-spacing: 0.03em; color: var(--ink-3); }
 .cal-cstep { grid-template-columns: auto auto; }
 .cal-cstep .cal-sl { font-size: 15px; text-align: left; white-space: nowrap; }
-/* a count is written number first ("3η"): the unit follows the box; an ordinal has its hash first ("δ#3") */
+/* a count is written number first ("3η"): the unit follows the box; an ordinal has its hash first ("ε#3") */
 .cal-cstep.is-count .cal-so { grid-column: 1; }
 .cal-cstep.is-count .cal-sl { padding-left: 1px; }
 .cal-cstep .cal-sv { width: 40px; }
 .cal-cstep .cal-so { white-space: nowrap; }
+/* the major periods by name: "Delta [Trifracton] Node" */
+.cal-mrow { gap: 6px 14px; }
+.cal-mstep { display: grid; grid-template-columns: auto auto auto; align-items: center; column-gap: 6px; }
+.cal-mstep .cal-sl { font-size: 13px; text-align: left; white-space: nowrap; }
+.cal-msel { width: auto; min-width: 120px; padding-right: 22px; color: color-mix(in srgb, var(--lv) 40%, var(--ink)); }
+.cal-mq { font-size: 12px; color: color-mix(in srgb, var(--lv) 60%, var(--ink-2)); white-space: nowrap; min-width: 40px; }
+.cal-mstep .cal-serr { grid-column: 1 / -1; }
+/* a cycle finer than the Nuclide in the address: its place in the Nuclide */
+.cal-place { grid-template-columns: 16px auto; }
+.cal-placet { display: inline-block; min-width: 72px; padding: 0 8px; text-align: center; font-size: 13px; line-height: 30px; color: color-mix(in srgb, var(--lv) 40%, var(--ink)); white-space: nowrap; }
 .cal-ta { height: auto; min-height: 56px; resize: none; padding-top: 7px; padding-bottom: 7px; line-height: 1.45; overflow-wrap: anywhere; }
 .cal-inwrap:has(.cal-ta) { align-items: stretch; }
 .cal-inwrap:has(.cal-ta) .cal-copy { top: 6px; }
@@ -419,6 +431,10 @@
 .cal-gpair .pure-pair { gap: 3px; }
 .cal-gpair .pure-pair svg { height: 40px; width: auto; max-width: 24px; }
 .cal-pgcell .cal-gstate { letter-spacing: 0.02em; }
+/* a major period has no phase: its quarter word instead of a pair, no progress bar */
+.cal-gq { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; border: 1.5px solid color-mix(in srgb, var(--lv) 70%, transparent); font-family: var(--font-mono); font-size: 15px; font-weight: 600; }
+.cal-pgcell.is-major .cal-gbar { visibility: hidden; }
+.cal-pgcell.is-major { cursor: default; }
 .cal-pick-l { font-size: 11px; color: var(--ink-3); letter-spacing: 0.03em; margin: -4px 0 -6px; }
 .cal-states2 { grid-template-columns: repeat(9, minmax(0, 1fr)); }
 .cal-states2 .cal-state svg { height: 28px; }
@@ -429,20 +445,21 @@
 .cal-pphase .cal-pphase-pair { position: absolute; right: 8px; top: 3px; line-height: 1; font-size: 11px; color: var(--gold); }
 .cal-pphase .pure-pair svg { height: 28px; }
 
-/* ---- the page of one δ: 5 rows (ε) x 7 columns (ζ), a cell is one whole ζ with its 11 η ---- */
+/* ---- the page of one Delta: 5 Nuclide rows x 7 columns of 11 Helions ---- */
 .cal-pmonth { --cal-c: var(--lv-6); }
 .cal-pm-hsub { font-size: 11.5px; }
 .cal-pm-nav { flex-wrap: wrap; }
 .cal-pm-title { flex: 1 1 130px; min-width: 0; text-align: center; display: flex; flex-direction: column; align-items: center; line-height: 1.2; padding: 0 4px; }
-.cal-pm-tm { font-size: 17px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.cal-pm-tm { font-size: 15px; font-weight: 600; line-height: 1.25; }
+.cal-pm-tm span { white-space: nowrap; }
 .cal-pm-ts { font-size: 11px; color: var(--ink-3); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cal-pm-addr { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; }
 .cal-pm-addrf { display: inline-flex; align-items: center; gap: 5px; }
-.cal-pm-step { margin-left: auto; }
+.cal-pm-steprow { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
 .cal-pm-step button { padding: 4px 10px; color: var(--c); }
 .cal-pm-step button[aria-pressed="true"] { color: var(--ink); }
-.cal-pm-addrl { color: var(--lv); font-size: 15px; min-width: 14px; text-align: center; }
-.cal-pm-sel { width: 62px; padding-right: 20px; }
+.cal-pm-addrl { color: var(--lv); font-size: 12.5px; }
+.cal-pm-sel { width: auto; min-width: 118px; padding-right: 22px; }
 .cal-pm-lgs { display: inline-block; width: 7px; height: 7px; background: var(--gold); transform: rotate(45deg); margin: 0 4px 1px 3px; }
 .cal-pm-legend .cal-lg-sw { margin-top: 5px; }
 
@@ -458,7 +475,9 @@
 .cal-pm-cell.is-shown { border-color: var(--cursor); box-shadow: 0 0 0 1px var(--cursor) inset; opacity: 1; }
 .cal-pm-day { position: absolute; inset: 0 0 24px 0; width: 100%; display: flex; align-items: flex-start; justify-content: flex-start; padding: 5px 6px; text-align: left; color: var(--ink); z-index: 2; }
 .cal-pm-day:focus-visible { outline: 2px solid var(--cursor); outline-offset: -2px; border-radius: 7px; }
-.cal-pm-num { min-width: 22px; height: 20px; padding: 0 5px; border-radius: 999px; font-size: 13px; line-height: 20px; text-align: center; font-variant-numeric: tabular-nums; font-weight: 500; }
+.cal-pm-num { min-width: 22px; height: 20px; padding: 0 5px; border-radius: 999px; font-size: 12.5px; line-height: 20px; text-align: center; font-variant-numeric: tabular-nums; font-weight: 500; white-space: nowrap; }
+.cal-pm-ch i { font-style: normal; opacity: 0.7; font-size: 0.9em; }
+.cal-pm-num i { display: none; } /* (the column says 11η: the cell keeps the number, so the corner has room for S4821) */
 .cal-pm-cell.is-live .cal-pm-num { background: var(--now); color: #1a0509; font-weight: 700; }
 .cal-pm-cell.is-shown .cal-pm-num { box-shadow: 0 0 0 1px var(--cursor); }
 .cal-pm-cell.is-live.is-shown .cal-pm-num { box-shadow: none; }
@@ -502,16 +521,39 @@
 .cal-pmonth .cal-ytitle { text-transform: none; letter-spacing: 0.02em; font-size: 13px; }
 .cal-pm-seg.is-wide b { font-size: 8.5px; letter-spacing: -0.08em; }
 .cal-pmonth .cal-rt.is-delta span { top: -2px; }
-/* η counters: all eleven when a cell is wide, every second one (0 2 4 6 8 10) from ~66 px, 0 5 10 below ~50 px; only the node tick of an η */
+/* the ribbon of the five Deltas: fracton names where there is room, δ#n on a phone */
+.cal-pribbon .cal-rm b { font-weight: 500; }
+.cal-pribbon .cal-rm-l { display: none; }
+/* the quarter bar of the page's Delta: Peak Node Valley End and its five Nuclides */
+.cal-pm-qbar { position: relative; height: 40px; margin: 2px 0 0 39px; }
+.cal-pm-qsegs { position: absolute; left: 0; right: 0; top: 0; height: 22px; }
+.cal-pm-qseg { position: absolute; top: 0; bottom: 0; border: 1px solid color-mix(in srgb, var(--lv-3) 40%, var(--line)); border-left-width: 0; background: color-mix(in srgb, var(--lv-3) 9%, var(--panel-2)); color: color-mix(in srgb, var(--lv-3) 55%, var(--ink-2)); font-size: 11.5px; letter-spacing: 0.03em; }
+.cal-pm-qseg:first-child { border-left-width: 1px; border-radius: 6px 0 0 6px; }
+.cal-pm-qseg:last-child { border-radius: 0 6px 6px 0; }
+.cal-pm-qseg:hover { background: color-mix(in srgb, var(--lv-3) 18%, var(--panel-2)); color: var(--ink); }
+.cal-pm-qseg.is-cur { background: color-mix(in srgb, var(--lv-3) 28%, var(--panel-2)); color: var(--ink); font-weight: 600; }
+.cal-pm-qseg:focus-visible { outline: 2px solid var(--cursor); outline-offset: -2px; }
+.cal-pm-qticks { position: absolute; left: 0; right: 0; top: 22px; height: 18px; pointer-events: none; }
+.cal-pm-qtick { position: absolute; top: 0; height: 6px; width: 1px; background: color-mix(in srgb, var(--lv-4) 80%, transparent); }
+.cal-pm-qeps { position: absolute; top: 4px; transform: translateX(-50%); font-size: 10px; color: color-mix(in srgb, var(--lv-4) 70%, var(--ink-3)); white-space: nowrap; }
+.cal-pm-qcur { position: absolute; top: -3px; height: 28px; width: 2px; margin-left: -1px; background: var(--cursor); box-shadow: 0 0 0 1px rgb(7 9 13 / 0.55); pointer-events: none; z-index: 2; }
+/* where a quarter of the Delta begins inside a cell: a line in the Delta colour with a small flag (the quarter bar above
+   the grid names the quarters; the cell's tooltip and label say which one begins) */
+.cal-pm-qline { position: absolute; top: 0; bottom: 0; width: 0; border-left: 1.5px solid var(--lv-3); z-index: 3; pointer-events: none; }
+.cal-pm-qline::before { content: ""; position: absolute; left: 0; top: 0; border: 4px solid transparent; border-left-color: var(--lv-3); border-top-color: var(--lv-3); }
+.cal-tt-q { color: var(--lv-3); font-size: 12px; margin-top: 3px; }
+/* Helion counts: all eleven when a cell is wide, every fifth one (0 5 10 … 75) otherwise; only the node tick of a Helion */
 .cal-pm-q.q1, .cal-pm-q.q3 { display: none; }
 @container pmgrid (max-width: 980px) {
-  .cal-pm-seg.is-eta:not(.k2) b { visibility: hidden; }
+  .cal-pm-seg.is-eta:not(.k5) b { visibility: hidden; }
 }
-@container pmgrid (max-width: 560px) {
+/* (on a phone a cell is ~40 px: the column head says where it starts, the band keeps only its ticks) */
+@container pmgrid (max-width: 420px) {
   .cal-pm-seg.is-eta b { visibility: hidden; }
-  .cal-pm-seg.is-eta.k5 b { visibility: visible; }
 }
-.cal-pm-seg.is-eta.is-wide b { margin-left: -8px; }
+/* (the last two Helions of a cell: their two-digit count is pulled left so the cell edge does not cut it) */
+.cal-pm-seg.is-eta.is-tail b { margin-left: -4px; }
+.cal-pm-seg.is-eta.is-endeta b { margin-left: -10px; }
 /* the inspector of a cell in the η band lists 11 η and the syncs: three columns (two on a phone), without the chain text */
 .cal-dd-list.is-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); column-gap: 14px; }
 .cal-dd-list.is-grid .cal-ddr { grid-template-columns: auto minmax(0, 1fr) var(--cal-btn); }
@@ -532,6 +574,12 @@
   .cal-pm-seg b { font-size: 9px; line-height: 21px; padding-left: 1px; }
   .cal-pm-ecl { bottom: 22px; width: 12px; height: 12px; }
   .cal-pm-eline { height: 38px; }
+  .cal-pribbon .cal-rm-w { display: none; }
+  .cal-pribbon .cal-rm-l { display: inline; }
+  .cal-pm-qbar { margin-left: 26px; }
+  .cal-pm-qseg { font-size: 10.5px; letter-spacing: 0; }
+  .cal-pm-tm { font-size: 13.5px; }
+  .cal-msel { min-width: 104px; }
   .cal-dd-list.is-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .cal-dd-list.is-grid.is-syncs { grid-template-columns: minmax(0, 1fr); }
   .cal-pm-tags { inset: 0 0 21px 0; }

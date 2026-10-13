@@ -679,24 +679,31 @@ test('percentText: the "through this cycle" figure is floored and never reads 10
 });
 
 // ---------------------------------------------------------------------------------------------
-// Pure mode (docs/design/80-pure.md): the same view in Fractonica terms only
+// Pure mode (docs/design/80-pure.md, SPEC §15, revision 3): the same view in Fractonica terms only. Major rings (α β γ δ)
+// in words with their quarter, minor rings by where they start in their Nuclide, with their phase pair.
 // ---------------------------------------------------------------------------------------------
 const pure = createPure(model, { now: () => T });
 const hardRules = RULES.filter(([, , severity]) => severity === 'hard');
 const earthly = (text) => hardRules.filter(([, re]) => re.test(text)).map(([id]) => id);
 const INSTANTS = [T, 946684800, 2886085800, model.tMin + 5, model.tMax - 5, model.tMax - 3e8, 125593320.816];
+const HALF = '½';
+const RETIRED = /\b(Hadron|Quark|Chromon|Somon|Atom)s?\b|\b(Epsilon|Zeta|Eta|Theta|Iota|Kappa|Lambda|Mu|Nu|Xi)\s+\w*fracton\b/;
 
-test('pure: resolution follows the length of the cycle it labels (a quarter is the step)', () => {
+test('pure: resolution follows the length of the cycle it labels (a quarter is the step), on the digits ε# η ι λ ν', () => {
   const index = (level, divisor) => PT.resolutionIndex(pure, PT.cycleSpanPos(model, level), divisor);
   const unit = (level, divisor) => PT.coordSym(pure, index(level, divisor));
-  assert.equal(unit(6, 4), 'ι', 'an η cycle (36 ι) has quarters of 9 ι');
-  assert.equal(unit(5, 4), 'η', 'a ζ cycle (11 η) has quarters of 2.75 η');
-  assert.equal(unit(4, 4), 'ζ', 'an ε cycle (7 ζ) has quarters of 1.75 ζ');
   assert.equal(unit(0, 4), 'β', 'an α cycle (4 Saros) has quarters of 1 Saros, a bit more than a β');
+  assert.equal(unit(3, 4), 'ε', 'a δ cycle (5 ε) has quarters of 1.25 ε');
+  assert.equal(unit(4, 4), 'η', 'an ε cycle (77 η) has quarters of 19.25 η');
+  assert.equal(unit(5, 4), 'η', 'a ζ cycle (11 η) has quarters of 2.75 η');
+  assert.equal(unit(6, 4), 'ι', 'an η cycle (36 ι) has quarters of 9 ι');
   assert.equal(unit(7, 4), 'ι', 'θ (4 ι) has quarters of exactly 1 ι');
-  assert.equal(unit(9, 4), 'λ', 'κ (13 λ) has quarters of 3.25 λ: θ and κ are units of the ladder but not digits of the clock');
+  assert.equal(unit(9, 4), 'λ', 'κ (13 λ) has quarters of 3.25 λ');
+  assert.equal(unit(10, 4), 'ν', 'λ (25 ν) has quarters of 6.25 ν');
   assert.equal(unit(6, 160), 'λ', 'the pointer over the wave resolves finer than a boundary');
-  // below one Blink the ν counter gets decimals, one more digit the finer the quarters are
+  // ζ θ κ μ are no units: they are never a digit
+  assert.deepEqual(PT.COORD.slice(0, 9).map((id) => pure.unitOf(id).sym).join(''), 'αβγδεηιλν');
+  // below one Blink the ν count gets decimals, one more digit the finer the quarters are
   assert.equal(index(11, 4), PT.COORD.indexOf('nu'), 'a μ cycle (5 ν) has quarters of 1.25 ν: whole Blinks');
   assert.equal(index(12, 4), PT.COORD.indexOf('nu.1'), 'a ν cycle has quarters of 0.25 ν: one decimal');
   assert.equal(index(13, 4), PT.COORD.indexOf('nu.2'), 'a ξ cycle (0.14 ν) has quarters of 0.036 ν: two decimals');
@@ -704,40 +711,34 @@ test('pure: resolution follows the length of the cycle it labels (a quarter is t
   for (let L = 0; L < 14; L++) assert.ok(PT.cycleSpanPos(model, L) > 0);
 });
 
-test('pure: coordinates are the header clock and the pure date of the instant (read 1 ms into the state that starts there)', () => {
+test('pure: coordinates are the stamp of the instant (read 1 ms into the state that starts there)', () => {
   const eta = model.levelAt(T, 6);
   const res = PT.resolutionIndex(pure, PT.cycleSpanPos(model, 6));
   const labels = eta.thresholds.map((e) => PT.whenText(pure, model, e.time, res, { dateTokens: 2, timeTokens: 3 }));
-  const d = pure.date(T);
-  // ordinals are `X#n` (1-based) and counters are `nX` (0-based completed units), never `ε 4` / `η 3`
-  const day = `ε#${d.epsilon} · ζ#${d.zeta}`;
-  // SPEC vector A is the first η of its ζ cycle: the five boundaries are the 0th, 9th, 18th, 27th ι and the next η
-  assert.deepEqual(labels, [`${day} · 0η 0ι`, `${day} · 0η 9ι`, `${day} · 0η 18ι`, `${day} · 0η 27ι`, `${day} · 1η 0ι`]);
-  // the begin label is the clock a jump to the start lands on
-  const c = pure.clock(eta.start + 0.001);
-  assert.equal(`${c.eta}η ${c.iota}ι`, '0η 0ι');
+  // SPEC §15.6: vector A is in the 34th Helion (33 completed) of ε#5 of the 3rd Delta; the quarters of a Helion are 9 Preons
+  assert.deepEqual(labels, ['δ#3 ε#5 33η 0ι', 'δ#3 ε#5 33η 9ι', 'δ#3 ε#5 33η 18ι', 'δ#3 ε#5 33η 27ι', 'δ#3 ε#5 34η 0ι']);
+  // a coordinate is the stamp written the same way (core/pure.js stamp: no separators)
+  assert.equal(PT.whenText(pure, model, T - 0.001, PT.COORD.indexOf('lambda'), { dateTokens: 5, timeTokens: 3 }), pure.stamp(T, 'lambda'));
+  assert.equal(PT.whenText(pure, model, T - 0.001, PT.COORD.indexOf('lambda'), { dateTokens: 5, timeTokens: 3 }), 'α#6 β#4 γ#9 δ#3 ε#5 33η 29ι 21λ');
   // out of the catalogue nothing is invented
   assert.deepEqual(PT.whenParts(pure, model, model.tMax + 1e6, 6), PT.whenParts(pure, model, model.tMax + 2e6, 6));
   assert.equal(PT.pureFields(pure, model, model.tMin - 5), null);
   assert.deepEqual(PT.whenParts(pure, model, model.tMin - 5, 6), { date: '—', time: '' });
 });
 
-test('pure: fields of an instant agree with pure.date / pure.clock and count μ ν inside their parent', () => {
+test('pure: fields of an instant are the core date and clock: ordinals α β γ δ ε, counts η 0–76 ι λ ν', () => {
   for (const t of INSTANTS) {
     const f = PT.pureFields(pure, model, t);
     const d = pure.date(t);
     const c = pure.clock(t);
-    assert.deepEqual(f.ord, [d.alpha, d.beta, d.gamma, d.delta, d.epsilon, d.zeta]);
-    assert.deepEqual(f.count.slice(0, 3), [c.eta, c.iota, c.lambda]);
-    assert.equal(f.count.length, 5, 'η ι λ μ ν: θ and κ are not digits of the clock');
-    assert.ok(f.count[3] >= 0 && f.count[3] < 5 && f.count[4] >= 0 && f.count[4] < 5, `μ ν ${f.count.slice(3)}`);
+    assert.deepEqual(f.ord, [d.alpha, d.beta, d.gamma, d.delta, d.epsilon]);
+    assert.deepEqual(f.count, [c.eta, c.iota, c.lambda, c.nu]);
+    assert.ok(f.count[0] < 77 && f.count[1] < 36 && f.count[2] < 65 && f.count[3] < 25, `${f.count}`);
     assert.ok(f.frac >= 0 && f.frac < 1, `how far the running ν has travelled: ${f.frac}`);
-    // ordinals are whole-cycle numbers: δ and ε 1..5, ζ 1..7
-    assert.ok(f.ord[3] >= 1 && f.ord[3] <= 5 && f.ord[4] >= 1 && f.ord[4] <= 5 && f.ord[5] >= 1 && f.ord[5] <= 7, `δ ε ζ ${f.ord.slice(3)}`);
   }
 });
 
-test('pure: the five boundary labels of a cycle differ (down to the finest field) and the end of one cycle reads as the start of the next', () => {
+test('pure: the five boundary labels of a cycle differ at every depth (the ξ ring too) and the end of one cycle reads as the start of the next', () => {
   for (const t of INSTANTS) {
     for (let L = 0; L <= 13; L++) {
       const lv = model.levelAt(t, L);
@@ -747,109 +748,112 @@ test('pure: the five boundary labels of a cycle differ (down to the finest field
         return [...f.ord, ...f.count, f.frac.toFixed(3)];
       };
       const keys = lv.thresholds.filter((e) => e.time !== null).map((e) => key(e.time));
-      // every ring, the ξ ring included (a ξ cycle is a seventh of a Blink: the ν counter has decimals), has five different boundaries
-      for (let i = 1; i < keys.length; i++) {
-        const [a, b] = [keys[i - 1], keys[i]];
-        assert.notEqual(a.join(), b.join(), `level ${L} @${t}: labels ${i - 1} and ${i} read the same on the full ladder`);
-      }
-      // ... and so do the labels written under the wave
+      for (let i = 1; i < keys.length; i++) assert.notEqual(keys[i - 1].join(), keys[i].join(), `level ${L} @${t}: labels ${i - 1} and ${i}`);
       const written = PT.boundaryLabels(pure, model, L, lv.thresholds.map((e) => e.time)).filter(Boolean).map((l) => `${l.full.date}|${l.full.time}`);
       assert.equal(new Set(written).size, written.length, `level ${L} @${t}: written boundary labels differ: ${written.join(' ; ')}`);
-      if (next) {
-        const endKey = key(lv.end).join();
-        const startKey = key(next.start).join();
-        assert.equal(endKey, startKey, `level ${L} @${t}: end of a cycle = start of the next`);
-      }
+      if (next) assert.equal(key(lv.end).join(), key(next.start).join(), `level ${L} @${t}: end of a cycle = start of the next`);
     }
   }
 });
 
-test('pure: boundaryLabels write the ordinals once, give a shorter alt, and tell a chip when it is still on the first ordinal', () => {
+test('pure: boundaryLabels write the ordinals once, give a shorter alt, and the two parts always join into a piece of the stamp', () => {
   const lv = model.levelAt(T, 6);
-  const times = lv.thresholds.map((e) => e.time);
-  const labels = PT.boundaryLabels(pure, model, 6, times);
+  const labels = PT.boundaryLabels(pure, model, 6, lv.thresholds.map((e) => e.time));
   assert.equal(labels.length, 5);
-  assert.ok(labels[0].date.length > 0, 'the first label carries the ordinals');
-  assert.ok(labels.slice(1).every((l) => l.date === '' && l.time && l.sameAsStart), 'inside one ζ the others repeat nothing');
-  assert.deepEqual(labels.map((l) => l.time), ['0η 0ι', '0η 9ι', '0η 18ι', '0η 27ι', '1η 0ι']);
-  // each alternative says less than the one before (down to the last counter), so a narrow plot can always find one that fits
+  assert.equal(labels[0].date, 'δ#3 ε#5', 'the first label carries the ordinals');
+  assert.ok(labels.slice(1).every((l) => l.date === '' && l.time && l.sameAsStart), 'inside one Nuclide the others repeat nothing');
+  assert.deepEqual(labels.map((l) => l.time), ['33η 0ι', '33η 9ι', '33η 18ι', '33η 27ι', '34η 0ι']);
   for (const l of labels) {
     assert.equal(l.alt.length, 2);
     const size = (x) => (x.date + x.time).length;
     assert.ok(size(l.alt[0]) <= size({ date: l.date || 'xxxxxxxxxxxx', time: l.time }) && size(l.alt[1]) <= size(l.alt[0]));
   }
-  assert.deepEqual(labels[2].alt, [{ date: '', time: '0η 18ι' }, { date: '', time: '18ι' }]);
-  const deep = PT.boundaryLabels(pure, model, 10, model.levelAt(T, 10).thresholds.map((e) => e.time));
-  assert.ok(deep[0].time.split(' ').length === 3 && deep[0].alt[0].time.split(' ').length === 2 && deep[0].alt[1].time.split(' ').length === 1, 'a λ cycle: three counters, then two, then one');
-  // a ζ cycle ends where the next ζ begins: the ordinal shows again where it changes
-  const zeta = model.levelAt(T, 5);
-  const zl = PT.boundaryLabels(pure, model, 5, zeta.thresholds.map((e) => e.time));
-  assert.ok(zl[0].date && zl.some((l, i) => i > 0 && l.date !== ''), 'the date line comes back after the ζ turns over');
-  assert.ok(zl.every((l, i) => (i === 0 ? true : l.date === '' || l.date.length > 0)));
+  assert.deepEqual(labels[2].alt, [{ date: '', time: '33η 18ι' }, { date: '', time: '18ι' }]);
+  // a λ ring: the counts are cut to three, and the context before them is the coarser counts, not the ordinals
+  const lam = PT.boundaryLabels(pure, model, 10, model.levelAt(T, 10).thresholds.map((e) => e.time));
+  assert.equal(lam[0].full.date, 'ε#5 33η');
+  assert.deepEqual(lam.map((l) => l.full.time), ['29ι 21λ 0ν', '29ι 21λ 6ν', '29ι 21λ 12ν', '29ι 21λ 18ν', '29ι 22λ 0ν']);
+  assert.ok(pure.stamp(T, 'nu').endsWith(`${lam[0].full.date} 29ι 21λ 3ν`), 'the first label is a piece of the stamp of its own start');
+  // an ε cycle crosses into the next Delta: the ordinals show again where they change
+  const eps = model.levelAt(T, 4);
+  const el = PT.boundaryLabels(pure, model, 4, eps.thresholds.map((e) => e.time));
+  assert.deepEqual(el.map((l) => `${l.date}/${l.time}`), ['δ#3 ε#5/0η', '/19η', '/38η', '/57η', 'δ#4 ε#1/0η']);
   // a long cycle has no time line: its ordinals are the label and are never dropped
-  const alpha = model.levelAt(T, 0);
-  const al = PT.boundaryLabels(pure, model, 0, alpha.thresholds.map((e) => e.time));
+  const al = PT.boundaryLabels(pure, model, 0, model.levelAt(T, 0).thresholds.map((e) => e.time));
   assert.deepEqual(al.map((l) => l.date), ['α#6 β#1', 'α#6 β#2', 'α#6 β#3', 'α#6 β#4', 'α#7 β#1']);
   assert.ok(al.every((l) => l.time === ''));
-  // beyond the catalogue: null label, no crash
+  const dl = PT.boundaryLabels(pure, model, 3, model.levelAt(T, 3).thresholds.map((e) => e.time));
+  assert.deepEqual(dl.map((l) => l.date), ['δ#3 ε#1', 'δ#3 ε#2', 'δ#3 ε#3', 'δ#3 ε#4', 'δ#4 ε#1'], 'a Delta: its quarters fall in Nuclides 1–4');
   const last = model.levelAt(model.tMax - 5, 0);
   const ll = PT.boundaryLabels(pure, model, 0, last.thresholds.map((e) => e.time));
   assert.equal(ll.length, 5);
   assert.ok(ll.some((l) => l === null) || ll.every((l) => l && l.date));
 });
 
-test('pure: the end of a cycle is the cycle that begins; the catalogue end has none', () => {
-  const lv = model.levelAt(T, 6);
-  assert.equal(PT.cycleName(pure, 6, lv), 'Eta Monofracton');
-  assert.equal(PT.followerName(pure, model, 6, lv), 'Eta Difracton');
-  assert.equal(PT.endLine(pure, model, 6, lv), '→ Eta Difracton');
-  assert.equal(PT.endsSentence(pure, model, 6, lv), 'ends → Eta Difracton begins');
-  // the last η of a ζ is followed by the first η of the next ζ
-  const last = model.levelAt(model.levelAt(T, 5).end - 0.01, 6);
-  assert.equal(last.local, 10);
-  assert.equal(PT.followerName(pure, model, 6, last), 'Eta Monofracton');
-  // the last (clipped) α: nothing begins when the catalogue ends
+test('pure: names: majors in words (with their quarter), minors by where they start in their Nuclide', () => {
+  const lv = (L) => model.levelAt(T, L);
+  assert.deepEqual([0, 1, 2, 3].map((L) => PT.displayName(pure, L, lv(L))), ['Alpha Hexafracton Valley', 'Beta Tetrafracton Valley', 'Gamma Nonafracton Valley', 'Delta Trifracton End'], 'SPEC §15.6 vector A');
+  assert.deepEqual([0, 3].map((L) => PT.cycleName(pure, L, lv(L))), ['Alpha Hexafracton', 'Delta Trifracton']);
+  assert.deepEqual([4, 5, 6, 7, 8, 13].map((L) => PT.displayName(pure, L, lv(L))), ['ε#5', 'ε#5 33η', 'ε#5 33η', 'ε#5 33η 28ι', 'ε#5 33η 29ι', 'ε#5 33η 29ι 21λ 3.43ν']);
+  for (let L = 0; L <= 13; L++) assert.equal(PT.cycleName(pure, L, lv(L)), pure.cycleName(L, lv(L).cycleBig), 'the core names it');
+  assert.deepEqual([0, 1, 2, 3].map((L) => PT.quarterWord(pure, lv(L))), ['Valley', 'Valley', 'Valley', 'End']);
+});
+
+test('pure: the end of a cycle says what begins, as briefly as the context allows; the catalogue end has nothing', () => {
+  const lv = (L) => model.levelAt(T, L);
+  assert.deepEqual(
+    [3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((L) => PT.endLine(pure, model, L, lv(L))),
+    ['→ Delta Tetrafracton begins', '→ ε#1 of Delta Tetrafracton begins', '→ 44η begins', '→ 34η begins', '→ 32ι begins', '→ 30ι begins', '→ 26λ begins', '→ 22λ begins', '→ 5ν begins', '→ 4ν begins'],
+  );
+  assert.equal(PT.endsSentence(pure, model, 6, lv(6)), 'ends → 34η begins');
+  // the last Helion of a Nuclide is followed by the first of the next one: the full placing
+  const last = model.levelAt(model.levelAt(T, 4).end - 0.01, 6);
+  assert.equal(PT.followerName(pure, model, 6, last), 'ε#1 0η');
+  // a finer count that rolls over shows the coarser one that changes with it
+  const lastIota = model.levelAt(model.levelAt(T, 6).end - 0.01, 8);
+  assert.equal(PT.followerName(pure, model, 8, lastIota), '34η 0ι');
   const alpha = model.levelAt(model.tMax - 5, 0);
   assert.ok(alpha.clipped);
   assert.equal(PT.followerName(pure, model, 0, alpha), null);
   assert.equal(PT.endLine(pure, model, 0, alpha), '→ end of the catalogue');
   assert.equal(PT.endsSentence(pure, model, 0, alpha), 'the catalogue ends here');
-  // every level at every sample instant yields a name or a clean end
-  for (const t of INSTANTS) for (let L = 0; L <= 13; L++) assert.match(PT.endLine(pure, model, L, model.levelAt(t, L)), /^→ ([A-Z][a-z]+ [A-Z][a-z]+fracton|end of the catalogue)$/);
+  for (const t of INSTANTS) for (let L = 0; L <= 13; L++) assert.match(PT.endLine(pure, model, L, model.levelAt(t, L)), /^→ (((Alpha|Beta|Gamma|Delta) [A-Z][a-z]+fracton)|ε#\d( of Delta [A-Z][a-z]+fracton)?|ε#\d [\d.ηιλν ]+|[\d.]+[ηιλν]( [\d.]+[ηιλν])*) begins$|^→ end of the catalogue$/);
 });
 
-test('pure: spans and sentences count on the ladder, never in Earth units', () => {
+test('pure: spans and sentences count on the ladder, never in Earth units; real time in Blinks', () => {
   const lv = model.levelAt(T, 6);
-  // every depth is a unit and zero counts are skipped: 56 min of Earth is 1θ 2ι (and 3κ), never "3η 0θ 2ι"
-  assert.equal(PT.between(pure, T, lv.end, 2), '1θ 2ι');
-  assert.equal(PT.between(pure, T, lv.end, 3), '1θ 2ι 3κ');
-  assert.equal(PT.inText(pure, T, lv.end), 'in 1θ 2ι');
-  assert.equal(PT.inText(pure, T, lv.start), '7θ 1ι ago');
-  // spans are the core's: below one Blink a decimal count of it, like every other module reads it
+  assert.equal(PT.between(pure, T, lv.end, 2), '6ι 43λ', 'SPEC §15.6');
+  assert.equal(PT.between(pure, T, lv.end, 3), '6ι 43λ 21ν');
+  assert.equal(PT.inText(pure, T, lv.end), 'in 6ι 43λ');
+  assert.equal(PT.inText(pure, T, lv.start), '29ι 21λ ago');
   assert.equal(PT.between(pure, lv.end - 0.001, lv.end, 3), pure.between(lv.end - 0.001, lv.end, { parts: 3 }));
   assert.match(PT.between(pure, lv.end - 0.001, lv.end, 3), /^0\.00\d+ν$/);
   assert.equal(PT.between(pure, lv.end, lv.end, 3), '0ν');
-  // passed thresholds are negative spans, signed by the core
-  assert.equal(PT.between(pure, lv.end, T, 2), '−1θ 2ι');
+  assert.equal(PT.between(pure, lv.end, T, 2), '−6ι 43λ');
   assert.equal(PT.startPhrase(pure, lv.start, lv.end, T), 'running now');
-  assert.match(PT.startPhrase(pure, lv.end, lv.end + 1e5, T), /^starts in \d+[α-ν]+/);
-  assert.match(PT.startPhrase(pure, lv.start - 1e5, lv.start - 5, T), /^started \d+[α-ν]+.* ago$/);
-  // real time of one turn is counted in Blinks: whole numbers, because the ladder is a product of whole factors
+  assert.match(PT.startPhrase(pure, lv.end, lv.end + 1e5, T), /^starts in \d+[αβγδεηιλν]/);
+  assert.match(PT.startPhrase(pure, lv.start - 1e5, lv.start - 5, T), /^started \d+[αβγδεηιλν].* ago$/);
   assert.equal(PT.aboutTurn(pure, model.levelInfo(9)), '325 Blinks', 'one turn of the opening ring (κ 10)');
   assert.equal(PT.aboutTurn(pure, model.levelInfo(12)), '1 Blink');
   assert.equal(PT.aboutTurn(pure, model.levelInfo(13)), '0.143 Blinks', 'the ξ ring: a seventh of a Blink');
-  assert.equal(PT.aboutTurn(pure, model.levelInfo(8)), '1\u202f625 Blinks');
-  assert.equal(PT.aboutTurn(pure, model.levelInfo(6)), '58\u202f500 Blinks');
-  assert.match(PT.aboutTurn(pure, model.levelInfo(0)), /^\d{1,3}(\u202f\d{3})+ Blinks$/, 'digit groups, never a bare 7319812500');
-  for (let L = 0; L < 14; L++) assert.doesNotMatch(PT.aboutTurn(pure, model.levelInfo(L)), /beat|sec|\bs\b/i);
-  // glyph pairs are spoken as two digits, the helper's words ("13·4" would be read as the number 13.4)
-  assert.equal(PT.stateText(pure, 13.9 / 16 / 1), 'phase 13 and 14 of 256');
-  assert.equal(PT.sliderText(pure, 'Rising', 0.8143, 'Eta Monofracton'), 'Rising, phase 13 and 0 of 256 in Eta Monofracton');
-  assert.deepEqual(PT.addressTokens(pure, model, 6, lv.cycleBig).map((a) => a.text), ['α#6', 'β#4', 'γ#9', 'δ#3', 'ε#5', 'ζ#4', 'η#1']);
-  // real time in Blinks: a number of device seconds, the same helper as everywhere
-  assert.equal(PT.blinkSpan(pure, pure.blinkSeconds() * 4), '4 Blinks');
-  assert.equal(PT.blinkSpan(pure, pure.blinkSeconds() * 58500), '58\u202f500 Blinks');
-  assert.equal(PT.blinkSpan(pure, pure.blinkSeconds() / 2), pure.blinks(pure.blinkSeconds() / 2));
+  assert.equal(PT.aboutTurn(pure, model.levelInfo(8)), '1 625 Blinks', 'whole Blinks (the core keeps three digits: 1 630)');
+  assert.equal(PT.aboutTurn(pure, model.levelInfo(6)), '58 500 Blinks');
+  assert.match(PT.aboutTurn(pure, model.levelInfo(0)), /^\d{1,3}( \d{3})+ Blinks$/);
+  assert.equal(PT.blinkSpan(pure, pure.blinkSeconds() * 4), pure.blinks(pure.blinkSeconds() * 4), 'small spans are the core\'s');
+  assert.deepEqual(PT.addressTokens(pure, model, 6, lv.cycleBig).map((a) => a.text), ['α#6', 'β#4', 'γ#9', 'δ#3', 'ε#5', '33η']);
+  assert.deepEqual(PT.addressTokens(pure, model, 9, model.levelAt(T, 9).cycleBig).map((a) => `${a.level}:${a.text}`), ['0:α#6', '1:β#4', '2:γ#9', '3:δ#3', '4:ε#5', '6:33η', '8:29ι', '10:13λ'], 'a κ: its start, coloured by unit');
+  assert.deepEqual(PT.addressTokens(pure, model, 2, model.levelAt(T, 2).cycleBig).map((a) => a.text), ['α#6', 'β#4', 'γ#9']);
+});
+
+test('pure: the phase of a minor cycle is a pair, of a major one its quarter (never a pair)', () => {
+  assert.equal(PT.stateText(pure, 13.9 / 16), 'phase 13 and 14 of 256');
+  assert.equal(PT.stateText(pure, 0.9, 6), 'phase 14 and 6 of 256');
+  assert.equal(PT.stateText(pure, 0.9, 3), 'End quarter');
+  assert.equal(PT.stateText(pure, 0.3, 0), 'Node quarter');
+  assert.equal(PT.sliderText(pure, 'Rising', 0.8143, 'ε#5 33η'), 'Rising, phase 13 and 0 of 256 in ε#5 33η');
+  assert.equal(PT.sliderText(pure, 'Falling', 0.9, 'Delta Trifracton', 3), 'Falling, End quarter of Delta Trifracton');
+  assert.equal(PT.pairLabel(pure, 0.5), 'phase 8 and 0 of 256');
+  for (const f of [0, 0.3, 0.8143, 0.999]) assert.match(pure.pairHTML(f), new RegExp(`aria-label="${PT.pairLabel(pure, f)}"`));
 });
 
 test('pure: threshold chips count to every threshold (passed ones negative) and say where it sits on the clock', () => {
@@ -857,17 +861,19 @@ test('pure: threshold chips count to every threshold (passed ones negative) and 
   const times = lv.thresholds.map((e) => e.time);
   const labels = PT.boundaryLabels(pure, model, 6, times);
   const chips = [0, 1, 2, 3].map((k) => PT.chipText(pure, model, 6, lv, k, times[k + 1], T, labels[k + 1]));
-  assert.deepEqual(chips.map((c) => c.count), ['−5θ 1κ', '−2θ 3ι', '−2ι 1κ', '1θ 2ι']);
-  assert.deepEqual(chips.map((c) => c.time), ['0η 9ι', '0η 18ι', '0η 27ι', '1η 0ι']);
-  assert.ok(chips.every((c) => c.date === ''), 'inside one ζ the chips leave the ordinals to the header');
-  assert.match(chips[0].title, /^Jump back to the peak of Eta Monofracton · .* · 5θ 1κ ago$/);
-  assert.match(chips[3].title, /^Jump just past the end of Eta Monofracton \(Eta Difracton begins\) · .* · in 1θ 2ι$/);
-  // beyond the catalogue
+  assert.deepEqual(chips.map((c) => c.count), ['−20ι 21λ', '−11ι 21λ', '−2ι 21λ', '6ι 43λ']);
+  assert.deepEqual(chips.map((c) => c.time), ['33η 9ι', '33η 18ι', '33η 27ι', '34η 0ι']);
+  assert.ok(chips.every((c) => c.date === ''), 'inside one Nuclide the chips leave the ordinals to the header');
+  assert.equal(chips[0].title, 'Jump back to the peak of ε#5 33η · δ#3 ε#5 33η 9ι · 20ι 21λ ago');
+  assert.equal(chips[3].title, 'Jump just past the end of ε#5 33η (34η begins) · δ#3 ε#5 34η 0ι · in 6ι 43λ');
+  assert.equal(chips[0].label, 'the peak of ε#5 33η, 20ι 21λ ago, at δ#3 ε#5 33η 9ι');
   const gone = PT.chipText(pure, model, 6, lv, 3, null, T);
   assert.deepEqual(gone, { count: '', date: '—', time: '', title: 'end: beyond the end of the catalogue', label: 'end: beyond the end of the catalogue' });
-  assert.match(chips[0].label, /^the peak of Eta Monofracton, 5θ 1κ ago, at ε#5 · ζ#4 · 0η 9ι$/);
-  assert.match(chips[3].label, /^the end of Eta Monofracton \(Eta Difracton begins\), in 1θ 2ι, at /);
-  // the last cycle of the catalogue ends in the catalogue's end, not in another cycle
+  // a major cycle's chips name it in words
+  const d = model.levelAt(T, 3);
+  const dt = d.thresholds.map((e) => e.time);
+  const dChip = PT.chipText(pure, model, 3, d, 3, dt[4], T, PT.boundaryLabels(pure, model, 3, dt)[4]);
+  assert.match(dChip.title, /^Jump just past the end of Delta Trifracton \(Delta Tetrafracton begins\) · δ#4 ε#1 · in \d+η \d+ι$/);
   const lastLv = model.levelAt(model.tMax - 5, 0);
   const endChip = PT.chipText(pure, model, 0, lastLv, 3, model.tMax, model.tMax - 5, { full: { date: 'α#18 β#2', time: '' }, sameAsStart: false });
   assert.match(endChip.title, /\(the catalogue ends\)/);
@@ -876,66 +882,25 @@ test('pure: threshold chips count to every threshold (passed ones negative) and 
 test('pure: the tooltip rows of a child cycle name it and what follows it', () => {
   const lv = model.levelAt(T, 4);
   const ch = childCycle(model, 4, lv.cycle, 2);
-  const follower = PT.followerName(pure, model, ch.level, { cycle: ch.index, clipped: ch.clipped, end: ch.end });
-  assert.equal(pure.cycleName(ch.level, ch.index), 'Zeta Trifracton');
-  assert.equal(follower, 'Zeta Tetrafracton');
-  // the last child of a parent is followed by the first child of the next parent
+  assert.equal(pure.cycleName(ch.level, BigInt(ch.index)), 'ε#5 22η', 'the 3rd ζ of the Nuclide starts at 22η');
+  assert.equal(PT.followerName(pure, model, ch.level, { cycle: ch.index, cycleBig: BigInt(ch.index), clipped: ch.clipped, end: ch.end }), '33η');
+  assert.equal(PT.lengthWithName(pure, ch.level, ch), '11η', 'a ζ is no unit: eleven Helions');
   const lastChild = childCycle(model, 4, lv.cycle, 6);
-  assert.equal(PT.followerName(pure, model, lastChild.level, { cycle: lastChild.index, clipped: lastChild.clipped, end: lastChild.end }), 'Zeta Monofracton');
-  assert.match(PT.startPhrase(pure, ch.start, ch.end, T), /^(running now|starts in .+|started .+ ago)$/);
+  assert.equal(PT.followerName(pure, model, lastChild.level, { cycle: lastChild.index, cycleBig: BigInt(lastChild.index), clipped: lastChild.clipped, end: lastChild.end }), 'ε#1 0η');
+  // the children of a major ring are majors: words
+  const g = model.levelAt(T, 2);
+  const dch = childCycle(model, 2, g.cycle, 3);
+  assert.equal(pure.cycleName(dch.level, BigInt(dch.index)), 'Delta Tetrafracton');
+  assert.match(PT.startPhrase(pure, dch.start, dch.end, T), /^(running now|starts in .+|started .+ ago)$/);
 });
 
-test('pure: nothing Gregorian, no Earth unit, no percentage in any sentence this view writes (all depths, many instants)', () => {
-  const bad = [];
-  const check = (what, text) => {
-    const hit = earthly(text);
-    if (hit.length) bad.push(`${what}: ${hit} in "${text}"`);
-  };
-  const strip = (html) => html.replace(/<[^>]+>/g, ' ');
-  for (const t of INSTANTS) {
-    for (let L = 0; L <= 13; L++) {
-      const lv = model.levelAt(t, L);
-      if (!lv) continue;
-      const info = model.levelInfo(L);
-      const times = lv.thresholds.map((e) => e.time);
-      check('name', PT.cycleName(pure, L, lv));
-      check('end line', PT.endLine(pure, model, L, lv));
-      check('ends', PT.endsSentence(pure, model, L, lv));
-      check('between', PT.between(pure, t, lv.end, 3));
-      check('in', PT.inText(pure, t, lv.start) + PT.inText(pure, t, lv.end));
-      check('about', PT.aboutTurn(pure, info));
-      check('pointer', PT.pointerText(pure, model, L, t));
-      check('state', PT.stateText(pure, lv.phase));
-      check('slider', PT.sliderText(pure, 'Falling', lv.phase, PT.cycleName(pure, L, lv)));
-      const labels = PT.boundaryLabels(pure, model, L, times);
-      labels.forEach((l, i) => {
-        if (!l) return;
-        check('label', `${l.date} ${l.time}`);
-        check('alt', `${l.alt.date} ${l.alt.time}`);
-        if (i >= 1) check('chip', Object.values(PT.chipText(pure, model, L, lv, i - 1, times[i], t, l)).join(' | '));
-      });
-      check('facts', [PT.whenText(pure, model, lv.start, 8), PT.whenText(pure, model, lv.end, 8)].join(' '));
-      check('address', PT.addressTokens(pure, model, L, lv.cycleBig).map((a) => a.text).join(' '));
-    }
-  }
-  check('help', strip(PT.helpHTML(pure, model.levelInfo(9), model.levelInfo(13))));
-  check('pair words', PT.pairLabel(pure, 0.8143) + PT.stateText(pure, 0.5));
-  check('depth note', PT.depthRangeNote(pure, model.levelInfo(9), model.levelInfo(13)));
-  check('turns', [0, 6, 9, 12, 13].map((L) => PT.aboutTurn(pure, model.levelInfo(L))).join(' '));
-  check('lengths', [0, 3, 6, 9, 13].map((L) => PT.lengthWithName(pure, L, model.levelAt(T, L), model.levelInfo(L))).join(' '));
-  assert.deepEqual(bad, []);
-  // the vocabulary the help text promises is there
-  const help = strip(PT.helpHTML(pure, model.levelInfo(9), model.levelInfo(13)));
-  for (const w of ['Eta Monofracton', 'Difracton', 'α#1 – α#18', '256 states', 'κ 10', 'ξ 14', '325 Blinks', '0.143 Blinks', 'Helion', 'Preon', 'Flavon', 'Blink']) assert.ok(help.includes(w), w);
-  assert.doesNotMatch(help, /Gregorian|zone|o’clock|o'clock|%|beat/);
-});
-
-test('pure: a whole cycle has its exact nominal length at every depth 1-14 (LENGTH fact, sector tooltips, about a turn)', () => {
-  // revision 2: every depth is a unit of its own, so a whole cycle is one of it; only ξ (a seventh of a Blink) is a decimal
-  const nominal = ['1α', '1β', '1γ', '1δ', '1ε', '1ζ', '1η', '1θ', '1ι', '1κ', '1λ', '1μ', '1ν', '0.14ν'];
+test('pure: a whole cycle has its exact nominal length at every depth 1-14 (Length fact, sector tooltips)', () => {
+  // SPEC §15.4: depths 1–5, 7, 9, 11, 13 are one unit each; the depths between are whole counts of the next unit
+  const nominal = ['1α', '1β', '1γ', '1δ', '1ε', '11η', '1η', '4ι', '1ι', '13λ', '1λ', '5ν', '1ν', '0.14ν'];
   for (let L = 0; L < 14; L++) assert.equal(pure.cycleLength(L), nominal[L], `depth ${L + 1}`);
+  const named = ['1α = 5β', '1β = 13γ', '1γ = 5δ', '1δ = 5ε', '1ε (Nuclide) = 77η', '11η', '1η (Helion) = 36ι', '4ι', '1ι (Preon) = 65λ', '13λ', '1λ (Flavon) = 25ν', '5ν', '1ν (Blink)', '0.14ν'];
   let checked = 0;
-  let seed = 20260810;
+  let seed = 20261013;
   const rnd = () => (seed = (seed * 1664525 + 1013904223) % 4294967296) / 4294967296;
   const instants = [...INSTANTS, ...Array.from({ length: 120 }, () => model.tMin + 1 + rnd() * (model.tMax - model.tMin - 2))];
   for (const t of instants) {
@@ -943,9 +908,9 @@ test('pure: a whole cycle has its exact nominal length at every depth 1-14 (LENG
       const lv = model.levelAt(t, L);
       if (!lv || lv.clipped) continue;
       checked++;
-      assert.equal(PT.factParts(pure, model, L, lv).length, nominal[L], `LENGTH of depth ${L + 1} @${t}`);
-      assert.equal(PT.lengthText(pure, L, lv), nominal[L]);
-      // a whole child cycle (sector tooltip) says the same as the ring of its own depth
+      const f = PT.factParts(pure, model, L, lv);
+      assert.equal(f.length, nominal[L], `Length of depth ${L + 1} @${t}`);
+      assert.equal(f.lengthNamed, named[L]);
       if (L < 13) {
         for (const j of [0, Math.floor(model.levelInfo(L).factor / 2)]) {
           const ch = childCycle(model, L, lv.cycle, j);
@@ -955,67 +920,72 @@ test('pure: a whole cycle has its exact nominal length at every depth 1-14 (LENG
     }
   }
   assert.ok(checked > 1500, `${checked} whole cycles checked`);
-  // the readings the audit quoted
-  const quoted = [[1791460800, 10, '1λ'], [1791460800, 12, '1ν'], [946684800, 8, '1ι'], [20186559537.543, 6, '1η'], [20186559537.543, 13, '0.14ν'], [1800000000, 6, '1η']];
-  for (const [t, L, text] of quoted) assert.equal(PT.factParts(pure, model, L, model.levelAt(t, L)).length, text);
-  // the unit's name follows a whole cycle's length where the unit has one (α β γ read as their level names, ξ is part of a Blink)
-  const named = (L) => PT.factParts(pure, model, L, model.levelAt(T, L)).lengthNamed;
-  assert.deepEqual([0, 2, 3, 5, 6, 7, 8, 9, 10, 11, 12, 13].map(named), ['1α', '1γ', '1δ (Atom)', '1ζ (Hadron)', '1η (Helion)', '1θ (Quark)', '1ι (Preon)', '1κ (Chromon)', '1λ (Flavon)', '1μ (Somon)', '1ν (Blink)', '0.14ν']);
-  assert.equal(PT.unitNote(pure, model.levelInfo(6)), 'Helion');
-  assert.equal(PT.unitNote(pure, model.levelInfo(1)), '');
-  assert.equal(PT.aboutTurn(pure, model.levelInfo(8)), '1\u202f625 Blinks');
-  assert.equal(PT.aboutTurn(pure, model.levelInfo(7)), '6\u202f500 Blinks');
+  assert.equal(PT.unitNote(pure, 6), 'Helion');
+  assert.equal(PT.unitNote(pure, 5), '', 'ζ is no unit');
+  assert.equal(PT.unitNote(pure, 3), '', 'a major is said in words already');
   // a whole cycle is never measured: with a core whose between() is off by one unit the text is still exact
   const off = { ...pure, between: () => '35ι 64λ' };
   assert.equal(PT.lengthText(off, 6, model.levelAt(T, 6)), '1η');
-  assert.equal(PT.factParts(off, model, 6, model.levelAt(T, 6)).length, '1η');
-  assert.equal(PT.factParts(off, model, 6, model.levelAt(T, 6)).lengthNamed, '1η (Helion)');
 });
 
 test('pure: only a cycle clipped by the catalogue end is measured (it is shorter than its kind)', () => {
-  const t = model.tMax - 5;
-  const alpha = model.levelAt(t, 0);
+  const alpha = model.levelAt(model.tMax - 5, 0);
   assert.ok(alpha.clipped);
   assert.equal(PT.lengthText(pure, 0, alpha), pure.between(alpha.start, alpha.end));
   assert.notEqual(PT.lengthText(pure, 0, alpha), pure.cycleLength(0), 'α#18 holds one Saros, not four');
-  assert.equal(PT.factParts(pure, model, 0, alpha).length, PT.lengthText(pure, 0, alpha));
-  assert.equal(PT.factParts(pure, model, 0, alpha).lengthNamed, PT.lengthText(pure, 0, alpha), 'a clipped cycle is not one whole unit: no unit name');
-  // the last child of the clipped α keeps its own tail; the children before it are whole
+  assert.equal(PT.factParts(pure, model, 0, alpha).lengthNamed, PT.lengthText(pure, 0, alpha), 'a clipped cycle is not one whole unit');
   const last = childCycle(model, 0, alpha.cycle, 0);
   assert.equal(PT.lengthText(pure, last.level, last), last.clipped ? pure.between(last.start, last.end) : pure.cycleLength(1));
 });
 
-test('pure: ordinals are X#n and counters nX in every coordinate (no "δ 3" / "η 3" forms, no halves)', () => {
-  const OLD_FORM = new RegExp(`[αβγδεζηθικλμνξ]\u00bd|(^|[ ·])[δεζηιλμνξ] \\d`); // a half unit, "ε 4", "η 3": the spellings that clashed with the depth chip
-  const DATE = /^(α#\d+|β#\d+|γ#\d+|δ#\d+|ε#\d+|ζ#\d+)( (β#\d+|γ#\d+))*( · (δ#\d+|ε#\d+|ζ#\d+))*$/;
-  const TIME = /^\d+(\.\d+)?[ηιλμν]( \d+(\.\d+)?[ηιλμν])*$/;
+test('pure: nothing Gregorian, no Earth unit, no percentage, no retired name in any sentence this view writes (all depths, many instants)', () => {
+  const bad = [];
+  const check = (what, text) => {
+    const hit = earthly(text);
+    if (hit.length) bad.push(`${what}: ${hit} in "${text}"`);
+    if (RETIRED.test(text) || text.includes(HALF)) bad.push(`${what}: retired spelling in "${text}"`);
+  };
+  const strip = (html) => html.replace(/<[^>]+>/g, ' ');
   for (const t of INSTANTS) {
     for (let L = 0; L <= 13; L++) {
       const lv = model.levelAt(t, L);
-      const labels = PT.boundaryLabels(pure, model, L, lv.thresholds.map((e) => e.time));
-      for (const l of labels) {
-        if (!l) continue;
-        for (const p of [l.full, ...l.alt]) {
-          assert.doesNotMatch(`${p.date} ${p.time}`, OLD_FORM, `depth ${L + 1} @${t}`);
-          assert.ok(p.date === '' || DATE.test(p.date), `date "${p.date}"`);
-          assert.ok(p.time === '' || TIME.test(p.time), `time "${p.time}"`);
-        }
-      }
+      if (!lv) continue;
+      const info = model.levelInfo(L);
+      const times = lv.thresholds.map((e) => e.time);
+      check('name', PT.displayName(pure, L, lv));
+      check('end line', PT.endLine(pure, model, L, lv));
+      check('ends', PT.endsSentence(pure, model, L, lv));
+      check('between', PT.between(pure, t, lv.end, 3));
+      check('centre', PT.centreSpan(pure, model, t, lv.end));
+      check('in', PT.inText(pure, t, lv.start) + PT.inText(pure, t, lv.end));
+      check('about', PT.aboutTurn(pure, info));
+      check('pointer', PT.pointerText(pure, model, L, t));
+      check('state', PT.stateText(pure, lv.phase, L));
+      check('slider', PT.sliderText(pure, 'Falling', lv.phase, PT.cycleName(pure, L, lv), L));
+      check('length', PT.lengthWithName(pure, L, lv));
+      const labels = PT.boundaryLabels(pure, model, L, times);
+      labels.forEach((l, i) => {
+        if (!l) return;
+        check('label', `${l.date} ${l.time}`);
+        check('alt', l.alt.map((a) => `${a.date} ${a.time}`).join(' '));
+        if (i >= 1) check('chip', Object.values(PT.chipText(pure, model, L, lv, i - 1, times[i], t, l)).join(' | '));
+      });
+      check('address', PT.addressTokens(pure, model, L, lv.cycleBig).map((a) => a.text).join(' '));
     }
-    assert.doesNotMatch(PT.pointerText(pure, model, 6, t), OLD_FORM);
   }
-  // a coordinate is the header's date and clock written the same way (core/pure.js stamp)
-  assert.equal(PT.whenText(pure, model, T - 0.001, 8, { dateTokens: 6, timeTokens: 3 }), pure.stamp(T - 0.001 + 0.001, 'lambda'));
-  assert.equal(PT.whenParts(pure, model, T, 5, { dateTokens: 6 }).date, pure.dateText(T));
+  const help = strip(PT.helpHTML(pure, model.levelInfo(9), model.levelInfo(13)));
+  check('help', help);
+  check('depth note', PT.depthRangeNote(pure, model.levelInfo(9), model.levelInfo(13)));
+  assert.deepEqual(bad, []);
+  for (const w of ['Delta Trifracton End', 'Difracton', 'α#1 – α#18', '256 states', 'κ 10', 'ξ 14', '325 Blinks', '0.143 Blinks', 'Helion', 'Preon', 'Flavon', 'Blink', 'Peak, Node, Valley and End', '11η, 4ι, 13λ and 5ν']) assert.ok(help.includes(w), w);
+  assert.doesNotMatch(help, /Gregorian|zone|o’clock|o'clock|%|beat/);
 });
 
 test('pure: a threshold on the catalogue end reads the exact end position, not the previous unit', () => {
   const end = model.tMax;
-  // exact integer arithmetic agrees with the clock-based reading at any instant inside the catalogue
   for (const level of [8, 9, 10, 11, 12]) {
     const P = model.levelInfo(level).prefix;
     for (const cell of [0n, 1n, 12345678901n, BigInt(model.extent) * P / 4n - 1n]) {
-      // the middle of a cell of this finest level: far from every boundary, so rounding to a millisecond cannot matter
       const num = (2n * cell + 1n) * 4n;
       const den = 2n * P;
       const pos = Number(num) / Number(den);
@@ -1024,19 +994,18 @@ test('pure: a threshold on the catalogue end reads the exact end position, not t
       const viaClock = PT.pureFields(pure, model, t);
       const viaPos = PT.fieldsAtPosition(model, num, den);
       assert.deepEqual(viaPos.ord, viaClock.ord, `ordinals at level ${level + 1} cell ${cell}`);
-      assert.deepEqual(viaPos.count, viaClock.count, `counters at level ${level + 1} cell ${cell}`);
-      near(viaPos.frac, viaClock.frac, 5e-3, `the decimals of ν at level ${level + 1} cell ${cell} (the clock reading is time-linear and rounds to a ms)`);
+      assert.deepEqual(viaPos.count, viaClock.count, `counts at level ${level + 1} cell ${cell}`);
+      near(viaPos.frac, viaClock.frac, 5e-3, `the decimals of ν at level ${level + 1} cell ${cell}`);
     }
   }
-  // at the end itself: the last ι, κ and λ cycles complete there, so the counters have rolled over (η 8 · ι 9, not ι 8 λ 64)
+  // at the end itself the counts have rolled over: the last ι of the catalogue is complete
   const e = PT.fieldsAtPosition(model, BigInt(model.extent));
-  assert.deepEqual(e.count, [8, 9, 0, 0, 0]);
-  assert.equal(PT.whenText(pure, model, end, 7, { dateTokens: 0, timeTokens: 2 }), '8η 9ι');
-  assert.equal(PT.whenText(pure, model, end - 5e-4, 7, { dateTokens: 0, timeTokens: 2 }), '8η 9ι', 'within the 1 ms nudge of the end');
-  assert.equal(PT.whenText(pure, model, end + 1e6, 7, { dateTokens: 0, timeTokens: 2 }), '8η 9ι', 'beyond it nothing is invented');
-  // the thresholds that sit on the end, at every depth, label the exact end (the previous unit is the 1 ms before it)
+  assert.deepEqual(e.count, [19, 9, 0, 0]);
+  assert.equal(PT.whenText(pure, model, end, PT.COORD.indexOf('iota'), { dateTokens: 0, timeTokens: 2 }), '19η 9ι');
+  assert.equal(PT.whenText(pure, model, end - 5e-4, PT.COORD.indexOf('iota'), { dateTokens: 0, timeTokens: 2 }), '19η 9ι', 'within the 1 ms nudge of the end');
+  assert.equal(PT.whenText(pure, model, end + 1e6, PT.COORD.indexOf('iota'), { dateTokens: 0, timeTokens: 2 }), '19η 9ι', 'beyond it nothing is invented');
   const before = PT.pureFields(pure, model, end - 0.001);
-  assert.deepEqual(before.count.slice(0, 3), [8, 8, 64], 'one millisecond earlier the ι is still running');
+  assert.deepEqual(before.count.slice(0, 3), [19, 8, 64], 'one millisecond earlier the ι is still running');
   let seen = 0;
   for (let L = 0; L <= 13; L++) {
     const lv = model.levelAt(end - 5, L);
@@ -1047,80 +1016,62 @@ test('pure: a threshold on the catalogue end reads the exact end position, not t
       seen++;
       const want = PT.whenParts(pure, model, end, PT.resolutionIndex(pure, PT.cycleSpanPos(model, L)), { dateTokens: 2, timeTokens: 3 });
       assert.deepEqual(labels[i].full, want, `depth ${L + 1}, threshold ${i}`);
-      // whatever the resolution, a time part that reaches the ι counter says 9 (the last ι is complete), never 8
       assert.doesNotMatch(labels[i].full.time, /(^| )8ι/, `depth ${L + 1}, threshold ${i}: ${labels[i].full.time}`);
     });
   }
   assert.ok(seen >= 6, `${seen} thresholds sit on the catalogue end`);
-  // the end chip of the last λ cycle: 9ι 0λ 0μ (it read 8ι 64λ 4μ)
   const lam = model.levelAt(end - 5, 10);
   const lamLabels = PT.boundaryLabels(pure, model, 10, lam.thresholds.map((x) => x.time));
-  assert.equal(lamLabels[4].time, '9ι 0λ 0μ');
-  // the last ξ cycle ends in the end too: its end label is the exact end, the decimals included
+  assert.equal(lamLabels[4].time, '9ι 0λ 0ν');
   const xi = model.levelAt(end - 0.0001, 13);
   const xiLabels = PT.boundaryLabels(pure, model, 13, xi.thresholds.map((x) => x.time));
-  assert.deepEqual(xiLabels.map((l) => l.full.time), ['64λ 4μ 4.86ν', '64λ 4μ 4.89ν', '64λ 4μ 4.93ν', '64λ 4μ 4.96ν', '0λ 0μ 0.00ν']);
+  assert.equal(xiLabels[4].full.time, '9ι 0λ 0.00ν', 'the last ξ cycle ends with the catalogue, decimals included');
 });
 
 test('pure: the centre countdown is two counts, or three that stay steady (never finer than λ)', () => {
   const lv = model.levelAt(T, 6);
-  // 1θ 2ι left, and the third count is a κ (101 s): steady, so the roomy dial shows it; a compact one has two
-  assert.equal(PT.centreSpan(pure, model, T, lv.end), '1θ 2ι 3κ');
-  assert.equal(PT.centreSpan(pure, model, T, lv.end, { compact: true }), '1θ 2ι');
-  assert.equal(PT.centreSpan(pure, model, T, lv.end, { compact: true }), pure.between(T, lv.end, { parts: 2 }));
-  // a longer span starts coarser: the same three counts, the last one a λ at finest
+  // 6ι 43λ left (SPEC §15.6); a third count would be a ν (0.3 of a Flavon): two counts, the same string as everywhere
+  assert.equal(PT.centreSpan(pure, model, T, lv.end), '6ι 43λ');
+  assert.equal(PT.centreSpan(pure, model, T, lv.end, { compact: true }), '6ι 43λ');
+  // a longer span starts coarser: three counts, the last one a λ at finest
   const zeta = model.levelAt(T, 5);
-  const fewEta = PT.centreSpan(pure, model, lv.start + 1, model.cycleStartTime(6, lv.cycle + 4));
-  assert.match(fewEta, /^3η 8θ \d+ι$/);
-  assert.equal(PT.centreSpan(pure, model, lv.start + 1, model.cycleStartTime(6, lv.cycle + 4), { compact: true }), pure.between(lv.start + 1, model.cycleStartTime(6, lv.cycle + 4), { parts: 2 }));
-  const long = PT.centreSpan(pure, model, T, zeta.end);
-  assert.match(long, /^\d+η \d+θ \d+ι$/, 'led by η: the third count is ι, not a μ');
+  assert.equal(PT.centreSpan(pure, model, T, zeta.end), '10η 6ι 43λ');
   assert.equal(PT.centreSpan(pure, model, T, zeta.end, { compact: true }), pure.between(T, zeta.end, { parts: 2 }));
-  // a count finer than λ is never added to a span that is longer than one κ (it would flicker): 3 s into a θ is only 2θ
-  const zeroSecs = lv.start + pure.blinkSeconds() * 0; // an exact start: a whole number of units left
-  assert.doesNotMatch(PT.centreSpan(pure, model, zeroSecs, model.levelAt(zeroSecs + 1, 6).end), /[μν]/);
-  // at the end of a ι: only λ and μ remain: two counts, never three
+  assert.equal(PT.centreSpan(pure, model, T, model.levelAt(T, 3).end), '43η 6ι 43λ');
+  // at the end of a ι: only λ and ν remain: two counts, never three
   const iota = model.levelAt(T, 8);
-  assert.match(PT.centreSpan(pure, model, iota.end - 43, iota.end), /^5λ [1-4]μ$/);
-  // never negative, and a span shorter than a λ is a few Blinks, written with a decimal
+  assert.match(PT.centreSpan(pure, model, iota.end - 43, iota.end), /^5λ \d+ν$/);
   assert.equal(PT.centreSpan(pure, model, lv.end + 5, lv.end), '0ν');
   assert.match(PT.centreSpan(pure, model, iota.end - 0.2, iota.end), /^0\.\d+ν$/);
   for (const t of INSTANTS) for (let L = 0; L <= 13; L++) assert.ok(PT.centreSpan(pure, model, t, model.levelAt(t, L).end).split(' ').length <= 3);
 });
 
-test('pure: phase pairs are labelled with the helper\'s words, and the help says counters count from 0, names from 1', () => {
-  assert.equal(PT.pairLabel(pure, 0.5), 'phase 8 and 0 of 256');
-  assert.match(pure.pairHTML(0.5), new RegExp(`aria-label="${PT.pairLabel(pure, 0.5)}"`), 'the same words as the helper writes');
-  for (const f of [0, 0.3, 0.8143, 0.999]) assert.match(pure.pairHTML(f), new RegExp(`aria-label="${PT.pairLabel(pure, f)}"`));
-  assert.doesNotMatch(PT.stateText(pure, 0.8143) + PT.sliderText(pure, 'Rising', 0.8143, 'x'), /\d·\d/, 'no bare "13·4" in text a reader speaks');
+test('pure: the help says counts start at 0 and ordinals at 1, majors are words, and points to the glossary', () => {
   const help = PT.helpHTML(pure, model.levelInfo(9), model.levelInfo(13)).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
-  assert.match(help, /count from 0 and names \(.*\) from 1/);
+  assert.match(help, /Counts \(η ι λ ν\) start at 0, ordinals \(.*\) at 1/);
   assert.match(help, /Press \? for the glossary\./);
-  assert.match(help, /ε#\d · ζ#\d/);
-  assert.doesNotMatch(help, /\u00bd/, 'revision 2: whole cycles only');
+  assert.match(help, /δ#3 ε#5 names the Delta and the Nuclide/);
+  assert.match(help, /a Nuclide is 77 Helions, a Helion 36 Preons, a Preon 65 Flavons, a Flavon 25 Blinks/);
+  assert.match(help, /a major one shows its quarter instead/);
 });
 
 test('pure: the normal-mode helpers are untouched by pure mode (same strings as before)', () => {
   const utc = createFormatter(() => 'UTC');
   assert.equal(cycleTag(model.levelInfo(6), model.levelAt(T, 6)), 'η 7 · 1/11');
   assert.equal(whenText(utc, T, 5 * 3600), 'Thu 8 Oct 2026, 12:00:00');
-  assert.equal(percentText(0.8143), '81.4\u202f%');
+  assert.equal(percentText(0.8143), '81.4 %');
   assert.equal(countdownBody(utc, 3372), '56 min 12 s');
 });
 
-test('revision 2: no half-cycle unit and no "beat" anywhere in the rings view (text or comments); real time is counted in Blinks', () => {
+test('revisions 2 and 3: no half unit, no "beat", no retired unit name, no minor fracton name anywhere in the rings view', () => {
   const dir = '../src/ui/rings/';
   const files = ['../src/ui/rings.js', '../src/styles/rings.css', ...readdirSync(new URL(dir, import.meta.url)).map((f) => dir + f)];
-  const half = new RegExp(`[αβγδεζηθικλμνξ]\u00bd`);
   for (const f of files) {
     const src = readFileSync(new URL(f, import.meta.url), 'utf8');
-    assert.doesNotMatch(src, half, `${f}: a half-cycle unit`);
+    assert.doesNotMatch(src, new RegExp(`[αβγδεζηθικλμνξ]${HALF}`), `${f}: a half-cycle unit`);
     assert.doesNotMatch(src, /\bbeats?\b/i, `${f}: the retired word "beat"`);
+    assert.doesNotMatch(src, RETIRED, `${f}: a retired unit name or a minor fracton name`);
   }
-  // the coordinate digits are the header clock's: six ordinals, η ι λ, μ ν (θ and κ are units but not digits), then the decimals of ν
-  assert.deepEqual(PT.COORD.slice(0, 11).map((id) => pure.unitOf(id).sym).join(''), 'αβγδεζηιλμν');
-  assert.deepEqual(PT.COORD.slice(11), ['nu.1', 'nu.2', 'nu.3']);
-  // a sentence about real time never says seconds or beats: Blinks
   const note = PT.depthRangeNote(pure, model.levelInfo(9), model.levelInfo(13));
   assert.match(note, /about 325 Blinks/);
   assert.match(note, /about 0\.143 Blinks/);

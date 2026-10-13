@@ -30,6 +30,9 @@ export const RULES = [
   // revision 2: whole cycles only, and real time is counted in Blinks (cycles per Blink = pB), never in beats
   ['half-unit', /[αβγδεζηθικλμνξ]½/, 'hard'],
   ['beat-word', /\bbeats?\b/i, 'hard'],
+  // revision 3: the depths between the minor units have no names, and only Alpha … Delta have fracton names
+  ['retired-unit', /\b(Hadron|Quark|Chromon|Somon|Atom)s?\b/, 'hard'],
+  ['minor-fracton', /\b(Epsilon|Zeta|Eta|Theta|Iota|Kappa|Lambda|Mu|Nu|Xi|Omicron)\s+[A-Za-z]*fracton\b/, 'hard'],
   ['note-name', /\b[A-G](#|♯|♭)?\d\b/, 'hard'],
   ['saros', /\bSaros\b/i, 'soft'],
   ['year-number', /\b(1[6-9]\d\d|2[0-8]\d\d)\b/, 'soft'],

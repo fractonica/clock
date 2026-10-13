@@ -1,10 +1,13 @@
 /**
- * Pure-mode wording of the Sound panel (docs/design/80-pure.md, revision 2): pitch as ratio, octave offset and cents,
- * with the absolute pitch in pB (cycles per Blink, the replacement of Hz); cycle lengths counted in Fractonica periods
- * (always `pure.cycleLength(level)`: "1η", "13λ", "0.14ν" for ξ, never trimmed here); real-time spans in Blinks (one
- * Blink = one ν cycle at real time, 0.311 s of the device); speeds as `pure.rateLabel(rate)` ("η per Blink");
- * progress as a pair of 2-stroke glyphs. No Hz, no note names, no seconds, no BPM, no percent, no "beat", nothing
- * Gregorian. Unit NAMES (Helion, Preon …) only appear in prose: tooltips and help.
+ * Pure-mode wording of the Sound panel (docs/design/80-pure.md and SPEC §15, revision 3): pitch as ratio, octave offset
+ * and cents, with the absolute pitch in pB (cycles per Blink, the replacement of Hz); cycle lengths counted on the unit
+ * ladder α β γ δ ε η ι λ ν (always `pure.cycleLength(level)`: "1δ", "1η", and for the depths between the units "11η" (ζ),
+ * "4ι" (θ), "13λ" (κ), "5ν" (μ), "0.14ν" (ξ), never trimmed here); real-time spans in Blinks (one Blink = one ν cycle at
+ * real time, 0.311 s of the device); speeds as `pure.rateLabel(rate)` ("η per Blink", "4ι per Blink"); progress as a pair
+ * of 2-stroke glyphs, except for the major periods α β γ δ, whose phase is never drawn: they are said in words with their
+ * quarter ("Delta Trifracton Node", `pure.majorText`). No Hz, no note names, no seconds, no BPM, no percent, no "beat",
+ * no retired unit names, no fracton names for minor levels, nothing Gregorian. Unit NAMES (Nuclide, Helion, Preon,
+ * Flavon, Blink) appear in prose: tooltips, help, the depth list of the tempo lock.
  *
  * Everything here is a pure function (node-testable). The audio itself never changes: only what the panel says.
  * The real-time conversions (seconds <-> Blinks, Hz <-> pB) are the core's (`pure.perBlink`, `pure.pbText`,
@@ -152,6 +155,32 @@ export function tempoBlinkLimits(pure, [lo, hi]) {
 }
 
 // ---------------------------------------------------------------------------------------------
+// depths: major periods, minor units and the depths between them
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * What a depth is, in a few words (voice tooltips): "Delta, a major period", "Helion, a minor unit", "between two units"
+ * (ζ θ κ μ: depths of the hierarchy that are not units and have no names), "finer than a Blink" (ξ).
+ */
+export function depthKind(pure, level) {
+  const kind = pure.levelKind(level);
+  if (kind === 'major') return `${pure.unitName(level)}, a major period`;
+  if (kind === 'unit') return `${pure.unitName(level)}, a minor unit`;
+  if (kind === 'between') return 'between two units';
+  return `finer than a ${pure.BLINK}`;
+}
+
+/**
+ * An option of the tempo lock's depth list: the depth chip, then the unit's name or, for a depth that is not a unit, its
+ * exact length: "δ 4 · Delta", "ε 5 · Nuclide", "ζ 6 · 11η", "η 7 · Helion", "θ 8 · 4ι", "ξ 14 · 0.14ν".
+ */
+export function depthOption(pure, row) {
+  const kind = pure.levelKind(row.level);
+  const what = kind === 'major' || kind === 'unit' ? pure.unitName(row.level) : pure.cycleLength(row.level);
+  return `${row.letter} ${row.depth} · ${what}`;
+}
+
+// ---------------------------------------------------------------------------------------------
 // glyph pairs as spoken text
 // ---------------------------------------------------------------------------------------------
 
@@ -168,14 +197,34 @@ export function pairSay(pure, fraction, label) {
 // speed chips
 // ---------------------------------------------------------------------------------------------
 
-/** Ids of pure.RATES offered as buttons of the Sound panel (real time plus five units per Blink). */
-export const RATE_BUTTON_UNITS = Object.freeze(['lambda', 'iota', 'eta', 'zeta', 'delta']);
+/** Ids of pure.RATES offered as buttons of the Sound panel (real time plus one of five units per Blink). */
+export const RATE_BUTTON_UNITS = Object.freeze(['lambda', 'iota', 'eta', 'epsilon', 'delta']);
+
+const NUMBER_WORDS = ['Zero', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten', 'Eleven',
+  'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen', 'Twenty'];
+
+/**
+ * What a speed means, in prose with the unit's name: "One Helion passes every Blink", "Thirteen Flavons pass every Blink"
+ * (a counted preset), "2.5 Preons pass every Blink". Read from the helper's own label, so the two can never disagree.
+ * Real time: "One Blink passes every Blink: real time". `null` when the label is not a count of a unit per Blink.
+ */
+export function rateTip(pure, rate) {
+  const say = pure.rateLabel(Math.abs(rate));
+  if (say === pure.RATES.find((r) => r.id === 'real').label) return `Real time: one ${pure.BLINK} passes every ${pure.BLINK}`;
+  const m = new RegExp(`^(\\d+(?:\\.\\d+)?)?(\\S+) per ${pure.BLINK}$`).exec(say);
+  const u = m && pure.unitOf(m[2]);
+  if (!u) return null;
+  const n = m[1] === undefined ? 1 : Number(m[1]);
+  const count = Number.isInteger(n) && n < NUMBER_WORDS.length ? NUMBER_WORDS[n] : m[1];
+  const verb = n === 1 ? 'passes' : 'pass';
+  return `${count} ${pure.unitName(u.id, n)} ${verb} every ${pure.BLINK}${rate < 0 ? ', backward' : ''}`;
+}
 
 /**
  * Speed buttons of pure mode: [{key, label, unit, tip}]. `key` is what the click handler reads: 'live', 'rev' or the
  * numeric rate (displayed time per real time) as text. The words of a speed button are `pure.rateLabel(rate)`, the same
  * text the header's speed select shows, cut after the count so the unit can sit on its own line: "η" over "per Blink".
- * The tooltip says what passes in prose, with the unit's name: "One Helion passes every Blink".
+ * The tooltip says what passes in prose, with the unit's name: "One Helion passes every Blink" (`rateTip`).
  */
 export function rateButtons(pure) {
   const rate = (id) => pure.RATES.find((r) => r.id === id).rate;
@@ -190,7 +239,7 @@ export function rateButtons(pure) {
   return [
     { key: 'live', label: 'Live', unit: 'follow now', tip: 'Jump to the present moment and follow it' },
     speed(1, 'Real time from the moment shown now'),
-    ...RATE_BUTTON_UNITS.map((id) => speed(rate(id), `One ${pure.unitName(id)} passes every ${pure.BLINK}`)),
+    ...RATE_BUTTON_UNITS.map((id) => speed(rate(id), rateTip(pure, rate(id)))),
     { key: '0', label: 'Pause', unit: '', tip: 'Stop the clock: the drone holds, the bells wait' },
     { key: 'rev', label: 'Reverse', unit: '', tip: 'Run time backwards at the same speed: the bells play in reverse order' },
   ];
@@ -228,18 +277,28 @@ export function physicalTip(pure, rates) {
   return `<b>Physical register</b><br>The true oscillation of the deepest cycles (${list}) as triangle waves, the glyph wave itself, transposed by whole octaves.`;
 }
 
-/** The "Now:" line of a voice tooltip in pure mode: phase and loudness are glyph pairs. */
-export function nowPure(pure, live) {
+/**
+ * The "Now:" line of a voice tooltip in pure mode. Loudness is a glyph pair; so is the phase of a minor level. A major
+ * period (α β γ δ) never shows its phase: it says the running cycle in words with its quarter, `live.major`
+ * ("Delta Trifracton Node", `pure.majorText`), or at least the quarter word when the name is not given.
+ */
+export function nowPure(pure, live, level = -1) {
   if (!live) return 'outside the catalogue';
-  return `phase ${pure.pairHTML(live.phase, { label: 'phase' })} (${live.state}), loudness ${pure.pairHTML(live.loud, { label: 'loudness' })}`;
+  const loud = `loudness ${pure.pairHTML(live.loud, { label: 'loudness' })}`;
+  if (pure.isMajor(level)) {
+    const where = live.major ?? `${pure.QUARTER_WORDS[Math.min(3, Math.floor(live.phase * 4))]} quarter`;
+    return `<b>${where}</b> (${live.state}), ${loud}`;
+  }
+  return `phase ${pure.pairHTML(live.phase, { label: 'phase' })} (${live.state}), ${loud}`;
 }
 
 /**
- * Tooltip of one voice in pure mode (same teaching as normal mode, in ratios, octaves, cents, pB and Fractonica periods).
+ * Tooltip of one voice in pure mode (same teaching as normal mode, in ratios, octaves, cents, pB and Fractonica periods):
+ * "ζ depth 6 · between two units · one cycle = 11η", "δ depth 4 · Delta, a major period · one cycle = 1δ".
  * @param {object} row   tuning row (tuning.js buildTuning)
  * @param {object} info  model.levelInfo(L)
  * @param {object} pure  ctx.pure
- * @param {{phase:number, loud:number, state:string}|null} live
+ * @param {{phase:number, loud:number, state:string, major?:string}|null} live  `major`: the running major cycle in words
  * @param {(n:number)=>string} int  digit grouping (`pure.groupDigits`)
  * @param {string} color CSS colour of the letter
  * @param {number} [hz]  the voice's pitch now (frequencyOf(row, base)); written in pB after "Placed …"
@@ -253,10 +312,10 @@ export function voiceTip({ row, info, pure, live, int, color, hz }) {
       ? 'The slowest cycle of the hierarchy is the ground itself: 1 : 1.'
       : `${int(p)} such cycles fit in one α cycle: its true rate is <b class="mono">${int(p)} : 1</b> to α.`;
   const sounds = row.rel === 1 ? '' : `, sounding at <b class="mono">${plain(row.rel, row.rel < 10 ? 3 : 4)} : 1</b> to α`;
-  return `<b style="color:${color}">${row.letter}</b> <b>depth ${row.depth}</b> · one cycle = ${pure.cycleLength(row.level)}
+  return `<b style="color:${color}">${row.letter}</b> <b>depth ${row.depth}</b> · ${depthKind(pure, row.level)} · one cycle = ${pure.cycleLength(row.level)}
       <div class="snd-tip-row">${truth}</div>
       <div class="snd-tip-row">Folded into one octave: <b class="mono">${ratioText(row)}</b> = ×${plain(Number(row.num) / Number(row.den), 3)} (${row.pcCents.toFixed(1)}¢)</div>
       <div class="snd-tip-row">Placed ${place}${at}${sounds}</div>
       <div class="snd-tip-row dim">True rate of this cycle: ${pbOf(pure, row.trueHz)}</div>
-      <div class="snd-tip-row">Now: ${nowPure(pure, live)}</div>`;
+      <div class="snd-tip-row">Now: ${nowPure(pure, live, row.level)}</div>`;
 }

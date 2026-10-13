@@ -79,7 +79,12 @@ const fmt = {
   dateTime: (t, ...a) => (isPure() ? pure.stamp(t, 'lambda') : fmtBase.dateTime(t, ...a)),
   long: (t, ...a) => (isPure() ? pure.stamp(t, 'iota') : fmtBase.long(t, ...a)),
   short: (t, ...a) => (isPure() ? pure.stamp(t, 'eta') : fmtBase.short(t, ...a)),
-  label: (t, ref) => (isPure() ? (pure.dateText(t) === pure.dateText(ref) ? pure.clockText(t) : pure.stamp(t, 'eta')) : fmtBase.label(t, ref)),
+  label: (t, ref) =>
+    isPure()
+      ? pure.stamp(t, 'epsilon') === pure.stamp(ref, 'epsilon')
+        ? pure.clockText(t)
+        : pure.dateText(t, { letters: true, upTo: 'eta' })
+      : fmtBase.label(t, ref),
   tag: (t) => (isPure() ? '' : fmtBase.tag(t)),
   iso: (t) => (isPure() ? pure.stamp(t, 'lambda') : fmtBase.iso(t)),
   inputValue: (t) => (isPure() ? '' : fmtBase.inputValue(t)),
@@ -390,8 +395,8 @@ function syncZoneSelect() {
   sel.value = z;
 }
 
-/** The speed Play uses by default: one θ per Blink in pure mode (6 500×), one hour per real second otherwise. */
-const PURE_PLAY_RATE = pure.RATES.find((p) => p.id === 'theta').rate;
+/** The speed Play uses by default: 4ι per Blink in pure mode (6 500×), one hour per real second otherwise. */
+const PURE_PLAY_RATE = pure.PLAY_RATE;
 function followModeSpeed() {
   if (isPure() && chosenRate === 3600) chosenRate = PURE_PLAY_RATE;
   else if (!isPure() && Math.abs(chosenRate - PURE_PLAY_RATE) < 1e-6) chosenRate = 3600;
@@ -429,37 +434,43 @@ function togglePure() {
 function buildGlossary() {
   const el = $('#glossary');
   const row = (sym, text) => `<tr><th scope="row" class="mono">${sym}</th><td>${text}</td></tr>`;
-  // one row per unit of the ladder: symbol, name, depth and how many of the next finer unit make one
-  const units = pure.UNITS.filter((u) => u.named);
-  const finer = (u) => {
+  // one row per unit: symbol, name, depth and how many of the next unit make one
+  const made = (u) => {
     const next = pure.UNITS[pure.UNITS.indexOf(u) + 1];
-    return next ? `1${u.sym} = ${Math.round(pure.unitPos(u) / pure.unitPos(next))}${next.sym}` : '';
+    return next ? ` · 1${u.sym} = ${Math.round(pure.unitPos(u) / pure.unitPos(next))}${next.sym}` : '';
   };
-  const sun = (u) => (u.id === 'eta' ? ' · 19 of them make one solar sync' : u.id === 'nu' ? ' · the smallest unit, and one tick of real time' : '');
+  const note = {
+    delta: '',
+    eta: ' · the basic unit: its count and its phase are the main reading; 19 Helions make one solar sync',
+    nu: ' · the finest unit, and one tick of real time',
+  };
+  const unitRow = (u) => row(u.sym, `<b>${u.name}</b> · depth ${u.level + 1}${made(u)}${note[u.id] ?? ''}`);
   el.innerHTML = `
     <div class="card-h"><h2>Pure mode glossary</h2><span class="spacer"></span><button class="btn btn-sm" type="button" id="glossary-close" aria-label="Close the glossary">Close</button></div>
     <div class="card-b glossary-b">
-      <p>Everything here is counted in Fractonica periods. Each depth is one unit: a whole cycle of that depth.</p>
-      <h3>Units</h3>
+      <p>Everything here is counted in Fractonica periods. Four <b>major</b> periods are said in words; below them the <b>minor</b> units take every other depth and are said in letters and counts.</p>
+      <h3>Major periods</h3>
       <table class="glossary-t"><tbody>
-        ${row('α β γ', 'one cycle of depth 1, 2, 3: Alpha, Beta, Gamma')}
-        ${units.map((u) => row(u.sym, `<b>${u.name}</b> · one cycle of depth ${u.level + 1}${finer(u) ? ` · ${finer(u)}` : ''}${sun(u)}`)).join('')}
+        ${pure.UNITS.filter((u) => u.major).map(unitRow).join('')}
       </tbody></table>
-      <p class="mono glossary-ratio">1γ = 5δ · 1δ = 5ε · 1ε = 7ζ · 1ζ = 11η · 1η = 9θ · 1θ = 4ι · 1ι = 5κ · 1κ = 13λ · 1λ = 5μ · 1μ = 5ν</p>
-      <p class="mono glossary-ratio">The atomic steps: 1η = 36ι · 1ι = 65λ · 1λ = 25ν (Helion, Preon, Flavon, Blink).</p>
+      <p>A major period is named by its place in its parent – Monofracton 1st, Difracton 2nd, Trifracton 3rd … Octadecafracton 18th – and by the quarter it is in: <b>Peak</b>, <b>Node</b>, <b>Valley</b>, <b>End</b> (each quarter is named by the moment that ends it). "Delta Trifracton Node" is the 2nd quarter of the 3rd Delta.</p>
+      <h3>Minor units</h3>
+      <table class="glossary-t"><tbody>
+        ${pure.UNITS.filter((u) => !u.major).map(unitRow).join('')}
+      </tbody></table>
+      <p>The depths between them (ζ θ κ μ) are still drawn as rows and rings, but they are not units: ζ lasts 11η, θ 4ι, κ 13λ, μ 5ν.</p>
       <h3>Reading what you see</h3>
       <table class="glossary-t"><tbody>
-        ${row('6ι 3κ', 'a span: six Preons and three Chromons. "in 6ι 3κ" counts down to a moment, "6ι 3κ ago" back from it. Finer than one Blink it is a decimal: 0.4ν.')}
-        ${row('0η 29ι 21λ', 'where you are inside the current ζ cycle: completed η, ι, λ, counted from 0 (η in its ζ, ι in its η, λ in its ι; the timeline ruler continues with ν in its λ).')}
-        ${row('ζ#5', 'the 5th ζ cycle inside its ε. A # number is an ordinal and counts from 1.')}
-        ${row('Zeta Pentafracton', 'the same cycle by name. Monofracton is 1st, Difracton 2nd, Trifracton 3rd … Tridecafracton 13th.')}
-        ${row('α#6 β#4 γ#9', 'an address: the 6th α, its 4th β, its 9th γ. δ#3 · ε#2 · ζ#5 continues it: its 3rd δ, 2nd ε, 5th ζ.')}
-        ${row(`<span class="glossary-pair">${pure.pairHTML(0.8125 + 0.0156)}</span>`, 'phase through a cycle: two glyphs, 16 × 16 = 256 states. The left glyph is the coarse position, the right glyph the fine one; a dot marks the falling half.')}
-        ${row('η per Blink', 'a speed: one η passes per Blink of real time. A Blink is one ν cycle; "real time" is one Blink per Blink.')}
+        ${row('Delta Trifracton Node ε#2', 'the date: the Delta in words with its quarter, then the Nuclide inside it. The full date names Alpha, Beta and Gamma too.')}
+        ${row('5η 5ι 5λ', 'the time inside the Nuclide: Helions, Preons and Flavons completed, counted from 0 (Helions 0–76, Preons 0–35, Flavons 0–64). Blinks (0–24) may follow.')}
+        ${row(`<span class="glossary-pair">${pure.pairHTML(0.8125 + 0.0156)}</span>`, 'phase through a cycle, here the running Helion: two glyphs, 16 × 16 = 256 states. The left glyph is the coarse position, the right glyph the fine one; a dot marks the falling half.')}
+        ${row('α#6 β#4 γ#9 δ#3 ε#2 5η 5ι', 'the same date in letters only: # numbers are ordinals and count from 1, plain numbers count from 0.')}
+        ${row('6ι 43λ', 'a span: six Preons and forty-three Flavons. "in 6ι 43λ" counts down to a moment, "6ι 43λ ago" back from it. Below a Blink a span is a decimal: 0.4ν.')}
+        ${row('→ 34η begins', 'what starts the moment a cycle ends: a minor cycle is named by where it starts in its Nuclide, a major one by its name.')}
+        ${row('4ι per Blink', 'a speed: four Preons pass per Blink of real time. "Real time" is one Blink per Blink.')}
         ${row('34 pB', 'cycles per Blink: how often something repeats in real time. 7 pB means seven cycles fit into one Blink.')}
-        ${row('→ Eta Difracton begins', 'what starts the moment this cycle ends.')}
-        ${row('sync #4820', 'the solar sync: 19 η cycles, counted from the anchor sync (#0). Its yellow glyphs are on the face.')}
-        ${row('drift −623λ', 'how far this solar sync\'s start has slipped against the solar rhythm, counted in λ; a minus sign means earlier.')}
+        ${row('sync #4820', 'the solar sync: 19 Helions, counted from the anchor sync (#0). Its yellow glyphs are on the face.')}
+        ${row('drift −623λ', 'how far this solar sync\'s start has slipped against the solar rhythm, counted in Flavons; a minus sign means earlier.')}
         ${row('#22', 'an eclipse of the catalogue, numbered like the position: #0 is the first, #69 the last (eclipse #22 sits at pos 22).')}
         ${row('pos 22.927850', 'the clock\'s own coordinate: how many Saros intervals have passed since the first eclipse of the catalogue.')}
       </tbody></table>
@@ -565,7 +576,9 @@ function updateHeader(frame) {
     if (!pureMode) delete document.body.dataset.pure;
     roEls.brandSub.textContent = pureMode ? 'Pure mode' : 'Saros 141 clock';
     roEls.pureBtn.setAttribute('aria-pressed', String(pureMode));
-    $('#readout').title = pureMode ? 'η ι λ count completed units inside the current ζ cycle, from 0. # numbers and names count from 1. Press ? for the glossary.' : '';
+    $('#readout').title = pureMode
+      ? 'Helions (η) completed in the Nuclide, the Helion phase, then Preons (ι) and Flavons (λ), all counted from 0. Below: the Delta in words with its quarter, and the Nuclide (ε#). Press ? for the glossary.'
+      : '';
     roEls.pureBtn.classList.toggle('is-on', pureMode);
     followModeSpeed();
     buildRateOptions();
@@ -575,13 +588,20 @@ function updateHeader(frame) {
     for (const k of ['time', 'date', 'tz', 'pos']) delete last[k];
   }
   if (pureMode) {
+    // the basic reading: the Helion count and its phase (two glyphs), then Preons and Flavons
     const c = frame.inRange ? pure.clock(t) : null;
+    const helion = c ? model.levelAt(t, 6) : null;
+    const say = c
+      ? `${c.eta} Helions, ${c.iota} Preons, ${c.lambda} Flavons completed in Nuclide ${c.epsilon}; ${pure.pairLabel(helion.phase, 'Helion phase')}`
+      : '';
     setHtml(
       'time',
       roEls.time,
-      c ? `<span class="pure-clock" role="text" aria-label="${c.eta} η, ${c.iota} ι, ${c.lambda} λ completed in the current ζ"><b>${c.eta}</b><i>η</i><b>${c.iota}</b><i>ι</i><b>${c.lambda}</b><i>λ</i></span>` : '—',
+      c
+        ? `<span class="pure-clock" role="text" aria-label="${say}"><b>${c.eta}</b><i>η</i>${pure.pairHTML(helion.phase, { label: 'Helion phase' })}<b>${c.iota}</b><i>ι</i><b>${c.lambda}</b><i>λ</i></span>`
+        : '—',
     );
-    setText('date', roEls.date, frame.inRange ? pure.dateText(t) : 'outside the catalogue');
+    setText('date', roEls.date, frame.inRange ? pure.dateText(t, { upTo: 'epsilon' }) : 'outside the catalogue');
     setText('tz', roEls.tz, '');
     setText('pos', roEls.pos, frame.inRange ? `pos ${frame.pos.toFixed(6)}` : '');
   } else {

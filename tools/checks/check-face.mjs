@@ -1033,6 +1033,8 @@ await withApp(
           return {
             t,
             names: [pure.nameAt(t, depth - 1), pure.nameAt(t, depth)],
+            // what a tooltip's first line starts with: a major cycle in words, a minor one by its finest placing count
+            leads: [depth - 1, depth].map((L) => (pure.isMajor(L) ? pure.nameAt(t, L) : pure.cycleShort(L, model.levelAt(t, L).cycleBig))),
             topNext: `in ${pure.between(t, lvT.next.time)}`,
             topCap: `NEXT ${lvT.next.name.toUpperCase()}`,
             solarCap: sol ? `NEXT ${sol.threshold.name.toUpperCase()}` : null,
@@ -1046,7 +1048,8 @@ await withApp(
             ordinals: [pure.cycleShort(depth - 1, lvT.cycle), pure.cycleShort(depth, lvB.cycle)],
             driftText: sol ? pure.driftText(sol) : null,
             ends: [lvT.end, lvB.end],
-            caption: pure.stamp(t, 'lambda').split(/[\s·]+/).filter(Boolean),
+            caption: pure.dateText(t, { upTo: 'lambda' }),
+            captionLetters: pure.dateText(t, { upTo: 'lambda', letters: true }),
             local: [lvT.local, lvB.local],
             siblings: [lvT.siblings, lvB.siblings],
           };
@@ -1078,10 +1081,10 @@ await withApp(
         help: document.querySelector('.face-help').getAttribute('aria-label'),
       }));
       check('pure: ?pure=1 mounts the face in pure mode (card and body flagged, no reload)', base.root === '1' && base.body === '1');
-      check('pure: the letters overlay carries the name of each running cycle under its letter', base.overlay === 'letters' && base.names.join('|') === pe.names.join('|') && base.names[0] === 'Eta Monofracton' && base.letters.join('') === 'ηθ', `${base.overlay} ${base.names} ${base.letters}`);
-      check('pure: the caption (time is not live) is the address and the counters, not a clock time or a zone', JSON.stringify(base.caption.split(/[\s·]+/).filter(Boolean)) === JSON.stringify(pe.caption) && /^α#\d+ β#\d γ#\d+ · δ#\d ε#\d ζ#\d · \d+η \d+ι \d+λ$/.test(base.caption) && !/UTC|\+09|:/.test(base.caption), base.caption);
+      check('pure: the letters overlay carries the name of each running cycle under its letter', base.overlay === 'letters' && base.names.join('|') === pe.names.join('|') && base.names.join('|') === 'ε#5 33η|ε#5 33η 28ι' && base.letters.join('') === 'ηθ', `${base.overlay} ${base.names} ${base.letters}`);
+      check('pure: the caption (time is not live) is the short date in words, not a clock time or a zone (SPEC §15.6)', base.caption === pe.caption && base.caption === 'Delta Trifracton End ε#5 33η 29ι 21λ' && !/UTC|\+09|:/.test(base.caption), base.caption);
       check('pure: ... its hover text says which numbers count from 0 and which from 1, and points to the glossary', /count from 1.*count from 0.*Press \? for the glossary\.$/.test(base.captionTitle), base.captionTitle);
-      check('pure: the screen label names the depths and the sync; the rows are named by cycle', /^Clock face: depth 7 η over depth 8 θ, solar sync 4820$/.test(base.svgLabel) && /^η depth 7 · Eta Monofracton: state 13 of 16, value −3, rising, cycle 1 of 11/.test(base.rows.top) && /^θ depth 8 · Theta Octafracton: state 5 of 16/.test(base.rows.bottom), base.svgLabel + ' | ' + base.rows.top);
+      check('pure: the screen label names the depths and the sync; the rows are named by cycle', /^Clock face: depth 7 η over depth 8 θ, solar sync 4820$/.test(base.svgLabel) && /^η depth 7 · 33η of 77 in ε#5: state 13 of 16, value −3, rising\./.test(base.rows.top) && /^θ depth 8 · 28ι to 32ι in 33η: state 5 of 16/.test(base.rows.bottom), base.svgLabel + ' | ' + base.rows.top);
       check('pure: the solar row says "phase a and b of 256" (two numbers, not "a·b") and never "percent"', new RegExp(`^Solar sync 4820, ${pe.phaseSpeech}, glyphs 5, 11, 13\\.`).test(base.rows.solar) && !/percent|%|\d·\d/.test(base.rows.solar), base.rows.solar);
       await clean('letters overlay at vector A');
       await clean('letters overlay at vector A', { all: true });
@@ -1091,7 +1094,7 @@ await withApp(
       let inf = await infoTexts();
       check('pure: info labels are countdowns: next threshold of the top period, next solar threshold, sync number', inf[0] === pe.topCap && inf[1] === pe.topNext && inf[2] === pe.solarCap && inf[3] === pe.solarNext && inf[4] === pe.syncCap, JSON.stringify(inf) + ' vs ' + JSON.stringify([pe.topCap, pe.topNext, pe.solarCap, pe.solarNext, pe.syncCap]));
       check('pure: ... and the sync caption is followed by the drift counted in λ (not a clock time), written like pure.driftText', driftOk(inf[5], pe.driftLambda) && inf[5] === `drift ${pe.driftText}`, `${inf[5]} vs drift ${pe.driftText} (${pe.driftLambda})`);
-      check('pure: the first label reads like "end in 1θ 2ι": a countdown in whole-cycle units', /^in \d+[αβγδεζηθικλμν]+ \d+[αβγδεζηθικλμν]+$/.test(inf[1]), inf[1]);
+      check('pure: the first label reads like "in 6ι 43λ" (SPEC §15.6): a countdown on the ladder', inf[1] === 'in 6ι 43λ', inf[1]);
       await clean('info labels at vector A');
       await faceCard(page, shot, 'face-pure-info.png');
       const saidPure = await page.evaluate(() => document.querySelector('#slot-face [role=status]').textContent);
@@ -1110,15 +1113,15 @@ await withApp(
       await page.waitForTimeout(4200);
       let t1 = await tipFull(96, 80);
       pe = await expected();
-      check('pure: top row tooltip names and numbers the cycle, gives its length (pure.cycleLength) and when it ends', !t1.hidden && t1.title === 'η · depth 7' && t1.aside === `one cycle = ${pe.length[0]} (Helion)` && pe.length[0] === '1η' && t1.lines[0] === `${pe.names[0]} · ${pe.ordinals[0]} of ${pe.siblings[0]} in its ζ` && /^State 13 of 16: value −3, rising ↗$/.test(t1.lines[1]) && new RegExp(`^Ends in \\S+ \\S+ → Eta Difracton begins$`).test(t1.lines.at(-2)), t1.text);
-      check('pure: ... every time in it is a countdown (in …), none is a clock time; the last line says what counts from 0 and from 1', t1.lines.slice(2, -1).every((l) => /\bin \d+\S+( \d+\S+)?/.test(l)) && !/\d:\d\d/.test(t1.text) && /^Names and # numbers count from 1; states and clock counters \(η ι λ\) count from 0\.$/.test(t1.lines.at(-1)), t1.text);
+      check('pure: top row tooltip: the Helion by its count in the Nuclide, what one Helion is, and the Helion that begins', !t1.hidden && t1.title === 'η · depth 7' && t1.aside === 'one Helion = 36ι' && t1.lines[0] === '33η of 77 in ε#5' && /^State 13 of 16: value −3, rising ↗$/.test(t1.lines[1]) && t1.lines.at(-2) === 'Ends in 6ι 43λ → 34η begins', t1.text);
+      check('pure: ... every time in it is a countdown (in …), none is a clock time; the last line says what counts from 0 and from 1', t1.lines.slice(2, -1).every((l) => /\bin [\d.]+\S+( \d+\S+)?/.test(l)) && !/\d:\d\d/.test(t1.text) && /^Ordinals \(fracton names, # numbers\) count from 1; states and counts \(η ι λ ν\) count from 0\.$/.test(t1.lines.at(-1)), t1.text);
       await clean('top row tooltip');
       await shot('face-pure-tip-top.png', { clip: { x: 0, y: 0, width: 720, height: 760 } });
       const t2 = await tipFull(96, 410);
-      check('pure: bottom row tooltip: Theta Octafracton, ends → Theta Nonafracton begins', !t2.hidden && t2.title === 'θ · depth 8' && t2.aside === `one cycle = ${pe.length[1]} (Quark)` && pe.length[1] === '1θ' && /^Theta Octafracton · θ#8 of 9 in its η$/.test(t2.lines[0]) && /→ Theta Nonafracton begins$/.test(t2.lines.at(-2)), t2.text);
+      check('pure: bottom row tooltip: a θ is no unit (4ι), said by the Preons it covers; ends → 32ι begins', !t2.hidden && t2.title === 'θ · depth 8' && t2.aside === 'one cycle = 4ι' && pe.length[1] === '4ι' && t2.lines[0] === '28ι to 32ι in 33η' && /→ 32ι begins$/.test(t2.lines.at(-2)), t2.text);
       await clean('bottom row tooltip');
       const t3 = await tipFull(96, 13);
-      check('pure: the counter arc explains the cycle number with the name', !t3.hidden && /^Eta Monofracton · η#1 of 11 in its ζ$/.test(t3.lines[0]), t3.text);
+      check('pure: the counter arc explains where the cycle sits', !t3.hidden && t3.lines[0] === '33η of 77 in ε#5', t3.text);
       await clean('counter arc tooltip');
       const t4 = await tipFull(96, 245);
       pe = await expected();
@@ -1140,7 +1143,7 @@ await withApp(
         const tip = document.getElementById(r.getAttribute('aria-describedby') || 'x');
         return { row: r.dataset.row, hidden: tip?.hidden, hint: tip?.querySelector('.face-tip-hint')?.textContent, first: tip?.querySelector('.face-tip-l')?.textContent };
       });
-      check('pure: a focused row is described by its pure tooltip (name first, Enter in the hint)', kt.row === 'top' && kt.hidden === false && kt.first === 'Eta Monofracton · η#1 of 11 in its ζ' && /^Enter:/.test(kt.hint), JSON.stringify(kt));
+      check('pure: a focused row is described by its pure tooltip (name first, Enter in the hint)', kt.row === 'top' && kt.hidden === false && kt.first === '33η of 77 in ε#5' && /^Enter:/.test(kt.hint), JSON.stringify(kt));
       await clean('keyboard-focus tooltip');
       await page.keyboard.press('Tab');
       await page.keyboard.press('Tab');
@@ -1151,9 +1154,10 @@ await withApp(
       await page.click('.face-help');
       await page.waitForTimeout(250);
       const howto = await page.evaluate(() => ({ open: !document.querySelector('.face-pop').hidden, text: document.querySelector('.face-pop').textContent.replace(/\s+/g, ' ').trim(), lis: [...document.querySelectorAll('.face-pop-list li')].map((l) => l.textContent.replace(/\s+/g, ' ').trim()), pairs: document.querySelectorAll('.face-pop-list .pure-pair').length, minis: document.querySelectorAll('.face-mini').length }));
-      check('pure: How to read has the five lines, one on counters from 0 and names from 1, three mini glyphs and the glyph pair example', howto.open && howto.lis.length === 6 && howto.minis === 3 && howto.pairs === 1, JSON.stringify(howto.lis));
-      check('pure: ... the counters line gives the examples "0η 29ι 21λ" (from 0) and "δ#6" (from 1) and names the clock units Helion, Preon, Flavon', /0η 29ι 21λ/.test(howto.lis[4]) && /δ#6/.test(howto.lis[4]) && /from 0/.test(howto.lis[4]) && /from 1/.test(howto.lis[4]) && /Helion/.test(howto.lis[4]) && /Preon/.test(howto.lis[4]) && /Flavon/.test(howto.lis[4]), howto.lis[4]);
-      check('pure: ... the yellow line says "19η cycles, 19 Helions", with no civil days', /19η cycles, 19 Helions/.test(howto.lis[5]) && !/civil|4-day|\bs\b|19 η/.test(howto.lis[5]), howto.lis[5]);
+      check('pure: How to read has the five lines, one on the reading, one on counts from 0, three mini glyphs and the glyph pair example', howto.open && howto.lis.length === 7 && howto.minis === 3 && howto.pairs === 1, JSON.stringify(howto.lis));
+      check('pure: ... the reading: the Helion count and phase, Preons and Flavons the fine time, Alpha … Delta in words with their quarter', /Helion is the basic reading/.test(howto.lis[4]) && /Preons and Flavons are the fine time/.test(howto.lis[4]) && /Alpha, Beta, Gamma and Delta are said in words with their quarter/.test(howto.lis[4]), howto.lis[4]);
+      check('pure: ... counts from 0 (33η of the 0–76 in a Nuclide), ordinals from 1 (ε#5, Delta Trifracton)', /from 0/.test(howto.lis[5]) && /0–76/.test(howto.lis[5]) && /ε#5/.test(howto.lis[5]) && /ordinals/.test(howto.lis[5]), howto.lis[5]);
+      check('pure: ... the yellow line says "19η cycles, 19 Helions", with no civil days', /19η cycles, 19 Helions/.test(howto.lis[6]) && !/civil|4-day|\bs\b|19 η/.test(howto.lis[6]), howto.lis[6]);
       check('pure: ... the dialog ends with "Press ? for the glossary."', howto.text.endsWith('Press ? for the glossary.'), howto.text.slice(-60));
       // "?" typed while the dialog has focus still reaches the shell: it opens the glossary
       await page.keyboard.press('?');
@@ -1195,7 +1199,8 @@ await withApp(
         if (i2[1] !== e.topNext || i2[0] !== e.topCap) depthProblems.push(`d${d} info ${i2.slice(0, 2)} vs ${e.topCap} ${e.topNext}`);
         const a = await tipFull(96, 80, 300);
         const b = await tipFull(96, 410, 300);
-        if (!a.lines[0].startsWith(e.names[0]) || !b.lines[0].startsWith(e.names[1])) depthProblems.push(`d${d} tooltip names ${a.lines[0]} / ${b.lines[0]}`);
+        if (!a.lines[0].startsWith(e.leads[0]) || !b.lines[0].startsWith(e.leads[1])) depthProblems.push(`d${d} tooltip names ${a.lines[0]} / ${b.lines[0]} vs ${e.leads}`);
+        if ([a, b].some((m) => /Eta |Zeta |Theta |Iota |Kappa |Lambda |Mu |Hadron|Quark|Chromon|Somon|Atom/.test(m.text))) depthProblems.push(`d${d} a retired name: ${a.text} / ${b.text}`);
         const ls = await faceLeaks(`depth ${d}`);
         if (ls.length) depthProblems.push(`d${d} leaks ${fmtLeaks(ls)}`);
         await page.mouse.move(5, 5);
@@ -1267,7 +1272,7 @@ await withApp(
         await page.waitForTimeout(200);
         lapse.push(...(await faceLeaks(`time-lapse frame ${i}`)));
         const cap = await page.textContent('.face-caption');
-        if (!/^α#\d+ β#\d γ#\d+ · δ#\d ε#\d ζ#\d · \d+η \d+ι \d+λ$/.test(cap)) lapse.push({ rule: 'caption', match: cap, kind: 'text', where: 'caption', text: cap });
+        if (!/^(Delta [A-Z][a-z]+fracton (Peak|Node|Valley|End)|δ#\d) ε#\d \d+η \d+ι \d+λ$/.test(cap)) lapse.push({ rule: 'caption', match: cap, kind: 'text', where: 'caption', text: cap });
       }
       check('pure: time-lapse (about one η per Blink): every frame is clean and the caption follows', lapse.length === 0, fmtLeaks(lapse));
       await faceCard(page, shot, 'face-pure-lapse.png');
@@ -1305,7 +1310,7 @@ await withApp(
         origin: performance.timeOrigin,
       }));
       check('pure: the P key switches live: the card is flagged and the open tooltip is closed and emptied', sw1.flagged && sw1.tipHidden && sw1.tipText === '', JSON.stringify(sw1.tipText));
-      check('pure: ... the info labels that were showing are rewritten (no clock time survives), the caption and the letter names too', !sw1.info.some((x) => /\d:\d\d/.test(x)) && /^in /.test(sw1.info[1]) && !/UTC|:/.test(sw1.caption) && sw1.names.every((n) => /fracton$/.test(n)), sw1.info.join('|') + ' ' + sw1.caption);
+      check('pure: ... the info labels that were showing are rewritten (no clock time survives), the caption and the letter names too', !sw1.info.some((x) => /\d:\d\d/.test(x)) && /^in /.test(sw1.info[1]) && !/UTC|:/.test(sw1.caption) && sw1.names.every((n) => /^ε#\d( \d+[ηι])*$|fracton$/.test(n)), sw1.info.join('|') + ' ' + sw1.caption);
       check('pure: ... without a reload', sw1.origin === origin1);
       await clean('after switching on with the P key', { all: true });
       // the dialog is open while the mode changes (the store changes it, e.g. a deep link or another module): it is rewritten in place
@@ -1367,16 +1372,16 @@ await withApp(
         check(`pure mobile ${w}: nothing in the face card overflows (caption, letters, buttons)`, ov.worst <= 0.5 && ov.cardRight <= ov.innerW, JSON.stringify(ov));
         const cap = await page.evaluate(() => { const c = document.querySelector('.face-caption'); return { clipped: c.scrollWidth > c.clientWidth, text: c.textContent }; });
         check(`pure mobile ${w}: the caption fits on one line without being cut`, !cap.clipped, JSON.stringify(cap));
-        // the longest address that can occur (α#18 β#5 γ#13 · δ#5 ε#5 ζ#7 · 10η 35ι 64λ) must fit as well
+        // the longest caption in letters (the form a card too narrow for the words falls back to) must fit as well
         const longest = await page.evaluate(() => {
           const c = document.querySelector('.face-caption');
           const keep = c.textContent;
-          c.textContent = 'α#18 β#5 γ#13 · δ#5 ε#5 ζ#7 · 10η 35ι 64λ';
+          c.textContent = 'δ#5 ε#5 76η 35ι 64λ';
           const r = { sw: c.scrollWidth, cw: c.clientWidth };
           c.textContent = keep;
           return r;
         });
-        check(`pure mobile ${w}: ... also the longest possible address`, longest.sw <= longest.cw, JSON.stringify(longest));
+        check(`pure mobile ${w}: ... also the longest caption in letters`, longest.sw <= longest.cw, JSON.stringify(longest));
         await faceCard(page, shot, `face-pure-mobile${w}-letters.png`);
         await page.waitForTimeout(4200);
         await page.click('.face-btn[data-act="info"]');

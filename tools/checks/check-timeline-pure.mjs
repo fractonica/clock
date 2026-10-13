@@ -1,6 +1,6 @@
 /**
- * Pure mode of the timeline, in a real browser (docs/design/80-pure.md, revision 2: one unit per depth
- * α β γ δ ε ζ η θ ι κ λ μ ν, whole cycles, real time in Blinks).
+ * Pure mode of the timeline, in a real browser (SPEC §15, docs/design/80-pure.md revision 3: the major periods
+ * α β γ δ in words with their quarter words, the minor units ε η ι λ ν in letters and counts, real time in Blinks).
  *
  *   node tools/checks/check-timeline-pure.mjs          (screenshots: tools/out/tl-pure-chk-*.png)
  *   node tools/checks/check-timeline-pure.mjs --quick  (skips the long sweeps of section 1 and 2)
@@ -175,7 +175,7 @@ await withApp(
     // =============================== 2. every preset, edges, out of range, depths ===================================
     await open(`?pure=1&t=${T_A}&view=timeline`);
     const presets = await page.$$eval('.tl-presets [data-preset]', (b) => b.map((x) => ({ id: x.dataset.preset, label: x.textContent.trim(), title: x.title })));
-    check('pure presets: ν λ ι η ζ ε δ γ β α All', presets.map((p) => p.label).join(' ') === 'ν λ ι η ζ ε δ γ β α All', presets.map((p) => p.label).join(' '));
+    check('pure presets: ν λ ι η ε δ γ β α All', presets.map((p) => p.label).join(' ') === 'ν λ ι η ε δ γ β α All', presets.map((p) => p.label).join(' '));
     check('presets name the unit in their title ("one Helion")', /one Helion \(η\) across/.test(presets.find((p) => p.label === 'η')?.title ?? '') && /Blink/.test(presets[0].title), presets.map((p) => p.title).join(' | '));
     check('every preset explains itself in a title', presets.every((p) => p.title.length > 10), presets.map((p) => p.title).join(' | '));
     for (const p of presets) {
@@ -185,11 +185,16 @@ await withApp(
       const pressed = await page.$eval(`.tl-presets [data-preset="${p.id}"]`, (b) => b.getAttribute('aria-pressed'));
       check(`preset ${p.label} is pressed after the click`, pressed === 'true');
       const win = it.find((x) => x.kind === 'text' && x.where.includes('tl-win'));
-      // (ν is the deepest zoom, a few Blinks across: it reads "1μ 1ν", not one unit)
-      check(`preset ${p.label}: the status line counts the window in ladder units`, p.id === 'all' ? /^the whole catalogue · \d+α \d+β across$/.test(win?.text ?? '') : p.id === 'u:nu' ? /· \d+μ \d+ν across$/.test(win?.text ?? '') : new RegExp(`· 1${p.label} across$`).test(win?.text ?? ''), win?.text ?? '(none)');
+      // (ν is the deepest zoom, a few Blinks across: it reads "6.4ν", not one unit)
+      check(`preset ${p.label}: the status line counts the window in ladder units`, p.id === 'all' ? /^the whole catalogue · \d+α \d+β across$/.test(win?.text ?? '') : p.id === 'u:nu' ? /· \d\.\dν across$/.test(win?.text ?? '') : new RegExp(`· 1${p.label} across$`).test(win?.text ?? ''), win?.text ?? '(none)');
       // the ruler never goes blank: 4 to 12 labelled ticks at every preset (it was ONE around β)
       const labels = await page.evaluate(() => window.__fractonica.instances.timeline.api.axisLabels);
       check(`preset ${p.label}: ${labels.length} labelled ticks on the ruler (4 to 12)`, labels.length >= 4 && labels.length <= 12, labels.join(' '));
+      if (['u:delta', 'u:gamma', 'u:alpha'].includes(p.id)) {
+        // one major period across: the ticks are its parts, the row above says its quarters in words
+        const quarters = it.filter((x) => x.kind === 'canvas' && /(^|[a-z] )(Peak|Node|Valley|End)$/.test(x.text)).map((x) => x.text);
+        check(`preset ${p.label}: the context row names the quarters of the major period`, quarters.length >= 3, quarters.join(' | '));
+      }
       if (['u:nu', 'u:lambda', 'u:eta', 'u:delta', 'u:beta', 'all'].includes(p.id)) await sweep(`preset ${p.label}`, { cols: 9 });
       if (['u:nu', 'u:iota', 'u:epsilon', 'u:gamma', 'all'].includes(p.id)) await shot(`tl-pure-chk-${p.id.replace(':', '_')}.png`, { clip: await page.$eval('.tl-root', (r) => { const b = r.getBoundingClientRect(); return { x: b.x, y: b.y, width: b.width, height: b.height }; }) });
     }
@@ -220,7 +225,8 @@ await withApp(
     const eclTips = [...tipsSeen].filter((t) => /^Eclipse #\d+ · one of 70/.test(t));
     check('every eclipse marker tooltip numbers it like its position', eclTips.length > 0 && eclTips.every((t) => { const m = /^Eclipse #(\d+) · one of 70 pos (\d+)/.exec(t); return m && m[1] === m[2]; }), eclTips[0]?.slice(0, 70) ?? '(none seen)');
     check('the sweeps met the cursor / now pointers', /centre the view on it/.test(seenAll));
-    check('the sweeps met the ruler key and a lane head (units named in prose)', /Each tick starts an? [A-Z]\w+ \(/.test(seenAll) && /is one depth-\d+ cycle: \d+ of them make an? [α-ξ]\./.test(seenAll));
+    check('the sweeps met the ruler key and a lane head (units named in prose)', /Each tick starts an? [A-Z]\w+ \(/.test(seenAll) && /: a (major period|minor unit)|lies between the units/.test(seenAll));
+    check('plot tooltips say the date in words and a major period\'s quarter, never its phase', /Delta \w+fracton (Peak|Node|Valley|End) ε#\d/.test(seenAll) && /δ 4 \d\/5 (Peak|Node|Valley|End)/.test(seenAll), (seenAll.match(/δ 4 [^ ]+ [A-Z][a-z]+/) ?? ['(none)'])[0]);
     check('the sweeps met sub-Blink readings (decimal Blinks)', /\b0\.\d+ν/.test(seenAll), (seenAll.match(/[^ ]* ?0\.\d+ν[^ ]*/) ?? ['(none)'])[0]);
     check('the sweeps met glyph pairs, never a percentage, in the plot tooltip', /vs now/.test(seenAll) && !/%/.test(seenAll));
 
@@ -244,7 +250,7 @@ await withApp(
     for (const pos of [0.69, 10.5, 30, 62.1, 68.3]) {
       const t = M.timeOfPosition(pos);
       await open(`?pure=1&t=${t}&view=timeline`);
-      for (const [id, sym] of [['u:alpha', 'α'], ['u:beta', 'β'], ['u:gamma', 'γ'], ['u:delta', 'δ'], ['u:epsilon', 'ε'], ['u:zeta', 'ζ'], ['u:eta', 'η']]) {
+      for (const [id, sym] of [['u:alpha', 'α'], ['u:beta', 'β'], ['u:gamma', 'γ'], ['u:delta', 'δ'], ['u:epsilon', 'ε'], ['u:eta', 'η'], ['u:iota', 'ι']]) {
         await page.click(`.tl-presets [data-preset="${id}"]`);
         await settle(450);
         const win = await page.$eval('[data-role="win"]', (e) => e.textContent);
@@ -303,7 +309,7 @@ await withApp(
     const live = await page.$eval('[data-role="live"]', (e) => e.textContent);
     const summary = await page.$eval('[data-role="summary"]', (e) => e.textContent);
     check('the live region is pure and names the cycle that begins', /Selected depth \d+ \([α-ξ]\): .+ ends → .+ begins\./.test(live), live);
-    check('the summary describes the window as an address range in ladder units', /^Timeline shows .* → .*, [^,]+ across\./.test(summary) && /Cursor at α#\d+ β#\d/.test(summary), summary);
+    check('the summary describes the window as an address range in ladder units', /^Timeline shows .* → .*, [^,]+ across\./.test(summary) && /Cursor at (Alpha|Delta) \w+fracton (Peak|Node|Valley|End)/.test(summary), summary);
     check('no Earth word in the screen-reader text', !judge([{ kind: 'text', text: live + ' ' + summary, where: 'sr' }], '').some((l) => l.severity === 'hard'));
     void kb;
 
@@ -332,7 +338,7 @@ await withApp(
     await settle(400);
     const liveItems = await scanState(page, 'live');
     const liveFlag = liveItems.find((x) => x.kind === 'canvas' && /^NOW /.test(x.text));
-    check('live mode: the NOW flag carries a pure address (counts "9η 17ι 44λ" or ordinals "ζ#5")', /^NOW (\d+[ηθικλμν]|[α-ζ]#\d)/.test(liveFlag?.text ?? ''), liveFlag?.text ?? '(not drawn)');
+    check('live mode: the NOW flag carries a pure address (counts "33η 29ι 21λ" or ordinals "ε#5")', /^NOW (\d+[ηιλν]|[α-ε]#\d)/.test(liveFlag?.text ?? ''), liveFlag?.text ?? '(not drawn)');
 
     // =============================== 4. a phone: layout, long press, nothing overflows =============================
     await open(`?pure=1&t=${T_A}&view=timeline`, 390, 844);
@@ -346,7 +352,7 @@ await withApp(
     const over = await page.evaluate(() => ({ sw: document.documentElement.scrollWidth, iw: innerWidth, rootSW: document.querySelector('.tl-root').scrollWidth, rootCW: document.querySelector('.tl-root').clientWidth }));
     check('phone: the page does not scroll sideways with the longer pure strings', over.sw <= over.iw + 1 && over.rootSW <= over.rootCW + 1, JSON.stringify(over));
     const presetBox = await page.$eval('.tl-presets', (e) => ({ sw: e.scrollWidth, cw: e.clientWidth }));
-    check('phone: the eleven presets fit their strip (or scroll inside it)', presetBox.sw <= presetBox.cw + 1 || true, JSON.stringify(presetBox));
+    check('phone: the ten presets fit their strip (or scroll inside it)', presetBox.sw <= presetBox.cw + 1 || true, JSON.stringify(presetBox));
     g = await geom();
     const fire = (type, x, y) =>
       page.evaluate(([type, x, y]) => {
@@ -387,7 +393,7 @@ await withApp(
     await settle(700);
     const pureItems = await scanState(page, 'switched on with P');
     const presetNow = await page.$$eval('.tl-presets [data-preset]', (b) => b.map((x) => x.textContent.trim()).join(' '));
-    check('P: the zoom presets became ladder units', presetNow === 'ν λ ι η ζ ε δ γ β α All', presetNow);
+    check('P: the zoom presets became ladder units', presetNow === 'ν λ ι η ε δ γ β α All', presetNow);
     check('P: nothing Gregorian is left on the timeline', !judge(pureItems, '').some((l) => l.severity === 'hard'), judge(pureItems, '').filter((l) => l.severity === 'hard').map((l) => l.text).slice(0, 3).join(' | '));
     const tipPure = await tipText();
     check('P: the open tooltip was rebuilt in pure words', tipPure === '' || (/vs now/.test(tipPure) && !/UTC|%/.test(tipPure)), tipPure.slice(0, 90));

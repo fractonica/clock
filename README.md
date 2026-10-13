@@ -45,28 +45,30 @@ instant, or a time-lapse. The catalogue ends are respected; nothing is extrapola
 ### Pure mode
 
 Press **P** (or the glyph button in the header, or open `?pure=1`) and the clock stops translating. Everything is said in
-Fractonica terms:
+Fractonica terms ([SPEC.md §15](SPEC.md)):
 
-- **Where you are**: the header clock counts completed η, ι, λ inside the current ζ (`0η 29ι 21λ`); the date line is the
-  cycle address (`α#6 β#4 γ#9 · δ#3 · ε#4 · ζ#7`). Cycles have names: `Gamma Difracton` is the 2nd γ inside its β
-  (Mono-, Di-, Tri-, Tetra-, Penta-, Hexa-, Hepta-, Octa-, Nona-, Deca-, Didecafracton, Dodeca-, Trideca- … fracton).
-- **How long**: spans are counted in Fractonica periods only: `1ζ 4η 24ι`, `6ι 3κ`. Every depth is one unit, a whole
-  cycle of that depth, and the units from depth 4 have names:
+- **Major and minor periods.** Alpha, Beta, Gamma and Delta are the *major* periods. They are said in words, with their place in
+  the parent and the quarter they are in: `Delta Trifracton Node` (Mono-, Di-, Tri-, Tetra-, Penta- … Octadecafracton; quarters
+  Peak, Node, Valley, End). Below them the *minor* units take every other depth and are said in letters:
 
-  | | δ | ε | ζ | **η** | θ | **ι** | κ | **λ** | μ | **ν** |
-  |---|---|---|---|---|---|---|---|---|---|---|
-  | unit | Atom | Nuclide | Hadron | **Helion** | Quark | **Preon** | Chromon | **Flavon** | Somon | **Blink** |
-  | depth | 4 | 5 | 6 | **7** | 8 | **9** | 10 | **11** | 12 | **13** |
+  | | δ | ε | η | ι | λ | ν |
+  |---|---|---|---|---|---|---|
+  | unit | Delta | Nuclide | **Helion** | **Preon** | **Flavon** | Blink |
+  | made of | 5 ε | 77 η | 36 ι | 65 λ | 25 ν | – |
+  | like | a month | a week | an hour | a minute | a second | |
 
-  1γ = 5δ, 1δ = 5ε, 1ε = 7ζ, 1ζ = 11η, 1η = 9θ, 1θ = 4ι, 1ι = 5κ, 1κ = 13λ, 1λ = 5μ, 1μ = 5ν. The atomic steps are
-  1η = 36ι, 1ι = 65λ, 1λ = 25ν; 19 Helions lock to the sun. Below a Blink a span is a decimal (`0.14ν`).
-- **How far through a cycle**: two 2-stroke glyphs (16 × 16 = 256 states) instead of a percentage.
-- **How fast**: real time is counted in **Blinks** (one ν cycle). Time-lapse speeds are units per Blink: `η per Blink`,
-  `2.25θ per Blink`; "real time" is one Blink per Blink. A frequency is cycles per Blink, **pB**, instead of Hz: the true
-  rates of the deepest cycles come out as whole numbers (7, 77, 693, 2 772 pB).
-- **Navigation** keeps working: the timeline gets a ruler of cycle units, the Calendar tab becomes a pure converter and a
-  month page of 5 rows × 7 cells (one δ: 5 ε × 7 ζ), the jump box takes names, addresses, `pos`, `sync` and offsets like
-  `+2ζ 3η` or `+4 Blinks`.
+  The depths between (ζ θ κ μ) are still drawn, but they are not units: ζ lasts 11η, θ 4ι, κ 13λ, μ 5ν.
+- **Where you are.** The header shows the Helion count in the Nuclide, the Helion phase as two glyphs, then Preons and Flavons
+  (`33η ‹phase› 29ι 21λ`), and the date `Delta Trifracton End ε#5`. The full date is
+  `Alpha Hexafracton Valley, Beta Tetrafracton Valley, Gamma Nonafracton Valley, Delta Trifracton End, ε#5 33η 29ι 21λ 3ν`,
+  and in letters `α#6 β#4 γ#9 δ#3 ε#5 33η 29ι 21λ`.
+- **How long.** Spans are counts on the ladder: `5η 17ι`, `6ι 43λ`, `2ε 10η`; below a Blink, a decimal (`0.14ν`).
+- **How far through a cycle.** Two 2-stroke glyphs (16 × 16 = 256 states) instead of a percentage. The major periods show
+  their quarter word instead, since their phase follows from the counts.
+- **How fast.** Real time is counted in **Blinks**. Time-lapse speeds are units per Blink (`4ι per Blink`, `η per Blink`), and a
+  frequency is cycles per Blink, **pB**, instead of Hz.
+- **Navigation keeps working.** The timeline gets a ruler of units, and the Calendar tab becomes a converter and a page of one
+  Delta (5 Nuclides × 77 Helions). The jump box reads every date form, plus offsets like `+2ε 5η` or `+4 Blinks`.
 - Press **?** for the in-app glossary.
 
 The mode is presentation only: the clock still runs on the device time underneath, and switching back and forth is live.
@@ -79,7 +81,7 @@ Design notes: [`docs/design/80-pure.md`](docs/design/80-pure.md).
 
 ### The solar wave
 
-In the Wave view, the **Solar** button adds a yellow wave for the solar sync (19 η ≈ 4 days): a marker at the current sync
+In the Wave view, the **Solar** button adds a yellow wave for the solar sync (19 Helions ≈ 4 days): a marker at the current sync
 phase with its four quarter ticks, and a ripple of one sync wavelength along the focused arc where it fits (`?solar=1`).
 
 ### Reading the labels

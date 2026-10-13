@@ -1,18 +1,26 @@
 /**
- * Pure-mode wording of the ladder and up-next cards (docs/design/80-pure.md, revision 2): everything these two cards
- * say when `ctx.isPure()` is on, in Fractonica terms only. Cycles are named (Gamma Difracton), spans are counted in
- * ladder units, one unit per depth, whole cycles only (4ι 3κ, 1ζ 4η, 0.14ν), progress is a pair of 2-stroke glyphs
- * (256 states) and real time is counted in Blinks (the device's tick: "6.43 Blinks").
+ * Pure-mode wording of the ladder and up-next cards (docs/design/80-pure.md, SPEC §15, revision 3): everything these
+ * two cards say when `ctx.isPure()` is on, in Fractonica terms only.
  *
- * NOTATION (header of src/core/pure.js, never re-derived here):
- *   X#n   an ordinal, 1-based: ζ#5, δ#6, α#6            (addresses, dates)
- *   nX    a count of units X: durations "6ι 3κ", clock counters "3η 17ι" (completed units, 0-based)
- *   X d   a depth chip ("η 7"), only on level chips; sentences say "η" or "Eta"
- * Unit NAMES (Hadron, Helion, Preon ...) appear only in prose: tooltips and legends that explain a unit.
+ * TWO KINDS OF PERIOD (src/core/pure.js)
+ *   major  α β γ δ (Alpha Beta Gamma Delta): said in WORDS, fracton ordinal and quarter word ("Delta Trifracton Node");
+ *          their phase is never drawn (the quarter word stands for it).
+ *   minor  ε Nuclide (ordinal ε#2), η Helion, ι Preon, λ Flavon, ν Blink (counts 33η 29ι 21λ 3ν); the depths between
+ *          them (ζ θ κ μ) and below the Blink (ξ) are levels but not units: a minor cycle is named by where it starts
+ *          in its Nuclide ("ε#5 33η", short "33η"), its phase is a pair of 2-stroke glyphs (256 states).
+ * Spans are counted over α β γ δ ε η ι λ ν with zero parts skipped (2ε 10η, 6ι 43λ, 2.6ν); real time is counted in
+ * Blinks ("6.43 Blinks").
  *
- * DOM-free and unit-tested (test/ladder.test.js). `pure` is `ctx.pure` (src/core/pure.js), `model` is `ctx.model`;
- * nothing here reads the formatter, a zone, a Gregorian field or a percentage. Durations come from
- * pure.durationPos / pure.between / pure.cycleLength only: this module never trims or reformats them.
+ * NOTATION (header of src/core/pure.js, never re-derived here)
+ *   X#n   an ordinal, 1-based: α#6, δ#3, ε#2        (identities, letter addresses)
+ *   nX    a count of units, 0-based: 33η 29ι, spans "6ι 43λ"
+ *   X d   a depth chip ("η 7"), only on level chips; sentences say "Delta" (major) or "η" (minor)
+ * Unit names (Nuclide, Helion, Preon, Flavon, Blink) appear only in prose: tooltips and legends that explain a unit.
+ *
+ * DOM-free and unit-tested (test/ladder.test.js). `pure` is `ctx.pure`, `model` is `ctx.model`; nothing here reads the
+ * formatter, a zone, a Gregorian field or a percentage. Spans come from pure.between / durationPos / cycleLength only,
+ * names from pure.periodName / cycleName / cycleShort: this module never re-counts them by itself, except for the exact
+ * BigInt twins of pure.date / pure.clock at a turnover position (tested against the core).
  */
 import { clamp, finerLevels, letterOf, levelLetters } from './lib.js';
 
@@ -20,68 +28,120 @@ import { clamp, finerLevels, letterOf, levelLetters } from './lib.js';
 // names
 // ---------------------------------------------------------------------------
 
-/** "Eta" for level 6; levels beyond the table read "Level 25". */
+/** "Eta" for level 6; levels beyond the table read "Level 25" (spoken chips only). */
 export const levelWord = (pure, level) => pure.LEVEL_NAMES[level] ?? `Level ${level + 1}`;
 
 /** "Eta, depth 7": what a chip says to a screen reader. */
 export const depthWords = (pure, level) => `${levelWord(pure, level)}, depth ${level + 1}`;
 
-/** The ordinal name a row's counter shows: "Pentafracton" for the 5th cycle in its parent (`local` is 0-based). */
-export const counterName = (pure, local, siblings) => pure.ordinalName(clamp(local + 1, 1, siblings));
+/** How a sentence names a level: majors in words ("Delta"), every other level by its letter ("η"). */
+export const levelSay = (pure, level) => (pure.isMajor(level) ? pure.LEVEL_NAMES[level] : letterOf(level));
 
-/** "Alpha Hexafracton": full name of the cycle with 0-based `local` index (for Alpha: the global index). */
-export const cycleWords = (pure, level, local) => pure.periodName(level, local + 1);
-
-/** Address chain "α#6 β#4 γ#9" of a 1-based path [alpha, beta, ...] (model.cycleToPath). */
-export const pathText = (pure, path) => path.map((n, level) => pure.shortName(level, n)).join(' ');
+/** "Node": the quarter word of a phase (the quarter is named by the threshold that ends it). */
+export const quarterWord = (pure, phase) => pure.QUARTER_WORDS[clamp(Math.floor((Number.isFinite(phase) ? phase : 0) * 4), 0, 3)];
 
 /**
- * The cycle of `level` that follows the cycle with global index `cycleBig`: its name and address, or null when
- * the catalogue ends with the current one.
- * @returns {null | {idx: bigint, name: string, short: string, address: string}}
+ * What a ladder row says next to its chip, for a reading `lv` (model.levelAt):
+ *   major  "Trifracton Node"  (the chip completes it: Delta Trifracton Node)
+ *   ε      "ε#5"
+ *   finer  the count that places the cycle in its Nuclide: "33η" (η), "22η" (ζ), "28ι" (θ), "3.43ν" (ξ)
+ */
+export function rowLabel(pure, lv) {
+  if (pure.isMajor(lv.level)) return `${pure.ordinalName(clamp(lv.local + 1, 1, lv.siblings))} ${quarterWord(pure, lv.phase)}`;
+  return pure.cycleShort(lv.level, lv.cycleBig);
+}
+
+/** The cycle itself: "Delta Trifracton", "ε#5", "ε#5 33η" (pure.cycleName, no quarter). */
+export const cycleTitle = (pure, level, cycleBig) => pure.cycleName(level, cycleBig);
+
+/** Global index of the cycle of `coarse` (<= level) that holds cycle `cycleBig` of `level`. */
+const ancestor = (model, level, cycleBig, coarse) => BigInt(cycleBig) / (model.levelInfo(level).prefix / model.levelInfo(coarse).prefix);
+
+/**
+ * The letter address of a cycle's start: "α#6 β#4 γ#9" (a Gamma: no finer ordinal than its own), "α#6 β#4 γ#9 δ#3 ε#5
+ * 33η" (a minor cycle: pure.addressAt of its start, but exact and with the decimal Blink of a ξ). The major ordinals
+ * come from the model's path, the minor placing from pure.cycleName.
+ */
+export function cycleAddress(model, pure, level, cycleBig) {
+  const top = Math.min(level, 3);
+  const path = model.cycleToPath(top, level <= 3 ? cycleBig : ancestor(model, level, cycleBig, 3));
+  const head = path.map((n, L) => pure.shortName(L, n)).join(' ');
+  return level <= 3 ? head : `${head} ${pure.cycleName(level, cycleBig)}`;
+}
+
+/**
+ * The cycle of `level` that follows the cycle with global index `cycleBig`, or null when the catalogue ends with the
+ * current one. `name` is what is said where the current one ends: majors in words ("Delta Tetrafracton"), the Nuclide
+ * by its ordinal ("ε#3"), finer cycles by their placing counts, short inside the same Nuclide ("34η", "33η 30ι") and
+ * with the Nuclide when it starts a new one ("ε#3 0η").
+ * @returns {null | {idx: bigint, name: string, address: string}}
  */
 export function nextCycle(model, pure, level, cycleBig) {
   const idx = BigInt(cycleBig) + 1n;
   if (idx >= model.clock.count(level)) return null;
-  const path = model.cycleToPath(level, idx);
-  return { idx, name: pure.periodName(level, path[level]), short: pure.shortName(level, path[level]), address: pathText(pure, path) };
+  let name;
+  if (level <= 4) name = pure.cycleName(level, idx);
+  else {
+    const same = ancestor(model, level, idx, 4) === ancestor(model, level, cycleBig, 4);
+    name = pure.cycleName(level, idx, { short: same });
+  }
+  return { idx, name, address: cycleAddress(model, pure, level, idx) };
 }
 
-/** "→ Eta Difracton begins": what happens where a cycle ends (never a date). */
+/** "→ Delta Tetrafracton begins" / "→ 34η begins": what happens where a cycle ends (never a date). */
 export const endsText = (next) => (next ? `→ ${next.name} begins` : '→ the catalogue ends');
 
-/** The bar sector the phase is in is the child cycle of that number: "Theta Octafracton" (0-based sector index). */
-export const sectorName = (pure, level, sectorIndex) => pure.periodName(level + 1, sectorIndex + 1);
+/**
+ * The bar sector the phase is in is the child cycle with that index: its name and, for a major child, its quarter word
+ * (a major's phase is never drawn). "Beta Tetrafracton" + "Valley", "ε#5", "22η", "28ι".
+ * @returns {{name: string, quarter: string | null, major: boolean}}
+ */
+export function sectorName(pure, lv, sectorIndex, sectorFrac = 0) {
+  const child = lv.level + 1;
+  if (pure.isMajor(child)) return { name: pure.periodName(child, sectorIndex + 1), quarter: quarterWord(pure, sectorFrac), major: true };
+  const idx = BigInt(lv.cycleBig) * BigInt(lv.factor) + BigInt(sectorIndex);
+  return { name: pure.cycleShort(child, idx), quarter: null, major: false };
+}
 
 // ---------------------------------------------------------------------------
 // the unit a cycle is (prose only: tooltips and legends that explain it)
 // ---------------------------------------------------------------------------
 
-/** "Hadron": the particle name of a level's unit; '' for α β γ (no name yet) and for ξ and finer (not units). */
+/** "Helion": the name of a MINOR unit (ε η ι λ ν); '' for majors (their name is the level's) and for non-units. */
 export const unitWord = (pure, level) => {
-  const u = pure.UNITS[level];
-  return u?.named ? u.name : '';
+  const u = pure.unitOf(level);
+  return u && !u.major ? u.name : '';
 };
 
-/** "11η": how many cycles of the next finer level one cycle of `level` holds, written as a count. */
-export const holds = (model, level) => `${model.levelInfo(level).factor}${letterOf(level + 1)}`;
+/** "36ι": how many of the next unit one cycle of a unit level holds; '' for the Blink and for levels that are not units. */
+export function holds(model, pure, level) {
+  const i = pure.UNIT_LEVELS.indexOf(level);
+  if (i < 0 || i === pure.UNIT_LEVELS.length - 1) return '';
+  const next = pure.UNIT_LEVELS[i + 1];
+  return `${model.levelInfo(next).prefix / model.levelInfo(level).prefix}${letterOf(next)}`;
+}
 
-/** "a" or "an" for the word that follows (names: an Atom; letters read aloud: an α, an ε, an η, a β, a ξ). */
+/** "a" or "an" for the word that follows (an Alpha, a Helion; letters read aloud: an α, an ε, an η, a ζ, a ξ). */
 const article = (word) => (/^[aeiouαεηιουω]/i.test(word) ? 'an' : 'a');
 
 /**
- * A clause that explains a level's unit: "a Hadron (ζ) is 11η", "a γ cycle is 5δ". Below the Blink there is no
- * unit: a ξ cycle is told as the part of a Blink it is ("a ξ cycle is 0.14ν").
+ * A clause that explains what a cycle of a level is:
+ *   major / unit  "a Delta (δ) is 5ε", "a Nuclide (ε) is 77η", "a Helion (η) is 36ι", "a Blink (ν) is the finest unit"
+ *   between       "a ζ cycle is 11η, not a unit"
+ *   finer         "a ξ cycle is 0.14ν, finer than a Blink"
  */
 export function unitClause(model, pure, level) {
   const sym = letterOf(level);
-  if (!pure.UNITS[level]) return `${article(sym)} ${sym} cycle is ${pure.cycleLength(level)}`;
-  const name = unitWord(pure, level);
-  const subject = name ? `${article(name)} ${name} (${sym})` : `${article(sym)} ${sym} cycle`;
-  return `${subject} is ${holds(model, level)}`;
+  const kind = pure.levelKind(level);
+  if (kind === 'between') return `${article(sym)} ${sym} cycle is ${pure.cycleLength(level)}, not a unit`;
+  if (kind === 'sub') return `${article(sym)} ${sym} cycle is ${pure.cycleLength(level)}, finer than a Blink`;
+  const name = pure.unitName(level);
+  const subject = `${article(name)} ${name} (${sym})`;
+  const h = holds(model, pure, level);
+  return h ? `${subject} is ${h}` : `${subject} is the finest unit`;
 }
 
-/** The clause as a sentence: "A Hadron (ζ) is 11η." (tooltips). */
+/** The clause as a sentence: "A Helion (η) is 36ι." (tooltips). */
 export const unitSentence = (model, pure, level) => {
   const c = unitClause(model, pure, level);
   return `${c[0].toUpperCase()}${c.slice(1)}.`;
@@ -91,15 +151,15 @@ export const unitSentence = (model, pure, level) => {
 // spans and countdowns
 // ---------------------------------------------------------------------------
 
-/** "6ι 3κ": the time left between two instants counted in ladder units (pure.between). Never negative ("0ν"). */
+/** "6ι 43λ": the time left between two instants counted in ladder units (pure.between). Never negative ("0ν"). */
 export function leftText(model, pure, t1, t2, parts = 2) {
   return t2 > t1 ? pure.between(t1, t2, { parts }) : pure.durationPos(0, { parts });
 }
 
 /**
- * Length of a cycle reading `lv` (model.levelAt): "1η", "1ζ", "0.14ν". A whole cycle is pure.cycleLength(level)
- * (exact: 4 / P Saros, never measured between two float instants); a cycle clipped by the end of the catalogue
- * keeps its shorter, odd tail.
+ * Length of a cycle reading `lv` (model.levelAt): "1δ", "1η", "11η" (a ζ), "4ι" (a θ), "0.14ν" (a ξ). A whole cycle is
+ * pure.cycleLength(level) (exact: 4 / P Saros, never measured between two float instants); a cycle clipped by the end
+ * of the catalogue keeps its shorter, odd tail.
  */
 export function lengthText(model, pure, lv) {
   if (!lv.clipped) return pure.cycleLength(lv.level);
@@ -108,8 +168,8 @@ export function lengthText(model, pure, lv) {
 }
 
 /**
- * The hero countdown: up to three units ("1ζ 4η 3θ"; zero parts are skipped by the core, so "3η 2ι" never reads
- * "3η 0θ 2ι"), like "2 d 03 h 11 min" in normal mode. Under five Blinks the core's decimal takes over ("2.6ν").
+ * The hero countdown: up to three units ("2ε 10η 6ι"; zero parts are skipped by the core, so "3η 2λ" never reads
+ * "3η 0ι 2λ"), like "2 d 03 h 11 min" in normal mode. Under ten Blinks the core's decimal takes over ("2.6ν").
  */
 export function heroLeft(model, pure, t1, t2) {
   return t2 > t1 ? pure.between(t1, t2, { parts: 3 }) : pure.durationPos(0);
@@ -118,7 +178,7 @@ export function heroLeft(model, pure, t1, t2) {
 /** "6.43 Blinks", "0.4 Blinks", "0.00322 Blinks": a short real-time lead counted in Blinks (Just before / Just after). */
 export const leadBlinks = (pure, seconds) => pure.blinks(seconds);
 
-/** "0.31 Blinks", "1 Blink": how long a cycle too fast to count down lasts, two significant digits. */
+/** "0.25 Blinks", "1 Blink": how long a cycle too fast to count down lasts, two significant digits. */
 export function periodBlinks(pure, seconds) {
   const n = Number(pure.secondsToBlinks(seconds).toPrecision(2));
   return pure.blinks(pure.blinksToSeconds(n));
@@ -150,43 +210,37 @@ export function phaseWords(pure, fraction, label = 'phase') {
 }
 
 // ---------------------------------------------------------------------------
-// where inside the hierarchy an instant is (clock and date counters)
+// where inside the hierarchy an instant is (the stamp's tokens)
 // ---------------------------------------------------------------------------
 
 /**
- * Counter tokens of an instant, coarsest first, in the notation of pure.stamp: six whole-cycle ordinals and three
- * clock counts: ["α#6","β#4","γ#9","δ#3","ε#2","ζ#5","3η","17ι","42λ"], or null.
+ * The tokens of an instant's full letter stamp, coarsest first: four major ordinals, the Nuclide ordinal and four
+ * counts: ["α#6","β#4","γ#9","δ#3","ε#5","33η","29ι","21λ","3ν"], or null (pure.stamp(t, 'nu') split).
  */
 export function counterParts(pure, t) {
   const d = pure.date(t);
   const c = pure.clock(t);
   if (!d || !c) return null;
-  return [`α#${d.alpha}`, `β#${d.beta}`, `γ#${d.gamma}`, `δ#${d.delta}`, `ε#${d.epsilon}`, `ζ#${d.zeta}`, `${c.eta}η`, `${c.iota}ι`, `${c.lambda}λ`];
+  return [`α#${d.alpha}`, `β#${d.beta}`, `γ#${d.gamma}`, `δ#${d.delta}`, `ε#${c.epsilon}`, `${c.eta}η`, `${c.iota}ι`, `${c.lambda}λ`, `${c.nu}ν`];
 }
 
 /**
- * Join counter tokens `from..to` like pure.stamp: α β γ read as one group, every further ordinal is set off by a
- * dot, and the clock counts η ι λ read as one group again ("ζ#5 · 3η 17ι").
+ * The finer of the two stamp tokens that place a quarter threshold of a cycle of each level (index into counterParts):
+ * the first token that tells the four thresholds apart, except that a Delta's quarters (1¼ Nuclides apart) are placed
+ * to the Helion, the basic reading. Below μ no token is fine enough (a ν quarter is a quarter of a Blink).
  */
-function joinCounters(parts, from, to) {
-  let out = parts[from];
-  for (let i = from + 1; i <= to; i++) out += (i <= 2 || i >= 7 ? ' ' : ' · ') + parts[i];
-  return out;
-}
-
-/** Finest counter that tells the quarter thresholds of a cycle of each level apart (index into counterParts); none from λ down. */
-const QUARTER_RESOLUTION = [1, 2, 3, 4, 5, 6, 7, 7, 8, 8];
+const QUARTER_RESOLUTION = [1, 2, 3, 5, 6, 6, 6, 6, 7, 7, 8, 8];
 
 /**
- * Where a quarter threshold of a cycle of `level` falls, as its two finest counters: "ζ#5 · 3η", "3η 17ι".
- * Empty for cycles of λ and finer (the counters cannot tell their quarters apart: the ¼ ½ ¾ column does).
+ * Where a quarter threshold of a cycle of `level` falls, as two tokens of the stamp: "β#4 γ#4" (β), "ε#2 19η" (δ),
+ * "33η 9ι" (η), "29ι 16λ" (ι), "21λ 6ν" (λ). Empty for ν and finer (the ¼ ½ ¾ column says it).
  * Evaluated 1 ms past `when`, so the end of a cycle reads as the start of the next one whatever the rounding.
  */
 export function quarterWhere(model, pure, when, level) {
   const res = QUARTER_RESOLUTION[level];
   if (res === undefined || when === null || when === undefined) return '';
   const parts = counterParts(pure, Math.min(when + 0.001, model.tMax));
-  return parts ? joinCounters(parts, Math.max(0, res - 1), res) : '';
+  return parts ? `${parts[res - 1]} ${parts[res]}` : '';
 }
 
 // ---------------------------------------------------------------------------
@@ -199,81 +253,101 @@ export function positionOfKey(key) {
   return m ? { num: BigInt(m[1]), den: BigInt(m[2]) } : null;
 }
 
+/** Global index of the cycle of `level` that contains the exact position num/den (floor). */
+const cycleAtPosition = (model, level, num, den) => (num * model.levelInfo(level).prefix) / (4n * den);
+/** Its 0-based index inside the parent (Alpha: global). */
+function localAtPosition(model, level, num, den) {
+  const c = cycleAtPosition(model, level, num, den);
+  const sib = model.levelInfo(level).siblings;
+  return Number(sib === null ? c : c % BigInt(sib));
+}
+
 /**
- * The pure date (alpha, beta, gamma, delta, epsilon, zeta: 1-based whole-cycle ordinals) of an exact position
- * num/den, by exact integer arithmetic; the same counters as `pure.date(t)` for the instant that position belongs to.
+ * The pure date of an exact position num/den by exact integer arithmetic: the twin of `pure.date(t)` for the instant
+ * that position belongs to: {alpha, beta, gamma, delta, epsilon, quarter: {alpha … delta}}.
  */
-export function dateAtPosition(model, num, den) {
-  const ordinalAt = (level) => {
-    const cycle = (num * model.levelInfo(level).prefix) / (4n * den); // floor: the cycle that contains p
-    const sib = model.levelInfo(level).siblings;
-    return Number(sib === null ? cycle : cycle % BigInt(sib)) + 1;
-  };
+export function dateAtPosition(model, pure, num, den) {
+  const q = (L) => pure.QUARTER_WORDS[Number(((num * model.levelInfo(L).prefix) / den) % 4n)]; // floor(4 · phase)
   return {
-    alpha: ordinalAt(0),
-    beta: ordinalAt(1),
-    gamma: ordinalAt(2),
-    delta: ordinalAt(3),
-    epsilon: ordinalAt(4),
-    zeta: ordinalAt(5),
+    alpha: localAtPosition(model, 0, num, den) + 1,
+    beta: localAtPosition(model, 1, num, den) + 1,
+    gamma: localAtPosition(model, 2, num, den) + 1,
+    delta: localAtPosition(model, 3, num, den) + 1,
+    epsilon: localAtPosition(model, 4, num, den) + 1,
+    quarter: { alpha: q(0), beta: q(1), gamma: q(2), delta: q(3) },
   };
 }
 
-/** "δ#6 · ε#5 · ζ#4": the whole-cycle ordinals of a date, as pure.dateText writes them after the α β γ group. */
-export const dateTail = (d) => `δ#${d.delta} · ε#${d.epsilon} · ζ#${d.zeta}`;
+/** The minor clock of an exact position: the twin of `pure.clock(t)`: {epsilon, eta 0–76, iota, lambda, nu}. */
+export function clockAtPosition(model, num, den) {
+  const l = (L) => localAtPosition(model, L, num, den);
+  return { epsilon: l(4) + 1, eta: l(5) * 11 + l(6), iota: l(7) * 4 + l(8), lambda: l(9) * 13 + l(10), nu: l(11) * 5 + l(12) };
+}
 
-/** "ζ ends — 4 finer cycles (η, θ, ι, κ) end with it.": the hero sentence (a letter names the cycle, never "ζ 6"). */
-export function turnoverWords(top, maxLevel) {
+/**
+ * The hero sentence: "ζ ends — 4 finer cycles (η, θ, ι, κ) end with it." for a minor level (by its letter, never
+ * "ζ 6"); a major one is said in words and in a shorter form, so the line still fits the 340 px column:
+ * "Gamma ends, with 11 finer cycles (δ … ξ)."
+ */
+export function turnoverWords(pure, top, maxLevel) {
   const fin = finerLevels(top, maxLevel);
-  const name = letterOf(top);
+  const name = levelSay(pure, top);
   if (!fin.length) return `${name} ends.`;
   const one = fin.length === 1;
+  if (pure.isMajor(top)) return `${name} ends, with ${fin.length} finer ${one ? 'cycle' : 'cycles'} (${levelLetters(fin, 3)}).`;
   return `${name} ends — ${fin.length} finer ${one ? 'cycle' : 'cycles'} (${levelLetters(fin)}) end${one ? 's' : ''} with it.`;
 }
 
 const turnoverCache = new Map();
 
 /**
- * What an upcoming turnover is, in pure terms: the cycle that begins (name, short name, address chain), the
- * date counters where it falls and a group key (the ζ cycle, one Hadron, it falls in: the group of the list).
- * `name` is null when the catalogue ends there.
+ * What an upcoming turnover is, in pure terms. `name` is the cycle of the event's top level that begins there (majors in
+ * words, minors by their placing count: "Delta Tetrafracton", "ε#3", "34η"; null when the catalogue ends there),
+ * `address` its full letter address ("α#6 β#4 γ#9 δ#3 ε#5 34η"), `date` / `clock` the exact readings there (twins of
+ * pure.date / pure.clock), `group` the Nuclide it falls in (the group of the list), `heading` that Nuclide in words
+ * ("Delta Trifracton ε#5") and `stamp` the short letter date of the turnover ("δ#3 ε#5 34η").
  * @param {{key:string, top:number}} ev event from buildEvents
  */
 export function turnoverInfo(model, pure, ev) {
-  const hit = turnoverCache.get(ev.key);
+  const cacheKey = `${ev.key}|${ev.top}`;
+  const hit = turnoverCache.get(cacheKey);
   if (hit) return hit;
   const p = positionOfKey(ev.key);
   const level = ev.top;
+  const none = { name: null, address: '', date: null, clock: null, group: ev.key, heading: '', stamp: '' };
   let info;
-  if (!p) info = { name: null, short: '', address: '', date: null, group: ev.key };
+  if (!p) info = none;
   else {
-    const idx = (p.num * model.levelInfo(level).prefix) / (4n * p.den);
-    const group = String((p.num * model.levelInfo(5).prefix) / (4n * p.den));
-    if (idx >= model.clock.count(level)) info = { name: null, short: '', address: '', date: null, group };
+    const idx = cycleAtPosition(model, level, p.num, p.den);
+    const group = String(cycleAtPosition(model, 4, p.num, p.den));
+    if (idx >= model.clock.count(level)) info = { ...none, group };
     else {
-      const path = model.cycleToPath(level, idx);
+      const date = dateAtPosition(model, pure, p.num, p.den);
+      const clock = clockAtPosition(model, p.num, p.den);
       info = {
-        name: pure.periodName(level, path[level]),
-        short: pure.shortName(level, path[level]),
-        address: pathText(pure, path),
-        date: dateAtPosition(model, p.num, p.den),
+        name: level <= 4 ? pure.cycleName(level, idx) : pure.cycleName(level, idx, { short: true }),
+        address: cycleAddress(model, pure, level, idx),
+        date,
+        clock,
         group,
+        heading: `${pure.periodName(3, date.delta)} ε#${clock.epsilon}`,
+        stamp: `δ#${date.delta} ε#${clock.epsilon} ${clock.eta}η`,
       };
     }
   }
   if (turnoverCache.size > 600) turnoverCache.clear();
-  turnoverCache.set(ev.key, info);
+  turnoverCache.set(cacheKey, info);
   return info;
 }
 
 /**
- * The grouping of the pure list: events are grouped by the ζ (Hadron) they fall in, the pure "day". Per event:
+ * The grouping of the pure list: events are grouped by the Nuclide (ε) they fall in, the pure "week". Per event:
  *   newDay  marks the separator drawn between two groups (never on the first row),
- *   clock   the date counters "δ#6 · ε#5 · ζ#4" (wide cards write them on every row),
- *   head    the same counters as the heading of a group of two or more events, on its first row ('' elsewhere):
- *           a group of one is its own date, the heading only helps where several events share a ζ.
+ *   clock   the short letter date of the turnover "δ#3 ε#5 34η" (wide cards write it on every row),
+ *   head    the Nuclide in words, "Delta Trifracton ε#5", as the heading of a group of two or more events, on its
+ *           first row ('' elsewhere): a group of one is its own date, the heading only helps where several share one.
  */
-export function groupByZeta(model, pure, events) {
+export function groupByNuclide(model, pure, events) {
   const infos = events.map((e) => turnoverInfo(model, pure, e));
   const size = new Map();
   for (const i of infos) size.set(i.group, (size.get(i.group) ?? 0) + 1);
@@ -282,7 +356,6 @@ export function groupByZeta(model, pure, events) {
     const info = infos[i];
     const first = info.group !== prev;
     prev = info.group;
-    const clock = info.date ? dateTail(info.date) : '';
-    return { ...e, dayKey: info.group, newDay: i > 0 && first, day: null, clock, head: first && size.get(info.group) > 1 ? clock : '' };
+    return { ...e, dayKey: info.group, newDay: i > 0 && first, day: null, clock: info.stamp, head: first && size.get(info.group) > 1 ? info.heading : '' };
   });
 }

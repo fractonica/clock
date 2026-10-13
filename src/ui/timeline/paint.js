@@ -359,7 +359,9 @@ function paintLane(S, i) {
       const n1 = b.local + 1;
       let variants = [];
       if (S.isPure) {
-        variants = S.words.blockLabels({ level, local: b.local, idx: b.idx, sib, wide: w > plotW * 0.45, w, endsWithCatalogue: b.end >= model.tMax - 1e-3 });
+        // a major period says the quarter the cursor is in (its phase is never drawn in pure mode)
+        const quarter = isCur && S.pure.isMajor(level) ? S.pure.QUARTER_WORDS[S.pure.quarterAt(S.cursorT, level)] : null;
+        variants = S.words.blockLabels({ level, local: b.local, idx: b.idx, sib, wide: w > plotW * 0.45, w, endsWithCatalogue: b.end >= model.tMax - 1e-3, quarter });
       } else {
         if (w > plotW * 0.45) variants.push(`${info.letter} ${info.depth} · ${n1}/${sib} · ends ${data.endLabel(level, b.idx, b.end, S.refYear)}`);
         if (w >= 120) variants.push(`${info.letter} ${info.depth} · ${n1}/${sib}`);
@@ -448,6 +450,19 @@ function paintWave(S, level, b, st, y, h, x0, x1, cx0, cx1, isCur) {
   const bottom = y + h - 1.5;
   for (const [qx, tall] of [[q1, 4], [q2, 6], [q3, 4]]) {
     if (qx > cx0 && qx < cx1 && qx < x1 - 0.5) g.fillRect(Math.round(qx * S.dpr) / S.dpr, bottom - tall, 1, tall);
+  }
+  // pure mode, a major period: its four quarters in words, each centred on its stretch (named by the threshold that ends it)
+  if (S.isPure && S.pure.isMajor(level)) {
+    if (x1 - x0 >= 160 && h >= 30) {
+      const f = S.fonts.ui(500, 9.5);
+      const qs = [[x0, q1], [q1, q2], [q2, q3], [q3, x1]];
+      qs.forEach(([a, b], i) => {
+        const word = S.pure.QUARTER_WORDS[i];
+        const cx = (a + b) / 2;
+        if (b - a >= tw(g, f, word) + 10 && cx > cx0 + 14 && cx < cx1 - 14) text(g, word, cx, bottom - 11, f, st.textDim, 'center');
+      });
+    }
+    return;
   }
   // names when there is plenty of room
   if (x1 - x0 >= 320 && h >= 30) {
@@ -589,7 +604,7 @@ function paintOutOfRange(S) {
 // ---- axis ---------------------------------------------------------------------------------------------
 function paintAxis(S) {
   const { g, L, X, t0, t1, data, fonts, step, dpr } = S;
-  const symColor = S.isPure && step.pure ? laneStyle(S.theme, step.u).text : null; // pure: the unit symbol in its lane colour
+  const symColor = S.isPure && step.pure ? laneStyle(S.theme, step.level).text : null; // pure: the unit symbol in its lane colour
   const px0 = L.px0;
   const px1 = L.px1;
   const ay = L.axis.y;
@@ -653,6 +668,10 @@ function paintAxis(S) {
   // longest that fits between the closest pair of visible ticks.
   const fTick = fonts.mono(400, 11);
   const fMajor = fonts.mono(600, 11);
+  // pure mode: a major period named in words ("Delta Trifracton") is set in the text face, counts stay monospaced
+  const fWord = fonts.ui(500, 11);
+  const fWordMajor = fonts.ui(600, 11);
+  const fontOf = (tk, lab) => (S.isPure && /[A-Za-z]{2}/.test(lab) ? (tk.major ? fWordMajor : fWord) : tk.major ? fMajor : fTick);
   const ticks = data.ticksFor(step, t0, t1);
   const vis = [];
   for (let i = 0; i < ticks.length; i++) {
@@ -667,7 +686,7 @@ function paintAxis(S) {
     let ok = true;
     for (const v of vis) {
       const lab = v.tk.labels[Math.min(variant, v.tk.labels.length - 1)];
-      if (tw(g, v.tk.major ? fMajor : fTick, lab) > v.room) {
+      if (tw(g, fontOf(v.tk, lab), lab) > v.room) {
         ok = false;
         break;
       }
@@ -678,8 +697,8 @@ function paintAxis(S) {
   for (const { tk, x, room } of vis) {
     g.fillStyle = tk.major ? 'rgba(231,237,243,0.7)' : 'rgba(163,177,191,0.6)';
     g.fillRect(Math.round(x * dpr) / dpr, yTick + (tk.major ? 1 : 4), 1, rowH - (tk.major ? 1 : 4));
-    const font = tk.major ? fMajor : fTick;
     const lab = tk.labels[Math.min(variant, tk.labels.length - 1)];
+    const font = fontOf(tk, lab);
     if (tw(g, font, lab) <= room + 4 && x + 4 + tw(g, font, lab) <= px1 + 40) {
       countText(g, lab, x + 4, yTick + 8, font, tk.major ? 'rgba(231,237,243,0.95)' : 'rgba(163,177,191,0.95)', symColor);
       S.axisLabels.push(lab);
@@ -830,9 +849,9 @@ function paintGutters(S) {
     const depthRoom = x1 - 8 - (11 + lw + 4);
     const depth = fit(g, fDepth, depthHeadVariants(info), depthRoom) ?? String(info.depth);
     text(g, depth, 11 + lw + 4, ly + 1, fDepth, sel ? 'rgba(231,237,243,0.95)' : 'rgba(163,177,191,0.8)');
-    // pure: how many cycles of the next depth make one of this ("= 9θ" for η; every lane is itself a whole unit, so its
-    // length would only repeat its letter); normal: the mean length
-    const len = S.isPure ? S.words.laneSplit(level) : data.lengthLabel(level);
+    // pure: one cycle counted in the next unit, the ladder itself ("= 36ι" for η, "= 11η" for ζ, "= 0.14ν" for ξ);
+    // normal: the mean length
+    const len = S.isPure ? S.words.laneLength(level) : data.lengthLabel(level);
     const lenFull = S.isPure ? len : `≈ ${len}`;
     if (two) {
       // the compact gutter is 56 px: a smaller mono font keeps "33.7 min" clear of the divider

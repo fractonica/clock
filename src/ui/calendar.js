@@ -8,12 +8,12 @@
  *   ./calendar/month.js      pure month grid / band / year ribbon data
  *   ./calendar/converter.js  converter UI          ./calendar/monthview.js  month UI
  *
- * Pure mode (docs/design/80-pure.md, revision 2: whole cycles, no halves) swaps the content, not the frame: the
- * Gregorian converter and month grid give way to
- *   ./calendar/pure-conv.js       stamps <-> moments, counters, the δ page geometry (pure maths)
- *   ./calendar/pure-parse.js      the pure jump grammar (names, addresses, stamps, offsets in every unit α … ν)
- *   ./calendar/pure-converter.js  the converter between Fractonica forms (stamp, counters, position, address, glyph pairs, sync)
- *   ./calendar/pure-month.js      the page of one δ as 5 rows (ε) x 7 columns (ζ) = 35 ζ cells
+ * Pure mode (SPEC §15, docs/design/80-pure.md, revision 3: major periods in words, minor units by counts) swaps the
+ * content, not the frame: the Gregorian converter and month grid give way to
+ *   ./calendar/pure-conv.js       dates <-> moments, counters, the Delta page geometry (pure maths)
+ *   ./calendar/pure-parse.js      the pure jump grammar (all four date forms, counts, offsets over α β γ δ ε η ι λ ν)
+ *   ./calendar/pure-converter.js  the converter between Fractonica forms (dates, counts, position, address, phases, sync)
+ *   ./calendar/pure-month.js      the page of one Delta: 5 Nuclide rows x 7 columns of 11 Helions
  * Both sets live side by side; only the one for the current mode is shown and rendered. The normal views are given a
  * formatter that never turns pure (ctx.fmt answers in Fractonica terms in pure mode), so they cannot absorb pure text
  * and switching back leaves them exactly as they were.

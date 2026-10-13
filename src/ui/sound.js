@@ -7,13 +7,15 @@
  *
  * Exposed on the instance: { enabled, toggle(): Promise<boolean>, setEnabled(on), playMoment(t?), engine }
  *
- * Pure mode (docs/design/80-pure.md, revision 2): the same panel and the same audio, said in Fractonica terms only.
- * Pitch is a ratio, an octave offset and cents (never a note name), the base pitch is an offset of the "ground", and
- * absolute pitch is counted in pB, cycles per Blink ("34.2 pB" for the 110 Hz ground; never Hz). Cycle lengths are
- * `pure.cycleLength(level)` ("1η"), real-time spans are Blinks (the chime floors, the tempo lock's number box:
+ * Pure mode (docs/design/80-pure.md and SPEC §15, revision 3): the same panel and the same audio, said in Fractonica
+ * terms only. Pitch is a ratio, an octave offset and cents (never a note name), the base pitch is an offset of the
+ * "ground", and absolute pitch is counted in pB, cycles per Blink ("34.2 pB" for the 110 Hz ground; never Hz). Cycle
+ * lengths are `pure.cycleLength(level)` on the unit ladder α β γ δ ε η ι λ ν ("1η"; the depths between the units are
+ * counts: ζ "11η", θ "4ι", κ "13λ", μ "5ν"), real-time spans are Blinks (the chime floors, the tempo lock's number box:
  * `pure.blinksToSeconds` / `secondsToBlinks`; the stored settings stay in seconds), every speed (chips, buttons, the
  * tempo-lock read-out and toasts) is `pure.rateLabel(rate)` ("η per Blink", "3ι per Blink": never a bare "×4,547"),
- * and every percentage is a pair of 2-stroke glyphs, spoken as "volume 8 and 0 of 256".
+ * and every percentage is a pair of 2-stroke glyphs, spoken as "volume 8 and 0 of 256" – except the phase of a major
+ * period (α β γ δ), which is said in words with its quarter ("Delta Trifracton Node") and never drawn.
  * `applyMode()` rebuilds everything that is static when the mode changes; the words themselves live in
  * audio/words.js (pure, unit-tested).
  */
@@ -243,15 +245,11 @@ export function mount(root, ctx) {
   const buildHow = (pu) => (pu ? W.HOW : HOW).map(([h, p]) => `<li><b>${h}</b> ${p}</li>`).join('');
   const buildFloors = (pu) =>
     FLOORS.map((f) => `<option value="${f}">${pu ? W.floorLabel(pu, f, FLOOR_LABEL[f]) : `${f} s${FLOOR_LABEL[f] ? ' · ' + FLOOR_LABEL[f] : ''}`}</option>`).join('');
-  // pure: every depth is a unit, so its own length is always "1η"; only a cycle finer than a Blink says more (ξ: 0.14ν)
-  const depthLength = (pu, r) => {
-    const len = pu.cycleLength(r.level);
-    return len === `1${r.letter}` ? '' : ` (${len})`;
-  };
+  // pure: the depth chip and the unit's name ("η 7 · Helion"), or the exact length of a depth between units ("ζ 6 · 11η")
   const buildDepths = (pu) =>
     rows
       .slice(1)
-      .map((r) => `<option value="${r.depth}">${r.depth} · ${r.letter}${pu ? depthLength(pu, r) : ` (${fmtPeriod(r.cycleSeconds)})`}</option>`)
+      .map((r) => `<option value="${r.depth}">${pu ? W.depthOption(pu, r) : `${r.depth} · ${r.letter} (${fmtPeriod(r.cycleSeconds)})`}</option>`)
       .join('');
   const buildRates = (pu) =>
     (pu ? W.rateButtons(pu).map((b) => [b.key, b.label, b.unit, b.tip]) : RATE_PRESETS)
@@ -282,7 +280,7 @@ export function mount(root, ctx) {
   const tipFor = {
     power: () => '<b>Sound on / off</b> (M)<br>Starts the drone and the bells. Audio can only start after a click, so it is off until you press this.',
     moment: () =>
-      `<b>Hear this moment</b><br>Plays the chord of ${curPure ? curPure.stamp(store.t(), 'iota') : fmt.dateTime(store.t())} as a short arpeggio from α to the finest voice; each note is as loud as its cycle is high right now. Works while the sound is off.`,
+      `<b>Hear this moment</b><br>Plays the chord of ${curPure ? curPure.dateText(store.t()) : fmt.dateTime(store.t())} as a short arpeggio from α to the finest voice; each note is as loud as its cycle is high right now. Works while the sound is off.`,
     chord: () => '<b>Chord</b><br>One soft voice per cycle at its just-intonation pitch. It swells to the cycle’s peak and fades to its valley; the fast cycles (μ ν ξ) modulate at their true rates, the clock’s heartbeat.',
     chimes: () => '<b>Chimes</b><br>A bell at every peak, node, valley and end. A cycle end strums all finer cycles that end with it: a major turnover rings as a big chord.',
     physical: () =>
@@ -385,7 +383,9 @@ export function mount(root, ctx) {
     const ph = phaseOf(framePos, model.levelInfo(L).prefixNum);
     const v = loud[L];
     const state = Math.abs(ph - 0.25) < 0.02 ? 'at its peak' : Math.abs(ph - 0.75) < 0.02 ? 'in its valley' : ph < 0.25 || ph > 0.75 ? 'rising' : 'falling';
-    return { phase: ph, loud: v, state };
+    // pure: a major period is said in words with its quarter, never by its phase
+    const major = curPure?.isMajor(L) ? curPure.majorText(store.t(), L) : undefined;
+    return { phase: ph, loud: v, state, major };
   };
 
   const mixer = createMixer(els.mixer, {

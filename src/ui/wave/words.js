@@ -2,11 +2,12 @@
  * Words of the wave view in both vocabularies.
  *
  * Normal mode delegates to tooltip.js (Gregorian spans, h / min countdowns, percentages). Pure mode says the
- * same things in Fractonica terms only (docs/design/80-pure.md): cycle names and address chains instead of
- * dates, durations counted in ladder units (one unit per depth, α β γ δ ε ζ η θ ι κ λ μ ν; whole cycles only),
- * a pair of 2-stroke glyphs (256 states) instead of a percentage, eclipses numbered instead of dated.
- * "Half-arc" is the view's own geometry (a cycle is a crest followed by a trough), not a unit: lengths are
- * always counted in whole-cycle units ("4θ 2ι").
+ * same things in Fractonica terms only (docs/design/80-pure.md, SPEC §15, revision 3): the major periods α β γ δ in
+ * words with their quarter ("Delta Trifracton", "Valley quarter"; their phase is never drawn as a pair), the minor
+ * cycles by where they start in their Nuclide ("ε#5 33η 28ι") with a pair of 2-stroke glyphs (256 states) instead of a
+ * percentage, address chains instead of dates, durations counted on the ladder α β γ δ ε η ι λ ν, eclipses numbered
+ * instead of dated. "Half-arc" is the view's own geometry (a cycle is a crest followed by a trough), not a unit:
+ * lengths are always counted in units ("18ι").
  *
  * Everything here is a function of (mode, readings): the mode is asked each time (`isPure()`), so a text
  * built a moment ago is never reused after the switch. Pure helpers take the `pure` object of src/core/pure.js
@@ -35,8 +36,8 @@ const signed = (n) => (n < 0 ? '−' : '') + Math.abs(n);
 // ------------------------------------------------------------------ pure wording helpers
 
 /**
- * A span of `dpos` Saros positions in ladder units: "1ζ", "2η 5θ" (pure.durationPos: up to `parts` non-zero counts,
- * zero units skipped). Below one Blink the core writes a decimal count of it ("0.5ν").
+ * A span of `dpos` Saros positions in ladder units: "1ε", "5η 18ι" (pure.durationPos: up to `parts` non-zero counts,
+ * zero units skipped). Below ten Blinks the core writes a decimal count of the Blink ("0.5ν").
  */
 export function pureSpan(pure, dpos, parts = 2) {
   return pure.durationPos(dpos, { parts });
@@ -61,67 +62,70 @@ export function positionSpan(pure, model, t1, t2) {
   return (hi - lo) / pure.secondsPerPosition(a === null ? model.tMin : model.tMax);
 }
 
-/** "in 1η 5θ" / "3ι ago": how far `to` lies from `from`, counted in ladder units. */
+/** "in 1η 5ι" / "3ι ago": how far `to` lies from `from`, counted in ladder units. */
 export function pureCountdown(pure, model, from, to, parts = 2) {
   const text = pureSpan(pure, positionSpan(pure, model, from, to), parts);
   return to >= from ? `in ${text}` : `${text} ago`;
 }
 
-/** The cycle length of a depth in ladder units, exact: every depth is a unit of its own, so "1η", "1ι" ("0.14ν" for ξ). */
+/** The cycle length of a depth in ladder units, exact: "1δ", "1η", ζ "11η", θ "4ι", κ "13λ", μ "5ν", ξ "0.14ν". */
 export const cycleLengthPure = (pure, level) => pure.cycleLength(level);
-/** `cycleLengthPure` with the unit's name where it has one: "1η (Helion)", "1γ", "0.14ν". */
+/** How many of the next unit make one cycle of a unit depth (δ 5ε, η 36ι …). */
+const NEXT_UNIT = Object.freeze({ 0: [5, 'β'], 1: [13, 'γ'], 2: [5, 'δ'], 3: [5, 'ε'], 4: [77, 'η'], 6: [36, 'ι'], 8: [65, 'λ'], 10: [25, 'ν'] });
+/**
+ * What one cycle of a depth is, for the depth buttons: a major "1δ = 5ε", a minor unit "1η (Helion) = 36ι" (the Blink
+ * "1ν (Blink)"), a depth between two units "11η" (ζ θ κ μ are no units and have no names), ξ "0.14ν".
+ */
 export function cycleNamedPure(pure, info) {
-  const u = pure.unitOf(info.letter);
   const len = cycleLengthPure(pure, info.level);
-  return u?.named && len === `1${u.sym}` ? `${len} (${u.name})` : len;
+  const name = pure.levelKind(info.level) === 'unit' ? ` (${pure.unitName(info.level)})` : '';
+  const made = NEXT_UNIT[info.level] ? ` = ${NEXT_UNIT[info.level][0]}${NEXT_UNIT[info.level][1]}` : '';
+  return `${len}${name}${made}`;
 }
-/** The length of half-arc `d`: half of a cycle counted in units ("4θ 2ι"; clipped ones are shorter). */
+/** The quarter of a cycle at `phase` (0..1): Peak, Node, Valley or End, the word that stands for a major's phase. */
+export const quarterWord = (pure, phase) => pure.QUARTER_WORDS[Math.min(3, Math.max(0, Math.floor(phase * 4)))];
+/** The phase of the cycle a half-arc belongs to, from the progress `local` (0..1) through the half-arc. */
+export const cyclePhaseOf = (d, local) => (d.crest ? 0 : 0.5) + Math.min(1, Math.max(0, local)) / 2;
+/** The length of half-arc `d`: half of a cycle counted in units ("18ι"; clipped ones are shorter). */
 export const halfLengthPure = (pure, model, d) => pureSpan(pure, (2 * d.fraction) / model.levelInfo(d.level).prefixNum);
 
-/** "α#6 β#4 γ#9 δ#3 ε#5": the address of cycle `cycleIdx` of `level`, at most `links` links, deepest last. */
+/**
+ * "α#6 β#4 γ#9 δ#3 ε#5 33η": the address of cycle `cycleIdx` of `level`, the stamp of its start: the ordinals of the
+ * major periods, then (from ε down) the Nuclide and the counts that place the cycle in it. At most `links` links,
+ * deepest last.
+ */
 export function chainText(pure, model, level, cycleIdx, links = 5) {
+  const big = BigInt(cycleIdx);
+  const P = (l) => model.levelInfo(l).prefix;
   const items = [];
-  let c = Number(cycleIdx);
-  for (let l = level; l >= 0; l--) {
-    items.push(pure.shortName(l, pure.ordinalOf(l, c)));
-    const sib = model.levelInfo(l).siblings;
-    if (sib === null) break;
-    c = Math.floor(c / sib);
-  }
-  items.reverse();
+  for (let l = 0; l <= Math.min(level, 3); l++) items.push(pure.shortName(l, pure.ordinalOf(l, big / (P(level) / P(l)))));
+  if (level >= 4) items.push(...pure.cycleName(level, big).split(' '));
   return items.length > links ? '… ' + items.slice(-links).join(' ') : items.join(' ');
 }
 
 /**
- * The displayed time written next to the focus marker: three consecutive parts of the pure date / clock, chosen by the
- * depth of the arc, like the date or clock a Gregorian label would show at that scale. Ordinals are written X#n
- * (1-based), the counters of the clock nX (units completed since the parent began, 0-based), as pure.stamp does:
- *   α β γ -> "α#6 β#4 γ#9"        δ ε ζ -> "δ#3 ε#5 ζ#4"        ε ζ η -> "ε#5 ζ#4 · 0η"        η ι λ -> "3η 17ι 21λ"
+ * The displayed time written next to the focus marker: three consecutive tokens of the stamp (pure.stamp: the ordinals
+ * α# β# γ# δ# ε#, then the counts η ι λ), chosen by the depth of the arc, like the date or clock a Gregorian label would
+ * show at that scale:
+ *   α -> "α#6 β#4 γ#9"     δ -> "δ#3 ε#5 33η"     ε -> "ε#5 33η 29ι"     ζ and finer -> "33η 29ι 21λ"
  */
 export function nowLabelPure(pure, t, level) {
   const d = pure.date(t);
   if (!d) return '—';
-  const start = Math.min(Math.max(level, 0), 6);
-  const c = start >= 4 ? pure.clock(t) : null;
-  // [group, text]: the ordinals α β γ, the ordinals δ ε ζ and the counters η ι λ each sit side by side (the face caption's groups)
-  const all = [
-    [0, `α#${d.alpha}`],
-    [0, `β#${d.beta}`],
-    [0, `γ#${d.gamma}`],
-    [1, `δ#${d.delta}`],
-    [1, `ε#${d.epsilon}`],
-    [1, `ζ#${d.zeta}`],
-    [2, c ? `${c.eta}η` : ''],
-    [2, c ? `${c.iota}ι` : ''],
-    [2, c ? `${c.lambda}λ` : ''],
-  ];
-  const win = all.slice(start, start + 3);
-  return win.reduce((str, [group, tok], i) => (i ? str + (win[i - 1][0] === group ? ' ' : ' · ') + tok : tok), '');
+  const start = Math.min(Math.max(level, 0), 5);
+  const c = start >= 3 ? pure.clock(t) : null;
+  const all = [`α#${d.alpha}`, `β#${d.beta}`, `γ#${d.gamma}`, `δ#${d.delta}`, `ε#${d.epsilon}`, c ? `${c.eta}η` : '', c ? `${c.iota}ι` : '', c ? `${c.lambda}λ` : ''];
+  return all.slice(start, start + 3).join(' ');
 }
 
-/** "opening half of Epsilon Pentafracton · 5 of 5 in δ" (the cycle a half-arc is half of, named; opening = crest, closing = trough). */
+/**
+ * The cycle a half-arc is half of (opening = crest, closing = trough): a major one in words, numbered in its parent
+ * ("opening half of Delta Trifracton · 3 of 5 in γ"), a minor one by where it starts ("closing half of ε#5 33η").
+ */
 export const cyclePure = (pure, d) =>
-  `${d.crest ? 'opening' : 'closing'} half of ${pure.periodName(d.level, d.cycleN)} · ${d.cycleN}\u00a0of\u00a0${d.cycleOf}${d.parent === null ? '' : '\u00a0in\u00a0' + d.parent}`;
+  pure.isMajor(d.level)
+    ? `${d.crest ? 'opening' : 'closing'} half of ${pure.periodName(d.level, d.cycleN)} · ${d.cycleN}\u00a0of\u00a0${d.cycleOf}${d.parent === null ? '' : '\u00a0in\u00a0' + d.parent}`
+    : `${d.crest ? 'opening' : 'closing'} half of ${pure.cycleName(d.level, d.cycle)}`;
 
 /** "starts in 3η" / "ends in 1ι 4λ" / "ended 2ι ago" relative to the displayed time. */
 export function whenPure(pure, model, d, now) {
@@ -158,7 +162,11 @@ export function tipHTMLPure({ d, p, at, now, pure, model, theme, marker = false,
   lines.push(`<div class="wave-tip-r mono">${esc(chainText(pure, model, d.level, d.cycle))}</div>`);
   lines.push(`<div class="wave-tip-r dim">${esc(loopText(d))} · ${esc(cyclePure(pure, d))}</div>`);
   let len = `${esc(halfLengthPure(pure, model, d))} long`;
-  if (now >= d.start && now < d.end) len += ` · ${pure.pairHTML((now - d.start) / d.duration, { label: 'half-arc phase' })} of this half-arc travelled`;
+  if (now >= d.start && now < d.end) {
+    const local = (now - d.start) / d.duration;
+    // a major period is read by its quarter, a minor one by the pair of how far through the half-arc it is
+    len += pure.isMajor(d.level) ? ` · now in its ${quarterWord(pure, cyclePhaseOf(d, local))} quarter` : ` · ${pure.pairHTML(local, { label: 'half-arc phase' })} of this half-arc travelled`;
+  }
   lines.push(`<div class="wave-tip-r dim wave-tip-len">${len}</div>`);
   lines.push(`<div class="wave-tip-r">${esc(whenPure(pure, model, d, now))}</div>`);
   if (d.clipped) lines.push('<div class="wave-tip-r dim">clipped by the end of the catalogue</div>');
@@ -196,7 +204,7 @@ export function createWords({ fmt, pure, model, theme, isPure }) {
     // ---- static labels
     /** Cycle length of a level for the depth buttons: "5.1 h" or "1η". */
     cycleLength: (info) => (on() ? cycleLengthPure(pure, info.level) : fmt.duration(info.meanSeconds)),
-    /** Tooltip of a depth button: "η · depth 7 · cycle ≈ 5 h 3 min · 9 …" or "η · depth 7 · one cycle = 1η (Helion) · 9 …". */
+    /** Tooltip of a depth button: "η · depth 7 · cycle ≈ 5 h 3 min · 9 …" or "η · depth 7 · one cycle = 1η (Helion) = 36ι · 9 …". */
     chipTitle: (info) =>
       on()
         ? `${info.text} · depth ${info.depth} · one cycle = ${cycleNamedPure(pure, info)} · ${info.factor} child half-arcs per half-arc`
@@ -264,9 +272,17 @@ export function createWords({ fmt, pure, model, theme, isPure }) {
     },
 
     // ---- spoken
+    /** A major period is said by its quarter, never by a phase pair (pure mode only). */
+    isMajor: (level) => on() && pure.isMajor(level),
+    /** The quarter of the cycle a half-arc reading belongs to: "Valley". */
+    quarter: (d, local) => quarterWord(pure, cyclePhaseOf(d, local)),
     /** The checked depth button also says where its depth is now. */
     chipLive(base, d, h) {
-      const through = on() ? pairSpoken(pure, h.local, 'half-arc phase') : `${Math.floor(h.local * 20) * 5} % through this half-arc`;
+      const through = on()
+        ? pure.isMajor(d.level)
+          ? `in the ${quarterWord(pure, cyclePhaseOf(d, h.local))} quarter of its cycle`
+          : pairSpoken(pure, h.local, 'half-arc phase')
+        : `${Math.floor(h.local * 20) * 5} % through this half-arc`;
       return `${base}. Now in half-arc ${d.signed}, ${d.crest ? 'crest' : 'trough'}, ${loopText(d)}, ${through}. ${cap(on() ? cyclePure(pure, d) : cycleText(d))}.`;
     },
     /** What is announced when the focused half-arc changes. */

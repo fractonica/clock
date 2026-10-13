@@ -12,7 +12,7 @@ src/core/model.js          the only code that talks to fractonica.js
 src/core/store.js          displayed time (live / time travel / time-lapse) + shared settings
 src/core/format.js         zone-aware Gregorian formatting and conversion, durations, countdowns
 src/core/theme.js          colours (TEAL, GOLD, level hues) and glyph style helper
-src/core/pure.js           pure-mode vocabulary: cycle names, the unit ladder (one named unit per depth: Atom … Blink), Blinks and pB for real time, phase pairs, pure clock/date/stamps (docs/design/80-pure.md)
+src/core/pure.js           pure-mode vocabulary: cycle names, major periods in words (Alpha … Delta) and minor units in letters (Nuclide, Helion, Preon, Flavon, Blink; SPEC.md §15), Blinks and pB for real time, phase pairs, pure clock/date/stamps (docs/design/80-pure.md)
 src/ui/*.js                one module per UI region (face, rings, ladder, upnext, timeline, wave,
                            calendar, jump, sound)  –  helpers go in src/ui/<module>/
 src/audio/*.js             sonification engine (pure scheduling/tuning + Web Audio)

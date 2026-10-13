@@ -49,29 +49,49 @@ Show the next ~8 events whose `top ≤ importance`, where **importance** is a se
 Both cards must look good in the 340 px column and when the layout puts them side by side at ~600 px (≤1320 px
 viewports) or full-width on mobile.
 
-## Pure mode (revision 2: whole cycles, one unit per depth, Blinks)
-Vocabulary comes from `src/core/pure.js` (see the REVISION 2 block of `80-pure.md`); wording lives in
-`src/ui/ladder/pure-text.js` (DOM-free, unit-tested). Nothing here is an Earth unit, a date or a percentage, and there are
-no half-cycle units: every depth is one unit (α β γ δ Atom, ε Nuclide, ζ Hadron, η Helion, θ Quark, ι Preon, κ Chromon,
-λ Flavon, μ Somon, ν Blink); finer than a Blink is a decimal of it (`0.14ν`).
+## Pure mode (revision 3: major periods in words, minor units every other depth, Blinks)
+Vocabulary from `src/core/pure.js` and SPEC §15 (see `80-pure.md`); the wording lives in `src/ui/ladder/pure-text.js`
+(DOM-free, unit-tested). Nothing here is an Earth unit, a date or a percentage; the depths between the minor units
+(ζ θ κ μ) and ξ have no names, and no minor cycle gets a fracton name.
 
-**Ladder rows**: chip (`η 7`), the ordinal name of the cycle (`Monofracton`), time left counted in units with at most two
-non-zero parts (`1θ 2ι`, `10η 1θ`, `1.5ν` under five Blinks), the phase as a pair of 2-stroke glyphs (256 states, the odometer
-of the cycle at the displayed instant, rewritten whenever its state changes). Cycles too fast to count down (ν, ξ) show how
-long one lasts in Blinks with two significant digits (`1 Blink`, `0.14 Blinks`) and keep the quarter column as `+0.036 Blinks`.
-**Detail** of the selected row: the end as "→ Eta Difracton begins", the quarter thresholds as their two finest counters
-(`0η 9ι`, `ζ#4 · 2η`; completed units counted from 0) with the time to go, phase and sector as glyph pairs, the cycle's name
-and address chain, "started … ago", the length from `pure.cycleLength(level)` (always `1X`, `0.14ν` at depth 14; its tooltip
-explains the unit, "An Atom (δ) is 5ε."), and the position span. Actions: "Just before" (end − min(2 s, ¼ of the cycle), then ×1; the
-lead reads `6.43 Blinks`) and "Just after" (1 ms in, `0.00322 Blinks`).
+**Ladder rows.**
+- *Major* (α β γ δ): the fracton ordinal and the quarter word, `Trifracton End` (the chip completes "Delta"), and a four-pip
+  quarter indicator in the glyph column (passed pips filled, the current one lit). A major's phase is never drawn.
+- *Minor*: ε by its ordinal (`ε#5`), η ι λ ν by their count (`33η`, `29ι`), the depths between and ξ by the count that places
+  them in their Nuclide (`pure.cycleShort`: `33η`, `28ι`, `13λ`, `0ν`, `3.43ν`). The phase is a pair of 2-stroke glyphs, the
+  odometer of the cycle at the displayed instant.
+- Time left is a span over α β γ δ ε η ι λ ν with at most two non-zero parts (`6ι 43λ`, `43η 6ι`, `1.5ν` under ten Blinks).
+  ν and ξ, too fast to count down, show how long one lasts (`1 Blink`, `0.14 Blinks`).
 
-**Up next**: hero `in 10η 1θ 2ι` (at most three non-zero units, zero parts skipped by the core), "→ Zeta Pentafracton begins" with
-its address chain, the finer-cycle sentence in letters, the phase pair. The legend says what the finest counted cycle holds
-(`Counting α–ζ turnovers · a Hadron (ζ) is 11η`; every cycle is one unit, so its length would just repeat its name). The list is
-grouped by the **ζ (one Hadron)** an event falls in, the pure "day": separator lines between groups, the name of the cycle that
-begins on every row, the date counters `δ#6 · ε#5 · ζ#4` on every row of a wide card (≥ 640 px) and, on narrow cards, as the
-heading of a group of two or more events (a group of one needs none). Real-time leads are counted in Blinks everywhere.
+**Detail** of the selected row:
+- The end says what begins: "→ Delta Tetrafracton begins", "→ ε#1 begins", "→ 34η begins". The short form is used inside a
+  Nuclide, and the Nuclide is named when a new one starts (`ε#1 0η`).
+- The quarter thresholds are placed by two tokens of the stamp. A Delta is placed to the Helion (`ε#2 19η`), a Helion as
+  `33η 9ι`, a Flavon as `21λ 6ν`; ν and finer use the ¼ ½ ¾ column only.
+- Phase: a glyph pair for minors, "Quarter: End · 4 of 4" with pips for majors. The sector is the child cycle, said the same
+  way: `Delta Trifracton End · 3 of 5` with no pair, or `28ι · 8 of 9` with a pair.
+- The cycle is given by name and letter address (`ε#5 33η`, `α#6 β#4 γ#9 δ#3 ε#5 33η`), with "started … ago".
+- The length comes from `pure.cycleLength` (`1δ`, `1η`, `11η`, `4ι`, `13λ`, `5ν`, `0.14ν`). Its tooltip explains the cycle:
+  "A Helion (η) is 36ι.", "A ζ cycle is 11η, not a unit."
+- Actions: "Just before" (end − min(2 s, ¼ cycle), then ×1; `6.43 Blinks`) and "Just after" (1 ms in, `0.00322 Blinks`).
 
-Notation: `X#n` ordinal (from 1), `nX` count (from 0), `η 7` only on chips; unit names appear only in prose (tooltips,
-legends, hints). Verified by `tools/checks/check-ladder-pure.mjs` (leak scan of every state of both cards, live switching,
-behaviour, layout) and `test/ladder.test.js`.
+**Up next.**
+- The hero names what begins: majors in words with their letter address ("→ Delta Tetrafracton begins", `α#6 β#4 γ#9 δ#4`),
+  minors by ordinal or count ("→ ε#3 begins", "→ 44η begins", `α#6 β#4 γ#9 δ#3 ε#5 44η`).
+- The hero countdown has up to three non-zero units (`10η 6ι 43λ`).
+- The hero sentence names a minor by its letter ("ζ ends — 4 finer cycles (η, θ, ι, κ) end with it.") and a major in words,
+  in a shorter form that fits one line ("Gamma ends, with 11 finer cycles (δ … ξ).").
+- The progress caption shows the glyph pair for a minor turnover and the quarter word for a major one ("Valley quarter").
+- The strip of a selected minor level gives the span and where the threshold falls ("next end in 6ι 43λ · at 34η 0ι"). A
+  major level's strip says which quarter begins ("→ Valley", "→ Peak"); its tooltip names the turnover in words.
+- The legend and the importance tooltips explain the finest counted cycle ("a Delta (δ) is 5ε", "a ζ cycle is 11η, not a
+  unit", "a Helion (η) is 36ι").
+- The list is grouped by the **Nuclide** an event falls in, the pure "week", with separator lines between groups. Each row
+  carries what begins (`55η`, `Delta Tetrafracton`). Wide cards (≥ 640 px) write the short letter date on every row
+  (`δ#3 ε#5 55η`). Narrow cards head a group of two or more events with the Nuclide in words (`Delta Trifracton ε#5`); a group
+  of one needs no heading.
+- Real-time leads are counted in Blinks everywhere.
+
+**Notation:** `X#n` is an ordinal (from 1) and `nX` a count (from 0); `η 7` appears only on chips. Unit names (Nuclide, Helion,
+Preon, Flavon, Blink) appear only in prose. Verified by `tools/checks/check-ladder-pure.mjs` (leak scan of every state of both
+cards, live switching, behaviour, layout) and `test/ladder.test.js`.

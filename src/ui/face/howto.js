@@ -44,7 +44,7 @@ const NORMAL_LINES = [
 ];
 
 /**
- * (Re)write the lines for the current mode (five in normal mode, six in pure mode, which also ends with the glossary
+ * (Re)write the lines for the current mode (five in normal mode, seven in pure mode, which also ends with the glossary
  * pointer). `pairHTML` (ctx.pure.pairHTML) draws the example glyph pair of pure mode. Safe to call at any time: the
  * popover keeps its open / closed state.
  * @param {HTMLElement} root  the element buildHowTo() returned

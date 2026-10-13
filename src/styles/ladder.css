@@ -214,9 +214,10 @@
 }
 
 /* ---------- pure mode (.ladder.is-pure) ----------
-   Names instead of counters, ladder-unit countdowns, and the phase as a pair of 2-stroke glyphs (256 states,
-   the shared .pure-pair of pure.pairHTML): the pair takes the glyph column of the row (it replaces both the
-   single glyph and the percent). */
+   Major rows (α β γ δ, .is-major): the fracton ordinal and quarter word, and a four-pip quarter indicator in the glyph
+   column (a major's phase is never drawn). Minor rows: ordinals and counts, and the phase as a pair of 2-stroke glyphs
+   (256 states, the shared .pure-pair of pure.pairHTML) that takes the glyph column (it replaces both the single glyph
+   and the percent). */
 .ladder-tip .pure-pair, .upnext-tip .pure-pair { color: var(--teal); gap: 2px; }
 .ladder-tip .pure-pair svg, .upnext-tip .pure-pair svg { height: 18px; width: auto; display: block; overflow: visible; }
 .ladder-facts > .ladder-pure-only { display: none; }
@@ -244,6 +245,15 @@
 .ladder.is-pure .ladder-glyph { justify-content: flex-end; }
 .ladder.is-pure .ladder-glyph .pure-pair { gap: 3px; }
 .ladder.is-pure .ladder-glyph svg { height: 28px; }
+/* the quarter indicator of a major period: passed quarters filled, the current one lit, the rest hollow */
+.ladder-qpips { display: inline-flex; align-items: center; gap: 3px; }
+.ladder-qpips i { width: 7px; height: 7px; border-radius: 50%; border: 1.5px solid var(--c-dim, var(--ink-3)); box-sizing: border-box; }
+.ladder-qpips i.is-done { background: var(--c-dim, var(--ink-3)); }
+.ladder-qpips i.is-cur { background: var(--c, var(--teal)); border-color: var(--c, var(--teal)); box-shadow: 0 0 5px var(--c, var(--teal)); }
+.ladder.is-pure .ladder-row.is-major .ladder-glyph { min-width: 37px; opacity: 1; }
+.ladder.is-pure .ladder-through-q { display: inline-flex; }
+.ladder.is-pure .ladder-through-q[hidden] { display: none; }
+.ladder-tip-ph .ladder-qpips { padding: 0 2px; }
 
 .ladder.is-pure .ladder-facts-now > div { align-items: center; }
 .ladder.is-pure .ladder-facts dd.ladder-through,
@@ -266,7 +276,7 @@
 
 @container ladder (min-width: 640px) {
   .ladder.is-pure .ladder-row {
-    grid-template-columns: 52px 11em minmax(80px, 1fr) 10ch auto;
+    grid-template-columns: 52px 12.5em minmax(80px, 1fr) 10ch auto;
     grid-template-areas: "chip count bar left glyph";
   }
   .ladder.is-pure .ladder-row.is-selected {
@@ -435,8 +445,8 @@
   .upnext.is-pure .upnext-dt { justify-content: flex-start; }
   .upnext.is-pure .upnext-day { min-width: 0; overflow: visible; }
 }
-/* the date counters of a turnover (δ#6 · ε#5 · ζ#4) need the room of a full-width card: wide rows carry them on
-   every row; narrow cards (the 340 px column, phones) head a group of several events with them instead */
+/* the short letter date of a turnover (δ#3 ε#5 34η) needs the room of a full-width card: wide rows carry it on every
+   row; narrow cards (the 340 px column, phones) head a group of several events with its Nuclide instead */
 @container upnext (min-width: 640px) {
   .upnext.is-pure .upnext-dt { justify-content: space-between; gap: 12px; }
   .upnext.is-pure .upnext-day { flex: none; }
@@ -444,7 +454,7 @@
   .upnext.is-pure .upnext-grp { display: none; }
 }
 
-/* group heading (pure, a ζ that holds two or more of the listed events): its own line above the first row */
+/* group heading (pure, a Nuclide that holds two or more of the listed events): its own line above the first row */
 .upnext.is-pure .upnext-item { flex-wrap: wrap; }
 .upnext.is-pure .upnext-go { flex: 1 1 0; }
 .upnext-grp {

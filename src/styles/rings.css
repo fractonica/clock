@@ -431,10 +431,15 @@
 .rings[data-pure="1"] .rings-wh-pct .pure-pair { gap: 0.18em; }
 .rings[data-pure="1"] .rings-wh-pct .pure-pair svg { height: 44px; }
 .rings[data-pure="1"] .rings-wh-pctl { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.02em; }
+/* a major period (α β γ δ) is read by its quarter word, never by a phase pair */
+.rings[data-pure="1"] .rings-wh-pct .rings-quarter { display: inline-block; font-size: 22px; line-height: 44px; letter-spacing: 0.01em; }
 .rings[data-pure="1"] .rings-f-end > .mono,
 .rings[data-pure="1"] .rings-f-start > .mono { white-space: nowrap; }
+/* what begins may be words ("→ Delta Tetrafracton begins"): it wraps between them on a narrow card */
+.rings[data-pure="1"] .rings-f-end > .rings-f-next { white-space: normal; }
 
 /* tooltip */
 .rings-tip-phase { display: flex; align-items: center; gap: 6px; color: var(--ink-3); }
 .rings-tip-phase .pure-pair { color: var(--teal); }
+.rings-tip-phase b { color: var(--ink); font-weight: 600; }
 .rings-tip-phase .pure-pair svg { height: 22px; }

@@ -2,237 +2,237 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import '../fractonica.js';
 import { createModel } from '../src/core/model.js';
-import { createPure, ordinalName, periodName, shortName, unitName, unitOf, UNITS, ORDINAL_NAMES } from '../src/core/pure.js';
+import {
+  createPure, ordinalName, periodName, shortName, unitName, unitOf, levelKind, isMajor, UNITS, UNIT_LEVELS, ORDINAL_NAMES,
+  QUARTER_WORDS,
+} from '../src/core/pure.js';
 
 const model = createModel();
-const T = 1791460800;
+const T = 1791460800; // SPEC vector A
+const B = 946684800;
+const C = 2886085800;
 const pure = createPure(model, { now: () => T });
-const P12 = model.levelInfo(12).prefixNum;
+const P = (L) => model.levelInfo(L).prefixNum;
 const near = (a, b, eps, msg) => assert.ok(Math.abs(a - b) <= eps, `${msg ?? ''} ${a} vs ${b}`);
 
-test('names: Greek-prefixed ordinals and cycle names', () => {
+test('names: fracton ordinals belong to the four major periods only', () => {
   assert.equal(ordinalName(1), 'Monofracton');
   assert.equal(ordinalName(2), 'Difracton');
   assert.equal(ordinalName(11), 'Didecafracton');
-  assert.equal(ordinalName(12), 'Dodecafracton');
   assert.equal(ordinalName(13), 'Tridecafracton');
   assert.equal(ordinalName(18), 'Octadecafracton');
   assert.equal(ordinalName(40), '#40');
   assert.equal(periodName(2, 2), 'Gamma Difracton');
+  assert.equal(periodName(3, 5), 'Delta Pentafracton');
   assert.equal(periodName(0, 6), 'Alpha Hexafracton');
+  assert.equal(periodName(6, 2), 'η#2', 'a minor level has no fracton name');
   assert.equal(shortName(4, 5), 'ε#5');
-  assert.ok(ORDINAL_NAMES.slice(1).every((n) => /fracton$/.test(n)), 'every ordinal ends in -fracton');
-  assert.equal(new Set(ORDINAL_NAMES).size, ORDINAL_NAMES.length);
-  // the hierarchy never needs more than 13 siblings, Alpha at most 18
-  const maxSib = Math.max(...Array.from({ length: 14 }, (_, L) => model.levelInfo(L).siblings ?? 0));
-  assert.equal(maxSib, 13);
+  assert.ok(ORDINAL_NAMES.slice(1).every((n) => /fracton$/.test(n)));
+  // the majors never need more than 13 per parent, Alpha at most 18
+  assert.deepEqual([1, 2, 3].map((L) => model.levelInfo(L).siblings), [5, 13, 5]);
   assert.equal(Number(model.clock.count(0)), 18);
-  assert.ok(!ordinalName(18).startsWith('#') && !ordinalName(13).startsWith('#'));
+  assert.deepEqual(QUARTER_WORDS, ['Peak', 'Node', 'Valley', 'End'], 'quarters named by the threshold that ends them (SPEC §6.2)');
 });
 
-test('unit ladder: one named unit per depth, whole cycles only', () => {
+test('unit ladder: four major periods, then one minor unit every other depth', () => {
+  assert.deepEqual(UNITS.map((u) => `${u.sym} ${u.name}`), [
+    'α Alpha', 'β Beta', 'γ Gamma', 'δ Delta', 'ε Nuclide', 'η Helion', 'ι Preon', 'λ Flavon', 'ν Blink',
+  ]);
+  assert.deepEqual(UNIT_LEVELS, [0, 1, 2, 3, 4, 6, 8, 10, 12]);
+  assert.deepEqual(UNITS.filter((u) => u.major).map((u) => u.sym), ['α', 'β', 'γ', 'δ']);
   const len = (id) => pure.unitPos(unitOf(id));
+  const per = [['alpha', 'beta', 5], ['beta', 'gamma', 13], ['gamma', 'delta', 5], ['delta', 'epsilon', 5],
+    ['epsilon', 'eta', 77], ['eta', 'iota', 36], ['iota', 'lambda', 65], ['lambda', 'nu', 25]];
+  for (const [big, small, k] of per) near(len(big) / len(small), k, 1e-12, `1${big} = ${k} ${small}`);
   const secs = (id) => pure.unitSeconds(unitOf(id));
-  // the factors between neighbours (siblings of the finer level)
-  const per = [['beta', 'gamma', 13], ['gamma', 'delta', 5], ['delta', 'epsilon', 5], ['epsilon', 'zeta', 7], ['zeta', 'eta', 11],
-    ['eta', 'theta', 9], ['theta', 'iota', 4], ['iota', 'kappa', 5], ['kappa', 'lambda', 13], ['lambda', 'mu', 5], ['mu', 'nu', 5]];
-  for (const [big, small, k] of per) near(len(big) / len(small), k, 1e-12, `${big} = ${k} ${small}`);
-  // the atomic cadence ν -25-> λ -65-> ι -36-> η
-  near(len('lambda') / len('nu'), 25, 1e-12);
-  near(len('iota') / len('lambda'), 65, 1e-12);
-  near(len('eta') / len('iota'), 36, 1e-12);
-  // the names and the Earth-ish sizes they were chosen for (never shown)
-  assert.deepEqual(UNITS.filter((u) => u.named).map((u) => u.name),
-    ['Atom', 'Nuclide', 'Hadron', 'Helion', 'Quark', 'Preon', 'Chromon', 'Flavon', 'Somon', 'Blink']);
-  assert.deepEqual(UNITS.map((u) => u.level), [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], 'one unit per depth 1..13, no halves');
-  assert.ok(UNITS.every((u) => !('half' in u)));
-  near(secs('nu') * 1000, 311, 1, 'Blink 311 ms');
-  near(secs('mu'), 1.555, 0.001, 'Somon 1.55 s');
-  near(secs('lambda'), 7.773, 0.001, 'Flavon 7.77 s');
-  near(secs('kappa') / 60, 1.684, 0.001, 'Chromon 1.68 min');
-  near(secs('iota') / 60, 8.421, 0.001, 'Preon 8.42 min');
-  near(secs('theta') / 60, 33.68, 0.01, 'Quark 33.7 min');
-  near(secs('eta') / 3600, 5.052, 0.001, 'Helion 5.05 h');
-  near(secs('zeta') / 86400, 2.316, 0.001, 'Hadron 2.3 d');
-  near(secs('epsilon') / 86400, 16.21, 0.01, 'Nuclide 16.2 d');
-  near(secs('delta') / 86400, 81.05, 0.01, 'Atom 81 d');
-  // 19 Helions lock to the sun: one sync is about four days
-  near(19 * secs('eta') / 86400, 4, 0.01, '19 η ≈ 4 d');
+  near(secs('delta') / 86400, 81.05, 0.01, 'Delta ≈ a month of 81 d');
+  near(secs('epsilon') / 86400, 16.21, 0.01, 'Nuclide ≈ a week of 16.2 d');
+  near(secs('eta') / 3600, 5.052, 0.001, 'Helion ≈ an hour of 5.05 h');
+  near(secs('iota') / 60, 8.421, 0.001, 'Preon ≈ a minute of 8.42 min');
+  near(secs('lambda'), 7.773, 0.001, 'Flavon ≈ a second of 7.77 s');
+  near(secs('nu') * 1000, 310.9, 0.1, 'Blink 311 ms');
+  near(19 * secs('eta') / 86400, 4, 0.01, '19 Helions lock to the sun');
   assert.equal(unitName('η'), 'Helion');
   assert.equal(unitName('eta', 3), 'Helions');
-  assert.equal(unitName('λ', 2), 'Flavons');
-  assert.equal(unitName('ν', 1), 'Blink');
-  assert.equal(unitName('γ'), 'Gamma', 'α β γ have no particle name yet: their level name');
-  assert.equal(pure.blinkSeconds(), secs('nu'));
+  assert.equal(unitName('δ', 2), 'Deltas');
+  assert.equal(unitName(12), 'Blink');
+  assert.equal(unitOf('ζ'), undefined, 'ζ θ κ μ are depths, not units');
+  assert.deepEqual([3, 4, 5, 6, 7, 11, 12, 13].map(levelKind), ['major', 'unit', 'between', 'unit', 'between', 'between', 'unit', 'sub']);
+  assert.ok(isMajor(0) && isMajor(3) && !isMajor(4));
 });
 
-test('durations are counted in ladder units', () => {
-  const zeta = 4 / 11375;
-  assert.equal(pure.durationPos(zeta), '1ζ');
-  assert.equal(pure.durationPos(zeta, { keepZeros: true }), '1ζ 0η');
-  assert.equal(pure.durationPos(zeta * 1.5), '1ζ 5η'); // 0.5 ζ = 5.5 η
-  assert.equal(pure.durationPos(3 * 4 / 125125 + 5 * 4 / 4504500, { parts: 2 }), '3η 1θ', '5ι = 1θ 1ι: every depth is a unit');
-  assert.equal(pure.durationPos(3 * 4 / 125125 + 5 * 4 / 4504500, { parts: 3 }), '3η 1θ 1ι');
-  assert.equal(pure.durationPos(3 * 4 / 125125 + 2 * 4 / 4504500, { parts: 2 }), '3η 2ι');
+test('durations are counted in the ladder, zero parts skipped', () => {
+  const eps = 4 / P(4);
+  assert.equal(pure.durationPos(eps), '1ε');
+  assert.equal(pure.durationPos(eps, { keepZeros: true }), '1ε 0η');
+  assert.equal(pure.durationPos(eps * 1.5), '1ε 38η');
+  assert.equal(pure.durationPos(3 * 4 / P(6) + 5 * 4 / P(8)), '3η 5ι');
+  assert.equal(pure.durationPos(3 * 4 / P(6) + 5 * 4 / P(10)), '3η 5λ', 'the empty ι is skipped');
   assert.equal(pure.durationPos(4, { parts: 1 }), '1α');
-  assert.equal(pure.durationPos(-zeta), '−1ζ');
-  assert.equal(pure.durationPos(2 * 4 / P12, { parts: 2 }), '2ν', 'two Blinks');
-  // the ladder ends at the Blink: finer spans are a decimal count of it
+  assert.equal(pure.durationPos(-eps), '−1ε');
+  assert.equal(pure.durationPos(4 / P(5)), '11η', 'a ζ cycle is 11 Helions');
+  // the ladder ends at the Blink: short spans keep a decimal
   assert.equal(pure.durationPos(0, { parts: 1 }), '0ν');
-  assert.equal(pure.durationPos(4 / P12 / 7), '0.14ν');
-  assert.equal(pure.durationPos(2.6 * 4 / P12), '2.6ν');
-  assert.equal(pure.durationPos(4 / P12 * 5), '1μ');
-  // 56 min 12 s at the spec instant = 6.67 ι = 1 θ 2 ι 3 κ …
-  const d = pure.duration(3372, { at: T, parts: 2 });
-  assert.equal(d, '1θ 2ι');
-  assert.equal(pure.duration(3372, { at: T, parts: 3 }), '1θ 2ι 3κ');
-  assert.equal(pure.countdown(3372, { at: T }), 'in ' + d);
-  assert.equal(pure.countdown(-3372, { at: T }), d + ' ago');
-  // between() measures in position, so it agrees with the model's cycle lengths exactly
+  assert.equal(pure.durationPos(4 / P(12) / 7), '0.14ν');
+  assert.equal(pure.durationPos(2.6 * 4 / P(12)), '2.6ν');
+  assert.equal(pure.durationPos(16 * 4 / P(12)), '16ν');
+  // 56 min 12 s at the spec instant
+  assert.equal(pure.duration(3372, { at: T }), '6ι 43λ');
+  assert.equal(pure.countdown(3372, { at: T }), 'in 6ι 43λ');
+  assert.equal(pure.countdown(-3372, { at: T }), '6ι 43λ ago');
   const cyc = model.levelAt(T, 6);
-  assert.match(pure.between(cyc.start, cyc.end, { parts: 1 }), /^1η$/);
-  assert.equal(pure.between(cyc.start, cyc.end, { parts: 2 }), '1η');
-  assert.equal(pure.between(cyc.start, cyc.end, { parts: 2, keepZeros: true }), '1η 0θ');
-  // no Earth time unit ever appears
-  for (const x of [0.1, 1, 50, 3600, 86400, 1e7, 1e9]) assert.doesNotMatch(pure.duration(x, { at: T }), /\b(s|min|h|d|y|wk|mo|ms)\b/);
+  assert.equal(pure.between(cyc.start, cyc.end), '1η');
+  assert.equal(pure.between(cyc.start, cyc.end, { keepZeros: true }), '1η 0ι');
+  for (const x of [0.1, 1, 50, 3600, 86400, 1e7, 1e9]) assert.doesNotMatch(pure.duration(x, { at: T }), /\b(s|min|h|d|y|wk|mo|ms)\b|[ζθκμ]/);
 });
 
-test('phase pair: 256 states from two 2-stroke glyphs', () => {
-  assert.deepEqual(pure.pair(0), { index: 0, hi: 0, lo: 0 });
+test('exact cycle lengths at every depth: majors and units are one unit, the depths between are counts of the next unit', () => {
+  const lens = ['1α', '1β', '1γ', '1δ', '1ε', '11η', '1η', '4ι', '1ι', '13λ', '1λ', '5ν', '1ν', '0.14ν'];
+  lens.forEach((text, L) => assert.equal(pure.cycleLength(L, { parts: 1 }), text, `depth ${L + 1}`));
+  for (const L of [6, 7, 8, 9, 10, 11, 12, 13]) {
+    for (const t of [T, 946684800.37, 2886085800.9, 125593320.816, 1.2e10 + 123.456]) {
+      const c = model.levelAt(t, L);
+      assert.equal(pure.between(c.start, c.end, { parts: 1 }), lens[L], `depth ${L + 1} @ ${t}`);
+    }
+  }
+});
+
+test('phase pair: 256 states from two 2-stroke glyphs; the Helion pair is the SPEC §5 odometer at depth 7', () => {
   assert.deepEqual(pure.pair(0.5), { index: 128, hi: 8, lo: 0 });
   assert.deepEqual(pure.pair(1), { index: 255, hi: 15, lo: 15 });
-  assert.deepEqual(pure.pair(0.999999), { index: 255, hi: 15, lo: 15 });
   assert.equal(pure.pairText(13 / 16 + 4 / 256 + 0.0001), '13·4');
-  // it is exactly the SPEC §5 odometer of two 2-stroke glyphs
-  for (const L of [0, 3, 6, 9]) {
-    for (const t of [T, T + 777.5, 946684800.25]) {
-      const l = model.levelAt(t, L);
-      const o = model.odometerAt(t, L, { strokes: 2, digits: 2 });
-      assert.deepEqual([pure.pair(l.phase).hi, pure.pair(l.phase).lo], o.digits, `L${L}@${t}`);
-    }
+  for (const [t, digits] of [[T, [13, 0]], [B, [5, 6]], [C, [10, 3]]]) {
+    const p = pure.pair(model.levelAt(t, 6).phase);
+    assert.deepEqual([p.hi, p.lo], digits, `SPEC vector at ${t}`);
   }
   assert.match(pure.pairHTML(0.5), /aria-label="phase 8 and 0 of 256"/);
-  assert.equal((pure.pairHTML(0.5).match(/<svg/g) || []).length, 2);
+  assert.equal(pure.pairLabel(0.5, 'volume'), 'volume 8 and 0 of 256');
+  assert.ok(!/<title>|vector CBT/.test(pure.pairHTML(0.3)));
 });
 
-test('clock and date are hierarchy-aligned counters', () => {
-  for (const t of [T, T + 12345.6, 946684800.5, 2886085800.25, 125593320.816]) {
+test('clock: the Nuclide and the counts of completed Helions, Preons, Flavons, Blinks', () => {
+  for (const t of [T, T + 12345.6, B + 0.5, C + 0.25, 125593320.816]) {
     const c = pure.clock(t);
-    const d = pure.date(t);
-    const eta = model.levelAt(t, 6);
-    const e36 = eta.phase * 36;
-    assert.equal(c.eta, eta.local, 'eta digit is the depth-7 local index');
-    assert.equal(c.iota, Math.floor(e36), 'iota counts 0..35 inside η');
-    assert.equal(c.lambda, Math.floor((e36 - Math.floor(e36)) * 65), 'lambda counts 0..64 inside ι');
-    // the date is the whole-cycle ordinal chain: no halves
-    for (const [key, L] of [['beta', 1], ['gamma', 2], ['delta', 3], ['epsilon', 4], ['zeta', 5]]) {
-      assert.equal(d[key], model.levelAt(t, L).local + 1, `${key} is the 1-based index of the running cycle in its parent`);
-    }
-    assert.equal(d.alpha, model.levelAt(t, 0).cycle + 1);
-    assert.ok(c.eta <= 10 && c.iota <= 35 && c.lambda <= 64);
-    assert.ok(d.alpha >= 1 && d.alpha <= 18 && d.beta <= 5 && d.gamma <= 13 && d.delta <= 5 && d.epsilon <= 5 && d.zeta <= 7);
+    const e = model.levelAt(t, 4);
+    const ePhase = e.phase;
+    assert.equal(c.epsilon, e.local + 1);
+    assert.equal(c.eta, Math.floor(ePhase * 77), 'Helions 0..76 inside the Nuclide');
+    const h = model.levelAt(t, 6).phase;
+    assert.equal(c.iota, Math.floor(h * 36), 'Preons 0..35 inside the Helion');
+    const i = model.levelAt(t, 8).phase;
+    assert.equal(c.lambda, Math.floor(i * 65), 'Flavons 0..64 inside the Preon');
+    const l = model.levelAt(t, 10).phase;
+    assert.equal(c.nu, Math.floor(l * 25), 'Blinks 0..24 inside the Flavon');
+    assert.ok(c.eta <= 76 && c.iota <= 35 && c.lambda <= 64 && c.nu <= 24 && c.epsilon <= 5);
   }
-  assert.equal(pure.clockText(T), '0·' + pure.clock(T).iota + '·' + pure.clock(T).lambda);
-  assert.equal(pure.dateText(T), 'α#6 β#4 γ#9 · δ#' + pure.date(T).delta + ' · ε#' + pure.date(T).epsilon + ' · ζ#' + pure.date(T).zeta);
-  assert.doesNotMatch(pure.dateText(T) + pure.stamp(T, 'lambda'), /½/, 'no half-cycles anywhere');
+  assert.equal(pure.clockText(T), '33η 29ι 21λ');
+  assert.equal(pure.clockText(T, 'iota'), '33η 29ι');
+  assert.equal(pure.clockText(T, 'nu'), '33η 29ι 21λ 3ν');
   assert.equal(pure.clock(model.tMax + 5), null);
+});
+
+test('dates: words for the majors with their quarter, letters for the minor units (SPEC §15 vectors)', () => {
+  assert.equal(pure.dateText(T, { form: 'full', upTo: 'nu' }),
+    'Alpha Hexafracton Valley, Beta Tetrafracton Valley, Gamma Nonafracton Valley, Delta Trifracton End, ε#5 33η 29ι 21λ 3ν');
+  assert.equal(pure.dateText(T), 'Delta Trifracton End ε#5 33η 29ι');
+  assert.equal(pure.dateText(T, { letters: true }), 'δ#3 ε#5 33η 29ι');
+  assert.equal(pure.stamp(T, 'nu'), 'α#6 β#4 γ#9 δ#3 ε#5 33η 29ι 21λ 3ν');
+  assert.equal(pure.stamp(T), 'α#6 β#4 γ#9 δ#3 ε#5 33η 29ι');
+  assert.equal(pure.stamp(T, 'delta'), 'α#6 β#4 γ#9 δ#3');
+  assert.equal(pure.dateText(B), 'Delta Trifracton Node ε#2 20η 12ι');
+  assert.equal(pure.dateText(C), 'Delta Pentafracton Peak ε#2 0η 23ι');
+  assert.equal(pure.dateText(125593320.816, { form: 'full' }),
+    'Alpha Hexafracton Peak, Beta Monofracton Peak, Gamma Monofracton Peak, Delta Monofracton Peak, ε#1 0η 0ι', 'the anchor eclipse starts Alpha 6');
+  assert.equal(pure.majorText(T, 3), 'Delta Trifracton End');
+  assert.equal(pure.majorText(T, 0), 'Alpha Hexafracton Valley');
+  // the quarter is floor(phase × 4)
+  for (const L of [0, 1, 2, 3]) {
+    const q = pure.quarterAt(T, L);
+    assert.equal(q, Math.floor(model.levelAt(T, L).phase * 4));
+    assert.equal(pure.date(T).quarter[['alpha', 'beta', 'gamma', 'delta'][L]], QUARTER_WORDS[q]);
+  }
+  const d = pure.date(T);
+  assert.deepEqual([d.alpha, d.beta, d.gamma, d.delta, d.epsilon], [6, 4, 9, 3, 5]);
+  assert.deepEqual(model.addressAt(T), [6, 4, 9, 3, 5], 'the same address as the library calendar');
   assert.equal(pure.dateText(model.tMin - 5), '—');
+  assert.doesNotMatch(pure.dateText(T, { form: 'full', upTo: 'nu' }), /[ζθκμ]|½/);
 });
 
-test('cycle names follow the library calendar address', () => {
-  // SPEC vector A sits in Alpha 6 / Beta 4 / Gamma 9 / Delta 3 / Epsilon 5 (src/core/model.js addressAt)
-  assert.deepEqual(model.addressAt(T), [6, 4, 9, 3, 5]);
+test('minor cycles are named by where they start in their Nuclide; counts agree with the clock', () => {
+  for (const t of [T, B, C, T + 777.7, 2.3e9]) {
+    const clk = pure.clock(t);
+    for (const L of [5, 6, 7, 8, 9, 10, 11, 12, 13]) {
+      const l = model.levelAt(t, L);
+      const startClock = pure.clock(l.start + Math.max(0.002, 1e-4 * (l.end - l.start))); // the model reads instants to the ms
+      const c = pure.countsAtStart(L, l.cycleBig);
+      assert.equal(c.epsilon, clk.epsilon);
+      assert.equal(c.eta, startClock.eta, `η at the start of the depth-${L + 1} cycle`);
+      if (L >= 7) assert.equal(c.iota, startClock.iota);
+      if (L >= 9) assert.equal(c.lambda, startClock.lambda);
+      if (L >= 11) assert.equal(c.nu, startClock.nu);
+    }
+  }
+  const at = (L) => model.levelAt(T, L).cycleBig;
+  assert.equal(pure.cycleName(3, at(3)), 'Delta Trifracton');
+  assert.equal(pure.cycleName(4, at(4)), 'ε#5');
+  assert.equal(pure.cycleName(6, at(6)), 'ε#5 33η');
+  assert.equal(pure.cycleName(8, at(8)), 'ε#5 33η 29ι');
+  assert.equal(pure.cycleName(7, at(7)), 'ε#5 33η 28ι', 'a θ starts on a multiple of 4ι');
+  assert.equal(pure.cycleName(10, at(10), { short: true }), '33η 29ι 21λ');
+  assert.equal(pure.cycleName(13, at(13)), 'ε#5 33η 29ι 21λ 3.43ν');
+  assert.equal(pure.cycleShort(6, at(6)), '33η');
+  assert.equal(pure.cycleShort(3, at(3)), 'δ#3');
   assert.equal(pure.nameAt(T, 2), 'Gamma Nonafracton');
-  assert.equal(pure.nameAt(T, 0), 'Alpha Hexafracton');
   assert.equal(pure.addressAt(T, 4), 'α#6 β#4 γ#9 δ#3 ε#5');
-  assert.equal(pure.cycleShort(4, model.levelAt(T, 4).cycle), 'ε#5');
+  assert.equal(pure.addressAt(T, 7), 'α#6 β#4 γ#9 δ#3 ε#5 33η 29ι');
   assert.equal(pure.catalogueText(), 'α#1 – α#18');
-  assert.match(pure.stamp(T, 'beta'), /^α#6 β#4$/);
-  assert.match(pure.stamp(T, 'zeta'), /^α#6 β#4 γ#9 · δ#\d · ε#\d · ζ#\d$/);
-  assert.match(pure.stamp(T, 'lambda'), / · \d+η \d+ι \d+λ$/);
-  assert.match(pure.stamp(T, 'eta'), / · \d+η$/);
 });
 
-test('speeds are named by the unit that passes per Blink', () => {
-  const B = pure.blinkSeconds();
-  const rate = (id) => pure.unitSeconds(unitOf(id)) / B;
+test('speeds are counted per Blink; presets are whole counts of a unit', () => {
+  const B_ = pure.blinkSeconds();
   assert.equal(pure.rateLabel(1), 'real time');
-  assert.equal(pure.rateLabel(rate('eta')), 'η per Blink');
-  assert.equal(pure.rateLabel(-rate('iota')), 'ι per Blink backward');
-  // the presets are exact integers: the ladder is a product of whole factors
-  const byId = Object.fromEntries(pure.RATES.map((r) => [r.id, r.rate]));
-  assert.deepEqual([byId.mu, byId.lambda, byId.kappa, byId.iota, byId.theta, byId.eta], [5, 25, 325, 1625, 6500, 58500]);
-  // any other rate is a count of the largest unit that passes at least once per Blink
-  assert.equal(pure.rateLabel(rate('eta') / 4), '2.25θ per Blink', 'one η in 4 Blinks');
-  assert.equal(pure.rateLabel(12345), '1.9θ per Blink');
-  assert.equal(pure.rateLabel(0.5), '0.5ν per Blink', 'slower than real time');
-  assert.doesNotMatch(pure.rateLabel(3600), /×|\b3600\b|beat/, 'no bare Earth-constant multiplier, no beats');
-  assert.equal(pure.blinks(B), '1 Blink');
-  assert.equal(pure.blinks(4 * B), '4 Blinks');
-  assert.equal(pure.blinks(0.5 * B), '0.5 Blinks');
+  const byId = Object.fromEntries(pure.RATES.map((r) => [r.id, r]));
+  assert.deepEqual(
+    ['nu5', 'lambda', 'lambda13', 'iota', 'iota4', 'eta', 'eta11'].map((id) => byId[id].rate),
+    [5, 25, 325, 1625, 6500, 58500, 643500],
+  );
+  assert.deepEqual(pure.RATES.map((r) => r.label), [
+    'real time', '5ν per Blink', 'λ per Blink', '13λ per Blink', 'ι per Blink', '4ι per Blink', 'η per Blink', '11η per Blink',
+    'ε per Blink', 'δ per Blink', 'γ per Blink',
+  ]);
+  assert.equal(pure.PLAY_RATE, 6500);
+  assert.equal(pure.rateLabel(-1625), 'ι per Blink backward');
+  assert.equal(pure.rateLabel(pure.unitSeconds(unitOf('eta')) / (4 * B_)), '9ι per Blink', 'one η in 4 Blinks');
+  assert.equal(pure.rateLabel(3600), '2.22ι per Blink');
+  assert.equal(pure.rateLabel(0.5), '0.5ν per Blink');
+  assert.equal(pure.blinks(B_), '1 Blink');
+  assert.equal(pure.blinks(4 * B_), '4 Blinks');
+  assert.equal(pure.blinks(58500 * B_), '58 500 Blinks');
   assert.equal(pure.secondsToBlinks(pure.blinksToSeconds(3.5)), 3.5);
   for (const r of pure.RATES) assert.doesNotMatch(r.label, /\b(s|sec|second|min|hour|day|week|month|year|Hz|beat)\b/i);
 });
 
 test('frequencies are cycles per Blink (pB), the replacement of Hz', () => {
-  const B = pure.blinkSeconds();
-  assert.equal(pure.perBlink(1 / B), 1, 'one cycle per Blink');
-  near(pure.perBlink(110), 34.2, 0.05, 'the default ground, 110 Hz');
-  // the true rates of the deepest cycles are whole numbers of pB: ξ 7, ο 77, π 693, ρ 2 772
+  assert.equal(pure.perBlink(1 / pure.blinkSeconds()), 1);
+  near(pure.perBlink(110), 34.2, 0.05, 'the default ground');
   const true_ = (L) => pure.perBlink(1 / model.levelInfo(L).meanSeconds);
-  near(true_(12), 1, 1e-9);
   near(true_(13), 7, 1e-9);
   near(true_(14), 77, 1e-9);
   near(true_(15), 693, 1e-9);
   near(true_(16), 2772, 1e-9);
-  assert.equal(pure.pbText(7), '7 pB');
   assert.equal(pure.pbText(34.23), '34.2 pB');
-  assert.equal(pure.pbText(693), '693 pB');
-  assert.equal(pure.pbText(2772), '2\u202f772 pB');
-  assert.equal(pure.pbText(0.2), '0.2 pB');
+  assert.equal(pure.pbText(2772), '2 772 pB');
   assert.equal(pure.pbText(1 / 65), '1 per 65 Blinks');
   assert.equal(pure.pbText(0), '—');
-  assert.doesNotMatch(pure.pbText(34.23), /Hz/);
-});
-
-test('decomposition is exact for whole cycles of every depth (float position error must not read one unit short)', () => {
-  const lens = { 6: '1η', 7: '1θ', 8: '1ι', 9: '1κ', 10: '1λ', 11: '1μ', 12: '1ν', 13: '0.14ν' };
-  for (const [L, text] of Object.entries(lens)) {
-    for (const t of [T, 946684800.37, 2886085800.9, 125593320.816, 1.2e10 + 123.456]) {
-      const c = model.levelAt(t, Number(L));
-      assert.equal(pure.between(c.start, c.end, { parts: 1 }), text, `depth ${Number(L) + 1} @ ${t}`);
-      assert.equal(pure.cycleLength(Number(L), { parts: 1 }), text);
-    }
-  }
-  assert.equal(pure.cycleLength(6), '1η');
-  assert.equal(pure.cycleLength(7), '1θ');
-  assert.equal(pure.cycleLength(8), '1ι');
-  assert.equal(pure.cycleLength(5), '1ζ');
-  assert.equal(pure.cycleLength(3), '1δ');
-  assert.equal(pure.cycleLength(9), '1κ');
-  assert.equal(pure.eclipseName(22), '#22');
-});
-
-test('pair aria text is spoken as two digits', () => {
-  assert.match(pure.pairHTML(0.5), /aria-label="phase 8 and 0 of 256"/);
-  assert.ok(!/<title>|vector CBT/.test(pure.pairHTML(0.3)));
 });
 
 test('solar drift is counted in λ with narrow digit groups', () => {
   const sol = model.solarAt(T);
-  assert.match(pure.driftText(sol), /^−\d{1,3}(\u202f\d{3})*λ$/, 'a spec vector-A drift of about −48 470 s');
-  near(pure.driftLambda(sol) * pure.unitSeconds(UNITS.find((u) => u.id === 'lambda')), sol.drift, 10, 'λ count x λ length ≈ drift');
-  assert.equal(pure.groupDigits(6231), '6\u202f231');
-  assert.equal(pure.groupDigits(-48420), '−48\u202f420');
-  assert.equal(pure.groupDigits(999), '999');
+  assert.match(pure.driftText(sol), /^−\d{1,3}( \d{3})*λ$/);
+  near(pure.driftLambda(sol) * pure.unitSeconds(unitOf('lambda')), sol.drift, 10, 'λ count x λ length ≈ drift');
+  assert.equal(pure.groupDigits(-48420), '−48 420');
   assert.equal(pure.driftText(model.solarAt(125593320.816)), '0λ', 'zero at the anchor');
-});
-
-test('pairLabel is the spoken pair; cyclePos is 4 / P', () => {
-  assert.equal(pure.pairLabel(0.5), 'phase 8 and 0 of 256');
-  assert.equal(pure.pairLabel(0.5, 'volume'), 'volume 8 and 0 of 256');
-  assert.ok(pure.pairHTML(0.5, { label: 'volume' }).includes('aria-label="volume 8 and 0 of 256"'));
   assert.equal(pure.cyclePos(0), 4);
-  near(pure.cyclePos(6), 4 / 125125, 1e-18);
   assert.equal(pure.EPS_POS, 1e-12);
+  assert.equal(pure.eclipseName(22), '#22');
 });

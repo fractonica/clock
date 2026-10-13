@@ -260,6 +260,9 @@ body[data-mode="travel"] .readout-time { color: var(--cursor); }
 .pure-clock b { font-weight: 600; }
 .pure-clock i { font-style: normal; font-size: 0.62em; font-weight: 600; color: var(--ink-2); margin: 0 0.45em 0 0.1em; vertical-align: 0.18em; }
 .pure-clock i:last-child { margin-right: 0; }
+/* the Helion phase pair sits between the Helion count and the Preons */
+.pure-clock .pure-pair { display: inline-flex; gap: 0.06em; margin: 0 0.5em 0 0.05em; vertical-align: -0.14em; }
+.pure-clock .pure-pair svg { height: 1.12em; width: auto; }
 body[data-pure] #zone { display: none; }
 body[data-pure] .readout-time { color: var(--teal); }
 body[data-pure][data-mode="travel"] .readout-time { color: var(--cursor); }
