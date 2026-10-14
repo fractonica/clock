@@ -445,7 +445,7 @@
   .upnext.is-pure .upnext-dt { justify-content: flex-start; }
   .upnext.is-pure .upnext-day { min-width: 0; overflow: visible; }
 }
-/* the short letter date of a turnover (δ#3 ε#5 34η) needs the room of a full-width card: wide rows carry it on every
+/* the short letter date of a turnover (δ#3 ε#5 35η) needs the room of a full-width card: wide rows carry it on every
    row; narrow cards (the 340 px column, phones) head a group of several events with its Nuclide instead */
 @container upnext (min-width: 640px) {
   .upnext.is-pure .upnext-dt { justify-content: space-between; gap: 12px; }

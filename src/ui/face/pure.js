@@ -6,15 +6,16 @@
  *   - MAJOR periods α β γ δ (Alpha … Delta) are said in WORDS, with their fracton ordinal and the quarter they are in:
  *     "Delta Trifracton End". Only these four have fracton names.
  *   - MINOR periods are said in LETTERS and COUNTS. The units are ε Nuclide (ordinal ε#1–5 in its Delta), η Helion
- *     (count 0–76 in the Nuclide), ι Preon (0–35), λ Flavon (0–64) and ν Blink (0–24); the depths between them
- *     (ζ θ κ μ) are no units: a cycle of any minor depth is named by where it starts in its Nuclide ("ε#5 33η 28ι").
+ *     (numbered 1–77 in the Nuclide, like the day of a month), ι Preon (0–35), λ Flavon (0–64) and ν Blink (0–24) (counts
+ *     of completed units from 0); the depths between them (ζ θ κ μ) are no units: a cycle of any minor depth is named
+ *     by where it starts in its Nuclide ("ε#5 34η 28ι").
  *
- * Notation (header of src/core/pure.js): X#n is an ordinal, counted from 1 ("δ#3", "ε#5"); nX is a count of units
- * ("6ι 43λ", the clock "33η 29ι 21λ" counts completed units from 0); a letter + a space + a number ("η 7") is only a
- * depth chip.
+ * Notation (header of src/core/pure.js): X#n is an ordinal, counted from 1 ("δ#3", "ε#5"); nX is a count of units from 0
+ * ("6ι 43λ", "29ι 21λ"), except the Helion of a date or clock, numbered from 1 ("34η"); a letter + a space + a number
+ * ("η 7") is only a depth chip.
  *
  *   - countdowns are spans counted in ladder units  ("in 6ι 43λ"),
- *   - cycle ends name what begins                  ("Ends in 6ι 43λ → 34η begins", "→ Delta Tetrafracton begins"),
+ *   - cycle ends name what begins                  ("Ends in 6ι 43λ → 35η begins", "→ Delta Tetrafracton begins"),
  *   - progress through a cycle is the glyph odometer the face draws, never a number with a percent sign,
  *   - the solar sync drift is counted in λ          ("drift −6 236λ", ctx.pure.driftText),
  *   - a unit is explained with its name where a tooltip explains one ("one Helion = 36ι", "19 Helions").
@@ -30,7 +31,7 @@ const DASH = '—';
 /** The pointer every pure help text may end with (the shell opens the glossary on "?"). */
 export const GLOSSARY_NOTE = 'Press ? for the glossary.';
 /** One sentence: which numbers start at 0 and which at 1. Shown in the tooltips of the cycles and in the caption's title. */
-export const FROM_ONE = 'Ordinals (fracton names, # numbers) count from 1; states and counts (η ι λ ν) count from 0.';
+export const FROM_ONE = 'Ordinals (fracton names, # numbers) and the Helion (η) count from 1; states and the counts ι λ ν from 0.';
 /** What the solar drift is measured against (one phrase, used by the tooltip and the how-to). */
 export const DRIFT_REF = 'against the solar rhythm';
 
@@ -72,7 +73,7 @@ const bigOf = (lv) => lv.cycleBig ?? BigInt(lv.cycle);
 
 /**
  * The name shown under a period letter: a major cycle in words ("Delta Trifracton"), a minor one by where it starts in
- * its Nuclide ("ε#5", "ε#5 33η", "ε#5 33η 28ι").
+ * its Nuclide ("ε#5", "ε#5 34η", "ε#5 34η 28ι").
  */
 export const letterName = (p, level, cycleBig) => p.cycleName(level, cycleBig);
 
@@ -80,8 +81,8 @@ export const letterName = (p, level, cycleBig) => p.cycleName(level, cycleBig);
  * Where a cycle sits, in one phrase:
  *   major    "Delta Trifracton End · 3 of 5 in its γ"     (α: "… · 6 of 18 in the catalogue")
  *   ε        "ε#5 of 5 in Delta Trifracton"
- *   unit     "33η of 77 in ε#5", "29ι of 36 in 33η"
- *   between  "28ι to 32ι in 33η" (a θ is 4ι: it is said by the units it covers)
+ *   unit     "34η of 77 in ε#5", "29ι of 36 in 34η"
+ *   between  "28ι to 31ι in 34η" (a θ is 4ι: it is said by what the clock reads while it runs, first to last)
  * @param lv a model reading of `level` ({cycle, cycleBig, local, siblings, phase})
  */
 export function placeText(p, level, lv, quarter = null) {
@@ -97,14 +98,14 @@ export function placeText(p, level, lv, quarter = null) {
   if (!pl) return p.cycleName(level, big); // finer than a Blink: the decimal placing says it all
   const parent = pl.parent === 'epsilon' ? `ε#${c.epsilon}` : `${c[pl.parent]}${SYM[pl.parent]}`;
   const start = c[pl.key];
-  if (BETWEEN[level]) return `${start}${pl.sym} to ${start + BETWEEN[level][0]}${pl.sym} in ${parent}`;
+  if (BETWEEN[level]) return `${start}${pl.sym} to ${start + BETWEEN[level][0] - 1}${pl.sym} in ${parent}`;
   return `${start}${pl.sym} of ${pl.of} in ${parent}`;
 }
 
 /**
  * What begins when cycle `cycleBig` of `level` ends, said as briefly as the context allows:
  *   major  "Delta Tetrafracton"            ε  "ε#4", or "ε#1 of Delta Tetrafracton" when the Delta turns over
- *   finer  only the placing counts that change: "34η", "30ι", "34η 0ι"; "ε#1 0η" when the Nuclide turns over
+ *   finer  only the placing counts that change: "35η", "30ι", "35η 0ι"; "ε#1 1η" when the Nuclide turns over
  */
 export function followerName(p, level, cycleBig) {
   const big = BigInt(cycleBig);
@@ -276,7 +277,7 @@ export function pureRowAriaLabel(kind, d, p) {
 // ---- caption, letters, out of range --------------------------------------------------------------------
 /**
  * The caption under the pill when time is not live: the short date down to the Flavons, in words
- * ("Delta Trifracton End ε#5 33η 29ι 21λ"), or in letters where the words do not fit ("δ#3 ε#5 33η 29ι 21λ").
+ * ("Delta Trifracton End ε#5 34η 29ι 21λ"), or in letters where the words do not fit ("δ#3 ε#5 34η 29ι 21λ").
  * Ordinals are words or carry a #, the counts start at 0 (CAPTION_NOTE says so on hover).
  */
 export function pureCaption(p, t, { letters = false } = {}) {
@@ -311,8 +312,8 @@ export function pureHowToLines(pairHTML) {
     ['dot', '<b>Dot = falling.</b> A dot above the stem marks the falling half; rising and the two turning points have none.'],
     ['pair', `<b>Pair = odometer.</b> The left glyph is the coarse step, the right one the fine step inside it: 16 × 16 = 256 phases of a cycle. ${pairHTML ? `<span class="face-pop-eg">${pairHTML}</span>` : ''}`],
     ['count', '<b>Counter dots</b> are the cycles of the parent period; lit up to the one you are in.'],
-    ['units', '<b>The Helion is the basic reading:</b> its count and its phase. Preons and Flavons are the fine time (33η 29ι 21λ). Alpha, Beta, Gamma and Delta are said in words with their quarter: Delta Trifracton End.'],
-    ['zero', '<b>Counts from 0, ordinals from 1.</b> 33η counts the Helions completed in the Nuclide (0–76); ε#5 (the Nuclide in its Delta) and Delta Trifracton are ordinals.'],
+    ['units', '<b>The Helion is the basic reading:</b> its number and its phase. Preons and Flavons are the fine time (34η 29ι 21λ). Alpha, Beta, Gamma and Delta are said in words with their quarter: Delta Trifracton End.'],
+    ['zero', '<b>Numbers from 1, counts from 0.</b> 34η is the 34th Helion of its Nuclide (1–77); ε#5 and Delta Trifracton are numbered from 1 too. 29ι 21λ count the Preons and Flavons completed, from 0.'],
     ['gold', '<b>Yellow</b> is the solar sync: 19η cycles, 19 Helions. Its start drifts a little earlier with every sync, counted in λ.'],
   ];
 }

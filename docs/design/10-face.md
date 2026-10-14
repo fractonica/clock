@@ -61,19 +61,22 @@ Update only glyph groups whose digits changed (compare a signature string per od
 ## Pure mode (revision 3: major periods in words, minor ones in counts; SPEC §15)
 The spec display is unchanged (the watch draws its glyph odometers at every depth). What the face says:
 
-- **Caption** (time not live): the short date in words down to the Flavons, `Delta Trifracton End ε#5 33η 29ι 21λ`; where the card is
-  too narrow for the words, the letters `δ#3 ε#5 33η 29ι 21λ` (measured on a canvas with the caption's font, no layout). Its hover text
+- **Caption** (time not live): the short date in words down to the Flavons, `Delta Trifracton End ε#5 34η 29ι 21λ`; where the card is
+  too narrow for the words, the letters `δ#3 ε#5 34η 29ι 21λ` (measured on a canvas with the caption's font, no layout). Its hover text
   says which numbers count from 0 and which from 1, and points to the glossary.
 - **Letters overlay**: under each letter the running cycle: a major one in words (`Delta Trifracton`), a minor one by where it starts in
-  its Nuclide (`ε#5 33η`, `ε#5 33η 28ι`).
+  its Nuclide (`ε#5 34η`, `ε#5 34η 28ι`). The Helion is numbered from 1 (`1η` … `77η` in its Nuclide); Preons, Flavons and
+  Blinks are counts of completed units from 0.
 - **Info labels**: `NEXT END in 6ι 43λ`, `NEXT NODE in …`, `SYNC 4820 · drift −6 236λ` (spans and drift are the core's).
-- **Tooltips**: the place of the cycle (`33η of 77 in ε#5`; a depth between two units by what it covers, `28ι to 32ι in 33η`; a major one
+- **Tooltips**: the place of the cycle (`34η of 77 in ε#5`; a depth between two units by what the clock reads while it runs,
+  `28ι to 31ι in 34η`, `34η to 44η in ε#5`; a major one
   `Delta Trifracton End · 3 of 5 in its γ`), what one cycle is (`one Helion = 36ι`, `one Delta = 5ε`, `one cycle = 4ι`), the quarter that ends
-  next for a major (`Valley ends in 1γ 4ε → End`) and what begins at the end, as briefly as the context allows (`Ends in 6ι 43λ → 34η begins`,
-  `→ ε#1 0η begins` across a Nuclide, `→ Delta Tetrafracton begins`). The solar tooltip: `one sync = 19η (19 Helions)`, the phase as a pair,
+  next for a major (`Valley ends in 1γ 4ε → End`) and what begins at the end, as briefly as the context allows (`Ends in 6ι 43λ → 35η begins`,
+  `→ ε#1 1η begins` across a Nuclide, `→ Delta Tetrafracton begins`). The solar tooltip: `one sync = 19η (19 Helions)`, the phase as a pair,
   `Drift −6 236λ against the solar rhythm`.
-- **How to read**: the five lines of normal mode, *The Helion is the basic reading* (its count and its phase; Preons and Flavons the fine
-  time; Alpha … Delta in words with their quarter), *Counts from 0, ordinals from 1*, the glossary pointer.
+- **How to read**: the five lines of normal mode, *The Helion is the basic reading* (its number and its phase; Preons and Flavons the fine
+  time; Alpha … Delta in words with their quarter), *Numbers from 1, counts from 0* (34η is the 34th Helion of its Nuclide, 1–77; ε#5 and
+  Delta Trifracton are numbered from 1 too; Preons and Flavons are counts), the glossary pointer.
 - **Out of range**: "outside the catalogue", from `α#1` to `α#18`.
 
 No fracton name is ever given to a minor depth, and ζ θ κ μ have no names. Strings live in `src/ui/face/pure.js`; nothing there measures a

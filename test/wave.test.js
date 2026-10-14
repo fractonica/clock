@@ -1878,23 +1878,26 @@ test('pureCountdown measures in position, so it is exact across eclipse interval
   assert.match(pureCountdown(pureT, model, model.tMin - 1e9, model.tMin + 5, 1), /^in \d+[αβγ]/, 'outside the catalogue it still counts');
 });
 
-test('chainText is the stamp of the start of a cycle: majors and the Nuclide as ordinals, then the counts that place it', () => {
+test('chainText is the stamp of the start of a cycle: majors and the Nuclide as ordinals, then the Helion (from 1) and the counts that place it', () => {
   for (const L of [3, 4, 6]) {
     const cur = model.levelAt(TIMES.A, L);
     assert.equal(chainText(pureT, model, L, cur.cycle, 9), pureT.addressAt(TIMES.A, L), `depth ${L + 1}`);
   }
   for (const L of [0, 2]) assert.ok(pureT.addressAt(TIMES.A, L).startsWith(chainText(pureT, model, L, model.levelAt(TIMES.A, L).cycle, 9)));
   assert.equal(chainText(pureT, model, 4, model.levelAt(TIMES.A, 4).cycle), 'α#6 β#4 γ#9 δ#3 ε#5');
-  assert.equal(chainText(pureT, model, 7, model.levelAt(TIMES.A, 7).cycle, 9), 'α#6 β#4 γ#9 δ#3 ε#5 33η 28ι', 'a θ starts at 28ι');
+  assert.equal(chainText(pureT, model, 7, model.levelAt(TIMES.A, 7).cycle, 9), 'α#6 β#4 γ#9 δ#3 ε#5 34η 28ι', 'a θ starts at 28ι');
   const deep = chainText(pureT, model, 9, model.levelAt(TIMES.A, 9).cycle);
-  assert.equal(deep, '… δ#3 ε#5 33η 29ι 13λ', 'a long address keeps its last five links');
+  assert.equal(deep, '… δ#3 ε#5 34η 29ι 13λ', 'a long address keeps its last five links');
   assert.doesNotMatch(chainText(pureT, model, 9, model.levelAt(TIMES.A, 9).cycle, 9), /[ζθικ]#/, 'no ordinals for minor depths');
 });
 
 test('nowLabelPure writes three consecutive tokens of the stamp, chosen by the depth of the arc', () => {
   const t = TIMES.A;
-  assert.deepEqual([0, 1, 2, 3, 4, 5, 6, 13].map((L) => nowLabelPure(pureT, t, L)), ['α#6 β#4 γ#9', 'β#4 γ#9 δ#3', 'γ#9 δ#3 ε#5', 'δ#3 ε#5 33η', 'ε#5 33η 29ι', '33η 29ι 21λ', '33η 29ι 21λ', '33η 29ι 21λ']);
+  assert.deepEqual([0, 1, 2, 3, 4, 5, 6, 13].map((L) => nowLabelPure(pureT, t, L)), ['α#6 β#4 γ#9', 'β#4 γ#9 δ#3', 'γ#9 δ#3 ε#5', 'δ#3 ε#5 34η', 'ε#5 34η 29ι', '34η 29ι 21λ', '34η 29ι 21λ', '34η 29ι 21λ']);
   assert.equal(nowLabelPure(pureT, model.tMax + 10, 6), '—');
+  // the Helion is numbered from 1: the first moment of a Nuclide reads 1η, never 0η
+  const nuclideStart = model.levelAt(t, 4).start + 0.001;
+  assert.equal(nowLabelPure(pureT, nuclideStart, 6), '1η 0ι 0λ');
   for (const L of [0, 1, 2, 3, 4, 5, 6]) {
     for (const time of [TIMES.A, TIMES.B, TIMES.C, 125593320.5]) {
       const label = nowLabelPure(pureT, time, L);
@@ -1908,13 +1911,13 @@ test('cyclePure and whenPure: a major cycle in words, a minor one by where it st
   const plain = (str) => str.replace(/\u00a0/g, ' '); // "6 of 18" never breaks across lines
   assert.ok(cyclePure(pureT, eng.describe(0, 11)).includes('6\u00a0of\u00a018'));
   const cur = eng.readHalves(model.frame(TIMES.A));
-  const d = eng.describe(6, cur[6].idx); // the closing (trough) half of the Helion 33η of ε#5
-  assert.equal(plain(cyclePure(pureT, d)), 'closing half of ε#5 33η');
+  const d = eng.describe(6, cur[6].idx); // the closing (trough) half of the 34th Helion of ε#5
+  assert.equal(plain(cyclePure(pureT, d)), 'closing half of ε#5 34η');
   const e = eng.describe(4, cur[4].idx);
   assert.equal(plain(cyclePure(pureT, e)), 'opening half of ε#5');
   assert.equal(plain(cyclePure(pureT, eng.describe(3, cur[3].idx))), 'closing half of Delta Trifracton · 3 of 5 in γ');
   assert.equal(plain(cyclePure(pureT, eng.describe(0, 11))), 'closing half of Alpha Hexafracton · 6 of 18');
-  assert.equal(plain(cyclePure(pureT, eng.describe(7, cur[7].idx))), 'opening half of ε#5 33η 28ι', 'θ is no unit: it is placed by its start');
+  assert.equal(plain(cyclePure(pureT, eng.describe(7, cur[7].idx))), 'opening half of ε#5 34η 28ι', 'θ is no unit: it is placed by its start');
   assert.equal(whenPure(pureT, model, d, TIMES.A), 'ends in 6ι 43λ');
   assert.match(whenPure(pureT, model, d, d.start - 100), /^starts in /);
   assert.match(whenPure(pureT, model, d, d.end + 100), /^ended .* ago$/);

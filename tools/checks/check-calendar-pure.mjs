@@ -2,7 +2,8 @@
 //   node tools/checks/check-calendar-pure.mjs [--soft] [--shots]
 //
 // Revision 3 of pure mode (SPEC §15): major periods in words with quarter words, the Nuclide and counts of Helions,
-// Preons, Flavons and Blinks; one page = one Delta = 5 Nuclide rows x 7 columns of 11 Helions. 1. Leak scan: the shared scanner (tools/pure-scan.mjs) over the pure converter, the pure δ page and the jump box in
+// Preons, Flavons and Blinks (the Helion numbered from 1, 1η … 77η); one page = one Delta = 5 Nuclide rows x 7 columns
+// of 11 Helions (1η 12η … 67η). 1. Leak scan: the shared scanner (tools/pure-scan.mjs) over the pure converter, the pure δ page and the jump box in
 //    states it cannot reach by itself: open glyph picker, typed errors in every field, every jump-box input class
 //    (names, addresses, stamps, offsets, boundaries, glyph states, Earth input, errors, examples, history), tooltips of
 //    cells / η bands / sync marks / ribbon, keyboard-only tooltips, toasts, out-of-range moments, phone width.
@@ -100,7 +101,7 @@ await withApp(
       await field('Stamp or name').fill('Gamma Difracton');
       await field('Stamp or name').press('Enter');
       await page.waitForTimeout(250);
-      ok(/^α#6 β#4 γ#2 δ#1 ε#1 0η 0ι 0λ$/.test(await stampNow()), `a name sets the moment: ${await stampNow()}`);
+      ok(/^α#6 β#4 γ#2 δ#1 ε#1 1η 0ι 0λ$/.test(await stampNow()), `a name sets the moment: ${await stampNow()}`);
       ok((await page.locator('.cal-pconv .cal-pin').getAttribute('aria-pressed')) === 'true', 'an edit pins the converter');
       ok(/α#6 β#4 γ#2/.test(await field('Stamp or name').inputValue()), 'the stamp field shows the new moment');
       ok(Math.abs((await t()) - T) < 1, 'the app itself did not move until Apply');
@@ -108,9 +109,9 @@ await withApp(
       const c0 = await conv();
       await page.locator('.cal-pconv .cal-cstep').first().locator('button').nth(1).click();
       await page.waitForTimeout(200);
-      ok(/δ#1 ε#2 0η/.test(await stampNow()), `ε + 1: ${await stampNow()}`);
+      ok(/δ#1 ε#2 1η/.test(await stampNow()), `ε + 1: ${await stampNow()}`);
       ok((await conv()) > c0, 'the counter moved the moment forward');
-      await field('Helion count, 0 to 76').fill('40');
+      await field('Helion number, 1 to 77').fill('40');
       await page.waitForTimeout(250);
       ok(/ε#2 40η/.test(await stampNow()), 'typing a Helion count sets it: ' + (await stampNow()));
       // a major period by its fracton name: the Delta select, with the quarter word beside it
@@ -122,7 +123,7 @@ await withApp(
       ok((await page.locator('.cal-pconv .cal-mstep .cal-sl').allInnerTexts()).join(' ') === 'Alpha Beta Gamma Delta', 'the majors are named in words');
       // the minor entries are written in the notation: ε# before the number, the unit after a count
       ok((await page.locator('.cal-pconv .cal-cstep.is-ord .cal-sl').allInnerTexts()).join(' ') === 'ε#', 'the Nuclide is labelled ε#');
-      ok((await page.locator('.cal-pconv .cal-cstep.is-count .cal-sl').allInnerTexts()).join(' ') === 'η ι λ ν', 'the counts are labelled η ι λ ν after the number');
+      ok((await page.locator('.cal-pconv .cal-cstep.is-count .cal-sl').allInnerTexts()).join(' ') === 'η ι λ ν', 'the Helion and the counts are labelled η ι λ ν after the number');
       ok((await page.locator('.cal-pconv .cal-pc-clock .pure-pair').count()) === 1, 'the Helion reading carries its phase pair');
       ok((await page.locator('.cal-pconv .cal-pgcell.is-major').count()) === 4 && (await page.locator('.cal-pconv .cal-pgcell.is-major .pure-pair').count()) === 0, 'Alpha … Delta show a quarter word, no glyph pair');
       ok(/Press \? for the glossary/.test(await page.locator('.cal-pconv .cal-pc-moment .cal-help').first().innerText()), 'the converter help points to the glossary');
@@ -180,9 +181,9 @@ await withApp(
       note(await scan(page, `${label} ← ${text}`));
       await loc.press('Escape');
     };
-    for (const bad of ['2031-06-01', '+3d', 'Moscow', 'xyz', '14:30', 'next ζ½ peak', 'δ½ 3', '+2ξ', '+2ζ', 'ζ#5', 'δ#6', 'α#19', 'Delta Trifracton Node ε#2 5η', '3γ', '77η', '33η 4ν', 'tomorrow', '1791460800', '3 beats', '+2 Hadrons', 'next Atom', 'Eta Difracton', '50%']) await typeIn('Stamp or name', bad);
+    for (const bad of ['2031-06-01', '+3d', 'Moscow', 'xyz', '14:30', 'next ζ½ peak', 'δ½ 3', '+2ξ', '+2ζ', 'ζ#5', 'δ#6', 'α#19', 'Delta Trifracton Node ε#2 5η', '3γ', '78η', 'ε#2 0η', '33η 4ν', 'tomorrow', '1791460800', '3 beats', '+2 Hadrons', 'next Atom', 'Eta Difracton', '50%']) await typeIn('Stamp or name', bad);
     // every date form, counts and offsets in every unit (Blinks and unit names included) are read by the stamp field
-    for (const good of ['+4 Blinks', '+2 Nuclides 5 Helions', '+2ε 5η', '+0.14ν', '-3ι', 'Delta Trifracton Node', 'Delta Trifracton End ε#5 33η 29ι', 'ε#2 5η', '33η 17ι']) await typeIn('Stamp or name', good);
+    for (const good of ['+4 Blinks', '+2 Nuclides 5 Helions', '+2ε 5η', '+0.14ν', '-3ι', 'Delta Trifracton Node', 'Delta Trifracton End ε#5 34η 29ι', 'ε#2 5η', '34η 17ι']) await typeIn('Stamp or name', good);
     await typeIn('Eclipse number', '99');
     await typeIn('Fraction', 'abc');
     await typeIn('Exact position (Saros units)', '1e9');
@@ -285,7 +286,7 @@ await withApp(
     note(await scan(page, 'alpha 9'));
     ok((await view()).info.alpha === 9, 'the α select jumps to α#9');
     ok((await page.locator('.cal-pm-cell').count()) === 35, 'a page is 35 cells (5 Nuclide rows x 7 columns of 11 Helions)');
-    ok((await page.locator('.cal-pm-ch').allInnerTexts()).map((x) => x.replace(/\s+/g, '')).join(' ') === '0η 11η 22η 33η 44η 55η 66η', 'the columns are labelled by their first Helion count');
+    ok((await page.locator('.cal-pm-ch').allInnerTexts()).map((x) => x.replace(/\s+/g, '')).join(' ') === '1η 12η 23η 34η 45η 56η 67η', 'the columns are labelled by their first Helion (numbered from 1)');
     ok(/Gamma \w+fracton\s·\s+Delta \w+fracton/.test(await page.locator('.cal-pm-tm').innerText()), 'the page is named in words: ' + (await page.locator('.cal-pm-tm').innerText()));
     // the quarter bar: Peak Node Valley End of the page's Delta; a click goes to where the quarter begins
     ok((await page.locator('.cal-pm-qseg').allInnerTexts()).join(' ') === 'Peak Node Valley End', 'the quarter bar names the four quarters');
@@ -391,10 +392,10 @@ await withApp(
     note(await hoverSweep(page, 'jump list', { cols: 3, rows: 8, dwell: 40, box: (await page.locator('.jump-pop').boundingBox()) ?? undefined }));
     const inputs = [
       'Gamma Difracton', 'Gamma Difracton in Beta Tetrafracton', 'Alpha Hexafracton Beta Tetrafracton Gamma Nonafracton', 'Difracton', 'Omega Monofracton',
-      'Delta Trifracton', 'Delta Trifracton Node', 'Delta Trifracton Node ε#2 20η 12ι', 'Delta Trifracton Node ε#2 5η', 'Delta Trifracton End ε#5 33η 29ι',
-      'Alpha Hexafracton Valley, Beta Tetrafracton Valley, Gamma Nonafracton Valley, Delta Trifracton End, ε#5 33η 29ι 21λ 3ν',
-      'α#6 β#4 γ#9 δ#3 ε#5 33η 29ι 21λ 3ν', 'δ#3 ε#5 33η 29ι', 'α#6 β#4 γ#9', 'ε#5', 'ζ 6', 'a6 b3 g11', 'α#19', 'β#6', 'γ#14',
-      'ε#2 5η', '33η 17ι', 'δ 3 ε 2 η 5', 'η 3', '33η29ι21λ3ν', 'δ#6', 'ε#6', '77η', '3γ', 'ν#3', '33η 4ν',
+      'Delta Trifracton', 'Delta Trifracton Node', 'Delta Trifracton Node ε#2 21η 12ι', 'Delta Trifracton Node ε#2 5η', 'Delta Trifracton End ε#5 34η 29ι',
+      'Alpha Hexafracton Valley, Beta Tetrafracton Valley, Gamma Nonafracton Valley, Delta Trifracton End, ε#5 34η 29ι 21λ 3ν',
+      'α#6 β#4 γ#9 δ#3 ε#5 34η 29ι 21λ 3ν', 'δ#3 ε#5 34η 29ι', 'α#6 β#4 γ#9', 'ε#5', 'ζ 6', 'a6 b3 g11', 'α#19', 'β#6', 'γ#14',
+      'ε#2 5η', '34η 17ι', 'δ 3 ε 2 η 5', 'η 3', '34η29ι21λ3ν', 'δ#6', 'ε#6', '78η', 'ε#2 0η', '0η 29ι', '3γ', 'ν#3', '33η 4ν',
       '+2ε 5η', '-3ι', '3η ago', '+3', '+2δ', '+9999α', '+4 Blinks', '+0.14ν', '+2 Nuclides 5 Helions', '3 Preons ago', 'in 5 Flavons', '+12ν',
       'δ½ 3', 'ζ½', 'next ζ½', 'delta half 3', '+2ζ', '5ζ', 'ζ#5', 'θ#3', '+2θ', '+2ξ', '+2 Hadrons', 'next Atom', '3 Quarks ago', 'Eta Difracton', 'Epsilon Trifracton', '3 beats', '50%',
       'pos 22.9', 'pos 99', 'sync 4820', 'S4820 node', 'sync 99999999',

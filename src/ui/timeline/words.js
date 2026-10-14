@@ -4,8 +4,9 @@
  *
  *   major periods α β γ δ   in WORDS with a fracton ordinal ("Delta Trifracton") and, for a moment or a stretch of a
  *                           quarter, the quarter word (Peak, Node, Valley, End); never a phase pair
- *   minor units ε η ι λ ν   in letters and counts: the Nuclide ordinal "ε#5", then counts "33η 29ι 21λ 3ν"
- *   depths between (ζ θ κ μ) and finer (ξ …) are not units: named by where their cycles start ("33η 28ι") and
+ *   minor units ε η ι λ ν   in letters and counts: the Nuclide ordinal "ε#5", the Helion numbered from 1 in it "34η"
+ *                           (1η … 77η), then completed Preons, Flavons, Blinks "29ι 21λ 3ν"
+ *   depths between (ζ θ κ μ) and finer (ξ …) are not units: named by where their cycles start ("34η 28ι") and
  *                           measured in the next unit ("11η", "4ι", "13λ", "5ν", "0.14ν")
  *
  * Compact text (ticks, chips, lane heads, flags) keeps letters; unit NAMES (Nuclide, Helion, Preon, Flavon, Blink) are
@@ -67,7 +68,8 @@ export function createWords({ model, pure, ruler }) {
   // ---- the ruler -----------------------------------------------------------------------------------
   /**
    * What the tick row and the row above it say, for the tooltip of the ruler key in the gutter: majors in words, the
-   * Nuclide by its ordinal, the counts from 0 inside their parent (the header clock for η ι λ), quarters in the row
+   * Nuclide by its ordinal, the Helion numbered from 1 and the finer counts from 0 inside their parent (the header clock
+   * for η ι λ), quarters in the row
    * above whole major periods.
    */
   function rulerTip(step) {
@@ -87,9 +89,9 @@ export function createWords({ model, pure, ruler }) {
     }
     const inside =
       u >= FIRST_CLOCK
-        ? ` Here ${unit.sym} is counted inside the ${U[u - 1].name}, from 0 to ${ruler.per[u] - 1}${CLOCK.includes(u) ? ', like the clock in the header' : ''}.`
+        ? ` Here ${unit.sym} is ${u === FIRST_CLOCK ? 'numbered' : 'counted'} inside the ${U[u - 1].name}, from ${u === FIRST_CLOCK ? `1 to ${ruler.per[u]}` : `0 to ${ruler.per[u] - 1}`}${CLOCK.includes(u) ? ', like the clock in the header' : ''}.`
         : '';
-    const notation = ' A count such as 33η is how many whole Helions have gone by since the Nuclide began, so it starts at 0; ε#5 names the 5th Nuclide of its Delta and starts at 1.';
+    const notation = ' ε#5 names the 5th Nuclide of its Delta and 34η the 34th Helion of its Nuclide, both numbered from 1; 29ι 21λ 3ν count the Preons, Flavons and Blinks completed since, from 0.';
     return `${what}${every}.${ctx}${inside}${notation} Press ? for the glossary.`;
   }
   /** The two short lines the ruler key shows in the gutter: the unit of the context row, the unit of the ticks. */
@@ -116,7 +118,12 @@ export function createWords({ model, pure, ruler }) {
       const next = nextUnit(L);
       const made = next ? `; one is ${Math.round(pure.cyclePos(L) / pure.cyclePos(next.level))} ${pure.unitName(next.sym, 2)} (${next.sym})` : '';
       const head = next ? `${u.name} (${u.sym}): a minor unit, depth ${inf.depth}.` : `${u.name} (${u.sym}): the finest unit, depth ${inf.depth}, and the device's real-time tick.`;
-      const naming = L === 4 ? `Named ε#1 … ε#${per} inside its Delta.` : `Counted 0${u.sym} … ${per - 1}${u.sym} inside its ${above.name}.`;
+      const naming =
+        L === 4
+          ? `Named ε#1 … ε#${per} inside its Delta.`
+          : u.id === 'eta'
+            ? `Numbered 1η … ${per}η inside its Nuclide.`
+            : `Counted 0${u.sym} … ${per - 1}${u.sym} inside its ${above.name}.`;
       return `${head} ${per} of them make ${aName(above.name)} (${above.sym})${made}. ${naming}`;
     }
     if (k === 'between') {
@@ -124,24 +131,41 @@ export function createWords({ model, pure, ruler }) {
       const len = cycleLength(L);
       const n = /^(\d+)/.exec(len)[1];
       const sym = len.slice(n.length);
-      const starts = [0, 1, 2].map((i) => `${i * n}${sym}`).join(', ');
-      return `${inf.letter} (depth ${inf.depth}) lies between the units: one cycle is ${len}, ${inf.siblings} of them make ${aName(above.name)} (${above.sym}). A cycle is named by where it starts: ${starts} … ${(inf.siblings - 1) * n}${sym}.`;
+      const first = sym === 'η' ? 1 : 0; // Helions are numbered from 1 in their Nuclide
+      const at = (i) => `${i * n + first}${sym}`;
+      return `${inf.letter} (depth ${inf.depth}) lies between the units: one cycle is ${len}, ${inf.siblings} of them make ${aName(above.name)} (${above.sym}). A cycle is named by where it starts: ${[0, 1, 2].map(at).join(', ')} … ${at(inf.siblings - 1)}.`;
     }
     return `${inf.letter} (depth ${inf.depth}) is finer than the Blink: one cycle lasts ${cycleLength(L)}, ${inf.siblings} of them make ${aLetter(parent)}. A cycle is named by the decimal Blink it starts at.`;
   }
-  /** Name and short form of cycle `idx` (global index) of depth L: "Delta Trifracton" / "δ#3", "ε#5 33η" / "33η". */
-  const cycleNames = (L, idx) => ({ name: pure.cycleName(L, idx), short: pure.cycleShort(L, idx) });
+  /**
+   * Name and short form of cycle `idx` (global index) of depth L: "Delta Trifracton" / "δ#3", "ε#5 34η" / "34η". Cached:
+   * the painter asks for every visible block on every frame, and a minor name is exact BigInt arithmetic.
+   */
+  const nameCache = new Map();
+  function cycleNames(L, idx) {
+    const key = `${L}|${idx}`;
+    let v = nameCache.get(key);
+    if (!v) {
+      if (nameCache.size > 6000) nameCache.clear();
+      v = { name: pure.cycleName(L, idx), short: pure.cycleShort(L, idx) };
+      nameCache.set(key, v);
+    }
+    return v;
+  }
   /**
    * What begins when cycle `idx` of depth L ends: { short, long, say }. `say` is how a sentence names it: a major in
-   * words ("Delta Tetrafracton"), a minor cycle by the counts that change ("34η" inside the same Nuclide, "ε#1 0η" at
+   * words ("Delta Tetrafracton"), a minor cycle by the counts that change ("35η" inside the same Nuclide, "ε#1 1η" at
    * the start of the next one).
    */
   function endsInto(L, idx, endsWithCatalogue) {
     if (endsWithCatalogue) return { short: 'the end', long: 'the end of the catalogue', say: 'the end of the catalogue' };
     const next = Number(idx) + 1;
-    if (pure.isMajor(L)) return { short: pure.cycleShort(L, next), long: pure.cycleName(L, next), say: pure.cycleName(L, next) };
-    const a = pure.cycleName(L, idx).split(' ');
-    const b = pure.cycleName(L, next).split(' ');
+    if (pure.isMajor(L)) {
+      const n = cycleNames(L, next);
+      return { short: n.short, long: n.name, say: n.name };
+    }
+    const a = cycleNames(L, idx).name.split(' ');
+    const b = cycleNames(L, next).name.split(' ');
     let i = 0;
     while (i < b.length - 1 && a[i] === b[i]) i++;
     const changed = b.slice(i).join(' ');
@@ -152,7 +176,7 @@ export function createWords({ model, pure, ruler }) {
    * plot, so it may carry the banner with what begins when it ends; `w`: its width in px; `quarter`: the quarter word at
    * the cursor for the block that holds it (major periods only).
    *   major   "δ 4 · Delta Trifracton End (3/5) · ends → Delta Tetrafracton" … "Delta Trifracton End" … "δ#3" … "3"
-   *   minor   "η 7 · ε#5 33η · ends → 34η" … "ε#5 33η" … "33η" … "33"
+   *   minor   "η 7 · ε#5 34η · ends → 35η" … "ε#5 34η" … "34η" … "34"
    */
   function blockLabels({ level, local, idx, sib, wide, w, endsWithCatalogue, quarter = null }) {
     const inf = info(level);

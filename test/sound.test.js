@@ -1925,6 +1925,8 @@ test('pure wording: the voice tooltip teaches ratio, register, pitch and rate in
   // a major period: named in words with its quarter, never a phase pair (the caller passes pure.majorText)
   const major = pure.majorText(VECTOR_A, 3);
   assert.equal(major, 'Delta Trifracton End', 'SPEC §15.6 vector A');
+  // "Hear this moment" names the moment by the short date; Helions are numbered from 1 (1η … 77η), Preons count from 0
+  assert.equal(pure.dateText(VECTOR_A), 'Delta Trifracton End ε#5 34η 29ι');
   const delta = W.voiceTip({ row: rowsT[3], info: model.levelInfo(3), pure, live: { phase: 0.9, loud: 0.4, state: 'rising', major }, int: pure.groupDigits, color: '#0ff', hz: frequencyOf(rowsT[3], 110) });
   assert.match(plainText(delta), /^δ depth 4 · Delta, a major period · one cycle = 1δ /);
   assert.match(plainText(delta), /Now: Delta Trifracton End \(rising\), loudness/);

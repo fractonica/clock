@@ -691,7 +691,8 @@ const hardLeaks = (items) => judge(items, 'test').filter((l) => l.severity === '
 const frameA = model.frame(T_A);
 const tipAt = (row, topDepth, by) => pureTooltipModel({ model, pure, frame: frameA, row, topDepth, by });
 
-// the notation (header of src/core/pure.js): X#n is an ordinal from 1, nX counts units from 0, "η 7" is a depth chip.
+// the notation (header of src/core/pure.js): X#n is an ordinal from 1, nX counts units from 0 (the Helion of a date is numbered
+// from 1: 1η … 77η in its Nuclide), "η 7" is a depth chip.
 // Retired spellings: half units (revision 2), "beat", the unit names of revision 2 and fracton names for minor depths (revision 3).
 const HALF = '½'; // the vulgar fraction: written as an escape so that no half-cycle spelling sits in this file
 const OLD_SPELLINGS = [
@@ -706,7 +707,7 @@ const oldSpellings = (text) => OLD_SPELLINGS.filter(([re]) => re.test(text)).map
 
 test('the notation scan itself: it sees the old spellings, not durations, counts, ordinals or depth chips', () => {
   for (const bad of [`δ${HALF}#3 ε${HALF}#2`, 'phase 13·4 of 256', '19 η per sync', 'one η per beat', 'one cycle = 1ζ (Hadron)', 'Eta Difracton begins', 'Atom']) assert.notDeepEqual(oldSpellings(bad), [], bad);
-  for (const ok of ['δ#3 ε#5 33η 29ι', 'in 6ι 43λ', 'Ends in 43η 6ι → Delta Tetrafracton begins', 'Delta Trifracton End ε#5 33η 29ι', 'η 7 · θ 8', 'depth 7 η over depth 8 θ', 'phase 13 and 4 of 256', '19η per sync', 'state 13 of 16', '4ι per Blink']) {
+  for (const ok of ['δ#3 ε#5 34η 29ι', 'in 6ι 43λ', 'Ends in 43η 6ι → Delta Tetrafracton begins', 'Delta Trifracton End ε#5 34η 29ι', 'η 7 · θ 8', 'depth 7 η over depth 8 θ', 'phase 13 and 4 of 256', '19η per sync', 'state 13 of 16', '4ι per Blink']) {
     assert.deepEqual(oldSpellings(ok), [], ok);
   }
 });
@@ -788,15 +789,15 @@ test('pure info speech reads the countdowns and the sync, with placeholders for 
   assert.deepEqual(hardLeaks([{ kind: 'text', text: say, where: 'speech' }]), []);
 });
 
-test('pure period tooltip at vector A, a minor row: the Helion by its count in the Nuclide, the end names the Helion that begins', () => {
+test('pure period tooltip at vector A, a minor row: the Helion by its number in the Nuclide, the end names the Helion that begins', () => {
   const m = tipAt('top', 7);
   assert.equal(m.title, 'η · depth 7');
   assert.equal(m.aside, 'one Helion = 36ι');
-  assert.equal(m.lines[0], '33η of 77 in ε#5', 'SPEC §15.6: vector A is in the 34th Helion (33 completed) of the 5th Nuclide');
+  assert.equal(m.lines[0], '34η of 77 in ε#5', 'SPEC §15.6: vector A is in the 34th Helion of the 5th Nuclide (Helions are numbered from 1)');
   assert.equal(m.lines[1], `State 13 of 16: value ${MINUS}3, rising ↗`);
   assert.match(m.lines[2], /^Right \(fine\) glyph: state 0 of 16, changes in [\d.]+\S+( \d+\S+)?$/);
   assert.match(m.lines[3], /^Next change in \d+\S+( \d+\S+)?$/);
-  assert.equal(m.lines[4], 'Ends in 6ι 43λ → 34η begins');
+  assert.equal(m.lines[4], 'Ends in 6ι 43λ → 35η begins');
   assert.equal(m.lines[5], FROM_ONE, 'which numbers count from 0 and which from 1');
   assert.equal(m.lines.length, 6);
   assert.equal(m.hint, 'Click or tap: select this cycle in every view and show longer periods');
@@ -811,8 +812,9 @@ test('pure period tooltip at vector A, a minor row: the Helion by its count in t
   const b = tipAt('bottom', 7);
   assert.equal(b.title, 'θ · depth 8');
   assert.equal(b.aside, 'one cycle = 4ι');
-  assert.equal(b.lines[0], '28ι to 32ι in 33η');
+  assert.equal(b.lines[0], '28ι to 31ι in 34η', 'what the clock reads while the θ runs, first to last');
   assert.match(b.lines.at(-2), /^Ends in \S+ \S+ → 32ι begins$/);
+  assert.equal(tipAt('bottom', 5).lines[0], '34η to 44η in ε#5', 'a ζ covers eleven Helions, numbered 34 to 44');
   assert.ok(!/depth 7|row/.test(b.hint) && /shorter periods$/.test(b.hint));
   assert.equal(tipAt('top', 7, 'key').hint, 'Enter: select this cycle in every view');
   // the Nuclide by its ordinal in its Delta, which is said in words
@@ -845,8 +847,8 @@ test('pure period tooltip: the last cycle of a Nuclide is followed by the first 
   const eps = model.levelAt(T_A, 4);
   const t = eps.end - 60; // inside the last Helion of the Nuclide
   const m = pureTooltipModel({ model, pure, frame: model.frame(t), row: 'top', topDepth: 7 });
-  assert.equal(m.lines[0], '76η of 77 in ε#5');
-  assert.match(m.lines.at(-2), /→ ε#1 0η begins$/, 'a new Nuclide: the full placing');
+  assert.equal(m.lines[0], '77η of 77 in ε#5', 'the last Helion of a Nuclide is the 77th');
+  assert.match(m.lines.at(-2), /→ ε#1 1η begins$/, 'a new Nuclide: the full placing, from its first Helion');
   const edge = pureTooltipModel({ model, pure, frame: model.frame(model.tMax - 5), row: 'top', topDepth: 7 });
   assert.match(edge.lines.at(-2), /^Ends in .+, with the catalogue$/);
   assert.equal(tipAt('top', 2).hint, 'Click or tap: select this cycle in every view');
@@ -857,12 +859,12 @@ test('pure followers say only the counts that change, inside one Nuclide', () =>
   const big = (L) => model.levelAt(T_A, L).cycleBig;
   assert.deepEqual(
     [3, 4, 5, 6, 7, 8, 9, 10, 11].map((L) => followerName(pure, L, big(L))),
-    ['Delta Tetrafracton', 'ε#1 of Delta Tetrafracton', '44η', '34η', '32ι', '30ι', '26λ', '22λ', '5ν'],
+    ['Delta Tetrafracton', 'ε#1 of Delta Tetrafracton', '45η', '35η', '32ι', '30ι', '26λ', '22λ', '5ν'],
   );
   // a roll-over of a finer count shows the coarser one that changes with it
   const iota = model.levelAt(T_A, 8);
   const lastIota = iota.cycleBig + BigInt(35 - 29); // the 36th Preon of the Helion
-  assert.equal(followerName(pure, 8, lastIota), '34η 0ι');
+  assert.equal(followerName(pure, 8, lastIota), '35η 0ι');
 });
 
 test('pure solar tooltip: sync number, phase as a glyph pair, drift in λ, next quarter and age as ladder spans', () => {
@@ -896,7 +898,7 @@ test('pure row aria labels: where the cycle sits (words for majors), and the pha
   assert.doesNotMatch(solar, /percent|%|\d·\d/);
   const lv = model.levelAt(T_A, 6);
   const row = pureRowAriaLabel('top', { letter: 'η', depth: 7, place: placeText(pure, 6, lv), state: stateInfo(13) }, pure);
-  assert.equal(row, `η depth 7 · 33η of 77 in ε#5: state 13 of 16, value ${MINUS}3, rising. Activate to select this depth`);
+  assert.equal(row, `η depth 7 · 34η of 77 in ε#5: state 13 of 16, value ${MINUS}3, rising. Activate to select this depth`);
   assert.ok(!/[↗↘]/.test(row));
   const d = pureRowAriaLabel('top', { letter: 'δ', depth: 4, place: placeText(pure, 3, model.levelAt(T_A, 3), 'End'), state: stateInfo(14) }, pure);
   assert.match(d, /^δ depth 4 · Delta Trifracton End · 3 of 5 in its γ: state 14 of 16/);
@@ -904,10 +906,10 @@ test('pure row aria labels: where the cycle sits (words for majors), and the pha
 
 test('pure caption: the short date in words (letters where the words do not fit), the same numbers as the stamp', () => {
   const words = pureCaption(pure, T_A);
-  assert.equal(words, 'Delta Trifracton End ε#5 33η 29ι 21λ', 'SPEC §15.6 vector A, down to the Flavons');
+  assert.equal(words, 'Delta Trifracton End ε#5 34η 29ι 21λ', 'SPEC §15.6 vector A, down to the Flavons');
   assert.equal(words, pure.dateText(T_A, { upTo: 'lambda' }));
   const letters = pureCaption(pure, T_A, { letters: true });
-  assert.equal(letters, 'δ#3 ε#5 33η 29ι 21λ');
+  assert.equal(letters, 'δ#3 ε#5 34η 29ι 21λ');
   assert.deepEqual(oldSpellings(words), []);
   // the letters are the tail of the stamp: the counts are the same everywhere
   for (const t of [T_A, 946684800.5, 2886085800.25, 125593320.816, model.tMin + 9, model.tMax - 9]) {
@@ -916,19 +918,19 @@ test('pure caption: the short date in words (letters where the words do not fit)
     assert.match(pureCaption(pure, t, { letters: true }), /^δ#[1-5] ε#[1-5] \d+η \d+ι \d+λ$/);
   }
   // the longest caption in words is about 40 characters (the letter form is the fallback for the narrowest cards)
-  assert.ok('Delta Pentafracton Valley ε#5 76η 35ι 64λ'.length <= 42);
+  assert.ok('Delta Pentafracton Valley ε#5 77η 35ι 64λ'.length <= 42);
   assert.equal(pureCaption(pure, model.tMax + 10), '');
   assert.equal(pureCaption(pure, model.tMin - 10), '');
   assert.deepEqual(hardLeaks([{ kind: 'text', text: words, where: 'caption' }, { kind: 'text', text: letters, where: 'caption' }]), []);
   assert.equal(CAPTION_NOTE, `${FROM_ONE} ${GLOSSARY_NOTE}`);
-  assert.match(CAPTION_NOTE, /count from 1.*count from 0.*Press \? for the glossary\.$/);
+  assert.match(CAPTION_NOTE, /the Helion \(η\) count from 1.*ι λ ν from 0.*Press \? for the glossary\.$/);
   assert.deepEqual(hardLeaks([{ kind: 'attr:title', text: CAPTION_NOTE, where: 'caption' }]), []);
 });
 
 test('pure letters, range and texts for states without a reading', () => {
   const name = (L) => letterName(pure, L, model.levelAt(T_A, L).cycleBig);
   assert.deepEqual([1, 2, 3].map(name), ['Beta Tetrafracton', 'Gamma Nonafracton', 'Delta Trifracton'], 'majors in words');
-  assert.deepEqual([4, 6, 7, 8].map(name), ['ε#5', 'ε#5 33η', 'ε#5 33η 28ι', 'ε#5 33η 29ι'], 'minors by where they start');
+  assert.deepEqual([4, 6, 7, 8].map(name), ['ε#5', 'ε#5 34η', 'ε#5 34η 28ι', 'ε#5 34η 29ι'], 'minors by where they start');
   const r = pureRange(pure);
   assert.deepEqual([r.from, r.to], ['α#1', 'α#18']);
   assert.deepEqual(r.lines, ['outside the', 'catalogue']);
@@ -938,22 +940,22 @@ test('pure letters, range and texts for states without a reading', () => {
   assert.deepEqual(hardLeaks(items), []);
   // the longest name still fits the 192 px screen at 9.5 px (about 5.6 px per letter): majors up to Gamma Tridecafracton,
   // minors down to μ (the bottom row at depth 12)
-  const longest = Math.max('Gamma Tridecafracton'.length, 'ε#5 76η 35ι 64λ 20ν'.length);
+  const longest = Math.max('Gamma Tridecafracton'.length, 'ε#5 77η 35ι 64λ 20ν'.length);
   assert.ok(longest * 5.6 < 150, `longest name ${longest} letters`);
 });
 
-test('pure how-to: the five lines of normal mode, the reading (Helion count and phase, words for Alpha … Delta), counts from 0, the glossary', () => {
+test('pure how-to: the five lines of normal mode, the reading (Helion number and phase, words for Alpha … Delta), numbers from 1 and counts from 0, the glossary', () => {
   const lines = pureHowToLines(pure.pairHTML(13 / 16 + 4 / 256 + 1e-4, { label: 'phase' }));
   assert.deepEqual(lines.map(([k]) => k), ['teal', 'dot', 'pair', 'count', 'units', 'zero', 'gold']);
   const units = lines[4][1];
   assert.match(units, /Helion is the basic reading/);
-  assert.match(units, /its count and its phase/);
+  assert.match(units, /its number and its phase/);
   assert.match(units, /Preons and Flavons are the fine time/);
   assert.match(units, /Alpha, Beta, Gamma and Delta are said in words with their quarter: Delta Trifracton End/);
   const zero = lines[5][1];
-  assert.match(zero, /from 0/);
-  assert.match(zero, /ordinals/);
-  assert.match(zero, /33η counts the Helions completed in the Nuclide \(0–76\)/);
+  assert.match(zero, /^<b>Numbers from 1, counts from 0\.<\/b>/);
+  assert.match(zero, /34η is the 34th Helion of its Nuclide \(1–77\)/);
+  assert.match(zero, /29ι 21λ count the Preons and Flavons completed, from 0/);
   assert.match(lines[6][1], /19η cycles, 19 Helions/);
   assert.doesNotMatch(lines[6][1], /civil|4-day|\bs\b|days|19 η/);
   assert.match(lines[2][1], /16 × 16 = 256 phases/);

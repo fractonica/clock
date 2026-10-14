@@ -8,7 +8,7 @@
  *
  *   Moment  - the Helion reading (count, phase pair, Preons, Flavons, Blinks), the full date in words, the stamp field
  *             (reads every date form, counts and offsets), the four major periods by name with their quarter word, the
- *             Nuclide ε#1–5 and the counts η 0–76, ι 0–35, λ 0–64, ν 0–24, the eclipses around it in ladder units
+ *             Nuclide ε#1–5, the Helion 1–77 and the counts ι 0–35, λ 0–64, ν 0–24, the eclipses around it in ladder units
  *   Cycles  - position (ordinal + fraction + exact), cycle address (majors and the Nuclide by number, finer depths by
  *             where they start in their Nuclide), the phase at every depth (major periods: their quarter word; every
  *             other depth: its glyph PAIR, with a picker for "when does depth d show this pair"), the solar sync
@@ -18,7 +18,8 @@
  * phases are two 2-stroke glyphs, distances are exact position spans. Offsets typed into the stamp field may use any
  * unit, Blinks included (+2ε 5η, +4 Blinks, +0.5ν).
  *
- * Notation: X#n is an ordinal counted from 1 (δ#3, ε#2), nX a count of completed units counted from 0 (33η 29ι 21λ 3ν).
+ * Notation: X#n is an ordinal counted from 1 (δ#3, ε#2), nX a count of completed units counted from 0 (29ι 21λ 3ν), except
+ * the Helion of a date, written 34η but numbered from 1 in its Nuclide (the 34th; 1–77).
  * Eclipses are named like positions, #22 for the one at position 22; the drift of a sync is pure.driftText.
  */
 import { h, ICONS, esc, setText, setHtml, setStyle, setAttr, toggleClass, copyText, prefersReducedMotion, hasSound, hearMoment } from './dom.js';
@@ -227,7 +228,7 @@ export function createPureConverter(ctx, { tip }) {
   // ---- stamp / name / offset field
   const fStamp = field({
     label: 'Stamp or name',
-    placeholder: 'Delta Trifracton Node ε#2 20η · α#6 β#4 γ#9 δ#3 ε#5 33η · 5η 17ι',
+    placeholder: 'Delta Trifracton Node ε#2 21η · α#6 β#4 γ#9 δ#3 ε#5 34η · 5η 17ι',
     hint: 'A date in words or letters, counts such as 5η 17ι, or an offset such as +2ε 5η or +4 Blinks',
     copy: () => stampOf(S.T),
     multiline: true,
@@ -291,8 +292,9 @@ export function createPureConverter(ctx, { tip }) {
   // ---- the Nuclide and the counts: ε# · η ι λ ν
   function makeCounter(spec) {
     const level = LEVEL_OF[spec.id];
-    // the Nuclide is an ordinal ("ε#" + the number box, from 1), the others counts (the number box + "η", from 0)
-    const kind = spec.ordinal ? 'number' : 'count';
+    // the Nuclide is an ordinal ("ε#" + the number box, from 1); the Helion is numbered from 1 and the others are counts
+    // from 0, both written number first ("34η", "29ι")
+    const kind = spec.numbered ? 'number' : 'count';
     const word = pure.unitName(spec.sym);
     const input = h('input.cal-sv.mono', { type: 'text', inputmode: 'numeric', autocomplete: 'off', 'aria-label': `${word} ${kind}, ${spec.min} to ${spec.max}`, size: 3 });
     const dec = h('button.cal-sb', { type: 'button', html: '−', title: `One ${word} back`, 'aria-label': `One ${word} back` });
@@ -347,7 +349,7 @@ export function createPureConverter(ctx, { tip }) {
   }
   const counters = COUNTERS.map(makeCounter);
   const majorRow = h('div.cal-crow.cal-mrow', null, h('span.cal-clab', { text: 'Major periods · by name, with the quarter they are in' }), ...majors.map((m) => m.el));
-  const clockRow = h('div.cal-crow', null, h('span.cal-clab', { text: 'Nuclide (# from 1) and counts of completed units (from 0)' }), ...counters.map((c) => c.el));
+  const clockRow = h('div.cal-crow', null, h('span.cal-clab', { text: 'Nuclide (# from 1), Helion (from 1), then Preons, Flavons, Blinks completed (from 0)' }), ...counters.map((c) => c.el));
 
   const readDate = h('div.cal-pc-date.mono');
   const readClock = h('div.cal-pc-clock');
@@ -845,7 +847,7 @@ export function createPureConverter(ctx, { tip }) {
   // ------------------------------------------------------------------------------------------
   // painting
   // ------------------------------------------------------------------------------------------
-  /** The Helion reading: its count and its phase pair, then the Preons, Flavons and Blinks (the basic reading, SPEC §15.3). */
+  /** The Helion reading: its number (from 1) and its phase pair, then the Preons, Flavons and Blinks (the basic reading, SPEC §15.3). */
   const clockHtml = (c, T) => {
     const helion = model.levelAt(T, 6);
     return `<span class="pure-clock"><b>${c.eta}</b><i>η</i>${helion ? pure.pairHTML(helion.phase, { label: 'Helion phase' }) : ''}<b>${c.iota}</b><i>ι</i><b>${c.lambda}</b><i>λ</i><b>${c.nu}</b><i>ν</i></span>`;
@@ -1008,7 +1010,7 @@ export function createPureConverter(ctx, { tip }) {
     }
     const level = S.depth - 1;
     const cyc = cycleOfPath(model, path);
-    // a cycle finer than the Nuclide: its place in the Nuclide ("33η 28ι"), stepped one cycle of its depth at a time
+    // a cycle finer than the Nuclide: its place in the Nuclide ("34η 28ι"), stepped one cycle of its depth at a time
     placeEl.hidden = level < 5 || !cyc;
     if (level >= 5 && cyc) {
       setText(placeLab, `${LETTERS[level]}`);

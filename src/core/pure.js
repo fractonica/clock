@@ -20,12 +20,14 @@
  *   short words   Delta Trifracton Node ε#2 5η 5ι
  *   full letters  α#5 β#4 γ#2 δ#3 ε#2 5η 5ι 5λ          (the stamp: unambiguous, no quarter words)
  *   short letters δ#3 ε#2 5η 5ι
- *   ε#n is the Nuclide inside its Delta (1..5); then COUNTS of completed units: Helions 0..76 inside the Nuclide,
- *   Preons 0..35, Flavons 0..64, Blinks 0..24 (Flavons and Blinks optional, like seconds).
+ *   ε#n is the Nuclide inside its Delta (1..5); then the Helion NUMBERED from 1 inside the Nuclide (1..77, like the day
+ *   of a month), then COUNTS of completed units from 0, like hours and minutes: Preons 0..35, Flavons 0..64, Blinks 0..24
+ *   (Flavons and Blinks optional, like seconds). Spans are always counts ("5η 12ι" lasts five Helions and 12 Preons).
  *
  * NOTATION (one rule)
  *   X#n   an ordinal, 1-based (α#6, δ#3, ε#2): an identity
- *   nX    a count of units, 0-based (5η 5ι, spans "6ι 43λ", ruler ticks "9η", speeds "4ι per Blink")
+ *   nX    a count of units, 0-based (5ι, spans "6ι 43λ", ruler ticks "9ι", speeds "4ι per Blink") – except the Helion of
+ *         a date or clock, which is numbered from 1 (1η … 77η in its Nuclide; owner's decision)
  *   X d   a depth chip, only on level chips ("η 7")
  *
  * Everything here is presentation only: the clock itself still runs on Unix seconds (model.js).
@@ -299,8 +301,8 @@ export function createPure(model, { now = () => model.tMin } = {}) {
 
   // ---- counting a global cycle index into the minor ladder ---------------
   /**
-   * Where the start of cycle `cycleBig` of `level` falls on the minor ladder: the Nuclide ordinal and the counts of
-   * completed Helions (in the Nuclide), Preons (in the Helion), Flavons (in the Preon) and Blinks (in the Flavon) – the
+   * Where the start of cycle `cycleBig` of `level` falls on the minor ladder: the Nuclide ordinal, the Helion's number in the
+   * Nuclide (from 1) and the counts of completed Preons (in the Helion), Flavons (in the Preon) and Blinks (in the Flavon) – the
    * counts of units finer than `level` are 0 at a start, and `nuFrac` is the fraction of a Blink for levels below ν.
    * Exact BigInt arithmetic: every P ratio is a whole number.
    */
@@ -311,7 +313,7 @@ export function createPure(model, { now = () => model.tMin } = {}) {
     const out = {
       delta: Number(at(3) % 5n) + 1,
       epsilon: local(4, 3) + 1,
-      eta: local(6, 4),
+      eta: local(6, 4) + 1,
       iota: local(8, 6),
       lambda: local(10, 8),
       nu: local(12, 10),
@@ -326,8 +328,8 @@ export function createPure(model, { now = () => model.tMin } = {}) {
 
   // ---- clocks, dates, stamps ---------------------------------------------
   /**
-   * The pure clock: the Nuclide (ordinal 1..5 in its Delta) and the counts of completed minor units:
-   * eta 0..76 (in the Nuclide), iota 0..35 (in the Helion), lambda 0..64 (in the Preon), nu 0..24 (in the Flavon).
+   * The pure clock: the Nuclide (ordinal 1..5 in its Delta), the Helion numbered from 1 in the Nuclide (eta 1..77), and the
+   * counts of completed iota 0..35 (in the Helion), lambda 0..64 (in the Preon), nu 0..24 (in the Flavon).
    * @returns {null | {epsilon:number, eta:number, iota:number, lambda:number, nu:number}}
    */
   function clock(t) {
@@ -336,7 +338,7 @@ export function createPure(model, { now = () => model.tMin } = {}) {
     const [ep, ze, et, th, io, ka, la, mu, nu] = l;
     return {
       epsilon: ep.local + 1,
-      eta: ze.local * 11 + et.local,
+      eta: ze.local * 11 + et.local + 1,
       iota: th.local * 4 + io.local,
       lambda: ka.local * 13 + la.local,
       nu: mu.local * 5 + nu.local,
@@ -456,7 +458,7 @@ export function createPure(model, { now = () => model.tMin } = {}) {
   const nuWithFrac = (c) => (c.nuFrac ? `${Number((c.nu + c.nuFrac).toFixed(2))}ν` : `${c.nu}ν`);
   /**
    * The counts that place the start of a minor cycle, down to the first unit at or finer than its level:
-   * ζ "22η", η "5η", θ "5η 8ι", ι "5η 9ι", κ "5η 9ι 26λ", λ "5η 9ι 27λ", μ "… 27λ 10ν", ν "… 11ν", ξ "… 11.29ν".
+   * ζ "23η" (ζ cycles begin at Helions 1, 12, 23 … 67), η "5η", θ "5η 8ι", ι "5η 9ι", κ "5η 9ι 26λ", λ "5η 9ι 27λ", μ "… 27λ 10ν", ν "… 11ν", ξ "… 11.29ν".
    */
   function minorStartParts(level, c) {
     const parts = [];
@@ -479,7 +481,7 @@ export function createPure(model, { now = () => model.tMin } = {}) {
     const parts = minorStartParts(level, c);
     return short ? parts.join(' ') : [`ε#${c.epsilon}`, ...parts].join(' ');
   }
-  /** Compact form: "δ#3", "ε#2", or the finest placing count of a minor cycle ("22η", "8ι", "11ν"). */
+  /** Compact form: "δ#3", "ε#2", or the finest placing count of a minor cycle ("23η", "8ι", "11ν"). */
   function cycleShort(level, cycleIdx) {
     if (level <= 4) return shortName(level, ordinalOf(level, cycleIdx));
     return minorStartParts(level, countsAtStart(level, cycleIdx)).at(-1);

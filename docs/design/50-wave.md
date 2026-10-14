@@ -52,8 +52,8 @@ the view's own geometry (a cycle is a crest followed by a trough), not a unit.
 
 - **Major arcs (α β γ δ)**: the cycle in words (`closing half of Delta Trifracton · 3 of 5 in γ`); the read-out shows the quarter word of the
   cycle (`End`, "quarter of this δ cycle") where a minor arc shows its two pairs; tooltips and the depth button say `now in its End quarter`.
-- **Minor arcs**: placed by where their cycle starts (`closing half of ε#5 33η`), half-arc and cycle phases as glyph pairs.
-- Addresses are the stamp of the cycle's start (`α#6 β#4 γ#9 δ#3 ε#5 33η`), the time next to the focus marker three consecutive tokens of the
-  stamp (`δ#3 ε#5 33η`, `33η 29ι 21λ`); spans are the core's (`ends in 6ι 43λ`, a half-arc `18ι long`); depth buttons say what one cycle is
+- **Minor arcs**: placed by where their cycle starts (`closing half of ε#5 34η`, the 34th Helion of ε#5: Helions are numbered from 1), half-arc and cycle phases as glyph pairs.
+- Addresses are the stamp of the cycle's start (`α#6 β#4 γ#9 δ#3 ε#5 34η`), the time next to the focus marker three consecutive tokens of the
+  stamp (`δ#3 ε#5 34η`, `34η 29ι 21λ`); spans are the core's (`ends in 6ι 43λ`, a half-arc `18ι long`); depth buttons say what one cycle is
   (`1η (Helion) = 36ι`, `11η`).
 - Eclipse labels are `#k` like the position; drift reads `drift −6 236λ`; the solar texts are unchanged (`19η`, 19 Helions).

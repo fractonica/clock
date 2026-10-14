@@ -9,8 +9,8 @@
  * Pure mode (docs/design/80-pure.md, SPEC §15): the same view in Fractonica terms only. Every sentence that would carry a
  * Gregorian date, a clock time, an Earth unit or a percentage is written again in ./rings/pure-text.js: the major rings
  * (α β γ δ) in words with their quarter ("Delta Trifracton End", the quarter word where a percentage would be), the minor
- * rings by where their cycle starts in its Nuclide ("ε#5 33η") with a pair of two-stroke glyphs for the percentage,
- * coordinates as pieces of the stamp, countdowns on the ladder ("6ι 43λ"), real time in Blinks, "→ 34η begins". The mode
+ * rings by where their cycle starts in its Nuclide ("ε#5 34η") with a pair of two-stroke glyphs for the percentage,
+ * coordinates as pieces of the stamp, countdowns on the ladder ("6ι 43λ"), real time in Blinks, "→ 35η begins". The mode
  * is read on every frame, so switching is live in both directions.
  */
 import { createDial } from './rings/dial.js';
@@ -528,7 +528,7 @@ export function mount(el, ctx) {
     const pillCore = `${PHASE_MARK[pw.word]} ${pw.word}${toNext}`;
     if (pm) {
       // the big name is the cycle's own: a major one in words with its quarter ("Delta Trifracton End"), a minor one by
-      // where it starts in its Nuclide ("ε#5 33η"); a small hole keeps the short tag and leaves the name to the card below
+      // where it starts in its Nuclide ("ε#5 34η"); a small hole keeps the short tag and leaves the name to the card below
       const name = PT.displayName(P, sel, lv);
       setText(nodes.name, compactNow ? cycleTag(info, lv) : name);
       setText(nodes.phase, compactNow ? pillCore : `${cycleTag(info, lv)} · ${pillCore}`);
@@ -656,7 +656,7 @@ export function mount(el, ctx) {
     const addrKey = `${sel}:${lv.cycleBig}:${pm ? 'p' : 'n'}`;
     if (memoOf(nodes.fAddr).k !== addrKey) {
       // pure mode writes the stamp of the cycle's start: the ordinals of the majors and the Nuclide (α#6 › … › ε#5), then the
-      // counts that place a minor cycle in its Nuclide (33η › 29ι); the Gregorian-side view keeps the depth chips
+      // Helion and the counts that place a minor cycle in its Nuclide (34η › 29ι); the Gregorian-side view keeps the depth chips
       const tokens = pm
         ? PT.addressTokens(P, model, sel, lv.cycleBig)
         : model.cycleToPath(sel, lv.cycleBig).map((n, l) => ({ level: l, text: `${model.levelInfo(l).letter} ${n}` }));

@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Diary print builder</title>
+  <!--
+    Used by tools/diary-pdf.mjs: builds the diary of one Delta in the browser with the app's own modules (the same
+    builder as the Diary tab) and hands back the print document (src/diary/render.js printDocument).
+      window.diaryBuild({ t | delta | path, options, zone, appZone, pure }) -> { html, title, pages, width, height, paper, print, delta, zone }
+    `paper` is paperSize(opts): the PDF page (two diary pages side by side with print.twoUp).
+    `zone` overrides the options' zone; `appZone` stands in for the app's zone (used when the options name none).
+  -->
+  <script src="../fractonica.js"></script>
+  <script type="module">
+    import { createModel } from '../src/core/model.js';
+    import { createPure } from '../src/core/pure.js';
+    import { deltaAt, deltaFromPath, deltaRange } from '../src/diary/plan.js';
+    import { paperSize } from '../src/diary/options.js';
+    import { printDocument } from '../src/diary/render.js';
+    import { buildDiary } from '../src/ui/diary/build.js';
+
+    const model = createModel();
+    const pure = createPure(model);
+
+    window.diaryBuild = ({ t = null, delta = null, path = null, options = {}, zone = null, appZone = null, pure: pureMode = false } = {}) => {
+      const range = deltaRange(model);
+      let idx;
+      if (path) {
+        idx = deltaFromPath(model, path);
+        if (idx === null) throw new Error(`no Delta α#${path[0]} β#${path[1]} γ#${path[2]} δ#${path[3]} inside the catalogue`);
+      } else if (delta !== null) {
+        if (!(delta >= range.first && delta <= range.last)) throw new Error(`Delta index ${delta} is outside ${range.first}..${range.last}`);
+        idx = delta;
+      } else {
+        const at = t ?? Date.now() / 1000;
+        if (at < model.tMin || at > model.tMax) throw new Error('that moment is outside the catalogue');
+        idx = deltaAt(model, at);
+      }
+      const input = structuredClone(options ?? {});
+      if (zone) input.gregorian = { ...(input.gregorian ?? {}), zone };
+      const { plan, env, title, opts, zone: z } = buildDiary({ model, pure, input, delta: idx, appZone: zone ?? appZone, pureMode });
+      const html = printDocument(plan, env, { title });
+      return { html, title, pages: plan.pages.length, width: opts.page.width, height: opts.page.height, paper: paperSize(opts), print: opts.print, delta: idx, stamp: plan.delta.stamp, zone: z };
+    };
+    window.diaryReady = true;
+  </script>
+</head>
+<body></body>
+</html>

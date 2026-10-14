@@ -11,12 +11,12 @@
  *
  * Pure mode (docs/design/80-pure.md, SPEC §15, revision 3): the hero says what begins instead of a date: a major
  * period in words ("→ Delta Tetrafracton begins"), a minor cycle by its ordinal or count ("→ ε#3 begins",
- * "→ 34η begins"), with its letter address (α#6 β#4 γ#9 δ#3 ε#5 34η). Every countdown is a span over
+ * "→ 35η begins": a Helion is numbered 1–77 in its Nuclide), with its letter address (α#6 β#4 γ#9 δ#3 ε#5 35η). Every countdown is a span over
  * α β γ δ ε η ι λ ν (two non-zero parts in the list, three at most in the hero: 43η 6ι 43λ). The phase is a pair of
  * glyphs for a minor cycle and the quarter word for a major one (never a pair); real-time leads are counted in Blinks.
  * The list is grouped by the Nuclide an event falls in: a separator between groups, the group's Nuclide in words as
  * the heading of a group of several events on narrow cards ("Delta Trifracton ε#5"), the short letter date on every
- * row of a wide card ("δ#3 ε#5 34η"). The strip of a major level says which quarter begins ("→ Valley"). It switches live.
+ * row of a wide card ("δ#3 ε#5 35η"). The strip of a major level says which quarter begins ("→ Valley"). It switches live.
  *
  * Contract: export mount(el, ctx) -> { render, alwaysOn, destroy } (docs/ARCHITECTURE.md).
  */
@@ -610,7 +610,7 @@ export function mount(el, ctx) {
               S.title(`Just after: ${name} ends and ${next ? `${next.name} begins` : 'the catalogue ends'}; jump to ${afterLead()} past it`);
             }
           } else {
-            // a minor one: where the threshold falls ("at 34η 0ι": a position, next to the countdown, a span)
+            // a minor one: where the threshold falls ("at 35η 0ι": a position, next to the countdown, a span)
             const where = quarterWhere(model, pure, lv.next.time, sel);
             S.clock(where ? `at ${where}` : '');
             S.title(`Just after: jump to ${afterLead()} past the next ${QN[lv.quarter]} of the current ${levelSay(pure, sel)} cycle`);

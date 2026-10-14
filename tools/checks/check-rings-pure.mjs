@@ -179,31 +179,31 @@ await withApp(
     const generic = await scan(page, 'rings @ vector A');
     genericLeaks.push(...generic.filter((l) => /rings-/.test(l.where)));
     const all = items.map((i) => i.text).join(' | ');
-    check('name of the selected cycle: a minor one by where it starts in its Nuclide', (await text(page, '.rings-cn-name')) === 'ε#5 33η', await text(page, '.rings-cn-name'));
+    check('name of the selected cycle: a minor one by where it starts in its Nuclide', (await text(page, '.rings-cn-name')) === 'ε#5 34η', await text(page, '.rings-cn-name'));
     check('pill carries depth chip, counter, phase word and next threshold', /^η 7 · 1\/11 · [↗↘▲▼] (Rising|Falling|Peak|Valley) · to \w+$/.test(await text(page, '.rings-cn-phase')), await text(page, '.rings-cn-phase'));
     // two counts like the chips / ladder / face: a third one is added only while it stays steady (never finer than λ)
     const centre = await text(page, '.rings-count');
     const endIn = await text(page, '.rings-chip[data-q="3"] .rings-chip-in');
     check('centre countdown is the two counts of SPEC §15.6 (6ι 43λ), the string of the end chip', centre === '6ι 43λ' && endIn === centre, `${centre} / ${endIn}`);
-    check('the end says what begins: the next Helion, by the count that changes', (await text(page, '.rings-end')) === '→ 34η begins', await text(page, '.rings-end'));
+    check('the end says what begins: the next Helion, by the number that changes', (await text(page, '.rings-end')) === '→ 35η begins', await text(page, '.rings-end'));
     const chipIn = await textAll(page, '.rings-chip-in');
     check('every quarter chip has a countdown, passed ones are negative', chipIn.length === 4 && chipIn.every(Boolean) && chipIn.slice(0, 3).every((c) => c.startsWith('−')) && !chipIn[3].startsWith('−'), chipIn.join(' | '));
     const chipTitles = await page.evaluate(() => [...document.querySelectorAll('.rings-chip')].map((c) => c.title));
-    check('chip titles name the cycle they belong to', chipTitles.every((t) => /of ε#5 33η/.test(t)) && /34η begins/.test(chipTitles[3]), chipTitles[3]);
+    check('chip titles name the cycle they belong to', chipTitles.every((t) => /of ε#5 34η/.test(t)) && /35η begins/.test(chipTitles[3]), chipTitles[3]);
     check('the phase is two glyphs (2 x 2 SVG), not a percentage', (await page.locator('.rings-wh-pct .pure-pair svg').count()) === 2 && !/%/.test(all));
     check('the pair label reads digits, not a percentage', /^phase \d+·\d+$/.test(await text(page, '.rings-wh-pctl')), await text(page, '.rings-wh-pctl'));
     check('the single glyph is hidden (the pair shows it)', await page.evaluate(() => getComputedStyle(document.querySelector('.rings-glyph')).display === 'none'));
     const facts = await page.evaluate(() => ({ s: document.querySelector('.rings-f-start').innerText, e: document.querySelector('.rings-f-end').innerText, l: document.querySelector('.rings-f-len').innerText, a: document.querySelector('.rings-f-addr').innerText.replace(/\s+/g, ' ') }));
-    check('facts: started / ends / length / address are pure (a Helion is 36 Preons; the address is the stamp of its start)', /ago/.test(facts.s) && /→ 34η begins/.test(facts.e) && /^1η \(Helion\) = 36ι$/.test(facts.l) && /α#6.*β#4.*γ#9.*δ#3.*ε#5.*33η/.test(facts.a) && !/[ζθκμ]#/.test(facts.a), JSON.stringify(facts));
-    check('facts: ordinals are X#n (γ#9 δ#3 ε#5), counts nX (33η 0ι), no halves and no "ε 4"', /γ#9 δ#3 ε#5/.test(facts.s) && /^33η 0ι$/m.test(facts.s) && !/\u00bd|(^|[ ·])[δεζ] \d/.test(facts.s + facts.e), JSON.stringify([facts.s, facts.e]));
+    check('facts: started / ends / length / address are pure (a Helion is 36 Preons; the address is the stamp of its start)', /ago/.test(facts.s) && /→ 35η begins/.test(facts.e) && /^1η \(Helion\) = 36ι$/.test(facts.l) && /α#6.*β#4.*γ#9.*δ#3.*ε#5.*34η/.test(facts.a) && !/[ζθκμ]#/.test(facts.a), JSON.stringify(facts));
+    check('facts: ordinals are X#n (γ#9 δ#3 ε#5), the Helion numbered from 1 and counts nX (34η 0ι), no halves and no "ε 4"', /γ#9 δ#3 ε#5/.test(facts.s) && /^34η 0ι$/m.test(facts.s) && !/\u00bd|(^|[ ·])[δεζ] \d/.test(facts.s + facts.e), JSON.stringify([facts.s, facts.e]));
     const glyphFact = await text(page, '.rings-f-glyph');
     check('glyph fact is spoken as two digits ("phase 13 and 0 of 256"), not "13·0"', /^phase \d+ and \d+ of 256 ?value [+−]?\d+/.test(glyphFact) && !/\d·\d/.test(glyphFact), glyphFact);
     const pairNames = await page.evaluate(() => [...document.querySelectorAll('#view-rings .pure-pair')].map((e) => e.getAttribute('aria-label')));
     check('pair labels are the helper\'s words and glyph svgs carry no title', pairNames.length > 0 && pairNames.every((n) => /^phase \d+ and \d+ of 256$/.test(n)) && (await page.locator('#view-rings .pure-pair svg title').count()) === 0, pairNames.join(' | '));
     check('the visible digit caption under the pair is hidden from screen readers (the pair has the words)', (await page.getAttribute('.rings-wh-pctl', 'aria-hidden')) === 'true');
     const slider = await page.evaluate(() => { const w = document.querySelector('.rings-wave'); return { max: w.getAttribute('aria-valuemax'), now: w.getAttribute('aria-valuenow'), txt: w.getAttribute('aria-valuetext') }; });
-    check('slider semantics: 0..255 and a pure value text', slider.max === '255' && Number(slider.now) >= 0 && Number(slider.now) <= 255 && /of 256 in ε#5 33η$/.test(slider.txt), JSON.stringify(slider));
-    check('wave boundary labels are coordinates on the ladder', [...seenTexts].some((t) => /^33η 9ι$/.test(t)) && [...seenTexts].some((t) => /^33η 18ι$/.test(t)), '');
+    check('slider semantics: 0..255 and a pure value text', slider.max === '255' && Number(slider.now) >= 0 && Number(slider.now) <= 255 && /of 256 in ε#5 34η$/.test(slider.txt), JSON.stringify(slider));
+    check('wave boundary labels are coordinates on the ladder', [...seenTexts].some((t) => /^34η 9ι$/.test(t)) && [...seenTexts].some((t) => /^34η 18ι$/.test(t)), '');
     const unitWords = /\b(second|minute|hour|day|week|month|year)s?\b/i;
     check('no Earth unit word anywhere in the view', !unitWords.test(all));
     if (SHOTS) await shot('rings-pure-A-desktop.png', { fullPage: true });
@@ -213,8 +213,8 @@ await withApp(
     await page.waitForTimeout(150);
     items = await sweep(page, 'help open');
     const help = await text(page, '.rings-help');
-    check('help panel is in pure vocabulary', /Delta Trifracton End/.test(help) && /ε#5 33η 29ι/.test(help) && /256 states/.test(help) && !/Gregorian|zone|years/.test(help), help.slice(0, 120));
-    check('help says counts start at 0 and ordinals at 1, names the units, and points to the glossary', /Counts \(η ι λ ν\) start at 0, ordinals \(.*\) at 1/.test(help) && /a Helion 36 Preons/.test(help) && /Press \? for the glossary\./.test(help), help.slice(-200));
+    check('help panel is in pure vocabulary', /Delta Trifracton End/.test(help) && /ε#5 34η 29ι/.test(help) && /256 states/.test(help) && !/Gregorian|zone|years/.test(help), help.slice(0, 120));
+    check('help says ordinals and the Helion are numbered from 1, the finer units count from 0, names the units, and points to the glossary', /Ordinals \(.*\) and the Helion of a date are numbered from 1 \(1η … 77η in a Nuclide\); Preons, Flavons and Blinks \(ι λ ν\) count completed units from 0/.test(help) && /a Helion 36 Preons/.test(help) && /Press \? for the glossary\./.test(help), help.slice(-200));
     if (SHOTS) await shot('rings-pure-help.png', { fullPage: true });
 
     // ------------------------------------------------------------------ every depth selected, several instants
@@ -253,7 +253,7 @@ await withApp(
         await setStore(page, { selectedLevel: 8, minDepth: 1, maxDepth: 12 });
         await page.waitForTimeout(200);
         const endChip = await page.evaluate(() => document.querySelector('.rings-chip[data-q="3"] .rings-chip-time').textContent.replace(/\s+/g, ' ').trim());
-        check('catalogue end: the end chip of the last ι reads 19η 9ι 0λ (not 19η 8ι 64λ)', /19η 9ι 0λ$/.test(endChip), endChip);
+        check('catalogue end: the end chip of the last ι reads 20η 9ι 0λ (not 20η 8ι 64λ)', /20η 9ι 0λ$/.test(endChip), endChip);
         await setStore(page, { selectedLevel: 0, minDepth: 1, maxDepth: 10 });
         await page.waitForTimeout(150);
         const e = await text(page, '.rings-end');
@@ -401,7 +401,7 @@ await withApp(
     await page.setViewportSize({ width: 390, height: 844 });
     await boot(page, url, `?pure=1&t=${A}&view=rings`);
     await sweepFresh(page, 'phone');
-    check('phone: the centre keeps the short tag, the full name moves to the card', (await text(page, '.rings-cn-name')) === 'η 7 · 1/11' && (await page.evaluate(() => getComputedStyle(document.querySelector('.rings-fullname')).display)) === 'block' && (await text(page, '.rings-fullname')) === 'ε#5 33η', `${await text(page, '.rings-cn-name')} / ${await text(page, '.rings-fullname')}`);
+    check('phone: the centre keeps the short tag, the full name moves to the card', (await text(page, '.rings-cn-name')) === 'η 7 · 1/11' && (await page.evaluate(() => getComputedStyle(document.querySelector('.rings-fullname')).display)) === 'block' && (await text(page, '.rings-fullname')) === 'ε#5 34η', `${await text(page, '.rings-cn-name')} / ${await text(page, '.rings-fullname')}`);
     check('phone: centre countdown is two units and fits the hole', await page.evaluate(() => {
       const c = document.querySelector('.rings-count');
       const hole = document.querySelector('.rings-centre').getBoundingClientRect();
@@ -445,7 +445,7 @@ await withApp(
       await page.waitForTimeout(450);
       const inPure = await sweepFresh(page, `switched on with ${how}`);
       check(`switch on (${how}): no reload`, (await page.evaluate(() => window.__noReload)) === 'same page');
-      check(`switch on (${how}): pure texts replace the Gregorian ones`, (await text(page, '.rings-cn-name')) === 'ε#5 33η' && !/%/.test(inPure.map((i) => i.text).join(' ')));
+      check(`switch on (${how}): pure texts replace the Gregorian ones`, (await text(page, '.rings-cn-name')) === 'ε#5 34η' && !/%/.test(inPure.map((i) => i.text).join(' ')));
       if (how === 'header button') {
         await page.click('.rings-help-btn');
         check('switch on: help panel rebuilt in pure vocabulary while open', /Delta Trifracton End/.test(await text(page, '.rings-help')));
@@ -474,7 +474,7 @@ await withApp(
     await page.waitForTimeout(250);
     // ?pure=1 deep link and the stored setting
     await boot(page, url, `?pure=1&t=${A}&view=rings`);
-    check('?pure=1 opens straight in pure mode', (await text(page, '.rings-cn-name')) === 'ε#5 33η');
+    check('?pure=1 opens straight in pure mode', (await text(page, '.rings-cn-name')) === 'ε#5 34η');
 
     // ------------------------------------------------------------------ cost of a pure-mode frame
     await boot(page, url, `?pure=1&t=${A}&view=rings`);

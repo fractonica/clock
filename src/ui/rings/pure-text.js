@@ -7,17 +7,19 @@
  * Revision 3 of the vocabulary splits the ladder in two:
  *   MAJOR rings α β γ δ   said in WORDS with their quarter ("Delta Trifracton End"); their phase is never drawn (no
  *                         glyph pair): the quarter word takes its place.
- *   MINOR rings           said by where the cycle starts in its Nuclide ("ε#5 33η 29ι"), with the phase pair. The units
- *                         are ε Nuclide (ordinal), η Helion (0–76 in the Nuclide), ι Preon, λ Flavon, ν Blink; the
- *                         depths between them (ζ θ κ μ) are no units: their cycles are 11η, 4ι, 13λ and 5ν long.
+ *   MINOR rings           said by where the cycle starts in its Nuclide ("ε#5 34η 29ι"), with the phase pair. The units
+ *                         are ε Nuclide (ordinal), η Helion (numbered 1–77 in the Nuclide, like the day of a month), ι Preon,
+ *                         λ Flavon, ν Blink (counts of completed units from 0); the depths between them (ζ θ κ μ) are no
+ *                         units: their cycles are 11η, 4ι, 13λ and 5ν long.
  *
  * The notation is the one of core/pure.js (read its header comment):
- *   X#n  an ordinal, 1-based: `δ#3`, `ε#5`              nX  a count of units, 0-based: `33η 29ι`, spans `6ι 43λ`
+ *   X#n  an ordinal, 1-based: `δ#3`, `ε#5`              nX  a count of units, 0-based: `29ι 21λ`, spans `6ι 43λ`;
+ *                                                         the Helion of a date is numbered from 1: `34η` (1η … 77η)
  *   X d  a depth chip, only on level chips: `η 7`
  *
  * A "coordinate" is the pure replacement of a date + time of day: the stamp of core/pure.js, cut to a resolution.
  *   date  the ordinals the instant sits in:  `δ#3 ε#5`   (α β γ δ ε)
- *   time  the counts inside the Nuclide:     `33η 29ι`   (η 0–76, ι 0–35, λ 0–64, ν 0–24)
+ *   time  the Helion and the counts:         `34η 29ι`   (η 1–77, then ι 0–35, λ 0–64, ν 0–24)
  * and, like a clock, its resolution follows the length of the cycle it labels (a cycle's quarter is the step). Below one
  * Blink (the ν and ξ rings) the ν count gets decimals: `3.43ν`.
  *
@@ -29,7 +31,8 @@ import { levelTag } from './text.js';
 
 const QUARTERS = ['peak', 'node', 'valley', 'end'];
 /**
- * The digits of a coordinate, longest first: ids of `pure.UNITS` (the ordinals α β γ δ ε, then the counts η ι λ ν),
+ * The digits of a coordinate, longest first: ids of `pure.UNITS` (the ordinals α β γ δ ε, the Helion numbered from 1, then
+ * the counts ι λ ν),
  * followed by three virtual digits: the first, second and third decimal of the ν count (a count of Blinks finer than
  * one). `resolutionIndex` returns an index into this list.
  */
@@ -44,7 +47,7 @@ export const coordSym = (pure, i) => pure.unitOf(COORD[Math.min(i, NU)]).sym;
 const LEVEL_OF_SYM = Object.freeze({ η: 6, ι: 8, λ: 10, ν: 12 });
 
 /**
- * The fields of an instant: 1-based ordinals (α β γ δ ε) and 0-based counts (η ι λ ν, `pure.clock`), plus `frac`, how
+ * The fields of an instant: 1-based ordinals (α β γ δ ε), the Helion (1–77) and the 0-based counts (ι λ ν, `pure.clock`), plus `frac`, how
  * far the running ν (Blink) has travelled (0..1: the decimals of the ν count below one Blink).
  * @returns {null | {ord:number[], count:number[], frac:number}} null outside the catalogue
  */
@@ -74,13 +77,14 @@ export function fieldsAtPosition(model, num, den = 1n) {
     const n = done(level);
     return Number(sib === null ? n : n % BigInt(sib));
   };
-  // a count of the minor ladder is the local index of a unit level plus whole cycles of the depth between it and its parent
+  // a count of the minor ladder is the local index of a unit level plus whole cycles of the depth between it and its parent;
+  // the Helion is numbered from 1 in its Nuclide (like the day of a month), the finer units are counts from 0
   const count = (between, unit) => local(between) * info(unit).siblings + local(unit);
   const nuWhole = (num * info(12).prefix) / (4n * den);
   const nuRest = num * info(12).prefix - nuWhole * 4n * den;
   return {
     ord: [Number(done(0)) + 1, local(1) + 1, local(2) + 1, local(3) + 1, local(4) + 1],
-    count: [count(5, 6), count(7, 8), count(9, 10), count(11, 12)],
+    count: [count(5, 6) + 1, count(7, 8), count(9, 10), count(11, 12)],
     frac: Number(nuRest) / Number(4n * den),
   };
 }
@@ -118,7 +122,7 @@ function nuCount(whole, frac, dec) {
 /**
  * The coordinate text of already-read fields at resolution `res` (an index into COORD; see `whenParts`): the stamp down
  * to that digit, cut into `time`, its trailing counts (at most `timeTokens`), and `date`, the `dateTokens` tokens just
- * before them (ordinals, or the coarser counts when the counts are cut: a λ ring reads "ε#5 33η" / "29ι 21λ 0ν", so the
+ * before them (ordinals, or the coarser counts when the counts are cut: a λ ring reads "ε#5 34η" / "29ι 21λ 0ν", so the
  * two parts always join into a piece of the stamp).
  */
 function partsOf(pure, f, res, { dateTokens = 3, timeTokens = 6 } = {}) {
@@ -146,14 +150,14 @@ function fieldsAt(pure, model, t) {
 /**
  * Coordinate of instant `t` at resolution `res` (an index into `COORD`).
  * @param {{dateTokens?:number, timeTokens?:number}} [o]  how many trailing ordinal / count tokens to keep (the rest is context)
- * @returns {{date:string, time:string}}  `date` "δ#3 ε#5", `time` "33η 29ι" ('' when the resolution is coarser than η)
+ * @returns {{date:string, time:string}}  `date` "δ#3 ε#5", `time` "34η 29ι" ('' when the resolution is coarser than η)
  */
 export function whenParts(pure, model, t, res, o) {
   const f = fieldsAt(pure, model, t);
   return f ? partsOf(pure, f, res, o) : { date: '—', time: '' };
 }
 
-/** `whenParts` on one line, as the stamp writes it: "δ#3 ε#5 33η 29ι". */
+/** `whenParts` on one line, as the stamp writes it: "δ#3 ε#5 34η 29ι". */
 export function whenText(pure, model, t, res, o) {
   const { date, time } = whenParts(pure, model, t, res, o);
   return [date, time].filter(Boolean).join(' ');
@@ -230,7 +234,7 @@ export const quarterWord = (pure, lv) => pure.QUARTER_WORDS[Math.min(3, Math.max
 
 /**
  * The cycle shown by reading `lv` of `level`: a major one in words ("Delta Trifracton"), a minor one by where it starts
- * in its Nuclide ("ε#5", "ε#5 33η", "ε#5 33η 28ι").
+ * in its Nuclide ("ε#5", "ε#5 34η", "ε#5 34η 28ι").
  */
 export const cycleName = (pure, level, lv) => pure.cycleName(level, bigOf(lv));
 
@@ -241,7 +245,7 @@ export const displayName = (pure, level, lv) => (pure.isMajor(level) ? `${cycleN
  * What begins when the cycle `lv` ({cycle, cycleBig, end, clipped}) of `level` ends, said as briefly as the context
  * allows, or null when the catalogue ends there:
  *   major  "Delta Tetrafracton"            ε  "ε#4", or "ε#1 of Delta Tetrafracton" when the Delta turns over
- *   finer  only the placing counts that change: "34η", "30ι", "34η 0ι"; "ε#1 0η" when the Nuclide turns over
+ *   finer  only the placing counts that change: "35η", "30ι", "35η 0ι"; "ε#1 1η" when the Nuclide turns over
  */
 export function followerName(pure, model, level, lv) {
   if (lv.clipped || lv.end >= model.tMax - 1e-6) return null;
@@ -258,13 +262,13 @@ export function followerName(pure, model, level, lv) {
   return now.slice(Math.max(0, i)).join(' ');
 }
 
-/** "→ 34η begins" / "→ Delta Tetrafracton begins" (what the end of the cycle is), or "→ end of the catalogue". */
+/** "→ 35η begins" / "→ Delta Tetrafracton begins" (what the end of the cycle is), or "→ end of the catalogue". */
 export function endLine(pure, model, level, lv) {
   const next = followerName(pure, model, level, lv);
   return next ? `→ ${next} begins` : '→ end of the catalogue';
 }
 
-/** "ends → 34η begins" / "the catalogue ends here". */
+/** "ends → 35η begins" / "the catalogue ends here". */
 export function endsSentence(pure, model, level, lv) {
   const next = followerName(pure, model, level, lv);
   return next ? `ends → ${next} begins` : 'the catalogue ends here';
@@ -402,7 +406,7 @@ export const stateText = (pure, phase, level = 6) => (pure.isMajor(level) ? `${q
 
 /**
  * The address of cycle `cycleBig` of `level`, as tokens with the level that colours them: the ordinals of the major
- * periods and the Nuclide (`α#6 β#4 γ#9 δ#3 ε#5`), then the counts that place a minor cycle in its Nuclide (`33η 29ι`).
+ * periods and the Nuclide (`α#6 β#4 γ#9 δ#3 ε#5`), then the Helion and the counts that place a minor cycle in it (`34η 29ι`).
  */
 export function addressTokens(pure, model, level, cycleBig) {
   const path = model.cycleToPath(level, cycleBig);
@@ -412,7 +416,7 @@ export function addressTokens(pure, model, level, cycleBig) {
 }
 
 /**
- * Slider text for assistive technology: "Rising, phase 13 and 4 of 256 in ε#5 33η" for a minor cycle,
+ * Slider text for assistive technology: "Rising, phase 13 and 4 of 256 in ε#5 34η" for a minor cycle,
  * "Falling, End quarter of Delta Trifracton" for a major one.
  */
 export const sliderText = (pure, word, phase, name, level = 6) =>
@@ -430,13 +434,13 @@ export function depthRangeNote(pure, opening, finest) {
 /** Inner HTML of the help panel's `<dl>` in pure vocabulary. */
 export function helpHTML(pure, opening, finest) {
   return `
-        <div><dt>Labels</dt><dd>The four outer rings are the major periods, said in words: <b>Delta Trifracton End</b> is the 3rd Delta of its Gamma (Monofracton is the 1st, Difracton the 2nd, and so on), in the quarter that ends at its end; Peak, Node, Valley and End are the four quarters. Every finer ring is named by where its cycle starts in its Nuclide: <b>ε#5 33η 29ι</b>. <b>η 7 · 1/11</b> is the depth chip with the place in the parent depth: depth 7, the 1st of the 11 η cycles of its ζ (a ζ is 11 Helions). The pill says what the glyph is doing now and which threshold comes next.</dd></div>
+        <div><dt>Labels</dt><dd>The four outer rings are the major periods, said in words: <b>Delta Trifracton End</b> is the 3rd Delta of its Gamma (Monofracton is the 1st, Difracton the 2nd, and so on), in the quarter that ends at its end; Peak, Node, Valley and End are the four quarters. Every finer ring is named by where its cycle starts in its Nuclide: <b>ε#5 34η 29ι</b> (the 34th Helion of the 5th Nuclide, 29 Preons into it). <b>η 7 · 1/11</b> is the depth chip with the place in the parent depth: depth 7, the 1st of the 11 η cycles of its ζ (a ζ is 11 Helions). The pill says what the glyph is doing now and which threshold comes next.</dd></div>
         <div><dt>Rings</dt><dd>Every ring is one cycle. The outermost, α, spans four Saros intervals (${pure.catalogueText()} cover the whole catalogue); each ring inside it is the next harmonic, 4 to 13 times shorter. ${depthRangeNote(pure, opening, finest)}</dd></div>
         <div><dt>Arc and dot</dt><dd>The arc grows clockwise from the top as the cycle runs; the dot is the hand, exactly where we are in that cycle. Rings too fast to follow dissolve into a glow.</dd></div>
         <div><dt>Sectors</dt><dd>A ring is cut into the child cycles it contains. The tinted sector is the one running now, and the funnel shows it opening up into the whole next ring.</dd></div>
         <div><dt>Quarters</dt><dd>Beads at the right, the bottom and the left mark peak, node and valley; they fill in as they are passed. The selected ring is labelled.</dd></div>
-        <div><dt>Centre</dt><dd>Countdown to the end of the selected cycle, what begins there, and its four thresholds, each with its countdown and its place on the clock of the header: δ#3 ε#5 names the Delta and the Nuclide it falls in, 33η 9ι counts the Helions completed in that Nuclide and the Preons completed in that Helion. A minor cycle shows how far through it you are as two glyphs, 256 states; a major one shows its quarter instead.</dd></div>
-        <div><dt>Counting</dt><dd>Counts (η ι λ ν) start at 0, ordinals (Delta Trifracton, δ#3, ε#5) at 1. The units below Delta skip every other depth: a Nuclide is 77 Helions, a Helion 36 Preons, a Preon 65 Flavons, a Flavon 25 Blinks. The Helion is the basic reading, Preons and Flavons the fine time; the depths between (ζ θ κ μ) are 11η, 4ι, 13λ and 5ν long. Spans are counts too: 6ι 43λ. Real time is counted in Blinks. Press ? for the glossary.</dd></div>
+        <div><dt>Centre</dt><dd>Countdown to the end of the selected cycle, what begins there, and its four thresholds, each with its countdown and its place on the clock of the header: δ#3 ε#5 names the Delta and the Nuclide it falls in, 34η 9ι the Helion of that Nuclide (its number) and the Preons completed in that Helion. A minor cycle shows how far through it you are as two glyphs, 256 states; a major one shows its quarter instead.</dd></div>
+        <div><dt>Counting</dt><dd>Ordinals (Delta Trifracton, δ#3, ε#5) and the Helion of a date are numbered from 1 (1η … 77η in a Nuclide); Preons, Flavons and Blinks (ι λ ν) count completed units from 0. The units below Delta skip every other depth: a Nuclide is 77 Helions, a Helion 36 Preons, a Preon 65 Flavons, a Flavon 25 Blinks. The Helion is the basic reading, Preons and Flavons the fine time; the depths between (ζ θ κ μ) are 11η, 4ι, 13λ and 5ν long. Spans are always counts: 6ι 43λ. Real time is counted in Blinks. Press ? for the glossary.</dd></div>
         <div><dt>Navigate</dt><dd>Click a sector to jump to the start of that child cycle, a label to select a ring, drag the wave cursor to scrub inside the cycle. On a touch screen, tap a ring or sector (or touch and hold it) to see what it is, and tap the same sector again to jump. The thresholds in the centre jump to that moment of the selected cycle, passed ones included.</dd></div>
       `;
 }

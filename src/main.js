@@ -56,6 +56,7 @@ export const icons = {
   timeline: svg('<path d="M1.5 4h13M1.5 8h13M1.5 12h13M5 2.5v11M10.5 2.5v11"/>'),
   wave: svg('<path d="M1.5 8c1.5-5 3-5 4 0s2.5 5 4 0 2.5-5 4 0"/>'),
   calendar: svg('<rect x="2" y="3" width="12" height="11" rx="2"/><path d="M2 6.5h12M5.5 1.8v2.4M10.5 1.8v2.4"/>'),
+  diary: svg('<path d="M3.5 2h8.5a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H3.5z"/><path d="M3.5 2v12M6 5.5h4.5M6 8h4.5M6 10.5h3"/>'),
   sound: svg('<path d="M2 8h1.5M5 5v6M8 2.5v11M11 5v6M14 8h-1.2"/>'),
   pure: svg('<path d="M8 1.5v13M8 3.5c0 0 0 1.5 2.5 1.5S13 3.5 13 3.5M8 8.5c0 0 0-1.5-2.5-1.5S3 8.5 3 8.5M6 13h4"/>'),
 };
@@ -202,6 +203,7 @@ const MODULES = [
   { id: 'wave', slot: '#view-wave', path: './ui/wave.js', tab: 'Wave', icon: 'wave' },
   { id: 'calendar', slot: '#view-calendar', path: './ui/calendar.js', tab: 'Calendar', icon: 'calendar' },
   { id: 'sound', slot: '#view-sound', path: './ui/sound.js', tab: 'Sound', icon: 'sound' },
+  { id: 'diary', slot: '#view-diary', path: './ui/diary.js', tab: 'Diary', icon: 'diary' },
 ];
 const TAB_IDS = MODULES.filter((m) => m.tab).map((m) => m.id);
 
@@ -462,7 +464,7 @@ function buildGlossary() {
       <h3>Reading what you see</h3>
       <table class="glossary-t"><tbody>
         ${row('Delta Trifracton Node ε#2', 'the date: the Delta in words with its quarter, then the Nuclide inside it. The full date names Alpha, Beta and Gamma too.')}
-        ${row('5η 5ι 5λ', 'the time inside the Nuclide: Helions, Preons and Flavons completed, counted from 0 (Helions 0–76, Preons 0–35, Flavons 0–64). Blinks (0–24) may follow.')}
+        ${row('5η 5ι 5λ', 'the time inside the Nuclide: the 5th Helion (Helions are numbered from 1 to 77), then Preons and Flavons completed, counted from 0 (Preons 0–35, Flavons 0–64). Blinks (0–24) may follow.')}
         ${row(`<span class="glossary-pair">${pure.pairHTML(0.8125 + 0.0156)}</span>`, 'phase through a cycle, here the running Helion: two glyphs, 16 × 16 = 256 states. The left glyph is the coarse position, the right glyph the fine one; a dot marks the falling half.')}
         ${row('α#6 β#4 γ#9 δ#3 ε#2 5η 5ι', 'the same date in letters only: # numbers are ordinals and count from 1, plain numbers count from 0.')}
         ${row('6ι 43λ', 'a span: six Preons and forty-three Flavons. "in 6ι 43λ" counts down to a moment, "6ι 43λ ago" back from it. Below a Blink a span is a decimal: 0.4ν.')}
@@ -577,7 +579,7 @@ function updateHeader(frame) {
     roEls.brandSub.textContent = pureMode ? 'Pure mode' : 'Saros 141 clock';
     roEls.pureBtn.setAttribute('aria-pressed', String(pureMode));
     $('#readout').title = pureMode
-      ? 'Helions (η) completed in the Nuclide, the Helion phase, then Preons (ι) and Flavons (λ), all counted from 0. Below: the Delta in words with its quarter, and the Nuclide (ε#). Press ? for the glossary.'
+      ? 'The Helion (η, numbered 1–77 in its Nuclide) and its phase, then the Preons (ι) and Flavons (λ) completed, counted from 0. Below: the Delta in words with its quarter, and the Nuclide (ε#). Press ? for the glossary.'
       : '';
     roEls.pureBtn.classList.toggle('is-on', pureMode);
     followModeSpeed();
@@ -592,7 +594,7 @@ function updateHeader(frame) {
     const c = frame.inRange ? pure.clock(t) : null;
     const helion = c ? model.levelAt(t, 6) : null;
     const say = c
-      ? `${c.eta} Helions, ${c.iota} Preons, ${c.lambda} Flavons completed in Nuclide ${c.epsilon}; ${pure.pairLabel(helion.phase, 'Helion phase')}`
+      ? `Helion ${c.eta} of Nuclide ${c.epsilon}, ${c.iota} Preons and ${c.lambda} Flavons completed; ${pure.pairLabel(helion.phase, 'Helion phase')}`
       : '';
     setHtml(
       'time',
@@ -648,7 +650,7 @@ function onKey(e) {
   else if (e.key === 'm' || e.key === 'M') toggleSound();
   else if (e.key === 'p' || e.key === 'P') togglePure();
   else if (e.key === '?' && isPure()) ($('#glossary').hidden ? openGlossary() : closeGlossary());
-  else if (/^[1-5]$/.test(e.key)) store.set({ view: TAB_IDS[Number(e.key) - 1] });
+  else if (/^[1-9]$/.test(e.key) && Number(e.key) <= TAB_IDS.length) store.set({ view: TAB_IDS[Number(e.key) - 1] });
 }
 
 // ---------- main loop ----------

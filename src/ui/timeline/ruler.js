@@ -11,8 +11,9 @@
  * A tick is the start of a unit and is written in the notation of `pure.stamp` (SPEC §15.3):
  *   - α β γ δ ε are ORDINALS, 1-based: a major tick reads "Delta Trifracton" where there is room, else "δ#3" / "#3";
  *     a Nuclide tick reads "ε#2" / "#2"
- *   - η ι λ ν are COUNTS of whole units gone by, 0-based: η inside its Nuclide (0..76), ι inside its Helion (0..35), λ
- *     inside its Preon (0..64), ν inside its Flavon (0..24) – exactly the header clock "33η 29ι 21λ"
+ *   - η ι λ ν are written as counts "34η 29ι 21λ 3ν" – exactly the header clock. The Helion is NUMBERED from 1 inside
+ *     its Nuclide (1η … 77η), so the ζ grid reads 1η 12η 23η … 67η; Preons (0..35 in the
+ *     Helion), Flavons (0..64 in the Preon) and Blinks (0..24 in the Flavon) are completed units counted from 0
  * so a tick can never be mistaken for a lane block.
  *
  * The CONTEXT ROW above the ticks names the next coarser unit. Where that is a major period and the ticks are whole
@@ -100,8 +101,11 @@ export function createRuler({ model, pure }) {
   const unitIndex = (id) => U.findIndex((u) => u.id === id);
   /** The ladder index of a depth (0-based level) when that depth is a unit, else -1. */
   const unitOfLevel = (level) => U.findIndex((u) => u.level === level);
-  /** Majors (α β γ δ) and the Nuclide are ordinals; from the Helion on the ladder counts. */
+  /** Majors (α β γ δ) and the Nuclide are ordinals "ε#5"; from the Helion on the ladder is written as counts "34η". */
   const FIRST_COUNT_UNIT = unitIndex('eta');
+  const ETA = FIRST_COUNT_UNIT;
+  /** Units numbered from 1: the ordinals, and the Helion inside its Nuclide (1η … 77η); the finer ones count from 0. */
+  const fromOne = (i) => i < FIRST_COUNT_UNIT || i === ETA;
   const GAMMA = unitIndex('gamma');
   const isMajorUnit = (i) => !!U[i]?.major;
   /** How many of this unit make one of the previous unit (the catalogue's α count for α itself). */
@@ -109,16 +113,16 @@ export function createRuler({ model, pure }) {
   const perOf = (i) => (i === 0 ? alphaCount : per[i]);
 
   // ---- counters and addresses ---------------------------------------------------------------------
-  /** The counter shown for the unit with global index `idx`: an ordinal from 1 (α β γ δ ε), a count from 0. */
+  /** The counter shown for the unit with global index `idx`: from 1 for α β γ δ ε and the Helion, from 0 below it. */
   function counterOf(i, idx) {
     const n = perOf(i);
-    return ((idx % n) + n) % n + (i < FIRST_COUNT_UNIT ? 1 : 0);
+    return ((idx % n) + n) % n + (fromOne(i) ? 1 : 0);
   }
-  /** "α#6", "δ#3", "ε#5" (ordinals) or "33η", "21λ" (counts). */
+  /** "α#6", "δ#3", "ε#5" (ordinals) or "34η", "21λ" (the clock's numbers and counts). */
   const tokenText = (i, c) => (i < FIRST_COUNT_UNIT ? `${U[i].sym}#${c}` : `${c}${U[i].sym}`);
   /** "Delta Trifracton": a major period's ordinal in words. */
   const wordsOf = (i, c) => pure.periodName(U[i].level, c);
-  /** The labels of a tick, longest first: "Delta Trifracton" → "δ#3" → "#3"; "ε#5" → "#5"; "33η". */
+  /** The labels of a tick, longest first: "Delta Trifracton" → "δ#3" → "#3"; "ε#5" → "#5"; "34η". */
   function tickLabels(i, c) {
     if (isMajorUnit(i)) return [wordsOf(i, c), tokenText(i, c), `#${c}`];
     if (i < FIRST_COUNT_UNIT) return [tokenText(i, c), `#${c}`];
@@ -155,8 +159,8 @@ export function createRuler({ model, pure }) {
   const unitsTo = (to) => U.map((u, i) => i).filter((i) => i <= to);
   /**
    * The units of the compact address of the cursor / now / hover flags for ticks of unit `u`. From the Preon on it is
-   * the header clock "33η 29ι 21λ" (with the Blinks "… 3ν" while the ticks are λ or ν); coarser ticks show the tick
-   * unit between its neighbours: "ε#5 33η 29ι" for η, "δ#3 ε#5 33η" for ε, "γ#9 δ#3 ε#5" for δ.
+   * the header clock "34η 29ι 21λ" (with the Blinks "… 3ν" while the ticks are λ or ν); coarser ticks show the tick
+   * unit between its neighbours: "ε#5 34η 29ι" for η, "δ#3 ε#5 34η" for ε, "γ#9 δ#3 ε#5" for δ.
    */
   function flagUnits(u) {
     const eta = unitIndex('eta');
@@ -178,7 +182,7 @@ export function createRuler({ model, pure }) {
   /** Tokens of the address down to unit `to` (not above `from`) at time t; [] outside the catalogue. */
   const tokensAtTime = (t, from = 0, to = N - 1) => tokens(t, unitsTo(to).filter((i) => i >= from));
 
-  /** "α#6 β#4 γ#9 δ#3 ε#5 33η 29ι": the letter address, as `pure.stamp` writes it (single spaces). */
+  /** "α#6 β#4 γ#9 δ#3 ε#5 34η 29ι": the letter address, as `pure.stamp` writes it (single spaces). */
   const joinTokens = (toks) => toks.map((t) => t.text).join(' ');
   /** The address chain at time t down to unit `to` (not above `from`); '' outside the catalogue. */
   const chainAtTime = (t, from = 0, to = N - 1) => joinTokens(tokensAtTime(t, from, to));
@@ -186,7 +190,7 @@ export function createRuler({ model, pure }) {
   const posOf = (t) => model.positionOf(t);
   /** Same as pure.stamp(t, U[to].id) for any unit from δ down to the Blink; '' outside the catalogue. */
   const stampText = (t, to = unitIndex('iota')) => chainAtTime(t, 0, to);
-  /** The compact address of the cursor / now / hover flags (see `flagUnits`): "33η 29ι 21λ" while the ticks are ι. */
+  /** The compact address of the cursor / now / hover flags (see `flagUnits`): "34η 29ι 21λ" while the ticks are ι. */
   const flagText = (t, u) => joinTokens(tokens(t, flagUnits(u)));
   /** Position of any instant: outside the catalogue it continues at the mean Saros length (for lengths only). */
   function posExt(t) {
@@ -256,10 +260,10 @@ export function createRuler({ model, pure }) {
   const stepId = (i, m) => (m === 1 ? idOf(i) : `${idOf(i)}×${m}`);
   /** The multiples of unit i that produce a real step: at least two labelled ticks fit in every parent (2·m <= count). */
   const multiplesOf = (i) => (MULTIPLES[idOf(i)] ?? [1]).filter((m) => m === 1 || 2 * m <= perOf(i));
-  /** Largest counter a unit shows (an ordinal counts to its parent's size, a count to one less). */
-  const topCounter = (i) => (i < FIRST_COUNT_UNIT ? perOf(i) : perOf(i) - 1);
+  /** Largest counter a unit shows (numbered from 1: its parent's size, "77η"; a count from 0: one less, "64λ"). */
+  const topCounter = (i) => (fromOne(i) ? perOf(i) : perOf(i) - 1);
   /**
-   * Width of the label a tick must at least be able to show, in characters: the letter form "δ#5", "α#18", "76η"
+   * Width of the label a tick must at least be able to show, in characters: the letter form "δ#5", "α#18", "77η"
    * (a major period's words are shown only where they fit).
    */
   const charsOf = (i) => U[i].sym.length + (i < FIRST_COUNT_UNIT ? 1 : 0) + digits(topCounter(i));
@@ -321,7 +325,7 @@ export function createRuler({ model, pure }) {
    * at every zoom.
    *
    * A multiple gives way to the next whole unit above it as soon as that unit shows PREFER_LABELS ticks itself: one
-   * Delta across reads ε#1 … ε#5 under its quarters, not "0η 33η 0η 33η". The switch happens once on the way out, so
+   * Delta across reads ε#1 … ε#5 under its quarters, not "1η 34η 1η 34η". The switch happens once on the way out, so
    * the choice still coarsens monotonically.
    */
   function pickStep(pxPerSec, plotW = 1000, charW = 6.6) {
@@ -395,7 +399,7 @@ export function createRuler({ model, pure }) {
    * stretch is one of its quarters. A minor stretch starts its words at the Gamma, like a short date.
    *   δ quarter   "Alpha Hexafracton · … · Delta Trifracton Node" … "Delta Trifracton Node" → "δ#3 Node" → "Node"
    *   ε           "Gamma Nonafracton · Delta Trifracton · ε#5" … "ε#5" → "#5"
-   *   ι           "Gamma Nonafracton · Delta Trifracton · ε#5 33η 29ι" … "33η 29ι" → "29ι"
+   *   ι           "Gamma Nonafracton · Delta Trifracton · ε#5 34η 29ι" … "34η 29ι" → "29ι"
    */
   function stretchLabels(p, c, quarter = null) {
     const toks = tokensAtPos(p, unitsTo(c).filter((i) => isMajorUnit(c) || i >= GAMMA));

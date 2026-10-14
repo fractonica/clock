@@ -5,7 +5,7 @@ import { installHooks, scan, drainCanvas, hoverSweep, hoverInteractive, formatLe
 
 const soft = process.argv.includes('--soft');
 const onlyTabs = process.argv.slice(2).filter((a) => !a.startsWith('--'));
-const TABS = onlyTabs.length ? onlyTabs : ['rings', 'timeline', 'wave', 'calendar', 'sound'];
+const TABS = onlyTabs.length ? onlyTabs : ['rings', 'timeline', 'wave', 'calendar', 'sound', 'diary'];
 const T = 1791460800; // SPEC vector A
 const INSTANTS = [
   ['vector A', T],

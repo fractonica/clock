@@ -532,8 +532,8 @@ export function mount(el, ctx) {
     ui.dpr = dpr;
   }
   /**
-   * Pure mode: the caption is the short date in words ("Delta Trifracton End ε#5 33η 29ι 21λ"), or in letters
-   * ("δ#3 ε#5 33η 29ι 21λ") where the words do not fit the card. Measured on a canvas with the caption's own font, so
+   * Pure mode: the caption is the short date in words ("Delta Trifracton End ε#5 34η 29ι 21λ"), or in letters
+   * ("δ#3 ε#5 34η 29ι 21λ") where the words do not fit the card. Measured on a canvas with the caption's own font, so
    * deciding costs no layout; the width and the font are read again when the card or the mode changes.
    */
   let measureCtx = null;
@@ -717,7 +717,7 @@ export function mount(el, ctx) {
     const cycleKey = `${lTop.local}|${lBot.local}|${quarterOf(lTop)}|${quarterOf(lBot)}`;
     if (topChanged || botChanged || cycleKey !== ui.cycleKey || ui.labelKey === '') {
       ui.cycleKey = cycleKey;
-      // pure mode: a major cycle in words with its quarter, a minor one by where it sits ("33η of 77 in ε#5")
+      // pure mode: a major cycle in words with its quarter, a minor one by where it sits ("34η of 77 in ε#5")
       const place = (level, lvl) => placeText(pure, level, lvl, pure.isMajor(level) ? pure.QUARTER_WORDS[quarterOf(lvl)] : null);
       const mk = (level, odo, lvl) => ({ letter: letterOf(level), depth: level + 1, state: stateInfo(odo.digits[0]), local: lvl.local, siblings: lvl.siblings, place: pureOn ? place(level, lvl) : '' });
       const label = pureOn ? (kind, d) => pureRowAriaLabel(kind, d, pure) : rowAriaLabel;

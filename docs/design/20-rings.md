@@ -62,16 +62,17 @@ Same view, Fractonica terms only. Strings live in `src/ui/rings/pure-text.js`; `
 - **Major rings (α β γ δ)** are said in words with their quarter: the centre reads `Delta Trifracton End`, the phase card shows the quarter
   word (`End`, "quarter") where a minor ring shows its glyph pair, the Glyph fact says `End quarter`, the slider `Falling, End quarter of
   Delta Trifracton`. No phase pair is ever drawn for a major ring.
-- **Minor rings** are named by where they start in their Nuclide (`ε#5 33η`, `ε#5 33η 28ι`; ε itself `ε#5`), with the phase pair. ζ θ κ μ are
+- **Minor rings** are named by where they start in their Nuclide (`ε#5 34η`, `ε#5 34η 28ι`; ε itself `ε#5`), with the phase pair. The
+  Helion is numbered from 1 (`1η` … `77η` in its Nuclide); Preons, Flavons and Blinks are counts of completed units from 0. ζ θ κ μ are
   no units: their length is `11η`, `4ι`, `13λ`, `5ν`; ξ is `0.14ν`.
-- **Centre**: `ENDS IN 6ι 43λ` and `→ 34η begins` (what begins, as briefly as the context allows: only the counts that change inside one
+- **Centre**: `ENDS IN 6ι 43λ` and `→ 35η begins` (what begins, as briefly as the context allows: only the counts that change inside one
   Nuclide, the full placing across one, `→ ε#1 of Delta Tetrafracton begins`, `→ Delta Tetrafracton begins`). Two counts, plus a third while it
   is steady (never finer than λ); a compact dial has two.
-- **Coordinates** (wave labels, chips, facts) are the stamp cut to a resolution: the ordinals α# β# γ# δ# ε#, then the counts η (0–76 in the
-  Nuclide) ι λ ν. The resolution follows the cycle (a quarter is the step); below one Blink the ν count has decimals (`3.43ν`). A label's
-  context is the tokens just before its counts (a λ ring reads `ε#5 33η` / `29ι 21λ 0ν`), so the two always join into a piece of the stamp.
+- **Coordinates** (wave labels, chips, facts) are the stamp cut to a resolution: the ordinals α# β# γ# δ# ε#, the Helion (1–77 in the
+  Nuclide), then the counts ι λ ν. The resolution follows the cycle (a quarter is the step); below one Blink the ν count has decimals (`3.43ν`). A label's
+  context is the tokens just before its counts (a λ ring reads `ε#5 34η` / `29ι 21λ 0ν`), so the two always join into a piece of the stamp.
 - **Facts**: Length is the exact length with what one cycle is made of (`1δ = 5ε`, `1η (Helion) = 36ι`, `11η`), Address the stamp of the
-  cycle's start (`α#6 › β#4 › γ#9 › δ#3 › ε#5 › 33η`).
+  cycle's start (`α#6 › β#4 › γ#9 › δ#3 › ε#5 › 34η`).
 - **Real time is counted in Blinks** (`blinkSpan`, whole Blinks from 100 on): "one turn takes about 325 Blinks", `about 58 500 Blinks per cycle`.
-- **Help**: majors in words with their quarter, minors by their start, counts from 0 / ordinals from 1, the units below Delta skip every other
+- **Help**: majors in words with their quarter, minors by their start, ordinals and the Helion numbered from 1 / finer counts from 0, the units below Delta skip every other
   depth, Blinks, glossary pointer. Toolbar, depth range and ring labels are depth chips (`η 7 · 1/11`).

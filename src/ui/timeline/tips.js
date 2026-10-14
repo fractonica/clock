@@ -72,7 +72,7 @@ export function pureTipHTML(h, env) {
     return `<div class="tl-tip-h">${words.outsideTitle}</div><div class="tl-tip-p">The catalogue spans ${esc(words.rangeLabel())}; the clock is not extrapolated.</div>`;
   }
   const p = model.positionOf(t);
-  // the date runs on two units below the tick unit ("Delta Trifracton End ε#5 33η 29ι 21λ 3ν" while the ticks are ι);
+  // the date runs on two units below the tick unit ("Delta Trifracton End ε#5 34η 29ι 21λ 3ν" while the ticks are ι);
   // over major ticks it names every major period with its quarter
   const tick = env.step?.u ?? IOTA;
   const upTo = ruler.units[Math.max(DELTA, ruler.below(tick, 2))].id;

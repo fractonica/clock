@@ -36,6 +36,7 @@ npm run check        # headless-browser regression checks (needs Playwright core
 | **Wave** | The library's circular harmonic geometry as a "you are here" map with one marker per level, zoomable to any depth. |
 | **Calendar** | Two-way converter (Gregorian date/time/zone/Unix ⇄ Saros position, cycle address, glyph states, solar sync) and a Gregorian month calendar whose day cells show cycle boundaries at their exact time of day, plus a year ribbon. |
 | **Sound** | The harmonic hierarchy as a just-intonation chord (loudness follows each cycle's phase), chimes at peak / node / valley / end where a major boundary rings as a chord of every level that turns over together, time-lapse and tempo lock, and "hear this moment". |
+| **Diary** | A printable diary of one Delta (81 days): an index, a Gregorian index, a lunar and solar ephemeris, planning and prediction pages, then every Helion on paper. A sheet holds 5 Helions: 3 lined on the front, 2 canvases on the back. Four sheets make a 19-Helion lock, and four locks plus a retrospection Helion make a Nuclide. Exported as a PDF; every part of the format is configurable. |
 | **Cycle ladder / Up next** (right) | One row per depth with progress, counter and time left; the next turnovers of the cycles you care about with live countdowns. |
 | **Header** | Live Gregorian time and Saros position, a jump box (`/` to focus: `2031-06-01 14:30 Moscow`, `+3d`, `α#6 β#3 γ#11`, `pos 24.5`, `sync 4820`, `next ε`…), transport (previous / next cycle, time-lapse ×1 … ×31.6 M, back to live), time zone, link to this moment, sound. |
 
@@ -58,10 +59,10 @@ Fractonica terms ([SPEC.md §15](SPEC.md)):
   | like | a month | a week | an hour | a minute | a second | |
 
   The depths between (ζ θ κ μ) are still drawn, but they are not units: ζ lasts 11η, θ 4ι, κ 13λ, μ 5ν.
-- **Where you are.** The header shows the Helion count in the Nuclide, the Helion phase as two glyphs, then Preons and Flavons
-  (`33η ‹phase› 29ι 21λ`), and the date `Delta Trifracton End ε#5`. The full date is
-  `Alpha Hexafracton Valley, Beta Tetrafracton Valley, Gamma Nonafracton Valley, Delta Trifracton End, ε#5 33η 29ι 21λ 3ν`,
-  and in letters `α#6 β#4 γ#9 δ#3 ε#5 33η 29ι 21λ`.
+- **Where you are.** The header shows the Helion number in the Nuclide (1–77), the Helion phase as two glyphs, then Preons and Flavons
+  (`34η ‹phase› 29ι 21λ`), and the date `Delta Trifracton End ε#5`. The full date is
+  `Alpha Hexafracton Valley, Beta Tetrafracton Valley, Gamma Nonafracton Valley, Delta Trifracton End, ε#5 34η 29ι 21λ 3ν`,
+  and in letters `α#6 β#4 γ#9 δ#3 ε#5 34η 29ι 21λ`.
 - **How long.** Spans are counts on the ladder: `5η 17ι`, `6ι 43λ`, `2ε 10η`; below a Blink, a decimal (`0.14ν`).
 - **How far through a cycle.** Two 2-stroke glyphs (16 × 16 = 256 states) instead of a percentage. The major periods show
   their quarter word instead, since their phase follows from the counts.
@@ -79,6 +80,16 @@ Design notes: [`docs/design/80-pure.md`](docs/design/80-pure.md).
 <img src="docs/img/pure-calendar.jpg" width="49%" alt="Pure mode: converter and month page"> <img src="docs/img/wave-solar.jpg" width="49%" alt="Wave view with the yellow solar wave">
 </p>
 
+### The diary
+
+The **Diary** tab lays out one Delta as a printable book. Choose the Delta and the format: paper, margins, how many
+Helions a sheet holds, lines per Helion, canvases, front matter, events and ink. Then **Export PDF** opens the browser's
+print dialog, where "Save as PDF" writes the file. From the command line, `npm run diary -- --path 6,4,9,3 --out diary.pdf`
+writes the PDF directly. Each lined Helion carries its quarter ticks with their glyphs and a curve of its wave in the
+outer margin. Lunar events (synodic, anomalistic, draconic and sidereal months, with quarters) and solar events (equinoxes,
+solstices, perihelion, aphelion) appear at their exact place, with Gregorian and Fractonica times. Design:
+[`docs/design/90-diary.md`](docs/design/90-diary.md).
+
 ### The solar wave
 
 In the Wave view, the **Solar** button adds a yellow wave for the solar sync (19 Helions ≈ 4 days): a marker at the current sync
@@ -93,7 +104,7 @@ phase with its four quarter ticks, and a ripple of one sync wavelength along the
 ### Keyboard
 
 `Space` play/pause time-lapse · `N` back to live · `[` / `]` previous / next cycle of the selected level ·
-`1`…`5` switch view · `M` sound on/off · `P` pure mode · `?` pure glossary · `/` or `Ctrl/⌘+K` jump box · face: `↑` `↓` depth, `I` info, `L` letters.
+`1`…`6` switch view · `M` sound on/off · `P` pure mode · `?` pure glossary · `/` or `Ctrl/⌘+K` jump box · face: `↑` `↓` depth, `I` info, `L` letters.
 
 ### Deep links
 
@@ -109,7 +120,8 @@ See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the module contract. In s
 src/core/model.js   the only code that talks to fractonica.js (checked against SPEC §12 vectors)
 src/core/store.js   displayed time (live / travel / time-lapse) + shared settings
 src/core/format.js  zone-aware Gregorian formatting and conversion
-src/ui/*.js         one module per UI region: face, rings, ladder, upnext, timeline, wave, calendar, jump, sound
+src/ui/*.js         one module per UI region: face, rings, ladder, upnext, timeline, wave, calendar, jump, sound, diary
+src/diary/*.js      the printable diary: options, page plan, ephemeris (astro/), page renderers
 src/audio/*.js      tuning, scheduler and Web Audio engine
 docs/design/*.md    the design brief behind each module (intent, interaction, edge cases)
 tools/              headless-Chromium harness, regression checks (`npm run check`) and screenshot probes (not needed to run the app)

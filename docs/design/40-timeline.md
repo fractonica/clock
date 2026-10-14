@@ -62,24 +62,26 @@ The Gregorian axis becomes a **pure ruler** (`src/ui/timeline/ruler.js`, wording
 Nothing Earth-ish is drawn or said; the mode switches live (`applyMode`), in both directions.
 
 **The ladder** is `pure.UNITS`: the four **major periods** α β γ δ (depths 1–4, said in words) and the **minor units** ε η ι λ ν
-(depths 5 7 9 11 13, every other depth, said in letters and counts). ζ θ κ μ and ξ are lanes, never ruler units.
+(depths 5 7 9 11 13, every other depth, said in letters and counts). ζ θ κ μ and ξ are lanes, never ruler units. The
+Helion is **numbered from 1** inside its Nuclide (1η … 77η), so the ζ grid ticks read `1η 12η 23η … 67η`; Preons, Flavons
+and Blinks count completed units from 0. Spans are unchanged (`5η` is five Helions).
 
 | unit | per parent | tick label | context row above |
 |---|---|---|---|
 | α | catalogue 18 | `Alpha Hexafracton` → `α#6` → `#6` | – |
 | β γ δ | 5 · 13 · 5 | `Delta Trifracton` → `δ#3` → `#3` (words where they fit) | the parent's **quarters**: `Gamma Nonafracton Node` → `γ#9 Node` → `Node` |
 | ε | 5 in δ | `ε#2` → `#2` | the Delta's quarters: `Gamma Nonafracton · Delta Trifracton End` |
-| η | 77 in ε | count `33η` (0–76) | the Nuclide: `Delta Trifracton · ε#5` |
-| ι | 36 in η | count `29ι` | `ε#5 33η` |
-| λ | 65 in ι | count `21λ` | `ε#5 33η 29ι` |
-| ν | 25 in λ | count `3ν` | `33η 29ι 21λ` |
+| η | 77 in ε | numbered `34η` (1–77, from 1) | the Nuclide: `Delta Trifracton · ε#5` |
+| ι | 36 in η | count `29ι` (completed, from 0) | `ε#5 34η` |
+| λ | 65 in ι | count `21λ` | `ε#5 34η 29ι` |
+| ν | 25 in λ | count `3ν` | `34η 29ι 21λ` |
 
 Context labels are long → short: the major periods in words joined by `·`, then the minor letters, dropping leading parts
 until one fits. Quarters appear in the row only above whole ticks (a multiple keeps its parent's plain spans); a quarter is
 named by the threshold that ends it, so one Delta across reads `Peak | Node | Valley | End` above `ε#1 … ε#5`.
 
-**Flags** (cursor / now / hover): from ι ticks down the header clock (`33η 29ι 21λ`, plus `3ν` over λ and ν ticks); coarser
-ticks show the tick unit between its neighbours in letters (`ε#5 33η 29ι`, `δ#3 ε#5 33η`, `γ#9 δ#3 ε#5`). The ruler reads
+**Flags** (cursor / now / hover): from ι ticks down the header clock (`34η 29ι 21λ`, plus `3ν` over λ and ν ticks); coarser
+ticks show the tick unit between its neighbours in letters (`ε#5 34η 29ι`, `δ#3 ε#5 34η`, `γ#9 δ#3 ε#5`). The ruler reads
 by exact time, so a flag, a tooltip and the header never disagree near a boundary (tested to the millisecond).
 
 **Zoom ladder.** Steps = a unit or a multiple m of it (labels every m-th unit of its parent while a full step fits,
@@ -97,11 +99,11 @@ narrowest window (`MIN_SPAN`, 2 s ≈ 6.4 Blinks, read `6.4ν across`); the tick
 
 **Lanes**: major lanes carry the name in words and, in the block that holds the cursor, the quarter word
 (`δ 4 · Delta Trifracton End (3/5) · ends → Delta Tetrafracton`); their wave is labelled with the quarter words in their
-stretches, never a phase. Minor lanes and the depths between are named by their placing counts (`η 7 · ε#5 33η · ends →
-34η`, θ blocks `28ι`, κ blocks `13λ`). The gutter says one cycle in the next unit: `= 5β` … `= 5ε`, `= 77η`, `= 36ι`,
+stretches, never a phase. Minor lanes and the depths between are named by their placing counts (`η 7 · ε#5 34η · ends →
+35η`, θ blocks `28ι`, κ blocks `13λ`). The gutter says one cycle in the next unit: `= 5β` … `= 5ε`, `= 77η`, `= 36ι`,
 `= 65λ`, `= 25ν`, `= 7ξ` for the units and the lengths `= 11η`, `= 4ι`, `= 13λ`, `= 5ν`, `= 0.14ν` for the others.
 
-**Tooltips**: the plot gives the date in words (`Delta Trifracton End ε#5 33η 29ι 21λ 3ν`; over major ticks the full form with
+**Tooltips**: the plot gives the date in words (`Delta Trifracton End ε#5 34η 29ι 21λ 3ν`; over major ticks the full form with
 every major period and its quarter), the stamp in letters, `pos` and the eclipses it lies between, countdowns to now / the
 cursor, and one row per lane: a major period's place and **quarter word** (no glyph pair), a minor depth's placing count and
 its phase pair. Lane heads explain the unit by name; the ruler key says what is counted inside what.

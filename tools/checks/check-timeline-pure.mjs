@@ -190,6 +190,7 @@ await withApp(
       // the ruler never goes blank: 4 to 12 labelled ticks at every preset (it was ONE around β)
       const labels = await page.evaluate(() => window.__fractonica.instances.timeline.api.axisLabels);
       check(`preset ${p.label}: ${labels.length} labelled ticks on the ruler (4 to 12)`, labels.length >= 4 && labels.length <= 12, labels.join(' '));
+      if (p.id === 'u:epsilon') check('preset ε: the ζ grid reads the Helion numbers from 1 (1η 12η … 67η)', labels.length >= 5 && labels.every((l) => /^(1|12|23|34|45|56|67)η$/.test(l)), labels.join(' '));
       if (['u:delta', 'u:gamma', 'u:alpha'].includes(p.id)) {
         // one major period across: the ticks are its parts, the row above says its quarters in words
         const quarters = it.filter((x) => x.kind === 'canvas' && /(^|[a-z] )(Peak|Node|Valley|End)$/.test(x.text)).map((x) => x.text);
@@ -338,7 +339,7 @@ await withApp(
     await settle(400);
     const liveItems = await scanState(page, 'live');
     const liveFlag = liveItems.find((x) => x.kind === 'canvas' && /^NOW /.test(x.text));
-    check('live mode: the NOW flag carries a pure address (counts "33η 29ι 21λ" or ordinals "ε#5")', /^NOW (\d+[ηιλν]|[α-ε]#\d)/.test(liveFlag?.text ?? ''), liveFlag?.text ?? '(not drawn)');
+    check('live mode: the NOW flag carries a pure address (the clock "34η 29ι 21λ" or ordinals "ε#5")', /^NOW (\d+[ηιλν]|[α-ε]#\d)/.test(liveFlag?.text ?? ''), liveFlag?.text ?? '(not drawn)');
 
     // =============================== 4. a phone: layout, long press, nothing overflows =============================
     await open(`?pure=1&t=${T_A}&view=timeline`, 390, 844);

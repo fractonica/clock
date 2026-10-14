@@ -626,7 +626,7 @@ async function main() {
       await page.hover('.snd-moment');
       await page.waitForTimeout(150);
       const tipM = await tipNow();
-      check(/Plays the chord of Delta Trifracton End ε#5 33η 29ι as a short arpeggio/.test(tipM.text), '"Hear this moment" names the moment by the short date (SPEC §15.6)', tipM.text);
+      check(/Plays the chord of Delta Trifracton End ε#5 34η 29ι as a short arpeggio/.test(tipM.text), '"Hear this moment" names the moment by the short date (SPEC §15.6)', tipM.text);
       await page.mouse.move(2, 2);
 
       // switching the mode while a tooltip is open re-words it at once

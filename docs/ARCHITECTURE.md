@@ -16,6 +16,7 @@ src/core/pure.js           pure-mode vocabulary: cycle names, major periods in w
 src/ui/*.js                one module per UI region (face, rings, ladder, upnext, timeline, wave,
                            calendar, jump, sound)  –  helpers go in src/ui/<module>/
 src/audio/*.js             sonification engine (pure scheduling/tuning + Web Audio)
+src/diary/*.js             the printable diary of one Delta: options, page plan, ephemeris (astro/), page renderers (docs/design/90-diary.md)
 src/styles/app.css         tokens + shell + shared components;  src/styles/<module>.css per module
 test/*.test.js             node --test (model + format cover SPEC §12 test vectors)
 tools/browse.mjs           headless Chromium harness (static server + Playwright core, collects console errors)
@@ -100,7 +101,7 @@ requestRender(), QUARTER_NAMES, modules` (other mounted instances by id, e.g. `c
 state changes. A throwing `render` is isolated and logged once; a throwing `mount` shows an error card.
 
 Slots: `face → #slot-face`, `ladder → #slot-ladder`, `upnext → #slot-upnext`, `jump → #slot-jump` (header),
-tabs `rings / timeline / wave / calendar / sound → #view-<id>`. Tab modules are only rendered while active.
+tabs `rings / timeline / wave / calendar / sound / diary → #view-<id>`. Tab modules are only rendered while active.
 The sound module must expose `{ enabled, toggle() }` for the header speaker button and keep running when
 its tab is hidden (`alwaysOn: true`; drive audio scheduling from its own timer, not requestAnimationFrame).
 
@@ -119,7 +120,7 @@ its tab is hidden (`alwaysOn: true`; drive audio scheduling from its own timer, 
 - Dark theme only. Tokens are CSS custom properties in `app.css`; canvas/SVG code takes colours from
   `core/theme.js` (`TEAL` for periods, `GOLD` for the solar odometer – SPEC §8 –, `levelColor(L)` per level,
   `NOW` / `CURSOR` markers). Prefix every CSS class with the module's prefix (`face-`, `rings-`, `ladder-`,
-  `upnext-`, `tl-`, `wave-`, `cal-`, `jump-`, `snd-`).
+  `upnext-`, `tl-`, `wave-`, `cal-`, `jump-`, `snd-`, `dy-`).
 - Canvas: size by `ResizeObserver` and `devicePixelRatio`; never draw at CSS-pixel resolution only.
 - Glyphs come from the library: `F.CBT.fromIndex(index, {depth: strokes}).toSVG(style)` (SPEC §9).
 - Deep links: `?t=<unix|ISO>&view=<tab>&zone=<IANA>&rate=<n>&depth=<top depth>&sel=<selected depth>`.

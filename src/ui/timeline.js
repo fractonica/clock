@@ -9,7 +9,7 @@
  *
  * Pure mode (SPEC §15, docs/design/80-pure.md revision 3): the Gregorian axis is replaced by a ruler of the unit
  * ladder α β γ δ ε η ι λ ν (timeline/ruler.js): the major periods α–δ in words with their quarter words, the minor
- * units ε η ι λ ν in letters and counts (the header clock "33η 29ι 21λ"). Every sentence is said in Fractonica words
+ * units ε η ι λ ν in letters and counts (the header clock "34η 29ι 21λ", the Helion numbered from 1). Every sentence is said in Fractonica words
  * (timeline/words.js, timeline/tips.js): a major period's phase is its quarter word, a minor depth's phase a glyph
  * pair. Spans below ten Blinks are decimals ("0.4ν"). The mode is read on every frame (`applyMode`), so switching is
  * live in both directions.

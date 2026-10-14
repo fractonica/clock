@@ -1380,9 +1380,10 @@ test('jump box documentation strings: the placeholder and every example parse, i
 // pure mode (SPEC §15, docs/design/80-pure.md, REVISION 3): converter maths, the Delta page, the jump grammar
 //
 // Major periods α β γ δ are said in words with a quarter word (Peak Node Valley End); the minor units are the Nuclide
-// ε#1–5 and counts of Helions (0–76 in the Nuclide), Preons (0–35), Flavons (0–64) and Blinks (0–24). ζ θ κ μ are depths,
-// not units. A page is one Delta: 5 Nuclide rows x 7 columns of 11 Helions (0η 11η … 66η), 5 pages per Gamma.
-// NOTATION: X#n is an ordinal counted from 1 (δ#3, ε#2), nX a count of units counted from 0 (33η 29ι 21λ 3ν).
+// ε#1–5, the Helion NUMBERED 1–77 in the Nuclide, and counts of Preons (0–35), Flavons (0–64)
+// and Blinks (0–24). ζ θ κ μ are depths, not units. A page is one Delta: 5 Nuclide rows x 7 columns of 11 Helions
+// (1η 12η … 67η), 5 pages per Gamma. NOTATION: X#n is an ordinal from 1 (δ#3, ε#2), nX a count from 0 (29ι 21λ 3ν),
+// except the Helion of a date (34η is the 34th); spans and offsets stay counts (+5η is five Helions).
 // =============================================================================================
 const pure = createPure(model, { now: () => A });
 const pj = (text, o = {}) => parsePure(text, { model, pure, now: A, real: A + 5, level: 6, ...o });
@@ -1393,17 +1394,18 @@ const leaks = (text) => HARD.filter(([, re]) => re.test(text)).map(([id]) => id)
 const PSAMPLES = [A, A + 12345.6, 946684800.5, 2886085800.25, 125593320.816, -9e9, 2.7e10, model.tMin + 5, model.tMax - 5];
 const UPTO = ['alpha', 'beta', 'gamma', 'delta', 'epsilon', 'eta', 'iota', 'lambda', 'nu'];
 
-test('pure entries: the printed ranges are the hierarchy, ordinals count from 1 and counts from 0', () => {
+test('pure entries: the printed ranges are the hierarchy, ordinals and the Helion count from 1, counts from 0', () => {
   const R = ladderRanges(model, pure);
   assert.deepEqual(
     Object.fromEntries(Object.entries(R).map(([id, r]) => [id, [r.min, r.max]])),
-    { alpha: [1, 18], beta: [1, 5], gamma: [1, 13], delta: [1, 5], epsilon: [1, 5], eta: [0, 76], iota: [0, 35], lambda: [0, 64], nu: [0, 24] },
+    { alpha: [1, 18], beta: [1, 5], gamma: [1, 13], delta: [1, 5], epsilon: [1, 5], eta: [1, 77], iota: [0, 35], lambda: [0, 64], nu: [0, 24] },
   );
   assert.deepEqual(LADDER, ['alpha', 'beta', 'gamma', 'delta', 'epsilon', 'eta', 'iota', 'lambda', 'nu']);
   assert.deepEqual(LADDER, UNITS.map((u) => u.id), 'the date entries are exactly the core unit ladder');
   for (const c of [...MAJORS, ...COUNTERS]) {
     assert.deepEqual([c.min, c.max], [R[c.id].min, R[c.id].max], `${c.sym} range is derived, not re-typed`);
-    assert.equal(c.ordinal, c.min === 1, `${c.sym}: ordinals start at 1, counts at 0`);
+    assert.equal(c.numbered, c.min === 1, `${c.sym}: ordinals and the Helion start at 1, counts at 0`);
+    assert.equal(c.ordinal, c.min === 1 && c.id !== 'eta', `${c.sym}: the Helion is numbered but written 34η, not as an ordinal`);
   }
   assert.deepEqual(MAJORS.map((c) => c.id), ['alpha', 'beta', 'gamma', 'delta']);
   assert.deepEqual(COUNTERS.map((c) => c.id), ['epsilon', 'eta', 'iota', 'lambda', 'nu']);
@@ -1440,7 +1442,8 @@ test('pure entries: majors by name and the minor entries move the moment by whol
   }
   assert.match(setCounter(model, pure, A, 'delta', 6).error, /Delta runs Monofracton … Pentafracton/);
   assert.match(setCounter(model, pure, A, 'epsilon', 6).error, /ε#n is numbered 1–5/);
-  assert.match(setCounter(model, pure, A, 'eta', 77).error, /η counts 0–76/);
+  assert.match(setCounter(model, pure, A, 'eta', 78).error, /η is numbered 1–77/);
+  assert.match(setCounter(model, pure, A, 'eta', 0).error, /η is numbered 1–77/);
   assert.match(setCounter(model, pure, A, 'nu', 25).error, /ν counts 0–24/);
   assert.equal(shiftUnits(model, pure, model.tMin + 1, 'eta', -1), null);
   assert.equal(shiftUnits(model, pure, model.tMax - 1, 'gamma', 1), null);
@@ -1475,14 +1478,19 @@ test('pure dates: every tail of the stamp reads back as the FIRST millisecond of
   assert.equal(pure.stamp(resolveParts(model, pure, [{ id: 'delta', n: 2 }, { id: 'epsilon', n: 4 }], A).t, 'epsilon'), 'α#6 β#4 γ#9 δ#2 ε#4');
   const eta = resolveParts(model, pure, [{ id: 'eta', n: 70 }], A);
   assert.equal(countersAt(pure, eta.t).eta, 70);
+  // the Helion is numbered from 1: 1η is the first millisecond of the Nuclide, 77η its last Helion, 0η no Helion
+  assert.equal(resolveParts(model, pure, [{ id: 'eta', n: 1 }], A).t, cycleStart(model, 4, model.levelAt(A, 4).cycle));
+  assert.equal(pure.clock(resolveParts(model, pure, [{ id: 'eta', n: 77 }], A).t).eta, 77);
+  assert.equal(resolveParts(model, pure, [{ id: 'eta', n: 0 }], A).error, '0η: η is numbered 1–77 inside a Nuclide');
+  assert.equal(resolveParts(model, pure, [{ id: 'eta', n: 0 }], A).detail, '1η is the first: Helions are numbered from 1');
   assert.equal(model.levelAt(eta.t, 4).cycle, model.levelAt(A, 4).cycle, 'Helions count inside the Nuclide of the shown moment');
   // errors say what is wrong, majors in words, minors in the notation they will be corrected in
   assert.match(resolveParts(model, pure, [{ id: 'alpha', n: 19 }], A).error, /only 18 Alphas/);
   assert.equal(resolveParts(model, pure, [{ id: 'gamma', n: 14 }], A).error, 'Gamma Tetradecafracton: a Beta holds 13 Gammas');
   assert.equal(resolveParts(model, pure, [{ id: 'delta', n: 6 }], A).error, 'Delta Hexafracton: a Gamma holds 5 Deltas');
   assert.equal(resolveParts(model, pure, [{ id: 'epsilon', n: 6 }], A).error, 'ε#6: ε is numbered 1–5 inside a Delta');
-  assert.equal(resolveParts(model, pure, [{ id: 'eta', n: 77 }], A).error, '77η: η counts 0–76 inside a Nuclide');
-  assert.equal(resolveParts(model, pure, [{ id: 'eta', n: 77 }], A).detail, '76η is the last');
+  assert.equal(resolveParts(model, pure, [{ id: 'eta', n: 78 }], A).error, '78η: η is numbered 1–77 inside a Nuclide');
+  assert.equal(resolveParts(model, pure, [{ id: 'eta', n: 78 }], A).detail, '77η is the last');
   assert.equal(resolveParts(model, pure, [{ id: 'nu', n: 25 }], A).error, '25ν: ν counts 0–24 inside a Flavon');
   assert.match(resolveParts(model, pure, [{ id: 'delta', n: 1 }, { id: 'eta', n: 1 }], A).error, /ε is missing between Delta and η/);
   assert.match(resolveParts(model, pure, [{ id: 'eta', n: 1 }, { id: 'delta', n: 1 }], A).error, /longest to the shortest/);
@@ -1509,18 +1517,19 @@ test('pure dates: all four forms the header and the converter print read back to
   }
   assert.equal(n, 540);
   // the SPEC §15.6 vectors
-  assert.equal(pure.stamp(pfirst('Alpha Hexafracton Valley, Beta Tetrafracton Valley, Gamma Nonafracton Valley, Delta Trifracton End, ε#5 33η 29ι 21λ 3ν').time, 'nu'), 'α#6 β#4 γ#9 δ#3 ε#5 33η 29ι 21λ 3ν');
-  assert.equal(pfirst('Delta Trifracton End ε#5 33η 29ι').time, pfirst('δ#3 ε#5 33η 29ι').time);
-  assert.equal(pfirst('Delta Trifracton End ε#5 33η 29ι').time, pfirst('α#6 β#4 γ#9 δ#3 ε#5 33η 29ι').time);
-  assert.match(pfirst('Delta Trifracton End ε#5 33η 29ι').label, /^Delta Trifracton End ε#5 33η 29ι in Gamma Nonafracton$/);
+  assert.equal(pure.stamp(pfirst('Alpha Hexafracton Valley, Beta Tetrafracton Valley, Gamma Nonafracton Valley, Delta Trifracton End, ε#5 34η 29ι 21λ 3ν').time, 'nu'), 'α#6 β#4 γ#9 δ#3 ε#5 34η 29ι 21λ 3ν');
+  assert.equal(pure.stamp(A, 'nu'), 'α#6 β#4 γ#9 δ#3 ε#5 34η 29ι 21λ 3ν', 'SPEC §15.6 vector A');
+  assert.equal(pfirst('Delta Trifracton End ε#5 34η 29ι').time, pfirst('δ#3 ε#5 34η 29ι').time);
+  assert.equal(pfirst('Delta Trifracton End ε#5 34η 29ι').time, pfirst('α#6 β#4 γ#9 δ#3 ε#5 34η 29ι').time);
+  assert.match(pfirst('Delta Trifracton End ε#5 34η 29ι').label, /^Delta Trifracton End ε#5 34η 29ι in Gamma Nonafracton$/);
   assert.match(pfirst('Alpha Hexafracton, Beta Tetrafracton, Gamma Nonafracton').label, /^Alpha Hexafracton, Beta Tetrafracton, Gamma Nonafracton$/);
 });
 
 test('pure dates: a quarter word is checked against the date, and alone it is the start of that quarter', () => {
-  // "Delta Trifracton Node": where the Node quarter begins, the peak of the Delta (1¼ Nuclides in: ε#2 19η 9ι)
+  // "Delta Trifracton Node": where the Node quarter begins, the peak of the Delta (1¼ Nuclides in: ε#2 20η 9ι)
   const node = pfirst('Delta Trifracton Node');
   assert.equal(node.kind, 'cycle');
-  assert.equal(pure.stamp(node.time, 'nu'), 'α#6 β#4 γ#9 δ#3 ε#2 19η 9ι 0λ 0ν');
+  assert.equal(pure.stamp(node.time, 'nu'), 'α#6 β#4 γ#9 δ#3 ε#2 20η 9ι 0λ 0ν');
   assert.equal(pure.quarterAt(node.time, 3), 1);
   assert.equal(pure.quarterAt(node.time - 0.001, 3), 0, 'the first millisecond of the Node quarter');
   assert.equal(node.time, landPoint(model, 3, model.levelAt(A, 3).cycle, 0.25));
@@ -1534,7 +1543,7 @@ test('pure dates: a quarter word is checked against the date, and alone it is th
     }
   }
   // the quarter boundaries of a Delta fall at 1¼, 2½ and 3¾ Nuclides
-  assert.deepEqual([1, 2, 3].map((q) => pure.dateText(pfirst(`Delta Trifracton ${QUARTER_WORDS[q]}`).time, { letters: true, upTo: 'iota' })), ['δ#3 ε#2 19η 9ι', 'δ#3 ε#3 38η 18ι', 'δ#3 ε#4 57η 27ι']);
+  assert.deepEqual([1, 2, 3].map((q) => pure.dateText(pfirst(`Delta Trifracton ${QUARTER_WORDS[q]}`).time, { letters: true, upTo: 'iota' })), ['δ#3 ε#2 20η 9ι', 'δ#3 ε#3 39η 18ι', 'δ#3 ε#4 58η 27ι']);
   // the short date the header prints at the Nuclide reads back even when the Nuclide straddles a quarter
   const straddle = pfirst('Delta Trifracton Node ε#2');
   assert.equal(straddle.time, node.time, 'the part of ε#2 that lies in the Node quarter');
@@ -1589,7 +1598,7 @@ test('pure span text: a span built from whole units reads as those units, withou
 
 test('pure page: one Delta = 5 Nuclide rows x 7 columns of 11 Helions, exactly what the header counts', () => {
   assert.deepEqual([GRID.rows, GRID.cols, GRID.cells], [5, 7, 35]);
-  assert.deepEqual(COLUMN_ETA, [0, 11, 22, 33, 44, 55, 66], 'columns are labelled by their first Helion count');
+  assert.deepEqual(COLUMN_ETA, [1, 12, 23, 34, 45, 56, 67], 'columns are labelled by their first Helion (numbered from 1)');
   assert.deepEqual(PAGES_PER, { gamma: 5, beta: 65, alpha: 325 });
   assert.equal(viewCount(model), Math.ceil((model.extent * 325) / 4), 'one page per Delta');
   assert.equal(viewCount(model), 5607);
@@ -1613,6 +1622,7 @@ test('pure page: one Delta = 5 Nuclide rows x 7 columns of 11 Helions, exactly w
       // the start of a cell is the first millisecond that shows its Nuclide and its first Helion
       const ks = countersAt(pure, cell.start);
       assert.deepEqual([ks.epsilon, ks.eta, ks.iota], [cell.row + 1, cell.eta0, 0], `cell ${cell.index} start`);
+      assert.equal(cell.eta0, cell.col * 11 + 1);
       const m = countersAt(pure, cellTime(model, cell, 0.5));
       if (m) assert.deepEqual([m.delta, m.epsilon, m.eta], [info.delta, cell.epsilon, cell.eta0 + 5], `cell ${cell.index} middle`);
     }
@@ -1720,7 +1730,7 @@ test('pure page: the Delta quarters Peak Node Valley End begin at 1¼, 2½ and 3
   for (const hv of [0, 1862, 3000, viewCount(model) - 2]) {
     const g = buildPureGrid(model, hv);
     const starts = g.cells.flatMap((c) => c.dq.filter((q) => q.startsHere).map((q) => ({ q: q.q, cell: c, x: q.x0 })));
-    assert.deepEqual(starts.map((s) => [s.q, s.cell.epsilon, s.cell.eta0, s.x]), [[0, 1, 0, 0], [1, 2, 11, 0.75], [2, 3, 33, 0.5], [3, 4, 55, 0.25]]);
+    assert.deepEqual(starts.map((s) => [s.q, s.cell.epsilon, s.cell.eta0, s.x]), [[0, 1, 1, 0], [1, 2, 12, 0.75], [2, 3, 34, 0.5], [3, 4, 56, 0.25]]);
     for (const s of starts.slice(1)) {
       // the quarter word the header prints changes exactly there
       const t = cellTime(model, s.cell, s.x) + 0.001;
@@ -1803,18 +1813,27 @@ test('pure jump grammar: partial names, letters, counts and offsets land on the 
   assert.equal(pfirst('6.4.9').time, pfirst('α#6 β#4 γ#9').time);
   assert.match(pfirst('ε#2 5η').label, /^ε#2 5η in Delta Trifracton$/);
   assert.equal(pure.dateText(pfirst('ε#2 5η').time, { letters: true, upTo: 'eta' }), 'δ#3 ε#2 5η');
-  // counts alone: in the shown Nuclide (the counts first, the span after the shown moment second)
+  // the Helion alone, with counts: in the shown Nuclide (the date first, the span after the shown moment second)
   const counts = pj('33η 17ι');
   assert.deepEqual(counts.map((c) => c.kind), ['cycle', 'relative']);
   assert.match(counts[0].label, /^33η 17ι in ε#5$/);
   assert.equal(pure.dateText(counts[0].time, { letters: true, upTo: 'iota' }), 'δ#3 ε#5 33η 17ι');
+  assert.equal(pure.clock(pfirst('ε#2 5η').time).eta, 5, '"ε#2 5η" is the 5th Helion');
+  near(model.positionOf(pfirst('ε#2 5η').time) - model.positionOf(pfirst('ε#2').time), 4 * pure.unitPos(unitById('eta')), 1e-9, '4 Helions after the start of ε#2');
+  assert.equal(pfirst('ε#2 1η').time, pfirst('ε#2').time, '1η is where the Nuclide begins');
+  // "0η" in a date is no Helion: a short pointer; as an offset it is still a span of nothing
+  assert.equal(pfirst('ε#2 0η').error, '0η: η is numbered 1–77 inside a Nuclide');
+  assert.match(pfirst('ε#2 0η').detail, /Helions are numbered from 1/);
+  assert.equal(pfirst('+0η').kind, 'relative');
+  assert.deepEqual(pj('0η 29ι').map((c) => c.kind), ['relative'], 'no date reading for 0η');
   assert.deepEqual(pj('3η').map((c) => c.kind), ['relative', 'cycle']);
   assert.equal(pj('2ε 5η')[0].kind, 'relative');
   // the old spellings without hashes still read; "η#4" is the 4th Helion, the count 3
   assert.equal(pfirst('δ 3 · ε 2 · η 5').time, pfirst('δ#3 ε#2 5η').time);
-  assert.equal(pfirst('ε#2 η#4').time, pfirst('ε#2 3η').time);
+  assert.equal(pfirst('ε#2 η#4').time, pfirst('ε#2 4η').time, 'η#4 is the 4th Helion: 4η');
+  assert.equal(pfirst('ε#2 4η ι#3').time, pfirst('ε#2 4η 2ι').time, 'ι#3 is the 3rd Preon: the count 2ι');
   assert.match(pfirst('η#0').error, /numbers start at 1/);
-  assert.equal(pfirst('33η29ι21λ3ν').time, pfirst('33η 29ι 21λ 3ν').time, 'the clock copied without spaces');
+  assert.equal(pfirst('34η29ι21λ3ν').time, pfirst('34η 29ι 21λ 3ν').time, 'the clock copied without spaces');
   // the depth chip "ζ 6": the running ζ (ζ is a depth, not a numbered unit)
   const chip = pj('ζ 6');
   assert.equal(chip.length, 1);
@@ -1845,7 +1864,7 @@ test('pure jump grammar: partial names, letters, counts and offsets land on the 
   assert.ok(s.detail.endsWith(`drift ${pure.driftText(model.solarSyncByNumber(4820))}`));
   assert.match(pfirst('sync 99999999').error, /not inside the catalogue/);
   assert.equal(pfirst('now').live, true);
-  assert.match(pfirst('d7#717211').label, /^η global index 717211 · ε#5 33η$/);
+  assert.match(pfirst('d7#717211').label, /^η global index 717211 · ε#5 34η$/);
 });
 
 test('pure jump grammar: unit names (Delta, Nuclide, Helion, Preon, Flavon, Blink) and decimal Blinks', () => {
@@ -1875,14 +1894,14 @@ test('pure jump grammar: unit names (Delta, Nuclide, Helion, Preon, Flavon, Blin
   assert.equal(pfirst('next node of Delta').time, node.time);
   assert.match(node.detail, /Delta Tetrafracton Node ends → Valley begins$/);
   assert.equal(pure.quarterAt(node.time, 3), 2);
-  assert.match(pfirst('next Helion').detail, /33η ends → 34η begins$/, 'the short form inside the shown Nuclide');
+  assert.match(pfirst('next Helion').detail, /34η ends → 35η begins$/, 'the short form inside the shown Nuclide');
   assert.match(pfirst('next ε').detail, /ε#5 ends → ε#1 of Delta Tetrafracton begins$/);
   assert.equal(pfirst('next 3 Nuclides').label, 'Next 3rd ε boundary');
   assert.equal(pj('Helion').length, 2, 'a lone unit offers its next and previous boundary');
   // a depth between units stays a boundary of that depth
   const z = pfirst('next ζ');
   assert.equal(z.kind, 'boundary');
-  assert.match(z.detail, /33η ends → 44η begins$/);
+  assert.match(z.detail, /34η ends → 45η begins$/, 'a ζ is named by its first Helion');
   assert.equal(pfirst('Helion [13,0]').time, pfirst('η [13,0]').time);
   assert.match(pfirst('δ [3,0]').error, /no glyph pair: it is read by its quarter/);
 });
@@ -1920,7 +1939,8 @@ test('pure jump grammar: old forms get one short pointer whose own text passes t
     assert.deepEqual(leaks(r[0].error + ' | ' + r[0].detail), [], `${text}: ${r[0].error} | ${r[0].detail}`);
   }
   assert.match(pfirst('+2ζ').detail, /Write \+22η for \+2ζ/);
-  assert.match(pfirst('ζ#5').detail, /The 5th ζ of a Nuclide begins at 44η/);
+  assert.match(pfirst('ζ#5').detail, /The 5th ζ of a Nuclide begins at 45η/);
+  assert.match(pfirst('θ#3').detail, /The 3rd θ of a Helion begins at 8ι/);
   assert.match(pfirst('Epsilon Trifracton').detail, /written by its number: ε#3/);
   assert.match(pfirst('next Atom').detail, /the Delta now \(δ, 5 Nuclides\)/);
   assert.match(pfirst('+2 Hadrons').detail, /11 Helions, write 11η/);
@@ -1937,12 +1957,12 @@ test('pure jump box never reads an Earth calendar or clock: one short answer ins
     assert.match(r[0].detail, /read in periods, counts, offsets and positions/);
     assert.match(r[0].detail, /Press \? for the glossary\.$/);
   }
-  for (const text of ['sync 4820', 'α#6 β#4 γ#9', '6.4.9', 'next ε', '+2ε 5η', 'η [13,0]', 'pos 22.9278', 'Gamma Difracton', 'Delta Trifracton Node', '33η 29ι 21λ', 'ε#2 5η', '+4 Blinks', 'next Helion', '3 Helions ago']) assert.notEqual(pfirst(text).kind, 'error', text);
-  assert.ok(!looksEarthly('Gamma Difracton') && !looksEarthly('+2ε 5η') && !looksEarthly('sync 4820') && !looksEarthly('33η 29ι 21λ') && !looksEarthly('+4 Blinks') && !looksEarthly('Delta Trifracton Node'));
+  for (const text of ['sync 4820', 'α#6 β#4 γ#9', '6.4.9', 'next ε', '+2ε 5η', 'η [13,0]', 'pos 22.9278', 'Gamma Difracton', 'Delta Trifracton Node', '34η 29ι 21λ', 'ε#2 5η', '+4 Blinks', 'next Helion', '3 Helions ago']) assert.notEqual(pfirst(text).kind, 'error', text);
+  assert.ok(!looksEarthly('Gamma Difracton') && !looksEarthly('+2ε 5η') && !looksEarthly('sync 4820') && !looksEarthly('34η 29ι 21λ') && !looksEarthly('+4 Blinks') && !looksEarthly('Delta Trifracton Node'));
   const junk = pfirst('hello world');
   assert.match(junk.error, /^Cannot read "hello world"$/);
   assert.match(junk.detail, /Delta Trifracton Node/);
-  assert.match(junk.detail, /Counts start at 0, # numbers at 1\. Press \? for the glossary\.$/);
+  assert.match(junk.detail, /# numbers and Helions start at 1, counts at 0\. Press \? for the glossary\.$/);
   assert.equal(pfirst('50%').error, 'Cannot read that', 'a percentage is never printed back');
   const huge = pj('x'.repeat(5000));
   assert.equal(huge.length, 1);
@@ -1955,8 +1975,8 @@ test('pure jump box never reads an Earth calendar or clock: one short answer ins
 test('pure jump box text never carries an Earth reference or a retired name (the scanner rules, over many inputs)', () => {
   const inputs = [
     'Gamma Difracton', 'Delta Trifracton', 'Delta Trifracton Node', 'Delta Trifracton Node ε#2', 'Delta Trifracton Node ε#2 5η', 'Delta Trifracton Valley ε#2', 'Difracton', 'Omega Monofracton',
-    'Alpha Hexafracton Valley, Beta Tetrafracton Valley, Gamma Nonafracton Valley, Delta Trifracton End, ε#5 33η 29ι 21λ 3ν', 'α#6 β#4 γ#9 δ#3 ε#5 33η 29ι 21λ 3ν', 'δ#3 ε#5 33η 29ι',
-    'ε#5', 'ε#6', 'δ#6', 'ζ 6', 'δ 4', 'a6 b3 g11', '6.3.11', 'α#19', 'β#6', 'γ#14', 'ε#2 5η', '33η 17ι', 'η 3', 'ι 17', '77η', 'η#0', '3γ', 'α#6 β#4 3γ', 'ν#3', '33η 4ν',
+    'Alpha Hexafracton Valley, Beta Tetrafracton Valley, Gamma Nonafracton Valley, Delta Trifracton End, ε#5 34η 29ι 21λ 3ν', 'α#6 β#4 γ#9 δ#3 ε#5 34η 29ι 21λ 3ν', 'δ#3 ε#5 34η 29ι', 'ε#2 0η', '0η 29ι',
+    'ε#5', 'ε#6', 'δ#6', 'ζ 6', 'δ 4', 'a6 b3 g11', '6.3.11', 'α#19', 'β#6', 'γ#14', 'ε#2 5η', '33η 17ι', 'η 3', 'ι 17', '78η', 'η#0', '3γ', 'α#6 β#4 3γ', 'ν#3', '33η 4ν',
     '+2ε 5η', '-3ι', 'in 5λ', '3η ago', '+3', '+2δ', '+9999α', '+4 Blinks', '+0.14ν', '+2 Nuclides 5 Helions', '3 Preons ago', 'in 5 Flavons', '+12ν',
     'δ½ 3', 'ζ½', 'next ζ½', '+2ζ', '5ζ', 'ζ#5', 'θ#3', '+2θ', '+2ξ', '+2 Hadrons', 'next Atom', '3 Quarks', 'Somons', 'Chromon', 'Eta Difracton', 'Epsilon Trifracton', '3 beats', '50%',
     'pos 22.9', 'pos 99', 'sync 4820', 'S4820 node', 'sync 99999999', 'next ε', 'prev η', 'next Helion', 'next Delta', 'next Delta node', 'next node of Delta', 'next peak η', 'next 3 ε', 'next peak', 'next ζ', 'ε', 'ι', 'θ', 'ξ', 'Helion', 'Delta', 'Blink',

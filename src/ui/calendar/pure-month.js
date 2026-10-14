@@ -2,8 +2,9 @@
  * The pure calendar (right half of the Calendar tab in pure mode): one Delta per page (SPEC §15, revision 3).
  *
  * The page is a ruler of one Delta: 5 rows, its Nuclides ε#1–5, and 7 columns of 11 Helions each (the ζ cycles, which are
- * no unit: the columns are labelled by their first Helion count 0η 11η 22η … 66η). Every cell holds 11 Helions; a band
- * along its foot shows them at their exact fractional position (their counts in the Nuclide, every fifth labelled), the
+ * no unit: the columns are labelled by their first Helion 1η 12η 23η … 67η, Helions being numbered from 1 to 77 in their
+ * Nuclide). Every cell holds 11 Helions; a band along its foot shows them at their exact
+ * fractional position (their numbers in the Nuclide, every fifth labelled where there is room), the
  * node mark of each Helion, and the solar sync quarters as gold diamonds. The Delta is a major period: it is said in words
  * with its quarter (Peak Node Valley End, the quarter named by the threshold that ends it), never with a phase pair. A
  * quarter bar above the grid shows the four quarters and the five Nuclides; in the grid a line in the Delta colour marks
@@ -14,7 +15,8 @@
  * · Delta Trifracton") and letters, the address strip of fracton names, "Now", and under the page a ribbon of the five
  * Deltas of the Gamma with their Nuclides.
  *
- * Notation: X#n is an ordinal from 1 (δ#3, ε#2), nX a count from 0 (33η, 9ι). Geometry and data come from ./pure-conv.js
+ * Notation: X#n is an ordinal from 1 (δ#3, ε#2), nX a count from 0 (9ι, spans), except the Helion of a date: 34η is the
+ * 34th Helion of its Nuclide (numbered from 1). Geometry and data come from ./pure-conv.js
  * (positions, exact integer tick maths); this file is DOM only. Nothing here says a Gregorian date, a weekday, a month,
  * a year or a percentage.
  */
@@ -152,9 +154,9 @@ export function createPureMonth(ctx, { tip }) {
   const legendHtml = () => {
     const lv = V.overlay;
     const swatch = `<span class="cal-lg-sw" style="--c:${levelColor(lv)}"></span>`;
-    const head = 'Rows: the 5 Nuclides <b>ε#1–5</b> of the Delta; columns: 11 Helions each, from <b>0η</b>, <b>11η</b> … <b>66η</b>. ';
-    const tail = ` <span class="cal-pm-lgs"></span> a solar sync quarter · <b class="cal-pm-lgt">#22</b> an eclipse, marked where it falls · <b class="cal-pm-lgt">S4821</b> a sync that begins here. # numbers count from 1, counts from 0. Press ? for the glossary.`;
-    if (lv === 6) return `${swatch}<span>${head}The band is the Helions of each cell, counted in the Nuclide (every fifth labelled where there is room), a tick at each node (<b>18ι</b> of 36); the Delta's quarters begin at the lines in its colour;${tail}</span>`;
+    const head = 'Rows: the 5 Nuclides <b>ε#1–5</b> of the Delta; columns: 11 Helions each, from <b>1η</b>, <b>12η</b> … <b>67η</b>. ';
+    const tail = ` <span class="cal-pm-lgs"></span> a solar sync quarter · <b class="cal-pm-lgt">#22</b> an eclipse, marked where it falls · <b class="cal-pm-lgt">S4821</b> a sync that begins here. # numbers and Helions count from 1, counts from 0. Press ? for the glossary.`;
+    if (lv === 6) return `${swatch}<span>${head}The band is the Helions of each cell, numbered in the Nuclide (every fifth labelled where there is room), a tick at each node (<b>18ι</b> of 36); the Delta's quarters begin at the lines in its colour;${tail}</span>`;
     if (lv === 4) return `${swatch}<span>${head}The band is the Nuclides, one per row (a Nuclide is 77 Helions); the Delta's quarters begin at the lines in its colour;${tail}</span>`;
     return `${swatch}<span>${head}The band is the Delta's quarters <b>Peak</b>, <b>Node</b>, <b>Valley</b>, <b>End</b> (each named by the threshold that ends it, 1¼ Nuclides long);${tail}</span>`;
   };
@@ -231,7 +233,7 @@ export function createPureMonth(ctx, { tip }) {
   // ------------------------------------------------------------------------------------------
   // grid building
   // ------------------------------------------------------------------------------------------
-  /** "ε#2 33η–43η": a cell is a Nuclide and a block of 11 Helion counts. */
+  /** "ε#2 34η–44η": a cell is a Nuclide and a block of 11 Helions (numbered from 1 in the Nuclide). */
   const cellRange = (c) => `${c.eta0}η–${c.eta0 + ETA_PER_CELL - 1}η`;
   const cellStampText = (c) => `ε#${c.epsilon} · ${cellRange(c)}`;
   /** The Delta quarter(s) a cell lies in, in words: "Delta Trifracton Peak" or "Delta Trifracton Peak → Node". */
@@ -265,7 +267,7 @@ export function createPureMonth(ctx, { tip }) {
   function bandHtml(c) {
     let s = '';
     if (V.overlay === 6) {
-      // 11 Helions per cell, whole cycles: [j/11, (j+1)/11), labelled by their count in the Nuclide (every fifth one
+      // 11 Helions per cell, whole cycles: [j/11, (j+1)/11), labelled by their number in the Nuclide (every fifth one
       // where the cell is narrow: CSS)
       for (const e of c.etas) {
         s += `<i class="cal-pm-seg is-eta${e.odd ? ' is-odd' : ''} is-start${e.count % 5 === 0 ? ' k5' : ''}${e.local === ETA_PER_CELL - 1 ? ' is-endeta' : e.local === ETA_PER_CELL - 2 ? ' is-tail' : ''}" data-lv="6" data-idx="${e.eta}" style="left:${pct(e.x0)};width:${pct(e.x1 - e.x0)}"><b>${e.count}</b></i>`;
@@ -602,10 +604,11 @@ export function createPureMonth(ctx, { tip }) {
     const info = model.levelInfo(level);
     const names = level === 6 ? ['starts', 'peak (9ι)', 'node (18ι)', 'valley (27ι)', 'ends'] : ['starts', 'peak', 'node', 'valley', 'ends'];
     const { rows, cur } = thresholdRows(level, idx, names);
-    // a minor cycle is named by where it starts in its Nuclide: "33η" (ε#5 33η)
+    // a minor cycle is named by where it starts in its Nuclide: "34η" (ε#5 34η)
     const head = pure.cycleShort(level, idx);
     const full = pure.cycleName(level, idx);
-    const counter = level === 6 ? `<div class="dim">${esc(head)}: ${head.replace('η', '')} Helions completed in the Nuclide when it begins</div>` : '';
+    const nth = Number(head.replace('η', ''));
+    const counter = level === 6 ? `<div class="dim">${esc(head)}: the ${nth}${ordSuffix(nth)} Helion of its Nuclide (${nth - 1} completed when it begins)</div>` : '';
     const made = madeOf(model, pure, level);
     const unit = `${pure.unitName(LETTERS[level])} · ${info.siblings * (level === 6 ? 7 : 1)} in a ${level === 6 ? 'Nuclide' : 'Delta'}${made ? `, lasts ${made}` : ''} · `;
     return (

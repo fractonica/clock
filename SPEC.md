@@ -463,16 +463,18 @@ quarter(L) = floor(4 · phase(L))        phase(L) = frac(position · P(L) / 4)
 
 ### 15.3 Counts, ordinals and the date
 
-Two kinds of number appear, and they are written differently:
+Numbers in a reading are written in two forms:
 
 - `X#n` is an **ordinal**, counted from 1: `δ#3`, `ε#2`. Majors in letter form, and the Nuclide, use it.
-- `nX` is a **count** of completed units, counted from 0: `5η`, `29ι`. The minor clock and every span use it.
+- `nX` is used for the minor clock and for spans. In a date or clock the **Helion is numbered from 1** (`1η` … `77η`
+  inside its Nuclide), like the day of a month. Preons, Flavons and Blinks are **counts of completed units from 0**,
+  like hours and minutes. In a span every part is a count: `5η 12ι` lasts five Helions and twelve Preons.
 
-The minor reading of a moment is the Nuclide ordinal and four counts, from the local indices of §3.2:
+The minor reading of a moment is the Nuclide ordinal, the Helion's number and three counts, from the local indices of §3.2:
 
 ```
 ε  = local(4) + 1                       1 … 5    Nuclide inside its Delta
-η  = 11 · local(5) + local(6)           0 … 76   Helions completed in the Nuclide
+η  = 11 · local(5) + local(6) + 1       1 … 77   the Helion's number in the Nuclide
 ι  = 4  · local(7) + local(8)           0 … 35   Preons completed in the Helion
 λ  = 13 · local(9) + local(10)          0 … 64   Flavons completed in the Preon
 ν  = 5  · local(11) + local(12)         0 … 24   Blinks completed in the Flavon
@@ -489,7 +491,7 @@ A **date** is the major periods in words, then the minor reading. Flavons and Bl
 
 The letter forms omit the quarter words, which the counts imply. The full letter form is the **stamp**: it identifies a moment exactly and can be read back. The Nuclide ordinal is required because a Delta has 5 Nuclides but 4 quarters, so a quarter alone does not say which Nuclide a Helion count belongs to.
 
-The basic reading on screen is the **Helion**: its count in the Nuclide and its phase as an odometer of two 2-stroke glyphs (§5 at depth 7, 256 states of about 71 s each). Preons and Flavons give the fine time.
+The basic reading on screen is the **Helion**: its number in the Nuclide and its phase as an odometer of two 2-stroke glyphs (§5 at depth 7, 256 states of about 71 s each). Preons and Flavons give the fine time.
 
 A minor cycle has no name of its own; it is identified by where it starts in its Nuclide. For example, a depth-9 cycle is `ε#2 5η 9ι`, a depth-8 cycle `ε#2 5η 8ι` (θ starts on multiples of 4ι), and a depth-14 cycle `… 3.43ν` (finer than a Blink, so a decimal).
 
@@ -512,9 +514,9 @@ These use the vectors of §12. The Helion pair is the depth-7 odometer of §12, 
 
 | Vector | Full date | Short date | Helion pair |
 |---|---|---|---|
-| A | `Alpha Hexafracton Valley, Beta Tetrafracton Valley, Gamma Nonafracton Valley, Delta Trifracton End, ε#5 33η 29ι 21λ 3ν` | `Delta Trifracton End ε#5 33η 29ι` | [13, 0] |
-| B | `Alpha Hexafracton Node, Beta Difracton End, Gamma Didecafracton Node, Delta Trifracton Node, ε#2 20η 12ι 6λ 5ν` | `Delta Trifracton Node ε#2 20η 12ι` | [5, 6] |
-| C | `Alpha Heptafracton Peak, Beta Difracton Peak, Gamma Monofracton End, Delta Pentafracton Peak, ε#2 0η 23ι 1λ 21ν` | `Delta Pentafracton Peak ε#2 0η 23ι` | [10, 3] |
-| Anchor + 1 s | `Alpha Hexafracton Peak, Beta Monofracton Peak, Gamma Monofracton Peak, Delta Monofracton Peak, ε#1 0η 0ι 0λ 3ν` | `Delta Monofracton Peak ε#1 0η 0ι` | [0, 0] |
+| A | `Alpha Hexafracton Valley, Beta Tetrafracton Valley, Gamma Nonafracton Valley, Delta Trifracton End, ε#5 34η 29ι 21λ 3ν` | `Delta Trifracton End ε#5 34η 29ι` | [13, 0] |
+| B | `Alpha Hexafracton Node, Beta Difracton End, Gamma Didecafracton Node, Delta Trifracton Node, ε#2 21η 12ι 6λ 5ν` | `Delta Trifracton Node ε#2 21η 12ι` | [5, 6] |
+| C | `Alpha Heptafracton Peak, Beta Difracton Peak, Gamma Monofracton End, Delta Pentafracton Peak, ε#2 1η 23ι 1λ 21ν` | `Delta Pentafracton Peak ε#2 1η 23ι` | [10, 3] |
+| Anchor + 1 s | `Alpha Hexafracton Peak, Beta Monofracton Peak, Gamma Monofracton Peak, Delta Monofracton Peak, ε#1 1η 0ι 0λ 3ν` | `Delta Monofracton Peak ε#1 1η 0ι` | [0, 0] |
 
-The stamp at A is `α#6 β#4 γ#9 δ#3 ε#5 33η 29ι 21λ 3ν`. At A the depth-7 end is 3,372.428 s away (§12), which is the span `6ι 43λ`.
+The stamp at A is `α#6 β#4 γ#9 δ#3 ε#5 34η 29ι 21λ 3ν`. At A the depth-7 end is 3,372.428 s away (§12), which is the span `6ι 43λ`.

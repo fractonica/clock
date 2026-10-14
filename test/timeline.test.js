@@ -805,8 +805,8 @@ test('no user-visible string of the timeline says "level"', () => {
 //
 // The ladder is α β γ δ ε η ι λ ν (index 0..8, depths 1 2 3 4 5 7 9 11 13). Major periods α–δ are said in words
 // ("Delta Trifracton", with a quarter word Peak / Node / Valley / End for a stretch or a moment), never with a phase
-// pair; the minor units are the Nuclide ordinal ε#n and the counts η (0–76 in the Nuclide), ι (0–35), λ (0–64),
-// ν (0–24): the header clock "33η 29ι 21λ". ζ θ κ μ and ξ are depths, not units.
+// pair; the minor units are the Nuclide ordinal ε#n, the Helion numbered from 1 in it (1η … 77η) and the counts of
+// completed ι (0–35), λ (0–64), ν (0–24): the header clock "34η 29ι 21λ". ζ θ κ μ and ξ are depths, not units.
 // =====================================================================================================
 const pure = createPure(model, { now: () => T_A });
 const ruler = createRuler({ model, pure });
@@ -847,21 +847,22 @@ test('pure ruler: the ladder is the four major periods and the minor units one d
   near(ruler.sec[IDX.ν], pure.blinkSeconds(), 1e-12, 'the finest unit is the Blink');
 });
 
-test('pure ruler: tokens are ordinals (α β γ δ ε, from 1) and counts (η ι λ ν, from 0); majors have words', () => {
+test('pure ruler: tokens are ordinals (α β γ δ ε), the Helion numbered from 1, counts (ι λ ν, from 0); majors have words', () => {
   assert.deepEqual([0, 1, 2, 3, 4].map((u) => ruler.tokenText(u, 5)), ['α#5', 'β#5', 'γ#5', 'δ#5', 'ε#5']);
   assert.deepEqual([5, 6, 7, 8].map((u) => ruler.tokenText(u, 9)), ['9η', '9ι', '9λ', '9ν']);
   assert.deepEqual(ruler.tickLabels(IDX.δ, 3), ['Delta Trifracton', 'δ#3', '#3'], 'words first, then letters');
   assert.deepEqual(ruler.tickLabels(IDX.α, 18), ['Alpha Octadecafracton', 'α#18', '#18']);
   assert.deepEqual(ruler.tickLabels(IDX.ε, 2), ['ε#2', '#2'], 'the Nuclide has no fracton name');
-  assert.deepEqual(ruler.tickLabels(IDX.η, 33), ['33η']);
+  assert.deepEqual(ruler.tickLabels(IDX.η, 34), ['34η']);
   assert.equal(ruler.counterOf(0, 5), 6);
   assert.equal(ruler.counterOf(IDX.γ, 13), 1, 'the 14th γ is the 1st of the next β');
-  assert.equal(ruler.counterOf(IDX.η, 77), 0, 'the 78th η is the first of the next Nuclide: 0 whole η have gone by');
-  assert.equal(ruler.counterOf(IDX.η, 76), 76);
+  assert.equal(ruler.counterOf(IDX.η, 77), 1, 'the 78th η is the first (1η) of the next Nuclide: Helions are numbered from 1');
+  assert.equal(ruler.counterOf(IDX.η, 76), 77);
+  assert.equal(ruler.counterOf(IDX.ι, 36), 0, 'the finer units count completed ones, from 0');
   assert.equal(ruler.counterOf(IDX.ν, 49), 24);
   // the address is written as pure.stamp writes it: single spaces, letters only
   assert.equal(ruler.joinTokens(ruler.tokensAtTime(T_A, 0, 8)), pure.stamp(T_A, 'nu'));
-  assert.equal(ruler.stampText(T_A, IDX.ν), 'α#6 β#4 γ#9 δ#3 ε#5 33η 29ι 21λ 3ν', 'SPEC §15.6 vector A');
+  assert.equal(ruler.stampText(T_A, IDX.ν), 'α#6 β#4 γ#9 δ#3 ε#5 34η 29ι 21λ 3ν', 'SPEC §15.6 vector A');
   assert.doesNotMatch(ruler.stampText(T_A, IDX.ν), OLD_SPELLING);
 });
 
@@ -892,8 +893,8 @@ test('pure ruler: near a boundary the ruler reads exactly what the header reads 
   const b = ruler.startTime(1, 30);
   const before = ruler.tokensAtTime(b - 0.003, 0, 8).map((x) => x.c);
   const after = ruler.tokensAtTime(b + 0.003, 0, 8).map((x) => x.c);
-  assert.deepEqual(after.slice(3), [1, 1, 0, 0, 0, 0], 'a new β begins at δ#1, ε#1 and 0 whole η, ι, λ, ν');
-  assert.deepEqual(before.slice(3), [5, 5, 76, 35, 64, 24], 'and 3 ms before it everything is on its last');
+  assert.deepEqual(after.slice(3), [1, 1, 1, 0, 0, 0], 'a new β begins at δ#1, ε#1, 1η and 0 whole ι, λ, ν');
+  assert.deepEqual(before.slice(3), [5, 5, 77, 35, 64, 24], 'and 3 ms before it everything is on its last');
   assert.equal(ruler.indexAtPos(0, 12 - 1e-9), 2);
   assert.equal(ruler.indexAtPos(0, 12), 3);
   assert.equal(ruler.indexAtPos(0, 12 - 1e-14), 3, 'float noise of a position is absorbed');
@@ -904,11 +905,11 @@ test('pure ruler: near a boundary the ruler reads exactly what the header reads 
 test('pure ruler: the flags are the header clock from the Preon down, the tick unit between its neighbours above', () => {
   const sym = (u) => ruler.flagUnits(u).map((i) => SYMS[i]).join('');
   assert.deepEqual(Array.from({ length: 9 }, (_, u) => sym(u)), ['αβγ', 'αβγ', 'βγδ', 'γδε', 'δεη', 'εηι', 'ηιλ', 'ηιλν', 'ηιλν']);
-  assert.equal(ruler.flagText(T_A, IDX.ι), '33η 29ι 21λ');
+  assert.equal(ruler.flagText(T_A, IDX.ι), '34η 29ι 21λ');
   assert.equal(ruler.flagText(T_A, IDX.ι), pure.clockText(T_A));
   assert.equal(ruler.flagText(T_A, IDX.ν), pure.clockText(T_A, 'nu'));
-  assert.equal(ruler.flagText(T_A, IDX.η), 'ε#5 33η 29ι');
-  assert.equal(ruler.flagText(T_A, IDX.ε), 'δ#3 ε#5 33η');
+  assert.equal(ruler.flagText(T_A, IDX.η), 'ε#5 34η 29ι');
+  assert.equal(ruler.flagText(T_A, IDX.ε), 'δ#3 ε#5 34η');
   assert.equal(ruler.flagText(T_A, IDX.δ), 'γ#9 δ#3 ε#5');
   assert.equal(ruler.flagText(T_A, 0), 'α#6 β#4 γ#9');
   assert.deepEqual([IDX.ι, IDX.η, IDX.δ, IDX.ν].map((u) => ruler.below(u, 2)), [IDX.ν, IDX.λ, IDX.η, IDX.ν]);
@@ -963,7 +964,7 @@ test('pure ruler: pickStep leaves room, never shows more than 12 labels, prefers
   const pick = (span) => ruler.pickStep(1000 / span, 1000).id;
   assert.equal(pick(ruler.sec[IDX.η]), 'iota×4', 'one Helion across: every 4th Preon (the θ grid)');
   assert.equal(pick(ruler.sec[IDX.ι]), 'lambda×13', 'one Preon: the κ grid');
-  assert.equal(pick(ruler.sec[IDX.ε]), 'eta×11', 'one Nuclide: the ζ grid, 0η 11η … 66η');
+  assert.equal(pick(ruler.sec[IDX.ε]), 'eta×11', 'one Nuclide: the ζ grid, 1η 12η … 67η');
   assert.equal(pick(ruler.sec[IDX.δ]), 'epsilon', 'one Delta: its five Nuclides, not every 33rd Helion');
   assert.equal(pick(ruler.sec[IDX.γ]), 'delta');
   assert.equal(pick(ruler.sec[IDX.α]), 'beta', 'one Alpha: its five Betas, not every 6th Gamma');
@@ -1036,7 +1037,7 @@ test('pure ruler: ticks coincide with the cycles the lanes draw, of the units an
     assert.deepEqual(ticks.map((x) => x.idx), lanes.map((b) => b.idx), `${sym}: the same cycles start at the ticks and in the lane`);
     ticks.forEach((tk, i) => near(tk.t, lanes[i].start, 1e-6, `${sym} tick ${i}`));
     if (u <= IDX.ε) ticks.forEach((tk, i) => assert.equal(tk.counter, lanes[i].local + 1, `${sym}: the ordinal is the lane's number`));
-    else ticks.forEach((tk, i) => assert.equal(tk.counter, lanes[i].idx % ruler.per[u], `${sym}: the count inside the parent`));
+    else ticks.forEach((tk, i) => assert.equal(tk.counter, (lanes[i].idx % ruler.per[u]) + (u === IDX.η ? 1 : 0), `${sym}: the number (η, from 1) or count (from 0) inside the parent`));
   }
   // the depths between: their cycles start on the grids of the multiples, and the lane names them by that count
   for (const [level, id] of [[5, 'eta×11'], [7, 'iota×4'], [9, 'lambda×13'], [11, 'nu×5']]) {
@@ -1066,10 +1067,10 @@ test('pure ruler: whole-catalogue ticks, nothing outside it, majors named in wor
   const eta = model.levelAt(T_A, 6);
   assert.deepEqual(ruler.ticksIn(ruler.stepById('iota×2'), eta.start + 0.01, eta.end - 0.01).map((x) => x.labels[0]), Array.from({ length: 17 }, (_, i) => `${2 * (i + 1)}ι`));
   assert.deepEqual(ruler.ticksIn(ruler.stepById('iota×4'), eta.start + 0.01, eta.end - 0.01).map((x) => x.labels[0]), ['4ι', '8ι', '12ι', '16ι', '20ι', '24ι', '28ι', '32ι']);
-  // inside one Nuclide: η ×11 is the ζ grid 11η … 66η, η ×33 the uneven 33η (two fit, not three)
+  // inside one Nuclide: η ×11 is the ζ grid 12η … 67η (after 1η, the Nuclide's own first), η ×33 the uneven 34η (two fit, not three)
   const eps = model.levelAt(T_A, 4);
-  assert.deepEqual(ruler.ticksIn(ruler.stepById('eta×11'), eps.start + 0.01, eps.end - 0.01).map((x) => x.labels[0]), ['11η', '22η', '33η', '44η', '55η', '66η']);
-  assert.deepEqual(ruler.ticksIn(ruler.stepById('eta×33'), eps.start + 0.01, eps.end - 0.01).map((x) => x.labels[0]), ['33η']);
+  assert.deepEqual(ruler.ticksIn(ruler.stepById('eta×11'), eps.start + 0.01, eps.end - 0.01).map((x) => x.labels[0]), ['12η', '23η', '34η', '45η', '56η', '67η']);
+  assert.deepEqual(ruler.ticksIn(ruler.stepById('eta×33'), eps.start + 0.01, eps.end - 0.01).map((x) => x.labels[0]), ['34η']);
   // inside one Flavon: ν ×5 is the μ grid
   const lam = model.levelAt(T_A, 10);
   assert.deepEqual(ruler.ticksIn(ruler.stepById('nu×5'), lam.start + 0.01, lam.end - 0.01).map((x) => x.labels[0]), ['5ν', '10ν', '15ν', '20ν']);
@@ -1132,7 +1133,7 @@ test('pure ruler: the context row names the coarser unit; above whole major tick
   const quarters = ruler.contextIn(ruler.stepById('epsilon'), d.start + 1, d.end - 1);
   assert.deepEqual(quarters.map((x) => x.labels.at(-3)), ['Delta Trifracton Peak', 'Delta Trifracton Node', 'Delta Trifracton Valley', 'Delta Trifracton End']);
   assert.equal(quarters[1].labels[2], 'Gamma Nonafracton · Delta Trifracton Node');
-  assert.equal(ruler.contextIn(ruler.stepById('iota'), T_A - 1, T_A + 1)[0].labels[0], 'Gamma Nonafracton · Delta Trifracton · ε#5 33η', 'the row above ι ticks');
+  assert.equal(ruler.contextIn(ruler.stepById('iota'), T_A - 1, T_A + 1)[0].labels[0], 'Gamma Nonafracton · Delta Trifracton · ε#5 34η', 'the row above ι ticks');
   // a multiple keeps the plain spans of its parent
   assert.match(ruler.contextIn(ruler.stepById('epsilon×2'), d.start + 1, d.end - 1)[0].labels.at(-3), /^Delta \w+fracton$/);
 });
@@ -1260,7 +1261,7 @@ test('pure ruler: the deepest zoom (a few Blinks across) keeps exact ticks, tent
   const spans = ruler.contextIn(ruler.stepById('nu'), T_A - 1, T_A + 1);
   assert.ok(spans.length >= 1);
   assert.match(spans[0].labels.at(-1), /^\d+λ$/);
-  assert.ok(spans[0].labels.includes('33η 29ι 21λ'));
+  assert.ok(spans[0].labels.includes('34η 29ι 21λ'));
   assert.equal(ruler.spanText(T_A - 1, T_A + 1, 2, 0.5 / 1000), '6.4ν');
   assert.equal(ruler.spanText(T_A - 0.02, T_A + 0.02), '0.13ν');
   assert.equal(ruler.spanText(T_A - 0.0001, T_A + 0.0001), '<0.001ν');
@@ -1291,17 +1292,17 @@ test('pure wording: lane heads, lengths, block labels and what begins when a cyc
   assert.match(major({ wide: true, w: 900, endsWithCatalogue: true })[0], /ends with the catalogue$/);
   // minor blocks: their placing counts; what begins is said by the counts that change
   const e = model.levelAt(T_A, 6);
-  assert.deepEqual(words.blockLabels({ level: 6, local: e.local, idx: e.cycle, sib: 11, wide: true, w: 900, endsWithCatalogue: false }), ['η 7 · ε#5 33η · ends → 34η', 'η 7 · ε#5 33η', 'ε#5 33η', '33η', '33']);
+  assert.deepEqual(words.blockLabels({ level: 6, local: e.local, idx: e.cycle, sib: 11, wide: true, w: 900, endsWithCatalogue: false }), ['η 7 · ε#5 34η · ends → 35η', 'η 7 · ε#5 34η', 'ε#5 34η', '34η', '34']);
   const n = model.levelAt(T_A, 4);
   assert.deepEqual(words.blockLabels({ level: 4, local: n.local, idx: n.cycle, sib: 5, wide: true, w: 900, endsWithCatalogue: false }), ['ε 5 · ε#5 · ends → ε#1', 'ε 5 · ε#5', 'ε#5', '5']);
   const th = model.levelAt(T_A, 7);
   assert.deepEqual(words.blockLabels({ level: 7, local: th.local, idx: th.cycle, sib: 9, wide: false, w: 60, endsWithCatalogue: false }), ['28ι', '28'], 'a θ cycle is named by the Preon count it starts at');
-  assert.deepEqual(words.endsInto(6, e.cycle, false), { short: '34η', long: 'ε#5 34η', say: '34η' });
+  assert.deepEqual(words.endsInto(6, e.cycle, false), { short: '35η', long: 'ε#5 35η', say: '35η' });
   assert.deepEqual(words.endsInto(3, d.cycle, false), { short: 'δ#4', long: 'Delta Tetrafracton', say: 'Delta Tetrafracton' });
   assert.equal(words.endsInto(4, n.cycle, false).say, 'ε#1');
   // the last Helion of a Nuclide: the next one starts a new Nuclide, so the Nuclide is named
   const lastEta = Math.floor(n.cycle * 77) + 76; // (the 77th Helion of this Nuclide)
-  assert.equal(words.endsInto(6, lastEta, false).say, 'ε#1 0η');
+  assert.equal(words.endsInto(6, lastEta, false).say, 'ε#1 1η');
   // eclipses, edges, pointers, chips
   assert.equal(words.eclipseLabel(22), '#22');
   for (const k of [0, 1, 22, 68, 69]) assert.equal(words.eclipseLabel(k), pure.eclipseName(k));
@@ -1312,13 +1313,13 @@ test('pure wording: lane heads, lengths, block labels and what begins when a cyc
   assert.equal(words.edgeLabel('end'), 'catalogue ends · pos 69');
   assert.equal(words.endsChip('ε', 'in 2ε 10η', true), 'ε ends in 2ε 10η ▸');
   assert.equal(words.endsChip('η', 'in 6ι 43λ', false), '◂ η ends in 6ι 43λ');
-  assert.deepEqual(words.markerChip('cursor', '33η 29ι 21λ', true), ['cursor 33η 29ι 21λ ▸', 'cursor ▸']);
-  assert.deepEqual(words.markerChip('now', '33η 29ι 21λ', false), ['◂ now 33η 29ι 21λ', '◂ now']);
+  assert.deepEqual(words.markerChip('cursor', '34η 29ι 21λ', true), ['cursor 34η 29ι 21λ ▸', 'cursor ▸']);
+  assert.deepEqual(words.markerChip('now', '34η 29ι 21λ', false), ['◂ now 34η 29ι 21λ', '◂ now']);
   assert.deepEqual(words.rulerKey(ruler.stepById('iota×4')), { top: 'η', bottom: 'ι ×4' });
   assert.deepEqual(words.rulerKey(ruler.stepById('alpha')), { top: '', bottom: 'α' });
-  assert.match(words.turnoverTip(6, e.cycle, true, false), /^Next turnover of the selected depth, η \(depth 7\): ε#5 33η ends → 34η begins\./);
+  assert.match(words.turnoverTip(6, e.cycle, true, false), /^Next turnover of the selected depth, η \(depth 7\): ε#5 34η ends → 35η begins\./);
   assert.match(words.turnoverTip(3, d.cycle, false, false), /^The end of the δ cycle at the cursor lies to the left of the view: Delta Trifracton ends → Delta Tetrafracton begins\./);
-  assert.equal(words.selectedSentence(6, e.cycle, e.local, 11, false), 'Selected depth 7 (η): ε#5 33η, ends → 34η begins.');
+  assert.equal(words.selectedSentence(6, e.cycle, e.local, 11, false), 'Selected depth 7 (η): ε#5 34η, ends → 35η begins.');
   assert.equal(words.selectedSentence(3, d.cycle, d.local, 5, false), 'Selected depth 4 (δ): Delta Trifracton, cycle 3 of 5, ends → Delta Tetrafracton begins.');
   assert.match(words.selectedSentence(0, 17, 17, 18, true), /^Selected depth 1 \(α\): Alpha Octadecafracton, cycle 18 of 18, ends with the catalogue\.$/);
 });
@@ -1327,12 +1328,12 @@ test('pure wording: the ruler key, preset titles and lane heads name the units i
   const tip = words.rulerTip(ruler.stepById('iota×4'));
   assert.match(tip, /^Each tick starts a Preon \(ι, depth 9\); every 4th one is labelled\. The row above names the Helion \(η\) each one belongs to\./);
   assert.match(tip, /Here ι is counted inside the Helion, from 0 to 35, like the clock in the header\./);
-  assert.match(words.rulerTip(ruler.stepById('eta')), /Here η is counted inside the Nuclide, from 0 to 76, like the clock in the header\./);
-  assert.match(words.rulerTip(ruler.stepById('nu')), /Here ν is counted inside the Flavon, from 0 to 24\. A count/);
+  assert.match(words.rulerTip(ruler.stepById('eta')), /Here η is numbered inside the Nuclide, from 1 to 77, like the clock in the header\./);
+  assert.match(words.rulerTip(ruler.stepById('nu')), /Here ν is counted inside the Flavon, from 0 to 24\. ε#5 names/);
   assert.match(words.rulerTip(ruler.stepById('epsilon')), /^Each tick starts a Nuclide \(ε, depth 5\), named by its place in the Delta \(ε#1 … ε#5\)\. The row above names the Delta \(δ\) and its quarters Peak, Node, Valley and End/);
   assert.match(words.rulerTip(ruler.stepById('delta')), /^Each tick starts a Delta \(δ\), a major period, named in words where there is room \("Delta Trifracton"\) and else in letters \(δ#3\)\./);
   assert.match(words.rulerTip(ruler.stepById('alpha')), /^Each tick starts an Alpha \(α\)/);
-  assert.match(tip, /A count such as 33η is how many whole Helions have gone by since the Nuclide began, so it starts at 0; ε#5 names the 5th Nuclide of its Delta and starts at 1\. Press \? for the glossary\.$/);
+  assert.match(tip, /ε#5 names the 5th Nuclide of its Delta and 34η the 34th Helion of its Nuclide, both numbered from 1; 29ι 21λ 3ν count the Preons, Flavons and Blinks completed since, from 0\. Press \? for the glossary\.$/);
   assert.deepEqual(ruler.PRESETS.map(words.presetTitle), [
     'Zoom in to the Blink (ν) scale: a few Blinks across, the deepest zoom',
     'Show about one Flavon (λ) across',
@@ -1348,9 +1349,9 @@ test('pure wording: the ruler key, preset titles and lane heads name the units i
   assert.equal(words.laneTip(0, 18), 'Alpha (α): a major period of 4 Saros intervals; the catalogue holds 18 (the last one is cut off). One Alpha is 5 β. Named in words with its quarter: Peak, Node, Valley or End.');
   assert.equal(words.laneTip(3, 18), 'Delta (δ): a major period, depth 4. 5 of them make a γ; one is 5 ε. Named in words with its quarter: Peak, Node, Valley or End.');
   assert.equal(words.laneTip(4, 18), 'Nuclide (ε): a minor unit, depth 5. 5 of them make a Delta (δ); one is 77 Helions (η). Named ε#1 … ε#5 inside its Delta.');
-  assert.equal(words.laneTip(6, 18), 'Helion (η): a minor unit, depth 7. 77 of them make a Nuclide (ε); one is 36 Preons (ι). Counted 0η … 76η inside its Nuclide.');
+  assert.equal(words.laneTip(6, 18), 'Helion (η): a minor unit, depth 7. 77 of them make a Nuclide (ε); one is 36 Preons (ι). Numbered 1η … 77η inside its Nuclide.');
   assert.equal(words.laneTip(12, 18), "Blink (ν): the finest unit, depth 13, and the device's real-time tick. 25 of them make a Flavon (λ). Counted 0ν … 24ν inside its Flavon.");
-  assert.equal(words.laneTip(5, 18), 'ζ (depth 6) lies between the units: one cycle is 11η, 7 of them make a Nuclide (ε). A cycle is named by where it starts: 0η, 11η, 22η … 66η.');
+  assert.equal(words.laneTip(5, 18), 'ζ (depth 6) lies between the units: one cycle is 11η, 7 of them make a Nuclide (ε). A cycle is named by where it starts: 1η, 12η, 23η … 67η.');
   assert.equal(words.laneTip(9, 18), 'κ (depth 10) lies between the units: one cycle is 13λ, 5 of them make a Preon (ι). A cycle is named by where it starts: 0λ, 13λ, 26λ … 52λ.');
   assert.equal(words.laneTip(13, 18), 'ξ (depth 14) is finer than the Blink: one cycle lasts 0.14ν, 7 of them make a ν. A cycle is named by the decimal Blink it starts at.');
 });
@@ -1425,13 +1426,13 @@ test('pure tooltips: lane heads, ruler key, overview, eclipse lane and the plot 
   const html = tip({ gutter: false, kind: 'lane', lane: 4, inPlot: true, t: T_A, x: 300, y: 200 });
   const text = textOf(html);
   assert.ok(text.startsWith(`${pure.dateText(T_A, { upTo: 'nu' })} ${pure.stamp(T_A, 'nu')} pos 22.9`), text.slice(0, 120));
-  assert.ok(text.startsWith('Delta Trifracton End ε#5 33η 29ι 21λ 3ν α#6 β#4 γ#9 δ#3 ε#5 33η 29ι 21λ 3ν pos 22.927850 · between #22 and #23'), 'SPEC §15.6 vector A');
+  assert.ok(text.startsWith('Delta Trifracton End ε#5 34η 29ι 21λ 3ν α#6 β#4 γ#9 δ#3 ε#5 34η 29ι 21λ 3ν pos 22.927850 · between #22 and #23'), 'SPEC §15.6 vector A');
   assert.match(text, /vs now 4η 34ι ago vs cursor now/);
   assert.match(text, /ε 5 ε#5 ends in [^·]+ → ε#1 begins/);
   assert.equal((html.match(/class="tl-tip-row/g) || []).length, 10, 'one row per lane');
   assert.equal((html.match(/is-on/g) || []).length, 1);
   // the major rows say their quarter, the minor rows their placing count and their phase pair
-  assert.match(text, /α 1 6\/18 Valley β 2 4\/5 Valley γ 3 9\/13 Valley δ 4 3\/5 End ε 5 ε#5 ζ 6 33η η 7 33η θ 8 28ι ι 9 29ι κ 10 13λ$/);
+  assert.match(text, /α 1 6\/18 Valley β 2 4\/5 Valley γ 3 9\/13 Valley δ 4 3\/5 End ε 5 ε#5 ζ 6 34η η 7 34η θ 8 28ι ι 9 29ι κ 10 13λ$/);
   assert.equal((html.match(/class="pure-pair"/g) || []).length, 6, 'pairs only for the six minor depths, never for α–δ');
   for (const L of [4, 6, 9]) {
     const o = model.odometerAt(T_A, L, { strokes: 2, digits: 2 });
@@ -1446,16 +1447,16 @@ test('pure tooltips: lane heads, ruler key, overview, eclipse lane and the plot 
   // over major ticks the date names every major period with its quarter; the focused major lane its words and quarter
   env.step = ruler.stepById('delta');
   const coarse = textOf(tip({ gutter: false, kind: 'lane', lane: 3, inPlot: true, t: T_A }));
-  assert.ok(coarse.startsWith('Alpha Hexafracton Valley, Beta Tetrafracton Valley, Gamma Nonafracton Valley, Delta Trifracton End, ε#5 33η α#6 β#4 γ#9 δ#3 ε#5 33η pos'), coarse.slice(0, 140));
+  assert.ok(coarse.startsWith('Alpha Hexafracton Valley, Beta Tetrafracton Valley, Gamma Nonafracton Valley, Delta Trifracton End, ε#5 34η α#6 β#4 γ#9 δ#3 ε#5 34η pos'), coarse.slice(0, 140));
   assert.match(coarse, /δ 4 Delta Trifracton End δ#3 · 3\/5 · ends in [^→]+ → Delta Tetrafracton begins/);
   env.step = ruler.stepById('alpha');
   assert.match(textOf(tip({ gutter: false, kind: 'lane', lane: 0, inPlot: true, t: T_A })), /^Alpha Hexafracton Valley, Beta Tetrafracton Valley, Gamma Nonafracton Valley, Delta Trifracton End α#6 β#4 γ#9 δ#3 pos/);
   env.step = ruler.stepById('nu');
   env.store = { live: false, t: () => T_A, realNow: () => T_A + 0.1 };
   const fine = textOf(tip({ gutter: false, kind: 'lane', lane: 9, inPlot: true, t: T_A + 0.05 }));
-  assert.match(fine, /^Delta Trifracton End ε#5 33η 29ι 21λ 3ν /);
+  assert.match(fine, /^Delta Trifracton End ε#5 34η 29ι 21λ 3ν /);
   assert.match(fine, /vs now 0\.16ν ago vs cursor in 0\.16ν/, 'below ten Blinks the readings are decimals');
-  assert.match(fine, /κ 10 ε#5 33η 29ι 13λ lasts 13λ · ends in \d+λ \d+ν → 26λ begins/, 'a depth between the units names its start and its length');
+  assert.match(fine, /κ 10 ε#5 34η 29ι 13λ lasts 13λ · ends in \d+λ \d+ν → 26λ begins/, 'a depth between the units names its start and its length');
   assert.equal(hardLeaks(fine).length, 0);
 
   // outside the catalogue
@@ -1474,7 +1475,7 @@ test('pure tooltips: lane heads, ruler key, overview, eclipse lane and the plot 
 test('pure tooltips: a lane finer than the Blink says how long its cycle lasts', () => {
   const env = tipEnv({ levels: [11, 12, 13], step: ruler.stepById('nu') });
   const html = pureTipHTML({ gutter: false, kind: 'lane', lane: 2, inPlot: true, t: T_A + 0.2, x: 100, y: 100 }, env);
-  assert.match(textOf(html), /ξ 14 ε#5 33η 29ι 21λ \d+\.?\d*ν lasts 0\.14ν · ends in \d\.\d+ν → \d+\.?\d*ν begins/);
+  assert.match(textOf(html), /ξ 14 ε#5 34η 29ι 21λ \d+\.?\d*ν lasts 0\.14ν · ends in \d\.\d+ν → \d+\.?\d*ν begins/);
   assert.equal(hardLeaks(textOf(html)).length, 0);
 });
 

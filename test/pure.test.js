@@ -110,39 +110,39 @@ test('phase pair: 256 states from two 2-stroke glyphs; the Helion pair is the SP
   assert.ok(!/<title>|vector CBT/.test(pure.pairHTML(0.3)));
 });
 
-test('clock: the Nuclide and the counts of completed Helions, Preons, Flavons, Blinks', () => {
+test('clock: the Nuclide, the Helion numbered from 1, and the counts of completed Preons, Flavons, Blinks', () => {
   for (const t of [T, T + 12345.6, B + 0.5, C + 0.25, 125593320.816]) {
     const c = pure.clock(t);
     const e = model.levelAt(t, 4);
     const ePhase = e.phase;
     assert.equal(c.epsilon, e.local + 1);
-    assert.equal(c.eta, Math.floor(ePhase * 77), 'Helions 0..76 inside the Nuclide');
+    assert.equal(c.eta, Math.floor(ePhase * 77) + 1, 'Helions numbered 1..77 inside the Nuclide');
     const h = model.levelAt(t, 6).phase;
     assert.equal(c.iota, Math.floor(h * 36), 'Preons 0..35 inside the Helion');
     const i = model.levelAt(t, 8).phase;
     assert.equal(c.lambda, Math.floor(i * 65), 'Flavons 0..64 inside the Preon');
     const l = model.levelAt(t, 10).phase;
     assert.equal(c.nu, Math.floor(l * 25), 'Blinks 0..24 inside the Flavon');
-    assert.ok(c.eta <= 76 && c.iota <= 35 && c.lambda <= 64 && c.nu <= 24 && c.epsilon <= 5);
+    assert.ok(c.eta >= 1 && c.eta <= 77 && c.iota <= 35 && c.lambda <= 64 && c.nu <= 24 && c.epsilon <= 5);
   }
-  assert.equal(pure.clockText(T), '33η 29ι 21λ');
-  assert.equal(pure.clockText(T, 'iota'), '33η 29ι');
-  assert.equal(pure.clockText(T, 'nu'), '33η 29ι 21λ 3ν');
+  assert.equal(pure.clockText(T), '34η 29ι 21λ');
+  assert.equal(pure.clockText(T, 'iota'), '34η 29ι');
+  assert.equal(pure.clockText(T, 'nu'), '34η 29ι 21λ 3ν');
   assert.equal(pure.clock(model.tMax + 5), null);
 });
 
 test('dates: words for the majors with their quarter, letters for the minor units (SPEC §15 vectors)', () => {
   assert.equal(pure.dateText(T, { form: 'full', upTo: 'nu' }),
-    'Alpha Hexafracton Valley, Beta Tetrafracton Valley, Gamma Nonafracton Valley, Delta Trifracton End, ε#5 33η 29ι 21λ 3ν');
-  assert.equal(pure.dateText(T), 'Delta Trifracton End ε#5 33η 29ι');
-  assert.equal(pure.dateText(T, { letters: true }), 'δ#3 ε#5 33η 29ι');
-  assert.equal(pure.stamp(T, 'nu'), 'α#6 β#4 γ#9 δ#3 ε#5 33η 29ι 21λ 3ν');
-  assert.equal(pure.stamp(T), 'α#6 β#4 γ#9 δ#3 ε#5 33η 29ι');
+    'Alpha Hexafracton Valley, Beta Tetrafracton Valley, Gamma Nonafracton Valley, Delta Trifracton End, ε#5 34η 29ι 21λ 3ν');
+  assert.equal(pure.dateText(T), 'Delta Trifracton End ε#5 34η 29ι');
+  assert.equal(pure.dateText(T, { letters: true }), 'δ#3 ε#5 34η 29ι');
+  assert.equal(pure.stamp(T, 'nu'), 'α#6 β#4 γ#9 δ#3 ε#5 34η 29ι 21λ 3ν');
+  assert.equal(pure.stamp(T), 'α#6 β#4 γ#9 δ#3 ε#5 34η 29ι');
   assert.equal(pure.stamp(T, 'delta'), 'α#6 β#4 γ#9 δ#3');
-  assert.equal(pure.dateText(B), 'Delta Trifracton Node ε#2 20η 12ι');
-  assert.equal(pure.dateText(C), 'Delta Pentafracton Peak ε#2 0η 23ι');
+  assert.equal(pure.dateText(B), 'Delta Trifracton Node ε#2 21η 12ι');
+  assert.equal(pure.dateText(C), 'Delta Pentafracton Peak ε#2 1η 23ι');
   assert.equal(pure.dateText(125593320.816, { form: 'full' }),
-    'Alpha Hexafracton Peak, Beta Monofracton Peak, Gamma Monofracton Peak, Delta Monofracton Peak, ε#1 0η 0ι', 'the anchor eclipse starts Alpha 6');
+    'Alpha Hexafracton Peak, Beta Monofracton Peak, Gamma Monofracton Peak, Delta Monofracton Peak, ε#1 1η 0ι', 'the anchor eclipse starts Alpha 6');
   assert.equal(pure.majorText(T, 3), 'Delta Trifracton End');
   assert.equal(pure.majorText(T, 0), 'Alpha Hexafracton Valley');
   // the quarter is floor(phase × 4)
@@ -175,16 +175,16 @@ test('minor cycles are named by where they start in their Nuclide; counts agree 
   const at = (L) => model.levelAt(T, L).cycleBig;
   assert.equal(pure.cycleName(3, at(3)), 'Delta Trifracton');
   assert.equal(pure.cycleName(4, at(4)), 'ε#5');
-  assert.equal(pure.cycleName(6, at(6)), 'ε#5 33η');
-  assert.equal(pure.cycleName(8, at(8)), 'ε#5 33η 29ι');
-  assert.equal(pure.cycleName(7, at(7)), 'ε#5 33η 28ι', 'a θ starts on a multiple of 4ι');
-  assert.equal(pure.cycleName(10, at(10), { short: true }), '33η 29ι 21λ');
-  assert.equal(pure.cycleName(13, at(13)), 'ε#5 33η 29ι 21λ 3.43ν');
-  assert.equal(pure.cycleShort(6, at(6)), '33η');
+  assert.equal(pure.cycleName(6, at(6)), 'ε#5 34η');
+  assert.equal(pure.cycleName(8, at(8)), 'ε#5 34η 29ι');
+  assert.equal(pure.cycleName(7, at(7)), 'ε#5 34η 28ι', 'a θ starts on a multiple of 4ι');
+  assert.equal(pure.cycleName(10, at(10), { short: true }), '34η 29ι 21λ');
+  assert.equal(pure.cycleName(13, at(13)), 'ε#5 34η 29ι 21λ 3.43ν');
+  assert.equal(pure.cycleShort(6, at(6)), '34η');
   assert.equal(pure.cycleShort(3, at(3)), 'δ#3');
   assert.equal(pure.nameAt(T, 2), 'Gamma Nonafracton');
   assert.equal(pure.addressAt(T, 4), 'α#6 β#4 γ#9 δ#3 ε#5');
-  assert.equal(pure.addressAt(T, 7), 'α#6 β#4 γ#9 δ#3 ε#5 33η 29ι');
+  assert.equal(pure.addressAt(T, 7), 'α#6 β#4 γ#9 δ#3 ε#5 34η 29ι');
   assert.equal(pure.catalogueText(), 'α#1 – α#18');
 });
 

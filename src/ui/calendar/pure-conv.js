@@ -5,15 +5,17 @@
  * Vocabulary comes from src/core/pure.js (`pure` = createPure(model)):
  *   major periods   α Alpha · β Beta · γ Gamma · δ Delta, said in WORDS with a fracton ordinal and a quarter word
  *                   ("Delta Trifracton Node"; the quarter is named by the threshold that ends it: Peak Node Valley End)
- *   minor units     ε Nuclide (ordinal ε#1–5 in its Delta) · η Helion (count 0–76 in the Nuclide) · ι Preon (0–35 in
- *                   the Helion) · λ Flavon (0–64 in the Preon) · ν Blink (0–24 in the Flavon)
+ *   minor units     ε Nuclide (ordinal ε#1–5 in its Delta) · η Helion (NUMBERED 1–77 in the Nuclide: "34η" is the 34th)
+ *                   · ι Preon (count 0–35 in the Helion) · λ Flavon (0–64 in the Preon) · ν Blink (0–24 in the Flavon)
  *   ζ θ κ μ (and ξ …) are depths of the hierarchy, not units: a ζ is 11η, a θ 4ι, a κ 13λ, a μ 5ν.
- * The stamp is the full letter form `α#6 β#4 γ#9 δ#3 ε#5 33η 29ι 21λ 3ν`. This file adds the INVERSE of those readings (a
+ * The stamp is the full letter form `α#6 β#4 γ#9 δ#3 ε#5 34η 29ι 21λ 3ν`. This file adds the INVERSE of those readings (a
  * date in any of its forms -> a moment), counter editing, exact landings, and the geometry of the pure month page: one
- * Delta as 5 Nuclide rows (ε#1–5) x 7 columns of 11 Helions (the ζ cycles, labelled by their first Helion 0η 11η … 66η),
+ * Delta as 5 Nuclide rows (ε#1–5) x 7 columns of 11 Helions (the ζ cycles, labelled by their first Helion 1η 12η … 67η),
  * with the Delta's quarter thresholds at 1¼, 2½ and 3¾ Nuclides.
  *
- * NOTATION: X#n is an ORDINAL counted from 1 (δ#3, ε#2); nX is a COUNT of units counted from 0 (5η, 17ι).
+ * NOTATION: X#n is an ORDINAL counted from 1 (δ#3, ε#2); nX is a COUNT of units counted from 0 (17ι, spans 6ι 43λ), except
+ * the Helion of a date, which is written nη but NUMBERED from 1 (34η = the 34th Helion of its Nuclide). Spans and offsets
+ * stay counts: +5η is five Helions.
  *
  * Everything is computed in Saros POSITION space: the hierarchy is exactly aligned there (a Nuclide is 4/1625 of a Saros
  * unit, 77 Helions make one …), and only the last step converts a position to the Unix seconds the app runs on. Which
@@ -43,7 +45,7 @@ export const countText = (sym, n) => `${n}${sym}`;
 // ---------------------------------------------------------------------------------------------
 // the nine entries of a date
 // ---------------------------------------------------------------------------------------------
-/** The entries of a date, coarse to fine (the ids of core `UNITS`): α β γ δ ε are ordinals (from 1), η ι λ ν counts (from 0). */
+/** The entries of a date, coarse to fine (the ids of core `UNITS`): α β γ δ ε are ordinals and η is numbered (all from 1), ι λ ν counts (from 0). */
 export const LADDER = Object.freeze(['alpha', 'beta', 'gamma', 'delta', 'epsilon', 'eta', 'iota', 'lambda', 'nu']);
 /** Depth level (0-based) of every entry: ε depth 5, η 7, ι 9, λ 11, ν 13. */
 export const LEVEL_OF = Object.freeze(Object.fromEntries(LADDER.map((id) => [id, unitById(id).level])));
@@ -54,7 +56,10 @@ const SYM = Object.freeze(Object.fromEntries(LADDER.map((id) => [id, unitById(id
 /** Entries that are ordinals (identity, from 1); the others are counts (completed units, from 0). */
 export const ORDINAL_IDS = Object.freeze(new Set(['alpha', 'beta', 'gamma', 'delta', 'epsilon']));
 export const isOrdinalId = (id) => ORDINAL_IDS.has(id);
-const FIRST = (id) => (ORDINAL_IDS.has(id) ? 1 : 0);
+/** Entries numbered from 1: the ordinals and the Helion (written 34η, but the 34th Helion of its Nuclide). */
+export const NUMBERED_IDS = Object.freeze(new Set([...ORDINAL_IDS, 'eta']));
+export const isNumberedId = (id) => NUMBERED_IDS.has(id);
+const FIRST = (id) => (NUMBERED_IDS.has(id) ? 1 : 0);
 export const stampSym = (id) => SYM[id];
 /** What an entry counts inside, in words (error messages). */
 const PARENT = Object.freeze({ beta: 'an Alpha', gamma: 'a Beta', delta: 'a Gamma', epsilon: 'a Delta', eta: 'a Nuclide', iota: 'a Helion', lambda: 'a Preon', nu: 'a Flavon' });
@@ -64,7 +69,7 @@ export const unitWord = (id, n = 1) => `${unitById(id).name}${n === 1 ? '' : 's'
 const rangeCache = new WeakMap();
 /**
  * The printed range of every entry, DERIVED from the hierarchy (sibling counts and unit lengths), not re-typed:
- * {alpha: {1,18}, beta: {1,5}, gamma: {1,13}, delta: {1,5}, epsilon: {1,5}, eta: {0,76}, iota: {0,35}, lambda: {0,64}, nu: {0,24}}.
+ * {alpha: {1,18}, beta: {1,5}, gamma: {1,13}, delta: {1,5}, epsilon: {1,5}, eta: {1,77}, iota: {0,35}, lambda: {0,64}, nu: {0,24}}.
  */
 export function ladderRanges(model, pure) {
   let r = rangeCache.get(model);
@@ -77,7 +82,7 @@ export function ladderRanges(model, pure) {
     gamma: { min: 1, max: model.levelInfo(2).siblings },
     delta: { min: 1, max: ratio('gamma', 'delta') },
     epsilon: { min: 1, max: ratio('delta', 'epsilon') },
-    eta: { min: 0, max: ratio('epsilon', 'eta') - 1 },
+    eta: { min: 1, max: ratio('epsilon', 'eta') },
     iota: { min: 0, max: ratio('eta', 'iota') - 1 },
     lambda: { min: 0, max: ratio('iota', 'lambda') - 1 },
     nu: { min: 0, max: ratio('lambda', 'nu') - 1 },
@@ -89,14 +94,14 @@ export function ladderRanges(model, pure) {
 // ---------------------------------------------------------------------------------------------
 // counters: what the header prints
 // ---------------------------------------------------------------------------------------------
-const spec = (id, min, max) => Object.freeze({ id, key: id, sym: SYM[id], level: unitById(id).level, ordinal: ORDINAL_IDS.has(id), major: isMajorId(id), min, max });
+const spec = (id, min, max) => Object.freeze({ id, key: id, sym: SYM[id], level: unitById(id).level, ordinal: ORDINAL_IDS.has(id), numbered: NUMBERED_IDS.has(id), major: isMajorId(id), min, max });
 /** The four major periods, edited by their fracton name (a test checks the ranges against ladderRanges()). */
 export const MAJORS = Object.freeze([spec('alpha', 1, 18), spec('beta', 1, 5), spec('gamma', 1, 13), spec('delta', 1, 5)]);
 /**
- * The five minor entries that can be edited in place, in ladder order: the Nuclide ordinal ε#1–5 and the counts η 0–76
- * (in the Nuclide), ι 0–35 (in the Helion), λ 0–64 (in the Preon), ν 0–24 (in the Flavon).
+ * The five minor entries that can be edited in place, in ladder order: the Nuclide ordinal ε#1–5, the Helion numbered
+ * 1–77 in the Nuclide, and the counts ι 0–35 (in the Helion), λ 0–64 (in the Preon), ν 0–24 (in the Flavon).
  */
-export const COUNTERS = Object.freeze([spec('epsilon', 1, 5), spec('eta', 0, 76), spec('iota', 0, 35), spec('lambda', 0, 64), spec('nu', 0, 24)]);
+export const COUNTERS = Object.freeze([spec('epsilon', 1, 5), spec('eta', 1, 77), spec('iota', 0, 35), spec('lambda', 0, 64), spec('nu', 0, 24)]);
 export const counterById = (id) => COUNTERS.find((c) => c.id === id) ?? MAJORS.find((c) => c.id === id);
 /** The counter written in the notation: "ε#3", "3η", or a major in words "Delta Trifracton". */
 export const counterText = (s, n) => (s.major ? `${LEVEL_NAMES[s.level]} ${ordinalName(n)}` : s.ordinal ? ordText(s.sym, n) : countText(s.sym, n));
@@ -202,7 +207,7 @@ export function setCounter(model, pure, t, id, n) {
   if (!s || !cur) return { error: 'This moment is outside the catalogue' };
   if (!Number.isInteger(n) || n < s.min || n > s.max) {
     if (s.major) return { error: `${LEVEL_NAMES[s.level]} runs ${ordinalName(s.min)} … ${ordinalName(s.max)}` };
-    return { error: s.ordinal ? `${s.sym}#n is numbered ${s.min}–${s.max}` : `${s.sym} counts ${s.min}–${s.max}` };
+    return { error: s.ordinal ? `${s.sym}#n is numbered ${s.min}–${s.max}` : s.numbered ? `${s.sym} is numbered ${s.min}–${s.max}` : `${s.sym} counts ${s.min}–${s.max}` };
   }
   if (n === cur[s.key]) return { t: r3(t) };
   let out = shiftUnits(model, pure, t, id, n - cur[s.key]);
@@ -223,8 +228,8 @@ function partText(p) {
 
 /**
  * A date read back as a moment: `parts` = [{id, n, quarter?}] consecutive entries of the LADDER, in any of the four forms
- * (`Alpha Hexafracton Valley, …, Delta Trifracton End, ε#5 33η 29ι`, `Delta Trifracton End ε#5 33η 29ι`,
- * `α#6 β#4 γ#9 δ#3 ε#5 33η 29ι 21λ 3ν`, `δ#3 ε#5 33η 29ι`); the entries above the first one are taken from `ref` (the
+ * (`Alpha Hexafracton Valley, …, Delta Trifracton End, ε#5 34η 29ι`, `Delta Trifracton End ε#5 34η 29ι`,
+ * `α#6 β#4 γ#9 δ#3 ε#5 34η 29ι 21λ 3ν`, `δ#3 ε#5 34η 29ι`); the entries above the first one are taken from `ref` (the
  * shown moment). The result is the FIRST MILLISECOND that shows the finest entry given.
  *
  * A quarter word (0 Peak … 3 End) on a major entry is checked against the rest of the date; on the finest entry (no minor
@@ -237,8 +242,8 @@ export function resolveParts(model, pure, parts, ref) {
   const ids = parts.map((p) => LADDER.indexOf(p.id));
   const word = (id) => (isMajorId(id) ? LEVEL_NAMES[LEVEL_OF[id]] : SYM[id]);
   for (let i = 1; i < ids.length; i++) {
-    if (ids[i] <= ids[i - 1]) return { error: 'Write the entries from the longest to the shortest', detail: 'e.g. Delta Trifracton Node ε#2 20η 12ι · α#6 β#4 γ#9 δ#3 ε#5 33η' };
-    if (ids[i] !== ids[i - 1] + 1) return { error: `${word(LADDER[ids[i - 1] + 1])} is missing between ${word(LADDER[ids[i - 1]])} and ${word(LADDER[ids[i]])}`, detail: 'Write consecutive entries, e.g. α#6 β#4 γ#9 δ#3 ε#5 33η 29ι' };
+    if (ids[i] <= ids[i - 1]) return { error: 'Write the entries from the longest to the shortest', detail: 'e.g. Delta Trifracton Node ε#2 21η 12ι · α#6 β#4 γ#9 δ#3 ε#5 34η' };
+    if (ids[i] !== ids[i - 1] + 1) return { error: `${word(LADDER[ids[i - 1] + 1])} is missing between ${word(LADDER[ids[i - 1]])} and ${word(LADDER[ids[i]])}`, detail: 'Write consecutive entries, e.g. α#6 β#4 γ#9 δ#3 ε#5 34η 29ι' };
   }
   const etaIdx = LADDER.indexOf('eta');
   const first = ids[0];
@@ -266,7 +271,9 @@ export function resolveParts(model, pure, parts, ref) {
       const ord = ORDINAL_IDS.has(id);
       const what = ord ? ordText(SYM[id], p.n) : countText(SYM[id], p.n);
       const edge = p.n > max ? (ord ? ordText(SYM[id], max) : countText(SYM[id], max)) : ord ? ordText(SYM[id], min) : countText(SYM[id], min);
-      return { error: `${what}: ${SYM[id]} ${ord ? 'is numbered' : 'counts'} ${min}–${max} inside ${PARENT[id]}`, detail: `${edge} is the ${p.n > max ? 'last' : 'first'}` };
+      // (the Helion is numbered from 1: 0η is no Helion)
+      const why = id === 'eta' && p.n < min ? ': Helions are numbered from 1' : '';
+      return { error: `${what}: ${SYM[id]} ${NUMBERED_IDS.has(id) ? 'is numbered' : 'counts'} ${min}–${max} inside ${PARENT[id]}`, detail: `${edge} is the ${p.n > max ? 'last' : 'first'}${why}` };
     }
     if (p.quarter !== undefined && p.quarter !== null && !(Number.isInteger(p.quarter) && p.quarter >= 0 && p.quarter <= 3)) return { error: 'A quarter is Peak, Node, Valley or End' };
     values[id] = p.n;
@@ -280,7 +287,7 @@ export function resolveParts(model, pure, parts, ref) {
   const nIdx = Math.round(pos / elen);
   pos = nIdx * elen;
   const bare = first >= etaIdx; // counts alone: inside the Nuclide of the shown moment
-  const unitStart = pos + values.eta * len('eta') + values.iota * len('iota') + values.lambda * len('lambda') + values.nu * len('nu');
+  const unitStart = pos + (values.eta - 1) * len('eta') + values.iota * len('iota') + values.lambda * len('lambda') + values.nu * len('nu');
   // the span the finest entry names, [lo, hi) in position, narrowed by every quarter word: a quarter word only has to
   // meet the date somewhere ("Delta Trifracton Node ε#2" is the part of ε#2 that lies in the Node quarter, so the short
   // date the header prints always reads back); on the finest entry it is the start of that quarter
@@ -333,7 +340,7 @@ function quarterMismatch(model, p, parts, start, span) {
 }
 
 /**
- * Entries of a date in letters, like the stamp: "α#6 β#4 γ#9 δ#3 ε#5 33η 29ι" (`words`: the majors as names with their
+ * Entries of a date in letters, like the stamp: "α#6 β#4 γ#9 δ#3 ε#5 34η 29ι" (`words`: the majors as names with their
  * quarter words, when they were given, "Delta Trifracton Node ε#2 5η").
  */
 export function entriesText(parts, { words = false } = {}) {
@@ -407,9 +414,9 @@ export function pureEclipseContext(model, pure, t) {
 // ---------------------------------------------------------------------------------------------
 /** The page grid: 5 rows (ε#1–5) x 7 columns; a cell is one ζ cycle = 11 Helions. */
 export const GRID = Object.freeze({ rows: 5, cols: 7, cells: 35 });
-/** Helions in a cell, and the first Helion count of each column: 0η 11η 22η 33η 44η 55η 66η. */
+/** Helions in a cell, and the first Helion of each column (numbered from 1 in the Nuclide): 1η 12η 23η 34η 45η 56η 67η. */
 export const ETA_PER_CELL = 11;
-export const COLUMN_ETA = Object.freeze(Array.from({ length: GRID.cols }, (_, c) => c * ETA_PER_CELL));
+export const COLUMN_ETA = Object.freeze(Array.from({ length: GRID.cols }, (_, c) => c * ETA_PER_CELL + 1));
 /** Pages (Deltas) in one Gamma, Beta and Alpha: 5, 13 x 5, 5 x 13 x 5 (what the ◀ ▶ steps move by). */
 export const PAGES_PER = Object.freeze({ gamma: 5, beta: 65, alpha: 325 });
 /** Quarter marks inside a Helion (peak, node, valley): 9ι, 18ι, 27ι of its 36. */
@@ -476,8 +483,8 @@ export function deltaQuarters() {
 
 /**
  * The page for Delta number `hv`: 35 cells, each a ζ cycle of 11 Helions with
- *   - its row (Nuclide ε#row+1), column and first Helion count `eta0` (0, 11 … 66),
- *   - its 11 Helions (counts eta0 … eta0+10 in the Nuclide) and the peak / node / valley mark of each,
+ *   - its row (Nuclide ε#row+1), column and first Helion `eta0` (1, 12 … 67: numbered from 1 in the Nuclide),
+ *   - its 11 Helions (`count` eta0 … eta0+10, their number in the Nuclide) and the peak / node / valley mark of each,
  *   - the Nuclide phase at the start of the cell (the 256-state pair), the eclipse it holds (and where: 0, ¼, ½, ¾ of
  *     the cell), the sync quarters in it, and the Delta quarter(s) it lies in (`dq`: {q, x0, x1, startsHere}).
  * Cell positions are Saros positions; `start`/`end` are the Unix seconds the app runs on: `start` is the FIRST
@@ -563,7 +570,7 @@ export function cellTime(model, cell, x = 0) {
   const t = model.timeOfPosition(p);
   return x <= 0 ? Math.ceil(t * 1000) / 1000 : r3(t);
 }
-/** Index (0..34) of the cell of `grid` holding time `t` (the header's Nuclide and Helion count, exactly), or -1. */
+/** Index (0..34) of the cell of `grid` holding time `t` (the header's Nuclide and Helion, exactly), or -1. */
 export function cellOfTime(model, grid, t) {
   const l = model.levelAt(r3(t), 5);
   if (!l) return -1;

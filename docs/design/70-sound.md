@@ -140,7 +140,7 @@ Same panel, same audio, said in Fractonica terms only (SPEC §15, docs/design/80
 - **Speeds** are `pure.rateLabel` (only units are counted: `3ι`, `11η`, never ζ θ κ μ). Speed chips: `Live`, `real time`, `λ ι η ε δ`
   over `per Blink` (the header select's words), `Pause`, `Reverse`; tooltips in prose with the unit's name (`words.rateTip`): `One
   Helion passes every Blink`, and for the counted presets `Thirteen Flavons pass every Blink`, `Four Preons pass every Blink`.
-- **Texts**: "Hear this moment" names the moment by the short date (`Delta Trifracton End ε#5 33η 29ι`); how-to ("one Blink is one ν
+- **Texts**: "Hear this moment" names the moment by the short date (`Delta Trifracton End ε#5 34η 29ι`; Helions are numbered from 1, 1η … 77η); how-to ("one Blink is one ν
   cycle at real time"), rhythm legend ("Up to about 9 pB …": 30 Hz × 0.311), caption, mixer legend, tooltips, status line, toasts.
 
 Kept on purpose: the stored tempo is seconds (so normal mode, the engine and saved settings are untouched); typing more than 600 s worth

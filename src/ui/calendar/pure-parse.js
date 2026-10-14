@@ -3,10 +3,10 @@
  * person types into ranked candidate moments, speaking Fractonica only (SPEC §15, docs/design/80-pure.md, revision 3).
  *
  *   dates          all four forms, or any tail of them (the periods above the first entry come from the shown moment):
- *                    full words     Alpha Hexafracton Valley, Beta Tetrafracton Valley, …, Delta Trifracton End, ε#5 33η 29ι
- *                    short words    Delta Trifracton End ε#5 33η 29ι
- *                    letters        α#6 β#4 γ#9 δ#3 ε#5 33η 29ι 21λ 3ν          (the stamp)
- *                    short letters  δ#3 ε#5 33η 29ι
+ *                    full words     Alpha Hexafracton Valley, Beta Tetrafracton Valley, …, Delta Trifracton End, ε#5 34η 29ι
+ *                    short words    Delta Trifracton End ε#5 34η 29ι
+ *                    letters        α#6 β#4 γ#9 δ#3 ε#5 34η 29ι 21λ 3ν          (the stamp)
+ *                    short letters  δ#3 ε#5 34η 29ι
  *                  partial names ("Gamma Difracton", "Delta Trifracton"), the Nuclide and counts ("ε#2 5η"), counts alone
  *                  ("5η 17ι", inside the shown Nuclide). A quarter word (Peak Node Valley End) on a major period is checked
  *                  against the rest; on the finest entry it is the start of that quarter: "Delta Trifracton Node" is where
@@ -31,8 +31,10 @@
  * {label, time, kind, detail}; failures are {kind:'error', time:null, error}. Candidates are best first; errors only come
  * back when nothing else parsed.
  *
- * Notation: X#n is an ordinal counted from 1, nX a count of units counted from 0. A bare clock reading "33η 29ι 21λ" can
- * be the counts of the shown Nuclide or a span after the shown moment: the counts come first, the span second.
+ * Notation: X#n is an ordinal counted from 1, nX a count of units counted from 0, except the Helion of a date, which is
+ * written nη but NUMBERED from 1 ("ε#2 5η" is the 5th Helion; "0η" is no Helion and gets a pointer). Spans and offsets stay
+ * counts (+5η is five Helions). A bare clock reading "34η 29ι 21λ" can be the shown Nuclide's Helion and counts or a span
+ * after the shown moment: the date comes first, the span second.
  */
 import { LEVEL_NAMES, ORDINAL_NAMES, QUARTER_WORDS, UNITS, ordinalName } from '../../core/pure.js';
 import { LETTERS, POINTS, clip, ordinal, r3, syncRange, pointOfCycle } from './convert.js';
@@ -49,10 +51,10 @@ export function pureExamples() {
   return [
     ['Gamma Difracton', 'start of the 2nd Gamma in the current Beta'],
     ['Delta Trifracton Node', 'where the Node quarter of the 3rd Delta begins'],
-    ['Delta Trifracton Node ε#2 20η 12ι', 'a short date: Delta and quarter, Nuclide, Helions, Preons'],
-    ['α#6 β#4 γ#9 δ#3 ε#5 33η 29ι', 'the stamp: every period in letters, no quarter words'],
-    ['ε#2 5η', 'the 2nd Nuclide of the current Delta, 5 Helions in'],
-    ['33η 17ι', 'Helions and Preons counted in the shown Nuclide (counts start at 0)'],
+    ['Delta Trifracton Node ε#2 21η 12ι', 'a short date: Delta and quarter, Nuclide, Helion (from 1), Preons'],
+    ['α#6 β#4 γ#9 δ#3 ε#5 34η 29ι', 'the stamp: every period in letters, no quarter words'],
+    ['ε#2 5η', 'the 5th Helion of the 2nd Nuclide of the current Delta'],
+    ['34η 17ι', 'the 34th Helion of the shown Nuclide, 17 Preons in (Preons count from 0)'],
     ['+2ε 5η', 'two Nuclides and five Helions after the shown moment'],
     ['+4 Blinks', 'four Blinks (ν) after the shown moment'],
     ['next Helion', 'the next η boundary'],
@@ -63,9 +65,9 @@ export function pureExamples() {
   ];
 }
 
-const HELP = 'Delta Trifracton Node · α#6 β#4 γ#9 δ#3 · ε#2 5η · 33η 17ι · +2ε 5η · +4 Blinks · next Helion · pos 24.5 · sync 4820';
+const HELP = 'Delta Trifracton Node · α#6 β#4 γ#9 δ#3 · ε#2 5η · 34η 17ι · +2ε 5η · +4 Blinks · next Helion · pos 24.5 · sync 4820';
 /** The tail of every help line: where the notation is explained. */
-const GLOSSARY = 'Counts start at 0, # numbers at 1. Press ? for the glossary.';
+const GLOSSARY = '# numbers and Helions start at 1, counts at 0. Press ? for the glossary.';
 const POINT_WORDS = 'begin|start|peak|node|valley|end|mid|middle';
 const QUARTER_ALT = 'peak|node|valley|end';
 const DEPTH_ALT = '(?:depth|d)\\s*\\d{1,2}';
@@ -102,7 +104,7 @@ const fmtNum = (x) => String(Number(x.toPrecision(6)));
 const err = (message, detail = '') => ({ kind: 'error', label: message, time: null, detail, error: message });
 /** The half-cycle units of revision 1: "δ½", "ζ½ 5", "delta half 3". */
 const HALF_RE = new RegExp(`(?:[α-ξ]|${LEVEL_WORD_ALT})\\s*(?:½|-\\s*half\\b|\\s+half\\b)`);
-const HALF_ANSWER = ['Half-cycle units are gone: count whole units', 'A Delta is 5 Nuclides (ε#1–5), a Nuclide 77 Helions: write Delta Trifracton, ε#2, 33η. Press ? for the glossary.'];
+const HALF_ANSWER = ['Half-cycle units are gone: count whole units', 'A Delta is 5 Nuclides (ε#1–5), a Nuclide 77 Helions: write Delta Trifracton, ε#2, 34η. Press ? for the glossary.'];
 /** The retired word for a real-time tick (real time is counted in Blinks). */
 const BEAT_RE = /\bbeats?\b/;
 const BEAT_ANSWER = ['Real time is counted in Blinks now: write +4 Blinks or +4ν', 'A Blink (ν) is the finest unit and the tick of the device clock. Speeds read "4ι per Blink", frequencies "pB" (cycles per Blink). Press ? for the glossary.'];
@@ -130,8 +132,10 @@ function betweenAnswer(C, level, n, as) {
   if (!b) return err(`${sym} is finer than a Blink: count it as a decimal of ν`, `One ${sym} cycle is ${C.pure.cycleLength(level)}, e.g. +${C.pure.cycleLength(level)}`);
   if (as === 'span') return err(`${sym} is a depth, not a unit: a ${sym} is ${b.n}${b.unit.sym}`, `Write +${fmtNum(n * b.n)}${b.unit.sym} for +${fmtNum(n)}${sym}. The units are α β γ δ ε η ι λ ν (Delta, Nuclide, Helion, Preon, Flavon, Blink).`);
   const parent = UNITS.find((u) => u.level === level - 1);
-  const where = Number.isInteger(n) && n >= 1 ? `The ${ordinal(n)} ${sym} of a ${parent.name} begins at ${(n - 1) * b.n}${b.unit.sym}` : `A ${sym} is ${b.n}${b.unit.sym}`;
-  return err(`${sym} is a depth, not a unit: count ${b.unit.name}s instead`, `${where} (a ${sym} is ${b.n}${b.unit.sym}); a stamp reads α#6 β#4 γ#9 δ#3 ε#5 33η 29ι`);
+  // (Helions are numbered from 1 in their Nuclide, Preons, Flavons and Blinks counted from 0 in their parent)
+  const at = (n - 1) * b.n + (b.unit.id === 'eta' ? 1 : 0);
+  const where = Number.isInteger(n) && n >= 1 ? `The ${ordinal(n)} ${sym} of a ${parent.name} begins at ${at}${b.unit.sym}` : `A ${sym} is ${b.n}${b.unit.sym}`;
+  return err(`${sym} is a depth, not a unit: count ${b.unit.name}s instead`, `${where} (a ${sym} is ${b.n}${b.unit.sym}); a stamp reads α#6 β#4 γ#9 δ#3 ε#5 34η 29ι`);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -250,7 +254,7 @@ function recOffset(C) {
   if (/^\d+(?:\.\d+)?$/.test(s) && sign !== null && s.replace('.', '').length <= 5) return [err('Add a unit to the offset', 'e.g. +2ε 5η · -3ι · in 5λ · 3η ago · +4 Blinks')];
   const terms = parseTerms(s);
   if (!terms) return null;
-  // "33η 29ι 21λ" with no sign is also the clock the header prints: the counts are the first reading, the span the second
+  // "34η 29ι 21λ" with no sign is also the clock the header prints: the date is the first reading, the span the second
   const clockLike = sign === null && isClockChain(C, terms);
   if (sign === null) sign = 1; // "2ε 5η" is a span as the instrument writes it: read as "after"
   if (terms.length > 9) return [err('At most 9 terms in an offset')];
@@ -278,7 +282,7 @@ function isClockChain(C, terms) {
   const R = ladderRanges(C.model, C.pure);
   return terms.every((t, i) => {
     const u = UNITS.find((x) => x.level === levelOfUnitToken(t.tok));
-    return !!u && u.id === ids[i] && Number.isInteger(t.n) && t.n <= R[u.id].max;
+    return !!u && u.id === ids[i] && Number.isInteger(t.n) && t.n >= R[u.id].min && t.n <= R[u.id].max;
   });
 }
 
@@ -411,14 +415,14 @@ function dateParts(C, toks) {
       parts.push({ id: ORD_IDS[t.level], n: t.n, quarter, words: true });
       continue;
     }
-    if (quarter !== null && t.level > 3) return { error: err(`A quarter word belongs to a major period (Alpha, Beta, Gamma, Delta), not to ${sym}`, 'e.g. Delta Trifracton Node ε#2 20η') };
+    if (quarter !== null && t.level > 3) return { error: err(`A quarter word belongs to a major period (Alpha, Beta, Gamma, Delta), not to ${sym}`, 'e.g. Delta Trifracton Node ε#2 21η') };
     if (t.kind === 'count') {
       if (COUNT_IDS[t.level]) {
         parts.push({ id: COUNT_IDS[t.level], n: t.n });
         continue;
       }
       if (betweenUnit(C.model, t.level) || t.level > 12) return { error: betweenAnswer(C, t.level, t.n, 'span') };
-      return { error: err(`${t.n}${sym} is a count of units, not a date entry`, `A date writes ${t.level <= 4 ? `an ordinal as ${sym}#${t.n}` : 'it as an ordinal'}; the counts are η ι λ ν: 33η 29ι 21λ. A span after the shown moment starts with + : +${t.n}${sym}`) };
+      return { error: err(`${t.n}${sym} is a count of units, not a date entry`, `A date writes ${t.level <= 4 ? `an ordinal as ${sym}#${t.n}` : 'it as an ordinal'}; after the Nuclide come the Helion (numbered from 1) and the counts of Preons, Flavons, Blinks: 34η 29ι 21λ. A span after the shown moment starts with + : +${t.n}${sym}`) };
     }
     // letter first
     if (ORD_IDS[t.level] !== undefined) {
@@ -427,8 +431,9 @@ function dateParts(C, toks) {
     } else if (COUNT_IDS[t.level]) {
       if (!t.hashed) parts.push({ id: COUNT_IDS[t.level], n: t.n });
       else {
-        if (t.n < 1) return { error: err(`${sym}# numbers start at 1`, `${sym}#1 is the first; a count of completed units starts at 0: 0${sym}`) };
-        parts.push({ id: COUNT_IDS[t.level], n: t.n - 1 }); // η#4 is the 4th Helion, the count 3
+        if (t.n < 1) return { error: err(`${sym}# numbers start at 1`, t.level === 6 ? '1η is the first Helion of a Nuclide' : `${sym}#1 is the first; a count of completed units starts at 0: 0${sym}`) };
+        // η#4 is the 4th Helion, 4η (Helions are numbered from 1); ι#4 is the 4th Preon, the count 3ι
+        parts.push({ id: COUNT_IDS[t.level], n: t.level === 6 ? t.n : t.n - 1 });
       }
     } else return { error: betweenAnswer(C, t.level, t.n, 'ordinal'), between: t };
   }
@@ -505,7 +510,7 @@ function recAddress(C) {
   const tok = tokenizePath(C.lower);
   if (!tok) return null;
   for (let i = 1; i < tok.levels.length; i++) if (tok.levels[i] !== tok.levels[i - 1] + 1) return [err('Write the periods from the longest to the shortest, without gaps', 'e.g. a6 b4 g9 · α#6 β#4 γ#9')];
-  if (tok.levels.at(-1) > 4) return [err('Below the Nuclide a moment is counted, not numbered', 'e.g. α#6 β#4 γ#9 δ#3 ε#5 33η 29ι')];
+  if (tok.levels.at(-1) > 4) return [err('Below the Nuclide a moment is counted, not numbered', 'e.g. α#6 β#4 γ#9 δ#3 ε#5 34η 29ι')];
   const parts = tok.levels.map((level, i) => ({ id: ORD_IDS[level], n: tok.nums[i], quarter: null }));
   if (tok.point) {
     const q = quarterOf(tok.point);

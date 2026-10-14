@@ -4,7 +4,7 @@
  * Normal mode delegates to tooltip.js (Gregorian spans, h / min countdowns, percentages). Pure mode says the
  * same things in Fractonica terms only (docs/design/80-pure.md, SPEC §15, revision 3): the major periods α β γ δ in
  * words with their quarter ("Delta Trifracton", "Valley quarter"; their phase is never drawn as a pair), the minor
- * cycles by where they start in their Nuclide ("ε#5 33η 28ι") with a pair of 2-stroke glyphs (256 states) instead of a
+ * cycles by where they start in their Nuclide ("ε#5 34η 28ι") with a pair of 2-stroke glyphs (256 states) instead of a
  * percentage, address chains instead of dates, durations counted on the ladder α β γ δ ε η ι λ ν, eclipses numbered
  * instead of dated. "Half-arc" is the view's own geometry (a cycle is a crest followed by a trough), not a unit:
  * lengths are always counted in units ("18ι").
@@ -90,8 +90,8 @@ export const cyclePhaseOf = (d, local) => (d.crest ? 0 : 0.5) + Math.min(1, Math
 export const halfLengthPure = (pure, model, d) => pureSpan(pure, (2 * d.fraction) / model.levelInfo(d.level).prefixNum);
 
 /**
- * "α#6 β#4 γ#9 δ#3 ε#5 33η": the address of cycle `cycleIdx` of `level`, the stamp of its start: the ordinals of the
- * major periods, then (from ε down) the Nuclide and the counts that place the cycle in it. At most `links` links,
+ * "α#6 β#4 γ#9 δ#3 ε#5 34η": the address of cycle `cycleIdx` of `level`, the stamp of its start: the ordinals of the
+ * major periods, then (from ε down) the Nuclide, the Helion (numbered from 1) and the counts that place the cycle in it. At most `links` links,
  * deepest last.
  */
 export function chainText(pure, model, level, cycleIdx, links = 5) {
@@ -107,7 +107,7 @@ export function chainText(pure, model, level, cycleIdx, links = 5) {
  * The displayed time written next to the focus marker: three consecutive tokens of the stamp (pure.stamp: the ordinals
  * α# β# γ# δ# ε#, then the counts η ι λ), chosen by the depth of the arc, like the date or clock a Gregorian label would
  * show at that scale:
- *   α -> "α#6 β#4 γ#9"     δ -> "δ#3 ε#5 33η"     ε -> "ε#5 33η 29ι"     ζ and finer -> "33η 29ι 21λ"
+ *   α -> "α#6 β#4 γ#9"     δ -> "δ#3 ε#5 34η"     ε -> "ε#5 34η 29ι"     ζ and finer -> "34η 29ι 21λ"
  */
 export function nowLabelPure(pure, t, level) {
   const d = pure.date(t);
@@ -120,7 +120,7 @@ export function nowLabelPure(pure, t, level) {
 
 /**
  * The cycle a half-arc is half of (opening = crest, closing = trough): a major one in words, numbered in its parent
- * ("opening half of Delta Trifracton · 3 of 5 in γ"), a minor one by where it starts ("closing half of ε#5 33η").
+ * ("opening half of Delta Trifracton · 3 of 5 in γ"), a minor one by where it starts ("closing half of ε#5 34η").
  */
 export const cyclePure = (pure, d) =>
   pure.isMajor(d.level)

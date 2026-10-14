@@ -9,7 +9,8 @@ Nuclide is like a week, Delta like a month; Alpha, Beta, Gamma, Delta are the ma
 have XFracton names. Periods below skip one depth: a Delta is 5 Nuclides, a Nuclide 77 Helions, a Helion 36 Preons, a
 Preon 65 Flavons. The basic time unit is the Helion phase (2 glyphs) and its count; coarse time is Preons and Flavons.
 Showing the phase of Alpha … Delta is redundant. We need a clear separation of major (ultrahelion) and minor (infrahelion)
-periods."* Owner decisions on the details: the date carries the Nuclide ordinal (`ε#2`), and Helions count from 0 (0–76).
+periods."* Owner decisions on the details: the date carries the Nuclide ordinal (`ε#2`), and Helions are numbered from 1 (1–77,
+like the days of a month; first decided 0–76, changed by the owner with the diary).
 The notation is now part of **SPEC.md §15**; this file says how the app uses it.
 
 Pure mode is a *presentation* mode: same clock, views and navigation, but it never says "Thu 8 Oct", "12:56:12",
@@ -27,7 +28,7 @@ Pure mode is a *presentation* mode: same clock, views and navigation, but it nev
 | major | γ | Gamma | 3 | 5 δ | |
 | major | δ | Delta | 4 | 5 ε | |
 | minor | ε | Nuclide | 5 | 77 η | ordinal `ε#2` (1–5 in its Delta) |
-| minor | η | **Helion** | 7 | 36 ι | count 0–76 in the Nuclide; its phase pair is the basic reading |
+| minor | η | **Helion** | 7 | 36 ι | numbered 1–77 in the Nuclide; its phase pair is the basic reading |
 | minor | ι | **Preon** | 9 | 65 λ | count 0–35 |
 | minor | λ | **Flavon** | 11 | 25 ν | count 0–64 |
 | minor | ν | Blink | 13 | – | count 0–24; the device's real-time tick |
@@ -48,7 +49,7 @@ Pure mode is a *presentation* mode: same clock, views and navigation, but it nev
   **Never draw a phase pair for α β γ δ** (it is implied by the Nuclide and Helion count): show the quarter word instead.
 
 ### Dates and the clock
-- `pure.clock(t)` → `{epsilon 1–5, eta 0–76, iota 0–35, lambda 0–64, nu 0–24}`; `pure.clockText(t, upTo)` → "5η 5ι 5λ".
+- `pure.clock(t)` → `{epsilon 1–5, eta 1–77, iota 0–35, lambda 0–64, nu 0–24}`; `pure.clockText(t, upTo)` → "5η 5ι 5λ".
 - `pure.dateText(t, {form, letters, upTo})`:
   - short words (default) `Delta Trifracton Node ε#2 5η 5ι`
   - full words `Alpha Pentafracton Peak, Beta Tetrafracton Valley, Gamma Difracton End, Delta Trifracton Node, ε#2 5η 5ι 5λ 5ν`
@@ -61,8 +62,8 @@ Pure mode is a *presentation* mode: same clock, views and navigation, but it nev
   odometer at depth 7). Preons and Flavons are the fine time.
 
 ### Notation (one rule)
-`X#n` ordinal from 1 (α#6, δ#3, ε#2); `nX` count from 0 (5η 5ι, spans `6ι 43λ`, ruler ticks `9η`, speeds `4ι per Blink`);
-`η 7` only a depth chip.
+`X#n` ordinal from 1 (α#6, δ#3, ε#2); `nX` count from 0 (5ι, spans `6ι 43λ`, ruler ticks `9ι`, speeds `4ι per Blink`) –
+except the Helion of a date or clock, numbered from 1 (`1η` … `77η`); `η 7` only a depth chip.
 
 ### Spans (`pure.duration`, `durationPos`, `countdown`, `between`, `cycleLength`)
 Greedy over α β γ δ ε η ι λ ν, up to `parts` (default 2) non-zero counts, zero units skipped: `2ε 10η`, `5η 17ι`,
@@ -98,13 +99,13 @@ Solar drift `pure.driftText` (`drift −623λ`), one sync is `19η` (19 Helions)
 ## Per-module behaviour (revision 3)
 | module | pure behaviour |
 |---|---|
-| header | the Helion reading (count + phase pair) with Preons and Flavons `33η ‹pair› 29ι 21λ`, the short date `Delta Trifracton End ε#5`, `pos`, speeds per Blink, glossary |
+| header | the Helion reading (count + phase pair) with Preons and Flavons `34η ‹pair› 29ι 21λ`, the short date `Delta Trifracton End ε#5`, `pos`, speeds per Blink, glossary |
 | face | spec display unchanged; letters overlay names the major periods in words and minor ones by letters; info labels countdowns `in 6ι 43λ` and `SYNC 4820 · drift −6 236λ`; caption = short date |
 | rings | major rings: name + quarter word, no pair; minor rings: placing counts, pair, countdowns; "→ Delta Tetrafracton begins" / "→ 34η begins" |
 | ladder / up next | rows α–δ with words and quarter (no pair), minor rows with count/pair; up next names what begins in words (major) or counts (minor); list grouped by the Helion or Nuclide |
-| timeline | ruler ticks on units only (α β γ δ ε η ι λ ν): majors labelled in words/letters by zoom, η counted 0–76 in ε, ι in η, λ in ι, ν in λ |
+| timeline | ruler ticks on units only (α β γ δ ε η ι λ ν): majors labelled in words/letters by zoom, η numbered 1–77 in ε, ι in η, λ in ι, ν in λ |
 | wave | majors: words + quarter; minors: pairs; solar wave unchanged (19η) |
-| calendar / jump | month page = one Delta: 5 Nuclide rows × 7 columns of 11 Helions (labelled 0η 11η … 66η); converter between words, stamps, counts, position, glyph states, sync; jump reads all four date forms, offsets, unit names |
+| calendar / jump | month page = one Delta: 5 Nuclide rows × 7 columns of 11 Helions (labelled 1η 12η … 67η); converter between words, stamps, counts, position, glyph states, sync; jump reads all four date forms, offsets, unit names |
 | sound | cycle lengths `11η`, `4ι`; speeds per Blink with the new presets; pB unchanged |
 
 ## The solar wave (both modes)

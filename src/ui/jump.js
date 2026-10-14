@@ -11,8 +11,8 @@
  *
  * Pure mode (SPEC §15, docs/design/80-pure.md, revision 3): the same box speaks Fractonica only. With
  * ./calendar/pure-parse.js it reads dates in all four forms (full or short, in words with quarter words – "Delta
- * Trifracton Node ε#2 20η 12ι" – or in letters – the stamp "α#6 β#4 γ#9 δ#3 ε#5 33η 29ι 21λ 3ν"), partial names
- * ("Gamma Difracton"), the Nuclide and counts ("ε#2 5η", "33η 17ι"), offsets over the units α β γ δ ε η ι λ ν (+2ε 5η,
+ * Trifracton Node ε#2 21η 12ι" – or in letters – the stamp "α#6 β#4 γ#9 δ#3 ε#5 34η 29ι 21λ 3ν"), partial names
+ * ("Gamma Difracton"), the Nuclide, the Helion (numbered from 1) and counts ("ε#2 5η", "34η 17ι"), offsets over the units α β γ δ ε η ι λ ν (+2ε 5η,
  * +4 Blinks), boundaries ("next Helion", "next Delta node"), positions, syncs and glyph states. Old forms (half-cycle
  * units, ζ θ κ μ used as units, retired unit names, fracton names below the Delta) and anything Gregorian get one short
  * pointer. The box keeps its own history, placeholder, examples and toasts. Notation: X#n is an ordinal counted from 1,

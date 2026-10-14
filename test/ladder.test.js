@@ -662,7 +662,7 @@ test('advancedBy recognises a list that has moved forward', () => {
 
 // ---------------------------------------------------------------------------
 // pure mode (docs/design/80-pure.md, SPEC §15, revision 3): majors in words with quarter words, minor units every
-// other depth (ε η ι λ ν), counts and ordinals, Blinks
+// other depth (ε η ι λ ν), ordinals, the Helion numbered 1–77 in its Nuclide, counts of finer units from 0, Blinks
 // ---------------------------------------------------------------------------
 const pure = createPure(model, { now: () => A });
 const R = model.F.rational;
@@ -670,18 +670,19 @@ const exactPos = (t) => model.clock.positionAt(R(String(Math.round(t * 1000) / 1
 const SAMPLE = [A, 946684800, 2886085800, 125593320.816, 1e9, -3e9, model.tMin + 5, model.tMax - 5, model.tMax - 3 * 86400];
 /** A span the core writes: up to three "count + unit" parts over α β γ δ ε η ι λ ν, or a decimal of ν. */
 const DURATION = /^(?:\d+[αβγδεηιλν](?: \d+[αβγδεηιλν]){0,2}|\d+(?:\.\d+)?ν|<0\.001ν)$/u;
-/** A token of the stamp: an ordinal of α β γ δ ε, or a count of η ι λ ν. */
+/** A token of the stamp: an ordinal of α β γ δ ε, the Helion's number, or a count of ι λ ν. */
 const TOKEN = '(?:[αβγδε]#\\d+|\\d+[ηιλν])';
 const QW = ['Peak', 'Node', 'Valley', 'End'];
 
 test('pure: SPEC §15.6 vector A reads as the spec says', () => {
-  assert.equal(pure.dateText(A, { form: 'full', upTo: 'nu' }), 'Alpha Hexafracton Valley, Beta Tetrafracton Valley, Gamma Nonafracton Valley, Delta Trifracton End, ε#5 33η 29ι 21λ 3ν');
-  assert.equal(counterParts(pure, A).join(' '), 'α#6 β#4 γ#9 δ#3 ε#5 33η 29ι 21λ 3ν');
+  assert.equal(pure.dateText(A, { form: 'full', upTo: 'nu' }), 'Alpha Hexafracton Valley, Beta Tetrafracton Valley, Gamma Nonafracton Valley, Delta Trifracton End, ε#5 34η 29ι 21λ 3ν');
+  assert.equal(pure.dateText(A), 'Delta Trifracton End ε#5 34η 29ι');
+  assert.equal(counterParts(pure, A).join(' '), 'α#6 β#4 γ#9 δ#3 ε#5 34η 29ι 21λ 3ν');
   // "at A the depth-7 end is 3 372.428 s away, which is the span 6ι 43λ"
   assert.equal(leftText(model, pure, A, model.levelAt(A, 6).end), '6ι 43λ');
   const rows = [];
   for (let L = 0; L < 14; L++) rows.push(rowLabel(pure, model.levelAt(A, L)));
-  assert.deepEqual(rows, ['Hexafracton Valley', 'Tetrafracton Valley', 'Nonafracton Valley', 'Trifracton End', 'ε#5', '33η', '33η', '28ι', '29ι', '13λ', '21λ', '0ν', '3ν', '3.43ν']);
+  assert.deepEqual(rows, ['Hexafracton Valley', 'Tetrafracton Valley', 'Nonafracton Valley', 'Trifracton End', 'ε#5', '34η', '34η', '28ι', '29ι', '13λ', '21λ', '0ν', '3ν', '3.43ν']);
   assert.equal(phaseWords(pure, model.levelAt(A, 6).phase).text, '13·0', 'the Helion pair of vector A');
 });
 
@@ -749,11 +750,12 @@ test('pure: the cycle that begins where a cycle ends, and the end of the catalog
   const at = (L) => endsText(nextCycle(model, pure, L, model.levelAt(A, L).cycleBig));
   assert.equal(at(3), '→ Delta Tetrafracton begins');
   assert.equal(at(4), '→ ε#1 begins');
-  assert.equal(at(6), '→ 34η begins');
-  assert.equal(at(8), '→ 33η 30ι begins');
-  // the last Helion of a Nuclide is followed by one in the next Nuclide: its name says so
+  assert.equal(at(6), '→ 35η begins');
+  assert.equal(at(8), '→ 34η 30ι begins');
+  // the last Helion of a Nuclide (77η) is followed by the first of the next Nuclide: its name says so
   const lastEta = model.levelAt(model.levelAt(A, 4).end - 0.5, 6);
-  assert.equal(nextCycle(model, pure, 6, lastEta.cycleBig).name, 'ε#1 0η');
+  assert.equal(cycleTitle(pure, 6, lastEta.cycleBig), 'ε#5 77η');
+  assert.equal(nextCycle(model, pure, 6, lastEta.cycleBig).name, 'ε#1 1η');
   // the last cycle of every level has no successor
   for (let L = 0; L < 14; L++) {
     const last = model.levelAt(model.tMax - 0.002, L);
@@ -761,7 +763,7 @@ test('pure: the cycle that begins where a cycle ends, and the end of the catalog
   }
   assert.equal(endsText(null), '→ the catalogue ends');
   assert.equal(cycleAddress(model, pure, 3, model.levelAt(A, 3).cycleBig), 'α#6 β#4 γ#9 δ#3');
-  assert.equal(cycleAddress(model, pure, 7, model.levelAt(A, 7).cycleBig), 'α#6 β#4 γ#9 δ#3 ε#5 33η 28ι');
+  assert.equal(cycleAddress(model, pure, 7, model.levelAt(A, 7).cycleBig), 'α#6 β#4 γ#9 δ#3 ε#5 34η 28ι');
 });
 
 test('pure: time left is a span over the units, exactly, and never goes negative', () => {
@@ -917,9 +919,9 @@ test('pure: real-time leads are counted in Blinks, lengths of too-fast cycles in
 
 test('pure: quarter thresholds are placed by two tokens of the stamp; the end reads as the next start', () => {
   const where = (L) => model.levelAt(A, L).thresholds.slice(1).map((th) => quarterWhere(model, pure, th.time, L));
-  assert.deepEqual(where(6), ['33η 9ι', '33η 18ι', '33η 27ι', '34η 0ι']);
-  assert.deepEqual(where(3), ['ε#2 19η', 'ε#3 38η', 'ε#4 57η', 'ε#1 0η'], 'a Delta to the Helion, the basic reading');
-  assert.deepEqual(where(5), ['35η 27ι', '38η 18ι', '41η 9ι', '44η 0ι'], 'a ζ is 11η');
+  assert.deepEqual(where(6), ['34η 9ι', '34η 18ι', '34η 27ι', '35η 0ι']);
+  assert.deepEqual(where(3), ['ε#2 20η', 'ε#3 39η', 'ε#4 58η', 'ε#1 1η'], 'a Delta to the Helion (numbered from 1), the basic reading');
+  assert.deepEqual(where(5), ['36η 27ι', '39η 18ι', '42η 9ι', '45η 0ι'], 'a ζ is 11η');
   assert.deepEqual(where(10), ['21λ 6ν', '21λ 12ν', '21λ 18ν', '22λ 0ν'], 'a Flavon to the Blink');
   assert.deepEqual(where(1), ['β#4 γ#4', 'β#4 γ#7', 'β#4 γ#10', 'β#5 γ#1']);
   for (const t of SAMPLE.slice(0, 7)) {
@@ -954,9 +956,21 @@ test('pure: dateAtPosition / clockAtPosition are the exact-arithmetic twins of p
   const z = model.levelAt(A, 4);
   const ps = exactPos(z.end + 0.0006);
   assert.deepEqual(dateAtPosition(model, pure, ps.numerator, ps.denominator), pure.date(z.end + 0.0006));
-  assert.deepEqual(clockAtPosition(model, ps.numerator, ps.denominator), { epsilon: 1, eta: 0, iota: 0, lambda: 0, nu: 0 });
+  assert.deepEqual(clockAtPosition(model, ps.numerator, ps.denominator), { epsilon: 1, eta: 1, iota: 0, lambda: 0, nu: 0 }, 'a Nuclide begins with its first Helion: 1η, then 0ι');
   const pa = exactPos(A);
-  assert.deepEqual(clockAtPosition(model, pa.numerator, pa.denominator), { epsilon: 5, eta: 33, iota: 29, lambda: 21, nu: 3 });
+  assert.deepEqual(clockAtPosition(model, pa.numerator, pa.denominator), { epsilon: 5, eta: 34, iota: 29, lambda: 21, nu: 3 });
+  // the Helion is numbered 1..77 inside its Nuclide (the day of a month), the finer units are counts from 0
+  let lo = Infinity;
+  let hi = -Infinity;
+  for (let i = 0; i < 2000; i++) {
+    const t = Math.round((model.tMin + rnd() * (model.tMax - model.tMin - 2)) * 1000) / 1000;
+    const p = exactPos(t);
+    const c = clockAtPosition(model, p.numerator, p.denominator);
+    lo = Math.min(lo, c.eta);
+    hi = Math.max(hi, c.eta);
+    assert.ok(c.iota >= 0 && c.iota <= 35 && c.lambda >= 0 && c.lambda <= 64 && c.nu >= 0 && c.nu <= 24);
+  }
+  assert.ok(lo >= 1 && hi <= 77 && lo <= 3 && hi >= 75, `Helions ${lo}..${hi}`);
   assert.deepEqual(dateAtPosition(model, pure, pa.numerator, pa.denominator).quarter, { alpha: 'Valley', beta: 'Valley', gamma: 'Valley', delta: 'End' });
 });
 
@@ -981,7 +995,9 @@ test('pure: an upcoming turnover is named by the cycle that begins there', () =>
   }
   // at vector A, importance ζ: a ζ turnover begins the ζ that starts at 44η
   const first = buildEvents(model, A, { importance: 'ζ', maxLevel: 9, count: 8 });
-  assert.deepEqual(first.map((e) => turnoverInfo(model, pure, e).name), ['44η', '55η', '66η', 'Delta Tetrafracton', '11η', '22η', '33η', '44η']);
+  // (ζ cycles begin at Helions 1, 12, 23, 34, 45, 56, 67 of a Nuclide)
+  assert.deepEqual(first.map((e) => turnoverInfo(model, pure, e).name), ['45η', '56η', '67η', 'Delta Tetrafracton', '12η', '23η', '34η', '45η']);
+  assert.equal(turnoverInfo(model, pure, first[0]).stamp, 'δ#3 ε#5 45η');
   assert.equal(turnoverInfo(model, pure, first[3]).address, 'α#6 β#4 γ#9 δ#4');
   assert.equal(turnoverInfo(model, pure, buildEvents(model, A, { importance: 'ε', maxLevel: 9, count: 2 })[1]).name, 'ε#2');
   // a turnover whose next cycle would lie past the catalogue (an exact end position) names nothing
@@ -1127,13 +1143,17 @@ test('pure: notation - ordinals are X#n, counts are nX, "X d" is only a chip', (
       }
     }
   }
-  // a reading of the end of a cycle is the start of the next: "34η 0ι" for an η that is not the last in its Nuclide
+  // a reading of the end of a cycle is the start of the next: "35η 0ι" for an η that is not the last in its Nuclide
   const eta = model.levelAt(A, 6);
-  assert.equal(quarterWhere(model, pure, eta.end, 6), '34η 0ι');
-  // the last η of a Nuclide ends at the start of the next Nuclide: counts wrap to 0η
+  assert.equal(quarterWhere(model, pure, eta.end, 6), '35η 0ι');
+  // the last η of a Nuclide (77η) ends at the start of the next Nuclide: the numbering starts again at 1η
   const last = model.levelAt(model.levelAt(A, 4).end - 0.5, 6);
-  assert.equal(pure.clock(last.start + 1).eta, 76);
-  assert.match(quarterWhere(model, pure, last.end, 6), /^0η 0ι$/);
+  assert.equal(pure.clock(last.start + 1).eta, 77);
+  assert.match(quarterWhere(model, pure, last.end, 6), /^1η 0ι$/);
+  // a placing never reads 0η (Helions are numbered from 1), while spans still count from zero
+  for (let L = 5; L < 14; L++) for (const t of SAMPLE.slice(0, 7)) assert.doesNotMatch(rowLabel(pure, model.levelAt(t, L)), /(^| )0η/u);
+  assert.equal(pure.durationPos(pure.unitPos(pure.UNITS.find((u) => u.id === 'iota')) * 3), '3ι');
+  assert.equal(heroLeft(model, pure, A, eta.end), '6ι 43λ 21ν', 'a span inside the Helion has no Helion part at all');
   // sentences name a cycle by its word (major) or its letter, never "ζ 6"
   for (let top = 0; top <= 6; top++) for (let max = top; max <= 13; max++) assert.doesNotMatch(turnoverWords(pure, top, max), /[α-ω] \d/u, turnoverWords(pure, top, max));
 });

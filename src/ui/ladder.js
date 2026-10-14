@@ -13,12 +13,13 @@
  * Pure mode (docs/design/80-pure.md, SPEC §15, revision 3): the same ladder in Fractonica terms only.
  *   major rows (α β γ δ)  the fracton ordinal and the quarter word ("Trifracton Node": the chip completes "Delta"), a
  *                         four-pip quarter indicator instead of a phase (a major's phase is never drawn);
- *   minor rows            ε by its ordinal (ε#5), η ι λ ν by their count (33η, 29ι), the depths between them (ζ θ κ μ)
- *                         and ξ by the count that places them in their Nuclide (22η, 28ι, 3.43ν); the phase as one pair
+ *   minor rows            ε by its ordinal (ε#5), η by its number in the Nuclide (34η, 1–77), ι λ ν by their count
+ *                         (29ι), the depths between them (ζ θ κ μ) and ξ by where they start in their Nuclide (34η, 28ι,
+ *                         3.43ν); the phase as one pair
  *                         of 2-stroke glyphs (256 states, pure.pairHTML), always the odometer at the displayed instant.
  * Time left is a span over α β γ δ ε η ι λ ν (6ι 43λ, 2.6ν), the end of a cycle is "→ Delta Tetrafracton begins" /
  * "→ 34η begins", real-time leads are counted in Blinks (6.43 Blinks). Notation as in src/core/pure.js: X#n ordinal
- * (δ#3, ε#5), nX count (33η 29ι), "η 7" only on chips; unit names (Nuclide, Helion …) only in tooltips that explain a
+ * (δ#3, ε#5), nX count (29ι 21λ; a date's Helion is numbered from 1: 34η), "η 7" only on chips; unit names (Nuclide, Helion …) only in tooltips that explain a
  * unit. The mode switches live: render() notices ctx.isPure() changing and rebuilds every label.
  *
  * Contract: export mount(el, ctx) -> { render, alwaysOn, destroy } (docs/ARCHITECTURE.md).
@@ -439,7 +440,7 @@ export function mount(el, ctx) {
   /**
    * The detail in pure mode: the cycle that begins where this one ends instead of a date, the length in ladder
    * units (with a tooltip that says what the cycle is), "started" as a span ago, the quarters placed by two tokens of the
-   * stamp (ε#2 19η, 33η 9ι) plus the time to go, the cycle's name and letter address. The phase is a glyph pair for a
+   * stamp (ε#2 20η, 34η 9ι) plus the time to go, the cycle's name and letter address. The phase is a glyph pair for a
    * minor cycle and the quarter word for a major one (never a pair); the sector is the child cycle, said the same way.
    * Texts that cannot change inside a cycle are written once per cycle.
    */
@@ -574,7 +575,7 @@ export function mount(el, ctx) {
   /**
    * A row in pure mode. Major rows (α β γ δ): the fracton ordinal and the quarter word ("Trifracton Node"), the time
    * left, the bar and a four-pip quarter indicator; their phase is never drawn. Minor rows: the ordinal of a Nuclide
-   * (ε#5) or the count that places the cycle in its Nuclide (33η, 22η, 28ι), the time left (or, for cycles too fast to
+   * (ε#5) or where the cycle starts in its Nuclide (34η, 23η, 28ι), the time left (or, for cycles too fast to
    * count down, how long one lasts in Blinks), the bar and the phase as a pair of glyphs (the high digit is the glyph
    * normal mode shows). The pair is the odometer of the cycle at the displayed instant, always: it is rewritten whenever
    * its state changes (a time jump, a fast row), never only with the countdown's last digit.
@@ -923,8 +924,8 @@ export function mount(el, ctx) {
       cell.replaceChildren();
     }
     D.throughT.removeAttribute('aria-hidden'); // set beside the pure pair only
-    // the quarters are placed by two tokens of the stamp ("ε#2 19η", "33η 9ι"): said once, where they are listed
-    if (next) D.qList.title = 'Where each quarter ends: ordinals (ε#2) count from 1, counts (19η) are completed units from 0. Press ? for the glossary.';
+    // the quarters are placed by two tokens of the stamp ("ε#2 20η", "34η 9ι"): said once, where they are listed
+    if (next) D.qList.title = 'Where each quarter ends: Nuclides (ε#2) and Helions (20η) are numbered from 1, finer units (9ι) are counts from 0. Press ? for the glossary.';
     else D.qList.removeAttribute('title');
     D.key = '';
     D.next = null;
