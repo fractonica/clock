@@ -73,7 +73,7 @@ function build(name) {
 function pick(plan) {
   const out = new Set();
   const first = (k, f = () => true) => plan.pages.find((p) => p.kind === k && f(p));
-  for (const k of ['cover', 'index', 'gregorian', 'ephemeris', 'planning', 'predictions', 'nuclide', 'insert', 'summary']) {
+  for (const k of ['cover', 'index', 'gregorian', 'ephemeris', 'ladder', 'milestones', 'planning', 'predictions', 'nuclide', 'insert', 'summary']) {
     const p = first(k);
     if (p) out.add(p.no);
   }

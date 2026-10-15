@@ -186,8 +186,11 @@ export const sheetsOf = (pages) => Math.ceil(pages / 2);
  */
 export function printSheets(pages, print) {
   if (!print?.twoUp) return pages;
+  if (print.pairing === 'duplex') return 2 * Math.ceil(Math.ceil(pages / 2) / 2);
   return print.pairing === 'sequential' ? Math.ceil(pages / 2) : Math.ceil((pages + 1) / 2);
 }
+/** How two-up pages are paired, in words. */
+export const pairingWords = (print) => (print?.pairing === 'sequential' ? 'in order' : print?.pairing === 'duplex' ? 'double-sided, cut and stack' : 'facing pages');
 const orient = (w, h) => (w > h ? 'landscape' : 'portrait');
 /**
  * What two-up printing makes of these options' pages: "2 × A5 on A4 landscape (297 × 210 mm)". In pure mode the ISO
@@ -209,7 +212,8 @@ export function printLine(opts, pages, pureMode = false) {
     return `PDF: ${n} pages of ${named}${dims}`;
   }
   const paper = !pureMode && p.name ? `${p.name} ${orient(p.width, p.height)} · ${dims}` : `${dims} ${orient(p.width, p.height)}`;
-  return `PDF: ${n} pages of ${paper}, two diary pages each (${opts.print.pairing === 'sequential' ? 'in order' : 'facing pages'})`;
+  const how = opts.print.pairing === 'duplex' ? `double-sided: ${n / 2} sheets, the odd pages on the fronts, the even ones on the backs` : pairingWords(opts.print);
+  return `PDF: ${n} pages of ${paper}, two diary pages each (${how})`;
 }
 /** Do these options differ from the defaults outside the print group (then the command line needs --options)? */
 export function customOptions(opts) {
@@ -221,7 +225,8 @@ export function cliCommand(path, opts, { pureMode = false } = {}) {
   const a = ['node tools/diary-pdf.mjs', `--path ${path.join(',')}`];
   if (customOptions(opts)) a.push('--options diary-options.json');
   if (opts.print?.twoUp) a.push('--two-up');
-  if (opts.print?.twoUp && opts.print.pairing === 'sequential') a.push('--pairing sequential');
+  if (opts.print?.twoUp && opts.print.pairing !== 'spreads') a.push(`--pairing ${opts.print.pairing}`);
+  if (opts.print?.twoUp && opts.print.pairing === 'duplex' && opts.print.turn === 'top') a.push('--turn top');
   if (pureMode) a.push('--pure');
   return a.join(' ');
 }

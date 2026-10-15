@@ -21,12 +21,19 @@ glyphs of begin/peak/node/valley/end (no labels) and three big glyphs for the ph
 time-zone labels anywhere; Helions numbered from 1; the running head shows a glyph of the global Saros phase (the Helion's
 number in its Alpha, 1–125 125) instead of "Lock · sheet"; an option prints two pages per sheet (two A5 pages on one A4).
 
+Second round (applied): *"remove the circle diagram from the corner, it barely changes anyway"* – the running head keeps
+the number (`91 246/125 125`) without the dial. *"Add a sheet with a detailed spec of each period, how it is derived (the
+harmonic sequence), all 63 levels with periods converted to frequency where appropriate (5.55 THz). One page is the
+period ladder, the other the major milestones of Alpha, Beta and Gamma, with eclipses highlighted."* – the reference
+sheet below.
+
 ## Files and owners
 
 | file | what |
 |---|---|
 | `src/diary/options.js` | `DIARY_DEFAULTS`, `sanitizeDiaryOptions(input, {pure})`, `PAGE_SIZES`, `CANVAS_TYPES`, `lockShape`, `rowsPerPage`, `monthsPerPage` |
 | `src/diary/plan.js` | `planDiary({model, pure, opts, delta, events, zone})`, `deltaRange`, `deltaAt`, `deltaPath`, `deltaFromPath`, `gregorianDays` |
+| `src/diary/reference.js` | the reference sheet's data: `ladderOf(model, t)`, `milestonesOf({model, pure, path})`; number formats `periodText`, `frequencyText`, `sci`, `bigText`, `bandOf` |
 | `src/diary/astro/` | the ephemeris: `events(t0, t1, opts)` (index.js) and its maths |
 | `src/diary/render.js`, `src/diary/render/` | `renderPage(plan, page, env)`, `printDocument(plan, env, {title})`, `pageTitle(plan, page)` |
 | `src/ui/diary.js`, `src/ui/diary/`, `src/styles/diary.css` | the Diary tab |
@@ -34,8 +41,8 @@ number in its Alpha, 1–125 125) instead of "Lock · sheet"; an option prints t
 
 ## The plan (`planDiary`) – the contract between the parts
 
-`planDiary` returns `{delta, opts, zone, shape, pages, helions, nuclides, majors, events, inserts, days, months, sections,
-index, helionAt(t), pageOf(t)}`:
+`planDiary` returns `{delta, opts, zone, shape, pages, helions, nuclides, majors, events, inserts, reference, days, months,
+sections, index, helionAt(t), pageOf(t)}`:
 
 - `delta` `{idx, path:[α,β,γ,δ ordinals], t0, t1, name:'Delta Trifracton', words:[Alpha …, Beta …, Gamma …, Delta …],
   stamp:'α#6 β#4 γ#9 δ#3', thresholds:[{name: begin|peak|node|valley|end, t}]}`.
@@ -49,9 +56,19 @@ index, helionAt(t), pageOf(t)}`:
 - `events` sorted `[{t, family, name, d, frac, page, …}]`: the astro events (below), `family:'sync'` (start of solar sync
   `sync`, with `drift`) and `family:'major'` (`major`: one of `majors`), each attached to its Helion (`d`, `frac` = time
   fraction inside it) and page. Every Helion also lists its own `events`.
+- `reference` (null with `front.reference` off) `{ladder, milestones, ladderPage, milestonesPage}`:
+  - `ladder` = `ladderOf(model, delta.t0)`: `rows[63]` `{level, depth, text:'α1', unit:'Helion'|null, major, siblings,
+    prefix (BigInt P(L)), seconds, hz, blinks (BigInt, L ≤ 12), perBlink (BigInt, L ≥ 12)}`, `interval {k, t0, t1,
+    seconds}` (the eclipse interval holding the Delta: the lengths are 4 Saros / P(L) in it), `next` (level 63, π2, about
+    the Planck time).
+  - `milestones` = `milestonesOf(...)`: `alpha {name, t0, t1, thresholds:[{event, t, eclipse, also:[Beta and Gamma
+    thresholds at the same instant]}]}`, `betas[5] {name, current, thresholds:[{event, t, eclipse}]}`, `gammas[5][13]
+    {name, beta, current, t0, t1, eclipse:{k, event}|null}`, `eclipses [{k, t, event}]`. Alpha spans 4 Saros, so its five
+    thresholds are the eclipses #4a … #4a+4; a Beta spans 4/5 and a Gamma 4/65 of them, so eclipse #4a+q falls on
+    threshold q of Beta q+1 and on threshold q of Gamma 3q+1 of that Beta (the diagonal).
 - `pages[]` `{no (1-based), side:'recto'|'verso', kind, …}`; kinds:
   - `cover` · `index {part, of, rows}` · `gregorian {part, of, months:[{y,m}]}` · `ephemeris {part, of, rows:[events]}` ·
-    `planning {part, of}` · `predictions {part, of}`
+    `ladder` · `milestones` · `planning {part, of}` · `predictions {part, of}`
   - `nuclide {n}` – the Nuclide header (a verso, facing the first Helion page)
   - `lined {sections:[{d, lines}], nuclide, lock, sheet, sheets, retro?, t0, t1}` – a sheet front, or the retro Helion
   - `canvas {sections:[{d, canvas:{type, cols, rows | count | lines}}], nuclide, lock, sheet, retro?, t0, t1}`
@@ -60,23 +77,23 @@ index, helionAt(t), pageOf(t)}`:
 - `index` rows `{kind: delta-begin|major|delta-end|nuclide|lock|retro|insert|section, t, page, …}`; `days` `[{y, m, d,
   weekday, t0, t1, page}]` (local days in `zone` that overlap the Delta; page of the Helion holding the day's start);
   `months` `[{y, m}]`; `sections` `[{title, key, page}]` for navigation.
-- Rules: every lined page is a recto (a sheet front); a Nuclide header is a verso; inserts and the summary start on a
-  recto; the diary has an even page count. Default A5: 198 pages for the Delta at SPEC vector A.
+- Rules: every lined page is a recto (a sheet front); a Nuclide header is a verso; inserts, the reference sheet (ladder
+  recto, milestones on its back) and the summary start on a recto; the diary has an even page count. Default A5: 202
+  pages for the Delta at SPEC vector A with the real ephemeris.
 
 ## Pages (`render.js`)
 
 One SVG per page, `viewBox="0 0 W H"` in millimetres. Margins from `opts.page.margins`; the INNER margin is on the
 left of a recto and on the right of a verso; the OUTER margin carries the time ticks. Running head (top): the Delta in
-words with its quarter ("Delta Trifracton Node") · `ε#2` · "Lock 2 · sheet 3/4"; the Gregorian date range of the page in
-small type when Gregorian is on. Folio: the page number in the outer bottom corner. Ink: `style.ink` 'color' (level
+words with its quarter ("Delta Trifracton Node") · `ε#2` and the global Saros phase; the Gregorian date range of the page
+in small type when Gregorian is on. Folio: the page number in the outer bottom corner. Ink: `style.ink` 'color' (level
 colours from `src/core/theme.js`, toned for paper) or 'mono'; ruled lines light grey ~0.15 mm; text sizes in mm (body
 ~2.6 mm, small ~1.9 mm). Fonts: `style.font` sans (system-ui, Helvetica, Arial) or serif. Glyphs are the library's
 2-stroke glyph paths (`F.CBT.geometry(F.CBT.fromIndex(i, {depth: 2}))`), never images.
 
-- **Running head**: at the outer top corner the **global Saros phase glyph** – the first Helion's number in its Alpha
-  (`helion.alpha`, 1–125 125) as a small dial (the circle is the Alpha cycle, the arc up to the phase, the Beta divisions on
-  the rim) with the number beside it – then the Delta in words with its quarter and the Nuclide. No time-zone labels
-  anywhere: Gregorian times are local times of the chosen zone.
+- **Running head**: the Delta in words with its quarter and the Nuclide, and in the outer top corner the **global Saros
+  phase** – the first Helion's number in its Alpha (`helion.alpha`, 1–125 125: `91 246/125 125`; the owner dropped the
+  dial that drew it, it barely moves). No time-zone labels anywhere: Gregorian times are local times of the chosen zone.
 - **lined** – the content height is split into the page's sections (Helions, top to bottom). Each section: a header
   line (the number `34η` large, the stamp `δ#3 ε#2 33η`, the Gregorian start–end), then `lines` ruled lines (12 → one per
   3 Preons; the retro Helion 36 → one per Preon). Inner-edge line labels per `lined.labels`: the Preon count at the line's
@@ -95,6 +112,18 @@ colours from `src/core/theme.js`, toned for paper) or 'mono'; ruled lines light 
 - **gregorian** – month grids (weeks from Monday), each day of the Delta with its page number; days outside greyed.
 - **ephemeris** – a table: symbol · event · Fractonica (short date down to Flavons) · Gregorian (weekday, date, time,
   zone) · page; a legend of the four months and the solar events with their definitions.
+- **ladder** (the reference sheet's front) – how the hierarchy is derived (Alpha = 4 Saros; S = 5, 13, 5, 5, 7, 11, 9, 4
+  repeating; P(L) = P(L−1) · S[(L−1) mod 8]; a cycle lasts 4 Saros / P(L); letters α … ω, α1 …), then one row per level
+  for depths 1–63: depth · letter · unit name · factor (×) · cycles per Alpha (exact below 10¹²) · period (y d h min s, SI
+  prefixes down to the yoctosecond, then scientific) · frequency below one second (SI prefixes up to yotta, `5.55 THz`,
+  then `3.67 × 10³⁰ Hz`) · range (audible, radio, microwave, infrared, visible with its wavelength, ultraviolet, X-ray,
+  gamma ray up to the most energetic photons observed). Each round of the sequence (levels 1–8, 9–16 …) is one band;
+  a last line notes that depth 64 would be the Planck time. Pure mode: Blinks per cycle down to the Blink and cycles per
+  Blink (pB) below it, both exact, instead of periods and frequencies.
+- **milestones** (its back) – the Alpha holding the Delta: its five thresholds, each an eclipse (number, Gregorian time,
+  the Beta and Gamma thresholds at the same instant) with "this diary" between them; the 5 Betas × begin, Peak, Node,
+  Valley, End; the 13 × 5 grid of Gammas with the day each begins. Eclipse cells are tinted with `● #k` (and the quarter
+  they fall on), this diary's Beta row and Gamma cell are marked. Pure mode prints positions (`pos 21`, `20.985`).
 - **planning / predictions** – the Delta's frame (5 Nuclides with their dates; the Delta quarters with their thresholds)
   with writing lines.
 - **nuclide** – `ε#2` large, "Nuclide 2 of Delta Trifracton", begins/ends, the locks with Helion ranges, Gregorian ranges
@@ -112,7 +141,14 @@ event labels use `labelPure`. Every visible text follows SPEC §15.
 `printDocument(plan, env, {title})`: a complete HTML document, `@page { size: Wmm Hmm; margin: 0 }`, one page per sheet
 side, no app chrome; printing it with "Save as PDF" gives the PDF. With `opts.print.twoUp` the paper is `paperSize(opts)`
 (two A5 pages on one A4 landscape page, two A6 on A5, two Half Letter on Letter) with each page centred at 1:1 in its half;
-`pairing` 'spreads' prints facing pages as an open book (·|1, 2|3, …), 'sequential' 1|2, 3|4 ….
+`pairing` 'spreads' prints facing pages as an open book (·|1, 2|3, …), 'sequential' 1|2, 3|4 …, 'duplex' double-sided
+cut and stack (owner: *"first print odd pages, then insert them again and print even pages on the other side, so the only
+thing left is to cut them in half and assemble"*). `duplexSheets`: L leaves on S = ceil(L / 2) sheets, sheet i holds leaf
+i on its left half and leaf S + i on its right; the PDF alternates front [page 2i+1 | page 2(S+i)+1] and back
+[page 2(S+i)+2 | page 2i+2] (turned over sideways the back of the left half is on the right). Print the odd PDF pages,
+put the stack back in, print the even ones; cut along the marks; the left halves laid on the right halves are the book in
+order. `turn` 'side' (default; a printer's "flip on short edge") or 'top' ("flip on long edge": the backs print rotated
+180°). Default A5 at vector A: 202 pages → 51 sheets, 102 PDF pages.
 
 ## Ephemeris (`astro`)
 

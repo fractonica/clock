@@ -83,9 +83,10 @@ export function wrap(text, maxW, size, { maxLines = 2, weight, font } = {}) {
   if (maxLines <= 1) return [fit(String(text ?? ''), maxW, size, { min: size * 0.86, ...o }).text].filter(Boolean);
   // slightly smaller type reads better than a broken name
   if (measure(text ?? '', size * 0.9, o) <= maxW) return [String(text ?? '')];
-  // pieces break at spaces and after hyphens ("Post-" / "ascending")
+  // pieces break at spaces and after hyphens ("Post-" / "ascending"); no-break spaces (digit groups "4 504 500",
+  // "S = 5") hold their words together
   const pieces = [];
-  for (const w of String(text ?? '').split(/\s+/).filter(Boolean)) {
+  for (const w of String(text ?? '').split(/[ \t\r\n]+/).filter(Boolean)) {
     const parts = w.split(/(?<=-)(?=.)/);
     parts.forEach((p, i) => pieces.push({ text: p, glue: i === 0 ? ' ' : '' }));
   }
@@ -147,6 +148,9 @@ export function palette(opts) {
     ruleSoft: '#dfe3e7',
     ruleStrong: '#8c96a0',
     shade: '#f3f4f6',
+    /** the eclipses of the catalogue (milestones): a warm ink and its tint */
+    eclipse: mono ? '#1b2127' : hsl(30, 82, 38),
+    eclipseSoft: mono ? '#e4e7ea' : hsl(40, 90, 90),
     level: (L) => memo(`l${L}`, () => (mono ? '#2a3036' : hsl(levelHue(L), 52, 33))),
     levelMid: (L) => memo(`m${L}`, () => (mono ? '#7d858d' : hsl(levelHue(L), 38, 55))),
     levelSoft: (L) => memo(`s${L}`, () => (mono ? '#eef0f2' : hsl(levelHue(L), 45, 93))),

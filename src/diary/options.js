@@ -2,7 +2,8 @@
  * Diary options: every knob of the printed diary of one Delta, with defaults and validation.
  *
  * The diary (docs/design/90-diary.md):
- *   front matter   index · Gregorian index · ephemeris · planning · predictions
+ *   front matter   index · Gregorian index · ephemeris · reference sheet (period ladder | milestones) · planning ·
+ *                  predictions
  *   per Nuclide    header page · 4 locks of 19 Helions (sheets of 3 lined + 2 canvas Helions, the last 2 + 2)
  *                  · the 77th Helion on its own (a fine lined page + 2 canvas pages): the retrospection
  *   inserts        a Delta sheet before the lock that holds each Delta quarter threshold (Peak, Node, Valley)
@@ -29,7 +30,8 @@ export const DIARY_DEFAULTS = Object.freeze({
   page: { size: 'A5', width: 148, height: 210, margins: { top: 12, bottom: 12, inner: 18, outer: 14 } },
   /** Gregorian references (index, timestamps); forced off in pure mode. `zone` null = the app's zone. */
   gregorian: { on: true, zone: null, weekdays: true },
-  front: { cover: false, index: true, gregorianIndex: true, ephemeris: true, planning: 1, predictions: 1 },
+  /** `reference`: one sheet, the period ladder of 63 levels on its front, the milestones of Alpha, Beta, Gamma on its back. */
+  front: { cover: false, index: true, gregorianIndex: true, ephemeris: true, reference: true, planning: 1, predictions: 1 },
   /** One lock = these sheets, [lined Helions on the front, canvas Helions on the back]; 19 Helions by default. */
   lock: { sheets: [[3, 2], [3, 2], [3, 2], [2, 2]] },
   lined: {
@@ -71,9 +73,13 @@ export const DIARY_DEFAULTS = Object.freeze({
   style: { ink: 'color', font: 'sans' },
   /**
    * Printing: `twoUp` puts two diary pages side by side on one sheet of paper twice as wide (two A5 pages make one A4
-   * landscape page exactly); `pairing` 'spreads' prints facing pages as an open book (·|1, 2|3, 4|5 …), 'sequential' 1|2, 3|4 ….
+   * landscape page exactly); `pairing` 'spreads' prints facing pages as an open book (·|1, 2|3, 4|5 …), 'sequential' 1|2, 3|4 …,
+   * 'duplex' double-sided cut-and-stack: the odd PDF pages are the fronts of the sheets, the even ones their backs; cut
+   * every sheet in half and lay the stack of left halves on the right halves, and the leaves are in order. `turn` says how
+   * the printed stack goes back in for the backs: 'side' (over its short edge, like a book page) or 'top' (top over bottom:
+   * the backs print upside down).
    */
-  print: { twoUp: false, pairing: 'spreads' },
+  print: { twoUp: false, pairing: 'spreads', turn: 'side' },
 });
 
 const clone = (o) => JSON.parse(JSON.stringify(o));
@@ -137,6 +143,7 @@ export function sanitizeDiaryOptions(input = {}, { pure = false } = {}) {
       index: bool(o.front?.index, d.front.index),
       gregorianIndex: bool(o.front?.gregorianIndex, d.front.gregorianIndex),
       ephemeris: bool(o.front?.ephemeris, d.front.ephemeris),
+      reference: bool(o.front?.reference, d.front.reference),
       planning: num(o.front?.planning, d.front.planning, 0, 12, true),
       predictions: num(o.front?.predictions, d.front.predictions, 0, 12, true),
     },
@@ -161,7 +168,8 @@ export function sanitizeDiaryOptions(input = {}, { pure = false } = {}) {
     },
     print: {
       twoUp: bool(o.print?.twoUp, d.print.twoUp),
-      pairing: ['spreads', 'sequential'].includes(o.print?.pairing) ? o.print.pairing : d.print.pairing,
+      pairing: ['spreads', 'sequential', 'duplex'].includes(o.print?.pairing) ? o.print.pairing : d.print.pairing,
+      turn: ['side', 'top'].includes(o.print?.turn) ? o.print.turn : d.print.turn,
     },
   };
   if (pure) out.front.gregorianIndex = false;

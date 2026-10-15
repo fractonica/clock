@@ -11,7 +11,8 @@
  *   env = { model, pure, F, fmt, pureMode }   fmt = createFormatter(() => plan.zone) (src/core/format.js)
  *
  * The page kinds live in ./render/: helion.js (lined and canvas pages: sections, ruled lines, canvases, the time margin),
- * front.js (cover, index, Gregorian index, ephemeris, planning, predictions), book.js (Nuclide header, Delta insert,
+ * front.js (cover, index, Gregorian index, ephemeris, planning, predictions), reference.js (period ladder, milestones),
+ * book.js (Nuclide header, Delta insert,
  * summary, notes), chrome.js (running head, folio), words.js (what is said, in both modes), common.js (SVG, type, colour).
  */
 import { Svg, frameOf, esc, n2 } from './render/common.js';
@@ -21,12 +22,15 @@ import { drawHead, drawFolio, sectionTitle } from './render/chrome.js';
 import { renderLinedBody, renderCanvasBody } from './render/helion.js';
 import { renderCover, renderIndex, renderGregorian, renderEphemeris, renderPlanning } from './render/front.js';
 import { renderNuclide, renderInsert, renderSummary, renderNotes } from './render/book.js';
+import { renderLadder, renderMilestones } from './render/reference.js';
 
 const BODY = {
   cover: renderCover,
   index: renderIndex,
   gregorian: renderGregorian,
   ephemeris: renderEphemeris,
+  ladder: renderLadder,
+  milestones: renderMilestones,
   planning: renderPlanning,
   predictions: renderPlanning,
   nuclide: renderNuclide,
@@ -82,18 +86,43 @@ export function pageTitle(plan, page) {
 /**
  * Sheets of paper: one page each, or with `opts.print.twoUp` two pages side by side on paper twice as wide
  * (paperSize: two A5 pages make A4 landscape), each page centred 1:1 in its half. Pairing 'spreads' prints facing
- * pages as an open book ([· | 1], [2 | 3] … [n | ·]); 'sequential' prints [1 | 2], [3 | 4] ….
+ * pages as an open book ([· | 1], [2 | 3] … [n | ·]); 'sequential' prints [1 | 2], [3 | 4] …; 'duplex' prints both sides
+ * of the sheets for cut and stack (duplexSheets). A sheet side is an array [left, right] (null = blank half); a back side
+ * carries `back: true`, and `turned: true` when it prints upside down.
  */
 export function sheetsOf(plan) {
   const n = plan.pages.length;
   const print = plan.opts.print ?? {};
   if (!print.twoUp) return plan.pages.map((p) => [p]);
+  if (print.pairing === 'duplex') return duplexSheets(plan.pages, print.turn);
   const out = [];
   if (print.pairing === 'sequential') {
     for (let i = 0; i < n; i += 2) out.push([plan.pages[i], plan.pages[i + 1] ?? null]);
   } else {
     out.push([null, plan.pages[0] ?? null]);
     for (let i = 1; i < n; i += 2) out.push([plan.pages[i], plan.pages[i + 1] ?? null]);
+  }
+  return out;
+}
+
+/**
+ * Double-sided cut and stack. The diary's L leaves (page 2k+1 on the front of leaf k, page 2k+2 on its back) go on
+ * S = ceil(L / 2) sheets: sheet i carries leaf i on its left half and leaf S + i on its right half. The PDF alternates
+ * front and back of each sheet, so printing the odd PDF pages, putting the stack back in and printing the even pages
+ * makes the sheets; cut through the middle, and the left halves (leaves 1 … S) laid on the right halves (S + 1 … L) are
+ * the book in order. Turned over sideways, the back of the left half is on the right: a back is [back of S + i | back
+ * of i]; `turn` 'top' (turned top over bottom) prints that upside down.
+ */
+export function duplexSheets(pages, turn = 'side') {
+  const leaves = Math.ceil(pages.length / 2);
+  const S = Math.ceil(leaves / 2);
+  const at = (i) => pages[i] ?? null;
+  const out = [];
+  for (let i = 0; i < S; i++) {
+    const a = i;
+    const b = S + i;
+    out.push([at(2 * a), b < leaves ? at(2 * b) : null]);
+    out.push(Object.assign([b < leaves ? at(2 * b + 1) : null, at(2 * a + 1)], { back: true, turned: turn === 'top' }));
   }
   return out;
 }
@@ -108,20 +137,25 @@ export function printDocument(plan, env, { title = 'Diary' } = {}) {
   const cell = (p) => `<div class="cell">${p ? renderPage(plan, p, env) : ''}</div>`;
   const body = paper.twoUp
     ? sheetsOf(plan)
-        .map(([a, b]) => `<section class="sheet">${cell(a)}${cell(b)}<i class="fold top"></i><i class="fold bottom"></i></section>`)
+        .map((s) => `<section class="sheet${s.turned ? ' turned' : ''}">${cell(s[0])}${cell(s[1])}<i class="fold top"></i><i class="fold bottom"></i></section>`)
         .join('\n')
     : plan.pages.map((p) => `<section class="sheet">${renderPage(plan, p, env)}</section>`).join('\n');
   const css =
     `@page{size:${pw} ${ph};margin:0}` +
     `*{box-sizing:border-box}html,body{margin:0;padding:0;background:#fff}` +
     `body{-webkit-print-color-adjust:exact;print-color-adjust:exact}` +
-    `.sheet{position:relative;width:${pw};height:${ph};overflow:hidden;display:flex;align-items:center;justify-content:center;break-after:page;page-break-after:always;break-inside:avoid}` +
+    // a sheet is 1 mm shorter than the paper and centred on it (0.5 mm above and below): exactly the paper's height, a
+    // print dialog rounds the page to device pixels, the last fraction of a pixel spills over and every sheet is
+    // followed by a blank page. Only the paper's white edge is clipped.
+    `.sheet{position:relative;width:${pw};height:calc(${ph} - 1mm);margin-top:0.5mm;overflow:hidden;display:flex;align-items:center;justify-content:center;break-after:page;page-break-after:always;break-inside:avoid}` +
     `.sheet:last-child{break-after:auto;page-break-after:auto}` +
     `.sheet svg{display:block;flex:none;width:${w};height:${h}}` +
     (paper.twoUp
-      ? `.cell{width:${n2(paper.cell)}mm;height:${ph};flex:none;display:flex;align-items:center;justify-content:center}` +
-        `.fold{position:absolute;left:50%;width:0;height:4mm;border-left:0.1mm solid #c5cbd1}.fold.top{top:0}.fold.bottom{bottom:0}`
+      ? `.cell{width:${n2(paper.cell)}mm;height:100%;flex:none;display:flex;align-items:center;justify-content:center}` +
+        `.fold{position:absolute;left:50%;width:0;height:4mm;border-left:0.1mm solid #c5cbd1}.fold.top{top:0}.fold.bottom{bottom:0}` +
+        // a back printed upside down: the halves change sides and each turns half a circle (the whole sheet rotated)
+        `.sheet.turned{flex-direction:row-reverse}.sheet.turned .cell{transform:rotate(180deg)}`
       : '') +
-    `@media screen{body{background:#7d848b;padding:8mm 0}.sheet{margin:0 auto 8mm;box-shadow:0 1mm 4mm rgba(0,0,0,.35);background:#fff}}`;
+    `@media screen{body{background:#7d848b;padding:8mm 0}.sheet{height:${ph};margin:0 auto 8mm;box-shadow:0 1mm 4mm rgba(0,0,0,.35);background:#fff}}`;
   return `<!doctype html>\n<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${esc(title)}</title><style>${css}</style></head><body>\n${body}\n</body></html>\n`;
 }

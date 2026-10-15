@@ -3,14 +3,16 @@
  * Command-line PDF export of the diary of one Delta (docs/design/90-diary.md, "Command line").
  *
  *   node tools/diary-pdf.mjs [--t <unix|ISO> | --delta <index> | --path 6,4,9,3] [--options file.json]
- *                            [--zone Area/City] [--pure] [--two-up] [--pairing spreads|sequential] [--out diary.pdf]
+ *                            [--zone Area/City] [--pure] [--two-up] [--pairing spreads|sequential|duplex] [--turn side|top]
+ *                            [--out diary.pdf]
  *   npm run diary -- --path 6,4,9,3 --out delta-trifracton.pdf
  *
  * Serves the repo (tools/browse.mjs), opens tools/diary-print.html in headless Chromium, which plans the diary with the
  * app's own modules (src/ui/diary/build.js, the same builder as the Diary tab) and returns printDocument(); the
  * document is then printed with page.pdf({preferCSSPageSize: true, printBackground: true}): a vector PDF at the paper
  * size of the options (paperSize): one diary page per PDF page, or two side by side with --two-up. The PDF is checked
- * afterwards: its page count (pages, or ceil((pages + 1) / 2) for facing pages, ceil(pages / 2) in order) and size.
+ * afterwards: its page count (printSheets: pages, ceil((pages + 1) / 2) for facing pages, ceil(pages / 2) in order, both
+ * sides of ceil(pages / 4) sheets double-sided) and size.
  *
  *   --t        a moment (Unix seconds or an ISO date): the Delta that holds it (default: now)
  *   --delta    a global Delta index (0 … last Delta of the catalogue)
@@ -19,8 +21,10 @@
  *   --zone     the zone of the Gregorian references (default: the options' zone, else this computer's zone)
  *   --pure     pure mode: Fractonica terms only, no Gregorian references
  *   --two-up   two diary pages per sheet of paper (two A5 pages on A4 landscape)
- *   --pairing  with two-up: 'spreads' (facing pages as an open book: –|1, 2|3 …, the default) or 'sequential' (1|2, 3|4 …);
- *              implies --two-up
+ *   --pairing  with two-up: 'spreads' (facing pages as an open book: –|1, 2|3 …, the default), 'sequential' (1|2, 3|4 …)
+ *              or 'duplex' (double-sided cut and stack: print the odd PDF pages, reinsert, print the even ones; cut the
+ *              sheets in half, left halves on the right halves); implies --two-up
+ *   --turn     with duplex: how the stack goes back in, 'side' (flip on the short edge, the default) or 'top' (long edge)
  *   --out      the PDF to write (default diary.pdf)
  */
 import fs from 'node:fs';
@@ -28,7 +32,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { printSheets } from '../src/ui/diary/logic.js';
 
-const USAGE = `usage: node tools/diary-pdf.mjs [--t <unix|ISO> | --delta <index> | --path 6,4,9,3] [--options file.json] [--zone Area/City] [--pure] [--two-up] [--pairing spreads|sequential] [--out diary.pdf]`;
+const USAGE = `usage: node tools/diary-pdf.mjs [--t <unix|ISO> | --delta <index> | --path 6,4,9,3] [--options file.json] [--zone Area/City] [--pure] [--two-up] [--pairing spreads|sequential|duplex] [--turn side|top] [--out diary.pdf]`;
 
 const validZone = (z) => {
   try {
@@ -41,7 +45,7 @@ const validZone = (z) => {
 
 /** Parse the command line (without node and the script). Throws an Error with a readable message on bad input. */
 export function parseArgs(argv) {
-  const out = { t: null, delta: null, path: null, options: null, zone: null, pure: false, twoUp: false, pairing: null, out: 'diary.pdf', help: false };
+  const out = { t: null, delta: null, path: null, options: null, zone: null, pure: false, twoUp: false, pairing: null, turn: null, out: 'diary.pdf', help: false };
   const args = [];
   for (const a of argv) {
     const m = /^(--[a-z]+)=(.*)$/s.exec(a);
@@ -68,9 +72,15 @@ export function parseArgs(argv) {
         break;
       case '--pairing': {
         const v = value(i++, '--pairing');
-        if (!['spreads', 'sequential'].includes(v)) throw new Error(`--pairing: "${v}" is neither spreads nor sequential`);
+        if (!['spreads', 'sequential', 'duplex'].includes(v)) throw new Error(`--pairing: "${v}" is not spreads, sequential or duplex`);
         out.pairing = v;
         out.twoUp = true;
+        break;
+      }
+      case '--turn': {
+        const v = value(i++, '--turn');
+        if (!['side', 'top'].includes(v)) throw new Error(`--turn: "${v}" is neither side nor top`);
+        out.turn = v;
         break;
       }
       case '--t': {
@@ -164,7 +174,7 @@ async function main() {
       await page.waitForFunction(() => window.diaryReady === true, null, { timeout: 30000 });
       let doc;
       try {
-        const input = a.twoUp ? { ...options, print: { ...(options.print ?? {}), twoUp: true, ...(a.pairing ? { pairing: a.pairing } : {}) } } : options;
+        const input = a.twoUp ? { ...options, print: { ...(options.print ?? {}), twoUp: true, ...(a.pairing ? { pairing: a.pairing } : {}), ...(a.turn ? { turn: a.turn } : {}) } } : options;
         doc = await page.evaluate((args) => window.diaryBuild(args), { t: a.t, delta: a.delta, path: a.path, options: input, zone: a.zone, appZone: systemZone, pure: a.pure });
       } catch (err) {
         console.error(`diary-pdf: ${String(err.message).split('\n')[0].replace(/^.*?Error: /, '')}`);

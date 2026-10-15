@@ -6,7 +6,8 @@
  *
  * Layout rules (docs/design/90-diary.md):
  *   - a SHEET is one leaf: its front is a recto (odd page), its back a verso; filler "notes" pages keep that true;
- *   - front matter: [cover] index · Gregorian index · ephemeris · planning · predictions;
+ *   - front matter: [cover] index · Gregorian index · ephemeris · reference sheet · planning · predictions; the reference
+ *     sheet is one leaf: the period ladder on its front (a recto), the milestones of Alpha, Beta, Gamma on its back;
  *   - per Nuclide: a header page on a verso (it faces the first Helion page), then the locks: each lock is the sheets of
  *     opts.lock.sheets ([front lined Helions, back canvas Helions]; 19 Helions by default), then the Helions left over
  *     (77 − 4·19 = 1, "the 77th Helion"): a fine lined page and one page per retro canvas;
@@ -16,6 +17,7 @@
  */
 import { lockShape, rowsPerPage, monthsPerPage } from './options.js';
 import { zonedParts, zonedToUnix } from '../core/format.js';
+import { ladderOf, milestonesOf } from './reference.js';
 
 export const DELTA = 3;
 export const NUCLIDE = 4;
@@ -214,7 +216,7 @@ export function planDiary({ model, pure, opts, delta, events = [], zone = 'UTC' 
   const rpp = rowsPerPage(opts);
   const front = { index: [], gregorian: [], ephemeris: [], planning: [], predictions: [] };
   if (opts.front.cover) section('Cover', 'cover', add('cover', {}, 'recto'));
-  const indexRowCount = 2 + majors.length + 5 * (1 + shape.locks + (shape.retro ? 1 : 0)) + inserts.length + 6;
+  const indexRowCount = 2 + majors.length + 5 * (1 + shape.locks + (shape.retro ? 1 : 0)) + inserts.length + 8;
   if (opts.front.index) {
     const n = Math.max(1, Math.ceil(indexRowCount / rpp));
     for (let i = 0; i < n; i++) front.index.push(add('index', { part: i + 1, of: n, rows: [] }, i === 0 ? 'recto' : null));
@@ -235,6 +237,15 @@ export function planDiary({ model, pure, opts, delta, events = [], zone = 'UTC' 
     const n = Math.max(1, Math.ceil((ephemerisRows.length + EPHEMERIS_LEGEND_ROWS) / rpp));
     for (let i = 0; i < n; i++) front.ephemeris.push(add('ephemeris', { part: i + 1, of: n, rows: ephemerisRows.slice(i * rpp, i * rpp + rpp) }));
     section('Ephemeris', 'ephemeris', front.ephemeris[0]);
+  }
+  // the reference sheet: the ladder of the hierarchy in the eclipse interval of this Delta, and the Alpha that holds it
+  let reference = null;
+  if (opts.front.reference) {
+    reference = { ladder: ladderOf(model, D.start), milestones: milestonesOf({ model, pure, path }) };
+    reference.ladderPage = add('ladder', {}, 'recto').no;
+    reference.milestonesPage = add('milestones', {}).no;
+    section('Period ladder', 'ladder', pages[reference.ladderPage - 1]);
+    section('Milestones', 'milestones', pages[reference.milestonesPage - 1]);
   }
   for (let i = 0; i < opts.front.planning; i++) front.planning.push(add('planning', { part: i + 1, of: opts.front.planning }));
   if (front.planning.length) section('Planning', 'planning', front.planning[0]);
@@ -320,6 +331,7 @@ export function planDiary({ model, pure, opts, delta, events = [], zone = 'UTC' 
     majors,
     events: all,
     inserts,
+    reference,
     days,
     months,
     sections,
@@ -356,6 +368,6 @@ function buildIndexRows({ deltaInfo, majors, nuclides, inserts, helions, section
     if (nu.retro.length) rows.push({ kind: 'retro', t: helions[nu.retro[0]].t0, page: nu.retroPage, nuclide: nu.n, helions: nu.retro.map((d) => helions[d].num) });
   }
   for (const ins of inserts) rows.push({ kind: 'insert', t: ins.major.t, page: ins.page, major: ins.major });
-  for (const s of sections) if (['ephemeris', 'planning', 'predictions', 'summary', 'gregorian'].includes(s.key)) rows.push({ kind: 'section', page: s.page, label: s.title, key: s.key });
+  for (const s of sections) if (['ephemeris', 'ladder', 'milestones', 'planning', 'predictions', 'summary', 'gregorian'].includes(s.key)) rows.push({ kind: 'section', page: s.page, label: s.title, key: s.key });
   return rows;
 }

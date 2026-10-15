@@ -6,7 +6,7 @@ import { createPure } from '../src/core/pure.js';
 import { createFormatter } from '../src/core/format.js';
 import { sanitizeDiaryOptions } from '../src/diary/options.js';
 import { planDiary, deltaAt, deltaRange } from '../src/diary/plan.js';
-import { renderPage, printDocument, pageTitle } from '../src/diary/render.js';
+import { renderPage, printDocument, pageTitle, sheetsOf, duplexSheets } from '../src/diary/render.js';
 import { lineLabel, labelStep, scatter } from '../src/diary/render/helion.js';
 import { seedOf, measure, fit, wrap } from '../src/diary/render/common.js';
 import { RULES } from '../tools/pure-scan.mjs';
@@ -123,7 +123,7 @@ const base = build();
 test('every page of the default A5 book is a clean vector SVG: on the paper, no overlaps', () => {
   assert.equal(base.opts.page.size, 'A5');
   const kinds = new Set(base.plan.pages.map((p) => p.kind));
-  for (const k of ['index', 'gregorian', 'ephemeris', 'planning', 'predictions', 'nuclide', 'lined', 'canvas', 'insert', 'summary', 'notes']) assert.ok(kinds.has(k), k);
+  for (const k of ['index', 'gregorian', 'ephemeris', 'ladder', 'milestones', 'planning', 'predictions', 'nuclide', 'lined', 'canvas', 'insert', 'summary', 'notes']) assert.ok(kinds.has(k), k);
   checkBook(base, 'A5');
 });
 
@@ -183,11 +183,11 @@ test('a lined page: section headers, line labels, quarter glyphs, the wave, even
     const sag = r - Math.sqrt(Math.max(0, r * r - (L * L) / 4));
     assert.ok(sag > 1 && sag < 1.7, `sagitta ${sag.toFixed(2)} mm: the depth the margin allows`);
   }
-  // the running head: Delta words with the quarter and the Nuclide; the global Saros phase as a dial with the number
+  // the running head: Delta words with the quarter and the Nuclide; the global Saros phase as the Helion's number in its Alpha
   const h1 = plan.helions[page.sections[0].d];
   assert.ok(t.some((x) => /^Delta Trifracton (Peak|Node|Valley|End).* · ε#\d /.test(x) && x.includes(`${pure.groupDigits(h1.alpha)} /${pure.groupDigits(125125)}`)), 'running head');
   assert.ok(!t.some((x) => /Lock \d · sheet/.test(x)), 'no lock/sheet label');
-  assert.ok(svg.includes('stroke-width="0.55"'), 'the Alpha arc of the dial');
+  assert.ok(!/<circle cx="(?!0")/.test(svg), 'no dial: the number alone (the only circles are glyph dots)');
   assert.ok(t.includes(String(page.no)), 'folio');
 });
 
@@ -308,6 +308,28 @@ test('front matter: every index row and day page is printed; the ephemeris lists
   for (const q of ['Peak', 'Node', 'Valley', 'End']) assert.ok(sum.some((x) => x.startsWith(`${q} quarter`)));
 });
 
+test('the reference sheet: the ladder of 63 levels, the milestones of Alpha, Beta, Gamma with their eclipses', () => {
+  const { env } = base;
+  const page = (p, k) => textOf(renderPage(p.plan, p.plan.pages.find((x) => x.kind === k), p.env));
+  const lad = page(base, 'ladder');
+  for (let d = 1; d <= 63; d++) assert.ok(lad.includes(String(d)), `depth ${d}`);
+  for (const s of ['Helion', 'Blink', '5.05 h', '311 ms', '3.22 Hz', '457 THz', 'visible 656 nm', '4.83 × 10⁻⁴³ s', '2.07 × 10⁴² Hz', '125 125']) assert.ok(lad.includes(s), s);
+  assert.ok(lad.some((x) => x.startsWith('The next level, π2 (depth 64)') && x.includes('Planck time is 5.39 × 10⁻⁴⁴ s')));
+  assert.ok(lad.some((x) => x.includes('S = 5, 13,')), 'the derivation: the factor sequence');
+  const mil = page(base, 'milestones');
+  for (let k = 20; k <= 24; k++) assert.ok(mil.includes(`● #${k}`), `eclipse #${k}`);
+  assert.ok(mil.includes('Beta Difracton Peak · Gamma Tetrafracton Peak'));
+  for (const m of ['● #20 Begins', '● #21 Peak', '● #22 Node', '● #23 Valley', '● #24 End', '▸ this diary', '▸ Beta Tetrafracton']) assert.ok(mil.includes(m), m);
+  assert.ok(mil.includes(`● ${env.fmt.parts(model.catalogue[21]).day} Jan 1992`), 'the Beta eclipse cell carries its date');
+  // pure mode: Blinks and positions instead of Earth units and dates
+  const p = build({}, { pureMode: true });
+  const plad = page(p, 'ladder');
+  assert.ok(plad.includes('58 500') && plad.includes('2 772 pB') && plad.includes('1 pB'));
+  assert.ok(!plad.some((x) => /Hz|\d (s|ms|min|h|d|y)$/.test(x)));
+  const pmil = page(p, 'milestones');
+  assert.ok(pmil.includes('pos 21') && pmil.includes('20.985') && !pmil.some((x) => /19\d\d|20[0-4]\d/.test(x)));
+});
+
 test('pure mode: no Gregorian text anywhere, every word passes the leak rules (0 hard hits)', () => {
   for (const o of [{}, { front: { cover: true, planning: 2, predictions: 2 }, closing: { summaryPages: 1 }, page: { size: 'A6' } }]) {
     const p = build(o, { pureMode: true, zone: 'Asia/Kolkata' });
@@ -347,6 +369,8 @@ test('printDocument two-up: two A5 pages side by side on A4 landscape, as spread
   assert.ok(cells(sheets.at(-1))[1] === null, 'the last verso alone on the left');
   assert.ok(html.includes('.cell{width:148.5mm') && html.includes('.sheet svg{display:block;flex:none;width:148mm;height:210mm}'), 'each page 1:1, centred in its half');
   assert.ok(html.includes('class="fold top"'));
+  // a print dialog rounds the page to device pixels: a sheet exactly as tall as the paper spills over into a blank page
+  assert.ok(html.includes('height:calc(210mm - 1mm);margin-top:0.5mm'), 'each sheet a hair shorter than the paper, centred');
   assert.equal((html.match(/<svg /g) ?? []).length, n);
   const sq = build({ print: { twoUp: true, pairing: 'sequential' } });
   const sh2 = printDocument(sq.plan, sq.env).split('<section class="sheet">').slice(1);
@@ -354,6 +378,46 @@ test('printDocument two-up: two A5 pages side by side on A4 landscape, as spread
   assert.ok(cells(sh2[0])[0] && cells(sh2[0])[1], '[1 | 2]');
   const first = renderPage(sq.plan, sq.plan.pages[0], sq.env);
   assert.ok(sh2[0].includes(first), 'page 1 first');
+});
+
+test('printDocument double-sided: cut and stack, fronts on the odd PDF pages, backs behind them', () => {
+  const b = build({ print: { twoUp: true, pairing: 'duplex' } });
+  const { plan, env } = b;
+  const n = plan.pages.length;
+  const S = Math.ceil(n / 4);
+  const sides = sheetsOf(plan);
+  assert.equal(sides.length, 2 * S);
+  const no = (p) => (p ? p.no : null);
+  // sheet i: leaf i on the left, leaf S + i on the right; the back mirrors the halves
+  sides.forEach((s, k) => {
+    const i = k >> 1;
+    const a = 2 * i + 1;
+    const c = 2 * (S + i) + 1;
+    if (k % 2 === 0) assert.deepEqual(s.map(no), [a, c <= n ? c : null], `front of sheet ${i + 1}`);
+    else {
+      assert.deepEqual(s.map(no), [c + 1 <= n ? c + 1 : null, a + 1], `back of sheet ${i + 1}`);
+      assert.ok(s.back && !s.turned);
+    }
+  });
+  // cut and stack: the left halves, then the right halves, give every page once and in order
+  const left = [];
+  const right = [];
+  for (let k = 0; k < sides.length; k += 2) {
+    left.push(no(sides[k][0]), no(sides[k + 1][1]));
+    right.push(no(sides[k][1]), no(sides[k + 1][0]));
+  }
+  assert.deepEqual([...left, ...right].filter((x) => x !== null), plan.pages.map((p) => p.no));
+  const html = printDocument(plan, env);
+  assert.equal(html.split('<section class="sheet').length - 1, 2 * S);
+  assert.equal((html.match(/<svg /g) ?? []).length, n, 'every page printed once');
+  assert.ok(!html.includes('class="sheet turned"'));
+  // turned top over bottom: the backs print upside down
+  const t = build({ print: { twoUp: true, pairing: 'duplex', turn: 'top' } });
+  const th = printDocument(t.plan, t.env);
+  assert.equal((th.match(/<section class="sheet turned">/g) ?? []).length, S);
+  assert.ok(th.includes('.sheet.turned .cell{transform:rotate(180deg)}'));
+  // an odd number of leaves leaves the last right half blank
+  assert.deepEqual(duplexSheets([1, 2, 3, 4, 5, 6].map((no) => ({ no }))).map((s) => s.map(no)), [[1, 5], [6, 2], [3, null], [null, 4]]);
 });
 
 test('printDocument: a complete, self-contained print document, one sheet side per page', () => {

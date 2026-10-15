@@ -238,7 +238,9 @@ test('build: zone, events memo, plan, env, title', () => {
 });
 
 test('command line: arguments', () => {
-  assert.deepEqual(parseArgs([]), { t: null, delta: null, path: null, options: null, zone: null, pure: false, twoUp: false, pairing: null, out: 'diary.pdf', help: false });
+  assert.deepEqual(parseArgs([]), { t: null, delta: null, path: null, options: null, zone: null, pure: false, twoUp: false, pairing: null, turn: null, out: 'diary.pdf', help: false });
+  assert.deepEqual(['pairing', 'turn', 'twoUp'].map((k) => parseArgs(['--pairing', 'duplex', '--turn', 'top'])[k]), ['duplex', 'top', true]);
+  assert.throws(() => parseArgs(['--turn', 'left']), /--turn/);
   assert.equal(parseArgs(['--t', '1791460800']).t, 1791460800);
   assert.equal(parseArgs(['--t=2026-10-08T12:00:00Z']).t, Date.UTC(2026, 9, 8, 12) / 1000);
   assert.equal(parseArgs(['--t', '-11253795000']).t, -11253795000, 'negative Unix seconds are a value, not a flag');
@@ -246,7 +248,7 @@ test('command line: arguments', () => {
   assert.deepEqual(parseArgs(['--path', '6,4,9,3']).path, [6, 4, 9, 3]);
   assert.deepEqual(parseArgs(['--path', 'α#6 β#4 γ#9 δ#3']).path, [6, 4, 9, 3]);
   const all = parseArgs(['--path', '6,4,9,3', '--options', 'o.json', '--zone', 'Europe/Berlin', '--pure', '--out', 'x.pdf']);
-  assert.deepEqual(all, { t: null, delta: null, path: [6, 4, 9, 3], options: 'o.json', zone: 'Europe/Berlin', pure: true, twoUp: false, pairing: null, out: 'x.pdf', help: false });
+  assert.deepEqual(all, { t: null, delta: null, path: [6, 4, 9, 3], options: 'o.json', zone: 'Europe/Berlin', pure: true, twoUp: false, pairing: null, turn: null, out: 'x.pdf', help: false });
   assert.equal(parseArgs(['--two-up']).twoUp, true);
   assert.deepEqual([parseArgs(['--pairing', 'sequential']).twoUp, parseArgs(['--pairing=sequential']).pairing], [true, 'sequential'], '--pairing implies two-up');
   assert.throws(() => parseArgs(['--pairing', 'zigzag']), /--pairing/);
@@ -279,6 +281,13 @@ test('printing: two pages per sheet, the PDF it makes, the command line', () => 
   assert.equal(printSheets(200, { twoUp: true, pairing: 'sequential' }), 100);
   assert.equal(printSheets(199, { twoUp: true, pairing: 'sequential' }), 100);
   assert.equal(printSheets(198, { twoUp: true, pairing: 'spreads' }), 100);
+  // double-sided: both sides of ceil(pages / 4) sheets
+  assert.equal(printSheets(202, { twoUp: true, pairing: 'duplex' }), 102);
+  assert.equal(printSheets(200, { twoUp: true, pairing: 'duplex' }), 100);
+  const dx = sanitizeDiaryOptions({ print: { twoUp: true, pairing: 'duplex', turn: 'top' } });
+  assert.equal(printLine(dx, 202), 'PDF: 102 pages of A4 landscape · 297 × 210 mm, two diary pages each (double-sided: 51 sheets, the odd pages on the fronts, the even ones on the backs)');
+  assert.equal(cliCommand([6, 4, 9, 3], dx), 'node tools/diary-pdf.mjs --path 6,4,9,3 --two-up --pairing duplex --turn top');
+  assert.equal(sanitizeDiaryOptions({ print: { turn: 'sideways' } }).print.turn, 'side');
   const o = sanitizeDiaryOptions({ print: { twoUp: true } });
   assert.deepEqual(paperSize(o), { width: 297, height: 210, name: 'A4', twoUp: true, cell: 148.5 }, 'two A5 pages on A4 landscape');
   assert.equal(twoUpLabel(o), '2 × A5 on A4 landscape (297 × 210 mm)');

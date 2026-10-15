@@ -30,6 +30,8 @@ test('options: defaults, clamping, pure mode', () => {
   assert.deepEqual(sanitizeDiaryOptions({ page: { size: 'A4' } }).page.width, 210);
   assert.deepEqual(opts.canvases, [{ type: 'grid', cols: 19, rows: 13 }, { type: 'blank' }]);
   assert.deepEqual(opts.retro.canvases, [{ type: 'blank' }, { type: 'dots', count: 385 }]);
+  assert.equal(opts.front.reference, true, 'the reference sheet is in by default');
+  assert.equal(sanitizeDiaryOptions({ front: { reference: 'yes' } }).front.reference, true, 'non-booleans keep the default');
   // two pages per sheet: two A5 pages make one A4 landscape page exactly
   assert.deepEqual(paperSize(sanitizeDiaryOptions({ print: { twoUp: true } })), { width: 297, height: 210, name: 'A4', twoUp: true, cell: 148.5 });
   assert.equal(paperSize(sanitizeDiaryOptions({ page: { size: 'A6' }, print: { twoUp: true } })).name, 'A5');
@@ -90,9 +92,31 @@ test('sheets: fronts are rectos, headers versos, the diary ends on a verso', () 
   assert.equal(counts.lined, 5 * (4 * 4 + 1), 'four fronts per lock and one retro page per Nuclide');
   assert.equal(counts.nuclide, 5);
   assert.equal(counts.summary, 4);
-  // front matter in the owner's order
-  const order = plan.pages.slice(0, 8).map((p) => p.kind).filter((k, i, a) => a.indexOf(k) === i);
-  assert.deepEqual(order.slice(0, 6), ['index', 'gregorian', 'ephemeris', 'planning', 'predictions', 'nuclide']);
+  // front matter in the owner's order, the reference sheet after the ephemeris
+  const order = plan.pages.slice(0, 14).map((p) => p.kind).filter((k, i, a) => k !== 'notes' && a.indexOf(k) === i);
+  assert.deepEqual(order.slice(0, 8), ['index', 'gregorian', 'ephemeris', 'ladder', 'milestones', 'planning', 'predictions', 'nuclide']);
+});
+
+test('the reference sheet: one leaf, the period ladder on its front and the milestones on its back', () => {
+  const lad = plan.pages.find((p) => p.kind === 'ladder');
+  const mil = plan.pages.find((p) => p.kind === 'milestones');
+  assert.equal(lad.side, 'recto');
+  assert.equal(mil.no, lad.no + 1, 'the back of the same sheet');
+  assert.equal(plan.reference.ladderPage, lad.no);
+  assert.equal(plan.reference.milestonesPage, mil.no);
+  assert.equal(plan.reference.ladder.rows.length, 63);
+  assert.deepEqual(plan.reference.milestones.alpha.thresholds.map((x) => x.eclipse), [20, 21, 22, 23, 24]);
+  const secs = plan.index.filter((r) => r.kind === 'section').map((r) => [r.key, r.page]);
+  assert.deepEqual(secs.filter(([k]) => k === 'ladder' || k === 'milestones'), [['ladder', lad.no], ['milestones', mil.no]], 'listed in the index');
+  for (const o of [{ front: { reference: false } }, { front: { reference: false, ephemeris: false } }]) {
+    const p = planDiary({ model, pure, opts: sanitizeDiaryOptions(o), delta, zone: 'UTC' });
+    assert.equal(p.reference, null);
+    assert.ok(!p.pages.some((x) => x.kind === 'ladder' || x.kind === 'milestones'));
+  }
+  const pp = planDiary({ model, pure, opts: sanitizeDiaryOptions({ front: { ephemeris: false } }, { pure: true }), delta, zone: 'UTC' });
+  const l2 = pp.pages.find((p) => p.kind === 'ladder');
+  assert.equal(l2.side, 'recto');
+  assert.equal(pp.pages[l2.no].kind, 'milestones');
 });
 
 test('major thresholds and the Delta inserts', () => {

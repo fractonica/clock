@@ -85,9 +85,12 @@ Design notes: [`docs/design/80-pure.md`](docs/design/80-pure.md).
 The **Diary** tab lays out one Delta as a printable book. Choose the Delta and the format: paper, margins, how many
 Helions a sheet holds, lines per Helion, canvases, front matter, events and ink. Then **Export PDF** opens the browser's
 print dialog, where "Save as PDF" writes the file. From the command line, `npm run diary -- --path 6,4,9,3 --out diary.pdf`
-writes the PDF directly. Each lined Helion carries its quarter ticks with their glyphs and a curve of its wave in the
+writes the PDF directly; add `--pairing duplex` for double-sided A4: print the odd pages, put the stack back in, print
+the even pages, cut the sheets in half and lay the left halves on the right halves. Each lined Helion carries its quarter ticks with their glyphs and a curve of its wave in the
 outer margin. Lunar events (synodic, anomalistic, draconic and sidereal months, with quarters) and solar events (equinoxes,
-solstices, perihelion, aphelion) appear at their exact place, with Gregorian and Fractonica times. Design:
+solstices, perihelion, aphelion) appear at their exact place, with Gregorian and Fractonica times. A reference sheet
+after the ephemeris holds the period ladder (all 63 levels, how they are derived, periods and frequencies) and the
+milestones of the diary's Alpha, its Betas and Gammas, with the eclipses on them. Design:
 [`docs/design/90-diary.md`](docs/design/90-diary.md).
 
 ### The solar wave

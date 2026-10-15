@@ -10,7 +10,7 @@
  */
 import { PAGE_SIZES, CANVAS_TYPES, lockShape } from '../../diary/options.js';
 import { h, ICONS, setText, setAttr } from './dom.js';
-import { getIn, lockReadout, paperLabel, twoUpLabel, mm } from './logic.js';
+import { getIn, lockReadout, paperLabel, twoUpLabel, pairingWords, mm } from './logic.js';
 
 const SIZES = [...Object.keys(PAGE_SIZES), 'custom'];
 const CANVAS_LABEL = { grid: 'Square grid', dots: 'Scattered dots', 'dot-grid': 'Dot grid', lined: 'Lined', blank: 'Blank' };
@@ -168,11 +168,12 @@ export function createForm({ onChange, onReset, onCopy, onToggleGroup, open = []
     checkbox('front.index', 'Index', { hint: 'Major thresholds, Nuclides, locks, sections with their pages' }),
     gIndexRow,
     checkbox('front.ephemeris', 'Ephemeris', { hint: 'Every lunar and solar event of the Delta with its page' }),
+    checkbox('front.reference', 'Reference sheet', { hint: 'The period ladder of 63 levels; the milestones of Alpha, Beta and Gamma with their eclipses' }),
     h('div.dy-row2', null, number('front.planning', 'Planning pages', { min: 0, max: 12 }), number('front.predictions', 'Prediction pages', { min: 0, max: 12 })),
   );
   summaries.front = () => {
     const f = opts.front;
-    const on = [f.cover && 'cover', f.index && 'index', !pureMode && opts.gregorian.on && f.gregorianIndex && 'Gregorian', f.ephemeris && 'ephemeris'].filter(Boolean);
+    const on = [f.cover && 'cover', f.index && 'index', !pureMode && opts.gregorian.on && f.gregorianIndex && 'Gregorian', f.ephemeris && 'ephemeris', f.reference && 'reference'].filter(Boolean);
     const n = f.planning + f.predictions;
     return [on.join(', '), n ? `${n} writing ${n === 1 ? 'page' : 'pages'}` : ''].filter(Boolean).join(' · ') || 'none';
   };
@@ -353,10 +354,24 @@ export function createForm({ onChange, onReset, onCopy, onToggleGroup, open = []
   const pairing = select('print.pairing', 'Pairing', [
     ['spreads', 'Facing pages, as an open book (–|1, 2|3 …)'],
     ['sequential', 'In order (1|2, 3|4 …)'],
+    ['duplex', 'Double-sided, cut and stack'],
   ]);
-  const gPrint = group('print', 'Print', twoUpRow, pairing, h('small.dy-note', { text: 'Facing pages print each spread on one sheet; cut or fold the sheets to bind them.' }));
+  const turn = select('print.turn', 'Backs', [
+    ['side', 'Stack turned over sideways (flip on short edge)'],
+    ['top', 'Stack turned top over bottom (flip on long edge)'],
+  ]);
+  const printNote = h('small.dy-note');
+  dyn.push(() =>
+    setText(
+      printNote,
+      opts.print.pairing === 'duplex'
+        ? 'Print the odd pages, put the printed stack back in, print the even pages on the other side. Cut every sheet in half along the marks and lay the left halves on the right halves: the pages are in order.'
+        : 'Facing pages print each spread on one sheet; cut or fold the sheets to bind them.',
+    ),
+  );
+  const gPrint = group('print', 'Print', twoUpRow, pairing, turn, printNote);
   groups.insertBefore(gPrint, gGreg); // next to the paper it prints on
-  summaries.print = () => (opts.print.twoUp ? `2 per sheet · ${opts.print.pairing === 'sequential' ? 'in order' : 'facing pages'}` : 'one page per sheet');
+  summaries.print = () => (opts.print.twoUp ? `2 per sheet · ${pairingWords(opts.print)}` : 'one page per sheet');
 
   const allGroups = { paper: gPaper, gregorian: gGreg, front: gFront, lock: gLock, lined: gLined, canvases: gCanvas, retro: gRetro, inserts: gInserts, events: gEvents, style: gStyle, print: gPrint };
 
@@ -448,6 +463,7 @@ export function createForm({ onChange, onReset, onCopy, onToggleGroup, open = []
       gGreg.querySelector('[data-path="gregorian.weekdays"]').disabled = !gOn;
       gIndexRow.querySelector('input').disabled = !gOn;
       pairing.querySelector('select').disabled = !opts.print.twoUp;
+      turn.querySelector('select').disabled = !opts.print.twoUp || opts.print.pairing !== 'duplex';
       const shape = next.shape ?? lockShape(opts);
       setText(lockRead, lockReadout(shape));
       setText(lockSub, `in each Nuclide of 77 Helions${shape.retro ? '' : ': every Helion is in a lock'}`);

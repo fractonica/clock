@@ -16,9 +16,10 @@ const cellText = (c) => (c === null || c === undefined ? '' : typeof c === 'obje
  *   cols          [{key, align:'start'|'end', flex, weight, fill, size (relative), min}]
  *   rows          [{cells:{key: string | {text, fill, weight}}, fill, weight, rule:'strong'|'none'}]
  *   header        {key: title} (small caps above the rows) or null
+ *   onLayout      ({xs, ws, top, rowH}) => void: called before the rows are drawn (tints and glyphs go under the text)
  * @returns {number} the y below the table
  */
-export function drawTable(svg, cx, { x0, x1, y, rowH, size = 2.1, cols, rows, header = null, headH = 4, gap = 2.4, minScale = 0.72, rules = true }) {
+export function drawTable(svg, cx, { x0, x1, y, rowH, size = 2.1, cols, rows, header = null, headH = 4, gap = 2.4, minScale = 0.72, rules = true, onLayout = null }) {
   const { pal, font } = cx;
   const avail = x1 - x0;
   const w0 = cols.map((c) => {
@@ -56,6 +57,7 @@ export function drawTable(svg, cx, { x0, x1, y, rowH, size = 2.1, cols, rows, he
     svg.line(x0, yy, x1, yy, pal.ruleStrong, 0.2);
   }
   const fsRow = size * k;
+  onLayout?.({ xs, ws, top: yy, rowH });
   for (const r of rows) {
     if (r.rule === 'strong') svg.line(x0, yy, x1, yy, pal.ruleStrong, 0.2);
     const base = yy + rowH * 0.5 + fsRow * 0.36;
