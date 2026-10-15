@@ -4,7 +4,8 @@
  * The diary (docs/design/90-diary.md):
  *   front matter   index · Gregorian index · ephemeris · reference sheet (period ladder | milestones) · planning ·
  *                  predictions
- *   per Nuclide    header page · 4 locks of 19 Helions (sheets of 3 lined + 2 canvas Helions, the last 2 + 2)
+ *   per Nuclide    header page · 4 solar locks of 19 Helions: 3 Pentads (5 Helions: 3 lined on the front, 2 canvases
+ *                  on the back) and a Semi-pentad (4 Helions, all canvases: 2 on each side)
  *                  · the 77th Helion on its own (a fine lined page + 2 canvas pages): the retrospection
  *   inserts        a Delta sheet before the lock that holds each Delta quarter threshold (Peak, Node, Valley)
  *   closing        retrospection / summary pages of the whole Delta
@@ -23,11 +24,13 @@ export const PAGE_SIZES = Object.freeze({
 });
 
 /** What a canvas page can carry. */
-export const CANVAS_TYPES = Object.freeze(['grid', 'dots', 'dot-grid', 'lined', 'blank']);
+export const CANVAS_TYPES = Object.freeze(['grid', 'dots', 'dot-grid', 'lined', 'blank', 'nuclide-grid']);
 
 export const DIARY_DEFAULTS = Object.freeze({
   /** Paper: a named size or 'custom' with width/height (mm). */
-  page: { size: 'A5', width: 148, height: 210, margins: { top: 12, bottom: 12, inner: 18, outer: 14 } },
+  page: { size: 'A5', width: 148, height: 210, margins: { top: 12, bottom: 12, inner: 16, outer: 20 } },
+  /** The thumb index: references to the previous and next page of the same kind along the outer edge (a 6 mm strip). */
+  nav: { on: true },
   /** Gregorian references (index, timestamps); forced off in pure mode. `zone` null = the app's zone. */
   gregorian: { on: true, zone: null, weekdays: true },
   /** `reference`: one sheet, the period ladder of 63 levels on its front, the milestones of Alpha, Beta, Gamma on its back. */
@@ -47,15 +50,28 @@ export const DIARY_DEFAULTS = Object.freeze({
     { type: 'grid', cols: 19, rows: 13 },
     { type: 'blank' },
   ],
-  /** The Helions left over after the locks (77 − 4·19 = 1): a fine lined page and its canvas pages. */
+  /**
+   * A Semi-pentad: a sheet of 4 Helions (the last of the default lock). With `allCanvas` both its sides are canvases,
+   * 2 Helions each, in the order of `canvases`; otherwise it is laid out like any sheet.
+   */
+  semi: { allCanvas: true, canvases: [{ type: 'blank' }, { type: 'blank' }, { type: 'blank' }, { type: 'blank' }] },
+  /**
+   * The Helions left over after the locks (77 − 4·19 = 1): a fine lined page and its canvas pages. 'nuclide-grid' is the
+   * 7 × 11 grid of the Nuclide's 77 Helions (one column per ζ of 11 Helions) to mark each Helion, with its ephemeris marks.
+   */
   retro: {
     lines: 36,
     canvases: [
       { type: 'blank' },
-      { type: 'dots', count: 385 },
+      { type: 'nuclide-grid' },
     ],
   },
-  inserts: { deltaQuarters: true },
+  /**
+   * `eclipses`: a Helion that holds an eclipse gets 2 sheets before its own sheet: the eclipse (map or shadow diagram,
+   * circumstances, its Saros series) | the Saros index; the Helion in detail (contacts on a Preon and Flavon timeline) |
+   * a blank canvas. Needs events.eclipses.
+   */
+  inserts: { deltaQuarters: true, eclipses: true },
   events: {
     synodic: true,
     anomalistic: true,
@@ -68,7 +84,21 @@ export const DIARY_DEFAULTS = Object.freeze({
     solarSync: true,
     /** Thresholds of the major periods (Alpha … Delta quarters) as ticks. */
     majors: true,
+    /** The Moon's greatest north and south declination (lunistices). */
+    lunistices: true,
+    /** The Sun at 45°, 135°, 225°, 315° of apparent longitude. */
+    crossQuarters: true,
+    /** Solar and lunar eclipses with their type. */
+    eclipses: true,
+    /** Greatest elongations and conjunctions of Mercury and Venus; oppositions and conjunctions of Mars, Jupiter, Saturn. */
+    planets: true,
   },
+  /**
+   * The local sky: Sun and Moon altitude on the pages (a dot per line on lined pages, trajectories on canvases) and their
+   * rise, culmination and set. `lat` / `lon` in degrees (north, east positive); null = the main city of the diary's zone
+   * (src/diary/places.js). `place` is a free label. `dot`: the diameter (mm) of the Sun and Moon marks.
+   */
+  sky: { on: true, lat: null, lon: null, place: null, dot: 1.1 },
   closing: { summaryPages: 4 },
   style: { ink: 'color', font: 'sans' },
   /**
@@ -133,6 +163,7 @@ export function sanitizeDiaryOptions(input = {}, { pure = false } = {}) {
         outer: num(m.outer, d.page.margins.outer, 3, 50),
       },
     },
+    nav: { on: bool(o.nav?.on, d.nav.on) },
     gregorian: {
       on: pure ? false : bool(o.gregorian?.on, d.gregorian.on),
       zone: typeof o.gregorian?.zone === 'string' && o.gregorian.zone ? o.gregorian.zone : null,
@@ -155,12 +186,23 @@ export function sanitizeDiaryOptions(input = {}, { pure = false } = {}) {
       marginCurve: bool(o.lined?.marginCurve, d.lined.marginCurve),
     },
     canvases: canvases(o.canvases, d.canvases),
+    semi: {
+      allCanvas: bool(o.semi?.allCanvas, d.semi.allCanvas),
+      canvases: canvases(o.semi?.canvases, d.semi.canvases),
+    },
     retro: {
       lines: num(o.retro?.lines, d.retro.lines, 1, 144, true),
       canvases: canvases(o.retro?.canvases, d.retro.canvases),
     },
-    inserts: { deltaQuarters: bool(o.inserts?.deltaQuarters, d.inserts.deltaQuarters) },
+    inserts: { deltaQuarters: bool(o.inserts?.deltaQuarters, d.inserts.deltaQuarters), eclipses: bool(o.inserts?.eclipses, d.inserts.eclipses) },
     events: Object.fromEntries(Object.keys(d.events).map((k) => [k, bool(o.events?.[k], d.events[k])])),
+    sky: {
+      on: bool(o.sky?.on, d.sky.on),
+      lat: Number.isFinite(Number(o.sky?.lat)) && o.sky?.lat !== null && o.sky?.lat !== '' ? num(o.sky.lat, 0, -90, 90) : null,
+      lon: Number.isFinite(Number(o.sky?.lon)) && o.sky?.lon !== null && o.sky?.lon !== '' ? num(o.sky.lon, 0, -180, 180) : null,
+      place: typeof o.sky?.place === 'string' && o.sky.place.trim() ? o.sky.place.trim().slice(0, 60) : null,
+      dot: num(o.sky?.dot, d.sky.dot, 0.4, 3),
+    },
     closing: { summaryPages: num(o.closing?.summaryPages, d.closing.summaryPages, 0, 16, true) },
     style: {
       ink: ['color', 'mono'].includes(o.style?.ink) ? o.style.ink : d.style.ink,

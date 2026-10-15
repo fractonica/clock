@@ -187,13 +187,17 @@ function indexLabel(cx, r) {
     }
     case 'insert':
       return { text: `Delta sheet · ${majorWords(r.major)}`, fill: pal.level(3) };
+    case 'eclipse': {
+      const s = r.eclipse?.saros;
+      return { text: `${r.label}${s ? ` · Saros ${s.saros} (${s.member}/${s.count})` : ''}`, fill: pal.eclipse, weight: 600 };
+    }
     case 'section':
       return { text: r.label, fill: pal.ink, weight: 600 };
     default:
       return { text: r.label ?? r.kind, fill: pal.ink };
   }
 }
-const GROUP = { 'delta-begin': 'delta', major: 'delta', 'delta-end': 'delta', nuclide: 'nu', lock: 'nu', retro: 'nu', insert: 'insert', section: 'section' };
+const GROUP = { 'delta-begin': 'delta', major: 'delta', 'delta-end': 'delta', nuclide: 'nu', lock: 'nu', retro: 'nu', insert: 'insert', eclipse: 'insert', section: 'section' };
 
 export function renderIndex(svg, cx, fr, page) {
   const { plan, pal } = cx;
@@ -323,7 +327,7 @@ function monthGrid(svg, cx, fr, { y: year, m }, top, height, byDay) {
 
 // ---- ephemeris -----------------------------------------------------------------------------------------------------
 
-const MEAN_DAYS = { synodic: 29.530589, anomalistic: 27.55455, draconic: 27.212221, sidereal: 27.321662 };
+const MEAN_DAYS = { synodic: 29.530589, anomalistic: 27.55455, draconic: 27.212221, sidereal: 27.321662, tropical: 27.321582 };
 
 function legendEntries(cx) {
   const { plan, opts, pureMode, pure } = cx;
@@ -340,14 +344,38 @@ function legendEntries(cx) {
   if (ev.draconic)
     out.push([q ? `${sym('ascending-node', '☊')} ${sym('post-ascending', '▲')} ${sym('descending-node', '☋')} ${sym('post-descending', '▼')}` : `${sym('ascending-node', '☊')} ${sym('descending-node', '☋')}`, `Draconic ${unit} (${len('draconic')})`, `Ascending and descending node: the Moon crosses the ecliptic northward or southward.${q ? ' Post-ascending and post-descending: halfway in time between the nodes.' : ''}`]);
   if (ev.sidereal)
-    out.push([q ? `${sym('sidereal-0', '★')} ${sym('sidereal-90', '✦')} ${sym('sidereal-180', '☆')} ${sym('sidereal-270', '✧')}` : `${sym('sidereal-0', '★')} ${sym('sidereal-180', '☆')}`, `Sidereal ${unit} (${len('sidereal')})`, `The Moon's geocentric ecliptic longitude against the fixed ${pureMode ? 'reference' : 'J2000'} equinox is 0°${q ? ', 90°, 180°, 270°' : ' and 180°'}.`]);
+    out.push([q ? `${sym('galactic-centre', '★')} ${sym('post-centre', '✦')} ${sym('galactic-anticentre', '☆')} ${sym('post-anticentre', '✧')}` : `${sym('galactic-centre', '★')} ${sym('galactic-anticentre', '☆')}`, `Sidereal ${unit} (${len('sidereal')})`, `Galactic centre and anticentre: the Moon passes the direction of the galactic centre (Sgr A*, ecliptic longitude 266.8°) and its opposite.${q ? ' Post-centre and post-anticentre: 90° past them.' : ''}`]);
+  if (ev.lunistices)
+    out.push([`${sym('moon-north', '△')} ${sym('moon-south', '▽')}`, `Tropical ${unit} (${len('tropical')})`, "Moon farthest north and south: the Moon's greatest apparent declination north and south of the celestial equator, with its value."]);
+  const cross = ev.crossQuarters ? sym('cross-quarter-45', '⊗') : '';
+  const crossDef = pureMode
+    ? 'Cross-quarters: the apparent solar longitude is 45°, 135°, 225°, 315°, halfway between an equinox and a solstice.'
+    : "Cross-quarters: the Sun's apparent longitude is 45°, 135°, 225°, 315°, halfway between an equinox and a solstice.";
   if (ev.solar)
     out.push([
-      `${sym('march-equinox', '⊖')} ${sym('june-solstice', '◒')} ${sym('december-solstice', '◓')} ${sym('perihelion', '◉')} ${sym('aphelion', '◎')}`,
+      `${sym('march-equinox', '⊖')} ${sym('june-solstice', '◒')} ${sym('december-solstice', '◓')} ${sym('perihelion', '◉')} ${sym('aphelion', '◎')}${cross ? ' ' + cross : ''}`,
       'Solar events',
-      pureMode
+      (pureMode
         ? 'Northward and southward equinox, northern and southern solstice: the apparent solar longitude is 0°, 180°, 90°, 270°. Perihelion and aphelion: Earth nearest to and farthest from the solar centre.'
-        : "Equinoxes and solstices: the Sun's apparent longitude is 0° (March), 90° (June), 180° (September), 270° (December). Perihelion and aphelion: Earth nearest to and farthest from the Sun.",
+        : "Equinoxes and solstices: the Sun's apparent longitude is 0° (March), 90° (June), 180° (September), 270° (December). Perihelion and aphelion: Earth nearest to and farthest from the Sun.") +
+        (cross ? ' ' + crossDef : ''),
+    ]);
+  else if (cross) out.push([cross, 'Cross-quarters', crossDef]);
+  if (ev.eclipses)
+    out.push([
+      `${sym('solar-eclipse', '◍')} ${sym('lunar-eclipse', '◕')}`,
+      'Eclipses',
+      pureMode
+        ? 'Solar eclipses (total, annular, hybrid, partial) and lunar eclipses (total, partial, penumbral), at the instant of greatest eclipse: the shadow axis nearest to the centre of the Earth, or the Moon nearest to the axis of the shadow of the Earth.'
+        : "Solar eclipses (total, annular, hybrid, partial) and lunar eclipses (total, partial, penumbral), at greatest eclipse: the axis of the Moon's shadow nearest to the Earth's centre, or the Moon nearest to the axis of the Earth's shadow.",
+    ]);
+  if (ev.planets)
+    out.push([
+      `${sym('mercury-elongation-east', '☿')} ${sym('venus-elongation-east', '♀')} ${sym('mars-opposition', '♂')} ${sym('jupiter-opposition', '♃')} ${sym('saturn-opposition', '♄')}`,
+      'Planets',
+      pureMode
+        ? 'Mercury, Venus: greatest elongation east or west (the angle from the solar direction), inferior and superior conjunction. Mars, Jupiter, Saturn: opposition and conjunction: geocentric ecliptic longitude 180° from or equal to the solar one.'
+        : "Mercury, Venus: greatest elongation east (evening) or west (morning), with the angle from the Sun; inferior and superior conjunction. Mars, Jupiter, Saturn: opposition and conjunction, geocentric ecliptic longitude 180° from or equal to the Sun's.",
     ]);
   return out;
 }
@@ -375,13 +403,14 @@ function drawLegend(svg, cx, fr, y, entries, size) {
 }
 
 export function renderEphemeris(svg, cx, fr, page) {
-  const { plan, pal } = cx;
+  const { plan, pal, opts } = cx;
   const D = plan.delta;
   svg.runs(fr.x0, fr.y0 + 5, [
     { text: 'Ephemeris', size: 5, weight: 600, fill: pal.ink },
     { text: page.of > 1 ? `${page.part}/${page.of}` : '', size: SIZE.small, fill: pal.ink3, gap: 2 },
   ], { maxW: fr.cw });
-  const sub = cx.greg ? `Lunar and solar events of ${D.name} · Fractonica and Gregorian time` : `Lunar and solar events of ${D.name} · Fractonica time to the Flavon`;
+  const what = opts.events.planets ? 'Lunar, solar and planetary events' : 'Lunar and solar events';
+  const sub = cx.greg ? `${what} of ${D.name} · Fractonica and Gregorian time` : `${what} of ${D.name} · Fractonica time to the Flavon`;
   svg.text(fr.x0, fr.y0 + 9.6, sub, { size: 1.9, fill: pal.ink3, maxW: fr.cw });
   const rows = page.rows ?? [];
   const last = page.part === page.of;
@@ -403,7 +432,7 @@ export function renderEphemeris(svg, cx, fr, page) {
   }
   let y;
   if (!rows.length) {
-    svg.text(fr.x0, yTable + 8, 'No lunar or solar events are selected for this Delta.', { size: SIZE.small, fill: pal.ink3, maxW: fr.cw });
+    svg.text(fr.x0, yTable + 8, 'No astronomical events are selected for this Delta.', { size: SIZE.small, fill: pal.ink3, maxW: fr.cw });
     y = yTable + 12;
   } else {
     const trs = rows.map((e) => ({

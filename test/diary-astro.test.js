@@ -23,11 +23,24 @@
  *        - nodes: ObsEcLat of the Moon;
  *        - sidereal 0°: EPHEM_TYPE=VECTORS, REF_PLANE=ECLIPTIC (ecliptic of J2000.0), VEC_CORR=NONE, Y = 0 with X > 0;
  *        - perigee / apogee / perihelion: VEC_TABLE=3, range-rate RR = 0 (range RG quoted).
+ *   [N]  F. Espenak (NASA GSFC), Five Millennium Catalog of Solar Eclipses (SEcat5, SE1701–SE2200; TD of greatest
+ *        eclipse, type, γ, magnitude) and Catalog of Lunar Eclipses (LEcat, 1701–2200; UT to the minute, type, umbral and
+ *        penumbral magnitudes). Over the whole of 1701–2200 (checked offline, not in this file): solar – 1180 eclipses,
+ *        all found, greatest eclipse within 0.3 min (rms 0.09), γ within 0.0044, 8 types differ (hybrid ↔ total /
+ *        annular at the boundary; 2 annular-or-partial at |γ| ≈ 1), 3 extra partial eclipses of magnitude < 0.01 at
+ *        |γ| ≈ 1.55; lunar – 1210 eclipses, all found, none extra, every type equal, greatest eclipse within 0.94 min of
+ *        the catalogue's UT turned into TD with Espenak & Meeus' ΔT, magnitudes within 0.0024.
+ *   [S]  Skyfield 1.53 with JPL DE440 (geocentre; apparent places of date): planets – oppositions and conjunctions
+ *        (almanac.oppositions_conjunctions), greatest elongations (maxima of the separation from the Sun); the Moon's
+ *        extreme declinations (radec(epoch='date')); the Sun's apparent ecliptic longitude of date for the
+ *        cross-quarters. Instants in TT. Over 1620–1625, 1800–1803, 2024–2028, 2400–2403 and 2600–2604 (371 planetary
+ *        events): Mercury within 0.9 min, Venus 2.0, Mars 3.0, Jupiter 0.9, Saturn 0.9; elongations within 1";
+ *        lunistices within 0.8 min and 3" (1620–2602, 188 events); cross-quarters within 0.9 min.
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import '../fractonica.js';
-import { events, findEvents, EVENT_INFO, FAMILIES, elongation, siderealLongitude } from '../src/diary/astro/index.js';
+import { events, findEvents, EVENT_INFO, FAMILIES, FLAGS, elongation, siderealLongitude, GALACTIC_CENTRE } from '../src/diary/astro/index.js';
 import { moon } from '../src/diary/astro/moon.js';
 import { sun, earth, earthSunDistance } from '../src/diary/astro/sun.js';
 import { nutation } from '../src/diary/astro/nutation.js';
@@ -36,6 +49,17 @@ import { jdeFromUnix, unixFromJde, JD_UNIX_EPOCH } from '../src/diary/astro/time
 import { wrap180 } from '../src/diary/astro/search.js';
 
 const ALL = { synodic: true, anomalistic: true, draconic: true, sidereal: true, quarters: true, solar: true };
+/** Only the original lunar and solar families (the new ones off). */
+const CLASSIC = { ...ALL, lunistices: false, crossQuarters: false, eclipses: false, planets: false };
+/** The generic label of an event plus its specifics (see index.js). */
+const KIND = { total: 'Total', annular: 'Annular', hybrid: 'Hybrid', partial: 'Partial', penumbral: 'Penumbral' };
+const specificLabel = (e) => {
+  const info = EVENT_INFO[e.name];
+  if (e.family === 'lunistice') return `${info.label} ${Math.abs(e.dec).toFixed(1)}°`;
+  if (e.family === 'eclipse') return `${KIND[e.kind]} ${e.name === 'solar-eclipse' ? 'solar' : 'lunar'} eclipse`;
+  if (e.elongation !== undefined) return `${info.label} ${e.elongation.toFixed(1)}°`;
+  return info.label;
+};
 const AS = 1 / 3600;
 const MIN = 60;
 /** ISO (UTC, no zone suffix needed) → Unix seconds. */
@@ -263,9 +287,6 @@ test('JPL [H] in 1650, 1987, 2024 and 2800: new Moons, nodes and sidereal 0° (T
     ['new-moon', '2800-03-16T14:49:34.3', 0.5], // found: −1 s
     ['ascending-node', '1650-03-07T19:55:22.3', 1.5], // found: −33 s
     ['ascending-node', '2800-03-27T12:25:17.8', 1.5], // found: −47 s
-    ['sidereal-0', '1650-03-03T11:13:13.8', 0.5], // found: −4 s
-    ['sidereal-0', '2024-03-11T00:52:18.8', 0.5], // found: −1 s
-    ['sidereal-0', '2800-03-17T18:56:25.8', 0.5], // found: +1 s
   ]) {
     const e = nearestTT(name, J(iso));
     assert.ok(Math.abs(minutes(e.jde - J(iso))) < tolMin, `${name} ${iso}: ${minutes(e.jde - J(iso)) * 60} s`);
@@ -273,11 +294,148 @@ test('JPL [H] in 1650, 1987, 2024 and 2800: new Moons, nodes and sidereal 0° (T
   // the functions behind them are where they should be at the found instants
   const nm = nearestTT('new-moon', J('2024-01-11T11:58'));
   assert.ok(Math.abs(wrap180(elongation(nm.jde))) < 1e-6);
-  const s0 = nearestTT('sidereal-0', J('2024-03-11T00:52:19'));
-  assert.ok(Math.abs(wrap180(siderealLongitude(s0.jde))) < 1e-6);
+  // the sidereal longitude that the JPL check above validated (0° at 2024-03-11T00:52:18.8 TT) …
+  assert.ok(Math.abs(wrap180(siderealLongitude(J('2024-03-11T00:52:18.8')))) < 0.005);
+  // … is where the galactic-centre events sit: λ = 266.84° (Sgr A*), + 90°, + 180°, + 270°
+  assert.ok(Math.abs(GALACTIC_CENTRE - 266.84) < 0.02, `${GALACTIC_CENTRE}`);
+  ['galactic-centre', 'post-centre', 'galactic-anticentre', 'post-anticentre'].forEach((n, i) => {
+    const e = findEvents(J('2024-03-20T00:00'), J('2024-04-20T00:00'), ALL).find((x) => x.name === n);
+    assert.ok(Math.abs(wrap180(siderealLongitude(e.jde) - GALACTIC_CENTRE - 90 * i)) < 1e-6, n);
+  });
   const asc = nearestTT('ascending-node', J('1987-05-23T06:25'));
   assert.ok(Math.abs(moon(asc.jde).beta) < 1e-6);
   assert.ok(earthSunDistance(nearestTT('perihelion', J('2024-01-03T00:40')).jde) < 0.98331);
+});
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Lunistices, cross-quarters, eclipses, planets
+
+const NEW = { ...Object.fromEntries(Object.keys(ALL).map((k) => [k, false])), lunistices: true, crossQuarters: true, eclipses: true, planets: true };
+
+test('lunistices and cross-quarters against DE440 [S] in 1620–1621, 2026 and 2601: within 2 min, declination within 10"', () => {
+  // [name, TT, apparent declination of date (degrees)]
+  const REF = [
+    ['moon-north', '1620-01-16T21:07:53', 24.4716],
+    ['moon-south', '1621-01-18T22:43:31', -22.7697],
+    ['moon-north', '2026-01-02T08:11:58', 28.2664],
+    ['moon-south', '2026-01-16T05:16:25', -28.3041],
+    ['moon-north', '2026-02-25T23:15:52', 28.4283],
+    ['moon-south', '2026-02-12T12:49:02', -28.4072],
+    ['moon-north', '2601-02-06T03:03:23', 28.2174],
+    ['moon-south', '2601-02-20T02:46:23', -28.3091],
+    ['cross-quarter-315', '1621-02-03T12:44:57'],
+    ['cross-quarter-135', '1621-08-07T14:24:34'],
+    ['cross-quarter-315', '2026-02-03T20:03:17'],
+    ['cross-quarter-45', '2026-05-05T11:49:52'],
+    ['cross-quarter-135', '2026-08-07T11:43:53'],
+    ['cross-quarter-225', '2026-11-07T09:53:13'],
+    ['cross-quarter-45', '2601-05-05T14:35:44'],
+    ['cross-quarter-225', '2601-11-07T19:05:20'],
+  ];
+  for (const [name, iso, dec] of REF) {
+    const e = nearestTT(name, J(iso), NEW);
+    assert.ok(e && Math.abs(minutes(e.jde - J(iso))) < 2, `${name} ${iso}: ${e && minutes(e.jde - J(iso)).toFixed(2)} min`);
+    if (dec !== undefined) assert.ok(Math.abs(e.dec - dec) < 10 * AS, `${name} ${iso}: δ ${e.dec}`);
+  }
+  // the labels carry the declination; the cross-quarters their longitude
+  const ev = events(U('2026-01-01'), U('2026-03-01'), NEW);
+  assert.deepEqual(ev.filter((e) => e.family === 'lunistice').slice(0, 2).map((e) => e.label), ['Moon farthest north 28.3°', 'Moon farthest south 28.3°']);
+  assert.deepEqual(ev.filter((e) => e.name.startsWith('cross')).map((e) => [e.label, e.labelPure]), [['Cross-quarter 315°', 'Cross-quarter 315°']]);
+});
+
+test('eclipses against the NASA catalogues [N]: type, greatest eclipse (solar TD within 1 min, lunar UT within 2 min), magnitude', () => {
+  // solar: [TD of greatest eclipse, kind, magnitude]
+  const SOLAR = [
+    ['1715-05-03T09:36:30', 'total', 1.0632],
+    ['2023-04-20T04:17:56', 'hybrid', 1.0132],
+    ['2024-04-08T18:18:29', 'total', 1.0566],
+    ['2025-03-29T10:48:36', 'partial', 0.9376],
+    ['2026-02-17T12:13:06', 'annular', 0.963],
+    ['2026-08-12T17:47:06', 'total', 1.0386],
+    ['2027-08-02T10:07:50', 'total', 1.079],
+    ['2028-01-26T15:08:59', 'annular', 0.9208], // Saros 141
+    ['2031-11-14T21:07:31', 'hybrid', 1.0106],
+    ['2186-07-16T15:14:54', 'total', 1.0805],
+  ];
+  for (const [iso, kind, mag] of SOLAR) {
+    const e = nearestTT('solar-eclipse', J(iso), NEW);
+    assert.ok(e, iso);
+    assert.ok(Math.abs(minutes(e.jde - J(iso))) < 1, `${iso}: ${minutes(e.jde - J(iso)).toFixed(2)} min`);
+    assert.equal(e.kind, kind, iso);
+    assert.ok(Math.abs(e.magnitude - mag) < 0.01, `${iso}: magnitude ${e.magnitude}`);
+  }
+  // lunar: [UT of greatest eclipse, kind, magnitude (umbral; penumbral for a penumbral eclipse)]
+  const LUNAR = [
+    ['1703-01-03T06:58', 'partial', 0.627],
+    ['2023-05-05T17:23', 'penumbral', 0.989],
+    ['2024-03-25T07:13', 'penumbral', 0.982],
+    ['2025-03-14T06:59', 'total', 1.183],
+    ['2025-09-07T18:12', 'total', 1.368],
+    ['2026-03-03T11:33', 'total', 1.156],
+    ['2026-08-28T04:13', 'partial', 0.935],
+  ];
+  for (const [iso, kind, mag] of LUNAR) {
+    const ev = events(U(iso) - 86400, U(iso) + 86400, NEW).filter((e) => e.name === 'lunar-eclipse');
+    assert.equal(ev.length, 1, iso);
+    const e = ev[0];
+    assert.ok(Math.abs(e.t - U(iso)) < 2 * MIN, `${iso}: ${((e.t - U(iso)) / 60).toFixed(2)} min`);
+    assert.equal(e.kind, kind, iso);
+    assert.ok(Math.abs(e.magnitude - mag) < 0.01, `${iso}: magnitude ${e.magnitude}`);
+    assert.equal(e.label, `${kind[0].toUpperCase()}${kind.slice(1)} lunar eclipse`);
+  }
+  // 2026: two solar and two lunar eclipses, nothing else
+  const y = events(U('2026-01-01'), U('2027-01-01'), NEW).filter((e) => e.family === 'eclipse');
+  assert.deepEqual(y.map((e) => e.label), ['Annular solar eclipse', 'Total lunar eclipse', 'Total solar eclipse', 'Partial lunar eclipse']);
+});
+
+test('planets against DE440 [S]: oppositions, conjunctions and greatest elongations within 5 min, elongations within 5"', () => {
+  // [name, TT, elongation (degrees)]
+  const REF = [
+    ['mars-opposition', '2025-01-16T02:39:44'],
+    ['jupiter-opposition', '2026-01-10T08:43:18'],
+    ['saturn-opposition', '2025-09-21T05:46:47'],
+    ['venus-inferior-conjunction', '2025-03-23T01:08:39'],
+    ['mercury-elongation-east', '2026-02-19T17:42:17', 18.12],
+    ['mercury-elongation-west', '2026-04-03T22:34:43', 27.82],
+    ['mercury-elongation-east', '2026-06-15T20:01:00', 24.52],
+    ['mercury-elongation-west', '2026-08-02T08:08:37', 19.47],
+    ['mercury-elongation-east', '2026-10-12T10:04:27', 25.16],
+    ['mercury-elongation-west', '2026-11-20T23:32:27', 19.62],
+    ['jupiter-conjunction', '2026-07-29T12:19:01'],
+    ['saturn-conjunction', '2027-04-07T17:19:25'],
+    ['mars-conjunction', '2026-01-09T11:42:21'],
+    ['venus-superior-conjunction', '2026-01-06T16:37:09'],
+    ['mercury-superior-conjunction', '2026-01-21T15:50:02'],
+    ['venus-elongation-east', '2026-08-15T06:32:42', 45.89],
+    ['saturn-opposition', '1620-12-24T12:04:41'],
+    ['mars-opposition', '1621-05-05T05:19:11'],
+    ['mercury-inferior-conjunction', '1801-03-30T14:08:06'],
+    ['mars-opposition', '1802-12-25T01:03:26'],
+    ['jupiter-opposition', '2601-07-15T03:56:01'],
+    ['venus-elongation-west', '2602-07-22T04:12:37', 45.72],
+  ];
+  for (const [name, iso, el] of REF) {
+    const e = findEvents(J(iso) - 20, J(iso) + 20, NEW).filter((x) => x.name === name).sort((a, b) => Math.abs(a.jde - J(iso)) - Math.abs(b.jde - J(iso)))[0];
+    assert.ok(e && Math.abs(minutes(e.jde - J(iso))) < 5, `${name} ${iso}: ${e && minutes(e.jde - J(iso)).toFixed(2)} min`);
+    if (el !== undefined) assert.ok(Math.abs(e.elongation - el) < 0.006, `${name} ${iso}: ${e.elongation}`);
+  }
+  const ev = events(U('2026-10-01'), U('2026-12-01'), NEW).filter((e) => e.family === 'planet');
+  assert.deepEqual(ev.map((e) => [e.label, e.symbol]), [
+    ['Saturn opposition', '♄'],
+    ['Mercury east elongation 25.2°', '☿'],
+    ['Venus inferior conjunction', '♀'],
+    ['Mercury inferior conjunction', '☿'],
+    ['Mercury west elongation 19.6°', '☿'],
+  ]);
+});
+
+test('pure labels of the new events pass the pure-mode scanner (no hard rule)', async () => {
+  const { RULES } = await import('../tools/pure-scan.mjs');
+  const hard = RULES.filter((r) => r[2] === 'hard');
+  const labels = new Set(Object.values(EVENT_INFO).map((i) => i.labelPure));
+  for (const y of [1650, 2026, 2800]) for (const e of events(U(`${y}-01-01`), U(`${y + 1}-01-01`), NEW)) labels.add(e.labelPure);
+  assert.ok(labels.size > 40);
+  for (const l of labels) for (const [id, re] of hard) assert.ok(!re.test(l), `${id}: ${l}`);
 });
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -293,15 +451,18 @@ test('events: shape, labels, symbols, sorting, range [t0, t1)', () => {
     if (i) assert.ok(ev[i - 1].t <= e.t, 'sorted');
     assert.ok(FAMILIES.includes(e.family));
     const info = EVENT_INFO[e.name];
-    assert.deepEqual([e.family, e.label, e.labelPure, e.symbol], [info.family, info.label, info.labelPure, info.symbol]);
+    const specific = specificLabel(e);
+    assert.deepEqual([e.family, e.label, e.labelPure, e.symbol], [info.family, specific, specific === info.label ? info.labelPure : specific, info.symbol]);
     assert.ok(Number.isFinite(e.jde));
   }
   const names = new Set(ev.map((e) => e.name));
-  for (const [n, info] of Object.entries(EVENT_INFO)) if (info.family !== 'solar') assert.ok(names.has(n), `${n} occurs in 81 days`);
+  for (const [n, info] of Object.entries(EVENT_INFO)) if (!['solar', 'eclipse', 'planet'].includes(info.family)) assert.ok(names.has(n), `${n} occurs in 81 days`);
+  // 2024-03-01 – 05-21: the penumbral lunar eclipse of 25 March and the total solar eclipse of 8 April
+  assert.deepEqual(ev.filter((e) => e.family === 'eclipse').map((e) => e.label), ['Penumbral lunar eclipse', 'Total solar eclipse']);
   assert.ok(names.has('march-equinox'));
   assert.equal(EVENT_INFO['new-moon'].label, 'New Moon');
   assert.equal(EVENT_INFO['post-perigee'].label, 'Post-perigee');
-  assert.equal(EVENT_INFO['sidereal-270'].label, 'Sidereal 270°');
+  assert.equal(EVENT_INFO['post-anticentre'].label, 'Post-anticentre');
   assert.deepEqual(
     ['march-equinox', 'june-solstice', 'september-equinox', 'december-solstice'].map((n) => [EVENT_INFO[n].label, EVENT_INFO[n].labelPure]),
     [['March equinox', 'Northward equinox'], ['June solstice', 'Northern solstice'], ['September equinox', 'Southward equinox'], ['December solstice', 'Southern solstice']],
@@ -309,6 +470,7 @@ test('events: shape, labels, symbols, sorting, range [t0, t1)', () => {
   const MONTHS = /January|February|March|April|May|June|July|August|September|October|November|December/;
   for (const [n, info] of Object.entries(EVENT_INFO)) {
     assert.ok(!MONTHS.test(info.labelPure), `${n}: no month in the pure label`);
+    if (info.family === 'planet') assert.ok(/^[☿♀♂♃♄]$/u.test(info.symbol), `${n}: the planet's sign`);
     const cps = [...info.symbol];
     assert.equal(cps.length, 1, `${n}: one character`);
     const cp = cps[0].codePointAt(0);
@@ -326,17 +488,22 @@ test('events: family switches and quarters: false', () => {
   const t1 = U('2024-05-21');
   const all = events(t0, t1);
   const fam = (list) => new Set(list.map((e) => e.family));
-  assert.deepEqual([...fam(events(t0, t1, { anomalistic: false, draconic: false, sidereal: false, solar: false }))], ['synodic']);
-  assert.deepEqual(events(t0, t1, { synodic: false, anomalistic: false, draconic: false, sidereal: false, solar: false }), []);
+  const none = Object.fromEntries(Object.keys(FLAGS).map((k) => [k, false]));
+  assert.deepEqual([...fam(events(t0, t1, { ...none, synodic: true }))], ['synodic']);
+  assert.deepEqual(events(t0, t1, none), []);
+  assert.deepEqual(events(t0, t1, { ...none, quarters: true }), []);
   const noQ = events(t0, t1, { quarters: false, solarSync: true, majors: true });
-  assert.ok(noQ.every((e) => !e.name.startsWith('post-') && e.name !== 'sidereal-90' && e.name !== 'sidereal-270'));
+  assert.ok(noQ.every((e) => !e.name.startsWith('post-') && e.name !== 'post-centre' && e.name !== 'post-anticentre'));
   // dropping quarters removes exactly those events and changes no other
-  const kept = all.filter((e) => !e.name.startsWith('post-') && e.name !== 'sidereal-90' && e.name !== 'sidereal-270');
+  const kept = all.filter((e) => !e.name.startsWith('post-') && e.name !== 'post-centre' && e.name !== 'post-anticentre');
   assert.deepEqual(noQ.map((e) => [e.name, e.t]), kept.map((e) => [e.name, e.t]));
-  // each family alone gives the same events as within the full list
-  for (const f of FAMILIES) {
-    const only = events(t0, t1, Object.fromEntries(FAMILIES.map((g) => [g, g === f])));
-    assert.deepEqual(only.map((e) => [e.name, e.t]), all.filter((e) => e.family === f).map((e) => [e.name, e.t]), f);
+  // each flag alone gives the same events as within the full list
+  const flagOf = (e) => (e.name.startsWith('cross-quarter') ? 'crossQuarters' : { lunistice: 'lunistices', eclipse: 'eclipses', planet: 'planets' }[e.family] ?? e.family);
+  for (const f of Object.keys(FLAGS)) {
+    if (f === 'quarters') continue;
+    const only = events(t0, t1, { ...none, quarters: true, [f]: true });
+    assert.ok(only.length, f);
+    assert.deepEqual(only.map((e) => [e.name, e.t]), all.filter((e) => flagOf(e) === f).map((e) => [e.name, e.t]), f);
   }
 });
 
@@ -372,7 +539,7 @@ function checkStructure(ev, label) {
   cycle(['new-moon', 'first-quarter', 'full-moon', 'last-quarter']);
   const aps = cycle(['perigee', 'post-perigee', 'apogee', 'post-apogee']);
   const nodes = cycle(['ascending-node', 'post-ascending', 'descending-node', 'post-descending']);
-  cycle(['sidereal-0', 'sidereal-90', 'sidereal-180', 'sidereal-270']);
+  cycle(['galactic-centre', 'post-centre', 'galactic-anticentre', 'post-anticentre']);
   cycle(['march-equinox', 'june-solstice', 'september-equinox', 'december-solstice']);
   cycle(['perihelion', 'aphelion']);
   // a post-* event lies exactly halfway between its neighbours
@@ -393,7 +560,7 @@ function checkStructure(ev, label) {
   spacing('perigee', 24, 29); // anomalistic 27.55 d (perigees vary strongly)
   spacing('apogee', 26.9, 28.2);
   spacing('ascending-node', 26.5, 28); // draconic 27.21 d
-  spacing('sidereal-0', 27, 27.7); // sidereal 27.32 d
+  spacing('galactic-centre', 27, 27.7); // sidereal 27.32 d
 }
 
 test('sanity in 1650 and 2800: counts per year, order, alternation, spacing, no duplicates', () => {
@@ -402,10 +569,18 @@ test('sanity in 1650 and 2800: counts per year, order, alternation, spacing, no 
     checkStructure(ev, String(y));
     const count = (n) => ev.filter((e) => e.name === n).length;
     for (const n of ['new-moon', 'first-quarter', 'full-moon', 'last-quarter']) assert.ok(count(n) >= 12 && count(n) <= 13, `${y} ${n} ${count(n)}`);
-    for (const n of ['perigee', 'apogee', 'ascending-node', 'descending-node', 'sidereal-0', 'sidereal-90', 'sidereal-180', 'sidereal-270']) {
+    for (const n of ['perigee', 'apogee', 'ascending-node', 'descending-node', 'galactic-centre', 'post-centre', 'galactic-anticentre', 'post-anticentre']) {
       assert.ok(count(n) >= 13 && count(n) <= 14, `${y} ${n} ${count(n)}`);
     }
     for (const n of ['march-equinox', 'june-solstice', 'september-equinox', 'december-solstice', 'perihelion', 'aphelion']) assert.equal(count(n), 1, `${y} ${n}`);
+    for (const n of ['cross-quarter-45', 'cross-quarter-135', 'cross-quarter-225', 'cross-quarter-315']) assert.equal(count(n), 1, `${y} ${n}`);
+    for (const n of ['moon-north', 'moon-south']) assert.ok(count(n) >= 13 && count(n) <= 14, `${y} ${n} ${count(n)}`);
+    // 4–7 eclipses a year, at least 2 of them solar
+    const ecl = ev.filter((e) => e.family === 'eclipse');
+    assert.ok(ecl.length >= 4 && ecl.length <= 7 && ecl.filter((e) => e.name === 'solar-eclipse').length >= 2, `${y} eclipses ${ecl.length}`);
+    // planets: Mercury 3–4 greatest elongations each way, the outer planets one opposition at most
+    assert.ok(count('mercury-elongation-east') >= 3 && count('mercury-elongation-east') <= 4, `${y} Mercury`);
+    for (const p of ['mars', 'jupiter', 'saturn']) assert.ok(count(`${p}-opposition`) <= 1 && count(`${p}-opposition`) + count(`${p}-conjunction`) >= (p === 'mars' ? 0 : 1), `${y} ${p}`);
     // seasons in their months
     const month = (n) => new Date(ev.find((e) => e.name === n).t * 1000).getUTCMonth() + 1;
     assert.deepEqual([month('march-equinox'), month('june-solstice'), month('september-equinox'), month('december-solstice')], [3, 6, 9, 12]);
@@ -433,7 +608,7 @@ test('a Delta of the catalogue (81 days) in under 150 ms, at both ends of 1613�
     const ev = events(D.start, D.end);
     const ms = performance.now() - t;
     assert.ok(ms < 150, `Delta ${idx}: ${ms.toFixed(1)} ms`);
-    assert.ok(ev.length >= 40 && ev.length <= 56, `Delta ${idx}: ${ev.length} events`);
+    assert.ok(ev.length >= 50 && ev.length <= 70, `Delta ${idx}: ${ev.length} events`);
     checkStructure(ev, `Delta ${idx}`);
   }
 });

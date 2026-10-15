@@ -29,7 +29,10 @@ test('options: defaults, clamping, pure mode', () => {
   assert.deepEqual(lockShape(sanitizeDiaryOptions({ lock: { sheets: [[3, 2]] } })), { perLock: 5, locks: 15, retro: 2 });
   assert.deepEqual(sanitizeDiaryOptions({ page: { size: 'A4' } }).page.width, 210);
   assert.deepEqual(opts.canvases, [{ type: 'grid', cols: 19, rows: 13 }, { type: 'blank' }]);
-  assert.deepEqual(opts.retro.canvases, [{ type: 'blank' }, { type: 'dots', count: 385 }]);
+  assert.deepEqual(opts.retro.canvases, [{ type: 'blank' }, { type: 'nuclide-grid' }]);
+  assert.deepEqual(opts.semi, { allCanvas: true, canvases: [{ type: 'blank' }, { type: 'blank' }, { type: 'blank' }, { type: 'blank' }] });
+  assert.deepEqual(opts.sky, { on: true, lat: null, lon: null, place: null, dot: 1.1 });
+  assert.deepEqual(sanitizeDiaryOptions({ sky: { lat: '95', lon: -37.6, place: '  Home ', dot: 9 } }).sky, { on: true, lat: 90, lon: -37.6, place: 'Home', dot: 3 });
   assert.equal(opts.front.reference, true, 'the reference sheet is in by default');
   assert.equal(sanitizeDiaryOptions({ front: { reference: 'yes' } }).front.reference, true, 'non-booleans keep the default');
   // two pages per sheet: two A5 pages make one A4 landscape page exactly
@@ -83,13 +86,24 @@ test('sheets: fronts are rectos, headers versos, the diary ends on a verso', () 
   for (const p of plan.pages.filter((x) => x.kind === 'insert')) assert.equal(p.side, 'recto');
   assert.equal(plan.pages.find((p) => p.kind === 'summary').side, 'recto');
   // a sheet: the lined front, then its canvas back on the next page
-  for (const p of plan.pages.filter((x) => x.kind === 'lined' && !x.retro)) {
+  for (const p of plan.pages.filter((x) => (x.kind === 'lined' && !x.retro) || x.semiSide === 'front')) {
     const back = plan.pages[p.no];
     assert.equal(back.kind, 'canvas');
     assert.equal(back.sections[0].d, p.sections.at(-1).d + 1, 'the back continues where the front ends');
   }
   const counts = plan.pages.reduce((a, p) => ((a[p.kind] = (a[p.kind] ?? 0) + 1), a), {});
-  assert.equal(counts.lined, 5 * (4 * 4 + 1), 'four fronts per lock and one retro page per Nuclide');
+  assert.equal(counts.lined, 5 * (4 * 3 + 1), 'three Pentad fronts per lock and one retro page per Nuclide');
+  // a lock: Pentads 1–3 (3 lined + 2 canvases), then the Semi-pentad: 4 Helions on canvases, 2 a side, the front a recto
+  const lock = plan.nuclides[1].locks[2];
+  const sheetsOfLock = plan.pages.filter((p) => p.sections && !p.retro && p.nuclide === 1 && p.lock === 2);
+  assert.deepEqual(sheetsOfLock.map((p) => `${p.kind}:${p.unit}${p.unitNo ?? ''}:${p.sections.length}`), ['lined:pentad1:3', 'canvas:pentad1:2', 'lined:pentad2:3', 'canvas:pentad2:2', 'lined:pentad3:3', 'canvas:pentad3:2', 'canvas:semi:2', 'canvas:semi:2']);
+  assert.deepEqual(sheetsOfLock.flatMap((p) => p.sections.map((x) => x.d)), lock.helions);
+  const semiFront = sheetsOfLock[6];
+  assert.equal(semiFront.side, 'recto');
+  assert.deepEqual(semiFront.sections.map((x) => x.canvas.type), ['blank', 'blank']);
+  // the classic layout keeps the Semi-pentad's front lined
+  const classic = planDiary({ model, pure, opts: sanitizeDiaryOptions({ semi: { allCanvas: false } }), delta, zone: 'UTC' });
+  assert.equal(classic.pages.filter((p) => p.kind === 'lined').length, 5 * (4 * 4 + 1));
   assert.equal(counts.nuclide, 5);
   assert.equal(counts.summary, 4);
   // front matter in the owner's order, the reference sheet after the ephemeris
@@ -117,6 +131,72 @@ test('the reference sheet: one leaf, the period ladder on its front and the mile
   const l2 = pp.pages.find((p) => p.kind === 'ladder');
   assert.equal(l2.side, 'recto');
   assert.equal(pp.pages[l2.no].kind, 'milestones');
+});
+
+test('edge references: the same Helion one Nuclide away; Semi-pentads, locks, Nuclides, the 77th Helion, Delta sheets', () => {
+  const navOf = (p, kind) => p.nav?.find((r) => r.kind === kind);
+  for (const p of plan.pages.filter((x) => x.sections && !x.retro)) {
+    const r = navOf(p, 'helion');
+    const h = plan.helions[p.sections[0].d];
+    assert.equal(r.label, h.label);
+    for (const [no, dd] of [[r.prev, h.d - 77], [r.next, h.d + 77]]) {
+      if (dd < 0 || dd >= 385) assert.equal(no, null);
+      else {
+        const q = plan.pages[no - 1];
+        assert.ok(q.sections.some((s) => s.d === dd) && q.kind === p.kind, `page ${p.no}: ${h.label} → page ${no}`);
+      }
+    }
+  }
+  const chain = (kind, pick = () => true) => {
+    const list = plan.pages.filter((p) => navOf(p, kind) && pick(p));
+    list.forEach((p, i) => {
+      assert.equal(navOf(p, kind).prev, list[i - 1]?.no ?? null);
+      assert.equal(navOf(p, kind).next, list[i + 1]?.no ?? null);
+    });
+    return list;
+  };
+  assert.equal(chain('nuclide').length, 5);
+  assert.equal(chain('insert').length, plan.inserts.length);
+  assert.equal(chain('lock').length, 20);
+  assert.equal(chain('semi', (p) => p.semiSide === 'front').length, 20);
+  assert.equal(chain('semi', (p) => p.semiSide === 'back').length, 20);
+  const retro = plan.pages.filter((p) => navOf(p, 'retro'));
+  assert.equal(retro.length, 5 * 3, 'the lined page and both canvases of each 77th Helion');
+  assert.equal(navOf(retro[0], 'retro').next, retro[3].no);
+  assert.ok(plan.pages.filter((p) => p.kind === 'index' || p.kind === 'notes').every((p) => !p.nav), 'front matter and notes carry none');
+});
+
+test('eclipses: two sheets before the sheet that holds the Helion; listed in the index; linked on the edge', () => {
+  const at = (d, f) => plan.helions[d].t0 + f * (plan.helions[d].t1 - plan.helions[d].t0);
+  const ecl = [
+    { ev: { t: at(17, 0.5), family: 'eclipse', name: 'solar-eclipse', kind: 'total', label: 'Total solar eclipse' } },
+    { ev: { t: at(76, 0.3), family: 'eclipse', name: 'lunar-eclipse', kind: 'partial', label: 'Partial lunar eclipse' } },
+    { ev: { t: plan.delta.t1 + 3600, family: 'eclipse', name: 'lunar-eclipse', kind: 'total', label: 'outside' } },
+  ];
+  const p = planDiary({ model, pure, opts, delta, zone: 'UTC', eclipses: ecl });
+  assert.equal(p.eclipses.length, 2, 'only the eclipses inside the Delta');
+  assert.equal(p.pages.length % 2, 0);
+  for (const x of p.eclipses) {
+    const [a, b, c, d] = x.pages.map((no) => p.pages[no - 1]);
+    assert.deepEqual([a.kind, b.kind, c.kind, d.kind], ['eclipse', 'saros', 'eclipse-helion', 'canvas']);
+    assert.equal(a.side, 'recto');
+    assert.equal(c.side, 'recto');
+    assert.deepEqual([b.no, c.no, d.no], [a.no + 1, a.no + 2, a.no + 3], 'two whole sheets');
+    assert.equal(c.helion, x.d);
+    assert.equal(d.sections[0].canvas.type, 'blank');
+    // the Helion's own sheet follows; its regular page stays its page
+    const h = p.helions[x.d];
+    assert.ok(h.page > d.no, `the regular page ${h.page} follows`);
+    assert.ok(!h.pages.includes(c.no) && !h.pages.includes(d.no));
+    assert.ok(p.index.some((r) => r.kind === 'eclipse' && r.page === a.no));
+  }
+  assert.equal(p.helions[p.eclipses[1].d].h, 76, 'the 77th Helion: before its retrospection pages');
+  const e0 = p.pages[p.eclipses[0].page - 1];
+  assert.deepEqual(e0.nav.find((r) => r.kind === 'eclipse'), { kind: 'eclipse', label: 'eclipse', prev: null, next: p.eclipses[1].page });
+  assert.ok(p.pages.filter((x) => x.eclipse !== undefined).every((x) => !x.nav?.some((r) => r.kind === 'helion')));
+  const off = planDiary({ model, pure, opts: sanitizeDiaryOptions({ inserts: { eclipses: false } }), delta, zone: 'UTC', eclipses: ecl });
+  assert.equal(off.eclipses.length, 0);
+  assert.ok(!off.pages.some((x) => x.kind === 'eclipse'));
 });
 
 test('major thresholds and the Delta inserts', () => {

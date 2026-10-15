@@ -21,7 +21,7 @@ import { deltaRange, deltaAt } from '../diary/plan.js';
 import { createFormatter, SYSTEM_ZONE } from '../core/format.js';
 import { h, ICONS, setText, storage, copyText } from './diary/dom.js';
 import { loadOptions, saveOptions, loadUi, saveUi, setIn, defaultOptions, lockReadout, paperLabel, sheetsOf, pathOfIndex, printSheets, printLine, twoUpLabel, cliCommand } from './diary/logic.js';
-import { buildDiary, createEventCache, deltaSpan, resolveZone } from './diary/build.js';
+import { buildDiary, createEventCache, createSkyCache, createEclipseCache, deltaSpan, resolveZone } from './diary/build.js';
 import { createPicker } from './diary/picker.js';
 import { createForm } from './diary/form.js';
 import { createPreview } from './diary/preview.js';
@@ -61,6 +61,8 @@ export function mount(el, ctx) {
   let stale = true;
   let lastShownT = NaN;
   const eventCache = createEventCache();
+  const skyCache = createSkyCache();
+  const eclipseCache = createEclipseCache();
   const appZone = () => store.state.zone || SYSTEM_ZONE;
   // resolveZone builds an Intl formatter to validate: memoise it, render() asks every frame
   let zoneMemo = { a: undefined, b: undefined, z: null };
@@ -239,8 +241,15 @@ export function mount(el, ctx) {
     const key = wantKey();
     if (key === builtKey && built) return;
     try {
-      built = buildDiary({ model, pure, F: ctx.F, input: raw, delta, appZone: appZone(), pureMode, eventCache });
+      built = buildDiary({ model, pure, F: ctx.F, input: raw, delta, appZone: appZone(), pureMode, eventCache, skyCache, eclipseCache });
       builtKey = key;
+      // eclipse paths and the map arrive later: plan again (same key) once they are here
+      built.pending?.then(() => {
+        if (builtKey !== key) return;
+        builtKey = '';
+        if (active) replan();
+        else stale = true;
+      });
     } catch (err) {
       console.warn('[diary] planning failed', err);
       setText(status, 'This Delta could not be planned');

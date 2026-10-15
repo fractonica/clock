@@ -14,8 +14,11 @@ import { createFormatter } from '../../src/core/format.js';
 import { sanitizeDiaryOptions } from '../../src/diary/options.js';
 import { planDiary, deltaAt } from '../../src/diary/plan.js';
 import { renderPage, printDocument } from '../../src/diary/render.js';
+import { buildDiary, createEclipseCache } from '../../src/ui/diary/build.js';
 import { measure } from '../../src/diary/render/common.js';
 import * as astro from '../../src/diary/astro/index.js';
+import { skyOf } from '../../src/diary/astro/sky.js';
+import { placeOf } from '../../src/diary/places.js';
 
 globalThis.Path2D ??= class {};
 const model = createModel();
@@ -37,7 +40,7 @@ export function syntheticEvents(t0, t1) {
   series('synodic', 947182440, 29.530589 * DAY, ['new-moon', 'first-quarter', 'full-moon', 'last-quarter'], ['New moon', 'First quarter', 'Full moon', 'Last quarter']);
   series('anomalistic', 948326400, 27.55455 * DAY, ['perigee', 'post-perigee', 'apogee', 'post-apogee'], ['Perigee', 'Post-perigee', 'Apogee', 'Post-apogee']);
   series('draconic', 946700000, 27.212221 * DAY, ['ascending-node', 'post-ascending', 'descending-node', 'post-descending'], ['Ascending node', 'Post-ascending', 'Descending node', 'Post-descending']);
-  series('sidereal', 946900000, 27.321662 * DAY, ['sidereal-0', 'sidereal-90', 'sidereal-180', 'sidereal-270'], ['Sidereal 0°', 'Sidereal 90°', 'Sidereal 180°', 'Sidereal 270°']);
+  series('sidereal', 946900000, 27.321662 * DAY, ['galactic-centre', 'post-centre', 'galactic-anticentre', 'post-anticentre'], ['Galactic centre', 'Post-centre', 'Galactic anticentre', 'Post-anticentre']);
   series('solar', 953537700, 365.2422 * DAY, ['march-equinox', 'june-solstice', 'september-equinox', 'december-solstice'], ['March equinox', 'June solstice', 'September equinox', 'December solstice'], ['Northward equinox', 'Northern solstice', 'Southward equinox', 'Southern solstice']);
   series('solar', 946876680, 365.2596 * DAY, ['perihelion', 'aphelion'], ['Perihelion', 'Aphelion']);
   return out.sort((a, b) => a.t - b.t);
@@ -57,23 +60,25 @@ const SETS = {
   canvases: { opts: { canvases: [{ type: 'dot-grid', cols: 24, rows: 12 }, { type: 'lined', lines: 20 }, { type: 'blank' }], retro: { canvases: [{ type: 'dots', count: 900 }, { type: 'grid', cols: 40, rows: 30 }] } } },
 };
 
-function build(name) {
+/** The diary of a set, built as the Diary tab builds it (src/ui/diary/build.js), eclipse maps included. */
+async function build(name) {
   const s = SETS[name];
-  const opts = sanitizeDiaryOptions(s.opts, { pure: !!s.pureMode });
   const delta = deltaAt(model, s.t ?? A);
-  const D = model.cycleByIndex(3, delta);
-  let events = astro.events(D.start, D.end, opts.events);
-  if (!events.length) events = syntheticEvents(D.start, D.end);
-  const plan = planDiary({ model, pure, opts, delta, zone: 'Europe/Berlin', events });
-  const env = { model, pure, F: globalThis.Fractonica, fmt: createFormatter(() => plan.zone), pureMode: !!s.pureMode };
-  return { plan, env };
+  const args = { model, pure, F: globalThis.Fractonica, input: s.opts, delta, appZone: 'Europe/Berlin', pureMode: !!s.pureMode, eclipseCache };
+  let b = buildDiary(args);
+  for (let i = 0; b.pending && i < 3; i++) {
+    await b.pending;
+    b = buildDiary(args);
+  }
+  return { plan: b.plan, env: b.env };
 }
+const eclipseCache = createEclipseCache();
 
 /** The pages worth looking at: one of each kind, the retro pages, an insert and the busiest lined page. */
 function pick(plan) {
   const out = new Set();
   const first = (k, f = () => true) => plan.pages.find((p) => p.kind === k && f(p));
-  for (const k of ['cover', 'index', 'gregorian', 'ephemeris', 'ladder', 'milestones', 'planning', 'predictions', 'nuclide', 'insert', 'summary']) {
+  for (const k of ['cover', 'index', 'gregorian', 'ephemeris', 'eclipse', 'saros', 'eclipse-helion', 'ladder', 'milestones', 'planning', 'predictions', 'nuclide', 'insert', 'summary']) {
     const p = first(k);
     if (p) out.add(p.no);
   }
@@ -87,6 +92,9 @@ function pick(plan) {
     out.add(busy[0].no);
     out.add(busy[0].no + 1);
   }
+  const semi = plan.pages.find((p) => p.semiSide === 'front');
+  if (semi) out.add(semi.no);
+  for (const p of plan.pages) if (p.eclipse !== undefined) out.add(p.no);
   const lined = first('lined', (p) => !p.retro);
   if (lined) out.add(lined.no + 1);
   const retro = first('lined', (p) => p.retro);
@@ -95,7 +103,7 @@ function pick(plan) {
 }
 
 async function run(name, { shots = true, all = true } = {}) {
-  const { plan, env } = build(name);
+  const { plan, env } = await build(name);
   const t0 = performance.now();
   const html = printDocument(plan, env, { title: `Diary ${name}` });
   const ms = performance.now() - t0;
@@ -111,14 +119,20 @@ async function run(name, { shots = true, all = true } = {}) {
         document.querySelectorAll('section.sheet svg').forEach((svg, i) => {
           const [, , W, H] = svg.getAttribute('viewBox').split(' ').map(Number);
           const texts = [...svg.querySelectorAll('text')].map((t) => {
-            const b = t.getBBox();
+            let b = t.getBBox();
+            // text turned about its anchor (the thumb index, rotate(90 x y)): its box after the turn
+            const rot = /rotate\(90 ([\d.]+) ([\d.]+)\)/.exec(t.getAttribute('transform') ?? '');
+            if (rot) {
+              const [ax, ay] = [Number(rot[1]), Number(rot[2])];
+              b = { x: ax - (b.y + b.height - ay), y: ay + (b.x - ax), width: b.height, height: b.width };
+            }
             const first = t.querySelector('tspan') ?? t;
-            return { s: t.textContent, x: b.x, y: b.y, w: b.width, h: b.height, size: Number(first.getAttribute('font-size') ?? t.getAttribute('font-size')), weight: Number(t.getAttribute('font-weight') ?? 400), ls: Number(t.getAttribute('letter-spacing') ?? 0), spans: t.querySelectorAll('tspan').length, len: t.getComputedTextLength() };
+            return { s: t.textContent, rot: !!rot, x: b.x, y: b.y, w: b.width, h: b.height, size: Number(first.getAttribute('font-size') ?? t.getAttribute('font-size')), weight: Number(t.getAttribute('font-weight') ?? 400), ls: Number(t.getAttribute('letter-spacing') ?? 0), spans: t.querySelectorAll('tspan').length, len: t.getComputedTextLength() };
           });
           const issues = [];
           for (const t of texts) if (t.x < 0.3 || t.y < 0.3 || t.x + t.w > W - 0.3 || t.y + t.h > H - 0.3) issues.push(`off-paper "${t.s}"`);
           // overlaps of the ink boxes (the bbox includes ascent/descent: shrink it vertically)
-          const box = (t) => ({ x0: t.x + 0.05, x1: t.x + t.w - 0.05, y0: t.y + t.h * 0.22, y1: t.y + t.h * 0.86 });
+          const box = (t) => (t.rot ? { x0: t.x + t.w * 0.14, x1: t.x + t.w * 0.78, y0: t.y + 0.05, y1: t.y + t.h - 0.05 } : { x0: t.x + 0.05, x1: t.x + t.w - 0.05, y0: t.y + t.h * 0.22, y1: t.y + t.h * 0.86 });
           for (let a = 0; a < texts.length; a++) {
             for (let b = a + 1; b < texts.length; b++) {
               const p = box(texts[a]);

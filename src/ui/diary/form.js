@@ -9,15 +9,18 @@
  * keeps its focus. Pure mode hides every Gregorian control and words nothing in Earth units.
  */
 import { PAGE_SIZES, CANVAS_TYPES, lockShape } from '../../diary/options.js';
+import { zonePlace } from '../../diary/places.js';
 import { h, ICONS, setText, setAttr } from './dom.js';
 import { getIn, lockReadout, paperLabel, twoUpLabel, pairingWords, mm } from './logic.js';
 
 const SIZES = [...Object.keys(PAGE_SIZES), 'custom'];
-const CANVAS_LABEL = { grid: 'Square grid', dots: 'Scattered dots', 'dot-grid': 'Dot grid', lined: 'Lined', blank: 'Blank' };
+const CANVAS_LABEL = { grid: 'Square grid', dots: 'Scattered dots', 'dot-grid': 'Dot grid', lined: 'Lined', blank: 'Blank', 'nuclide-grid': 'Nuclide grid 7 × 11' };
 const MAX_SHEETS = 8;
 const MAX_CANVASES = 8;
 
 let uid = 0;
+/** 55.7558 -> "55.7558° N" */
+const fmtDeg = (v, pos, neg) => `${Math.abs(v)}° ${v < 0 ? neg : pos}`;
 const nextId = (p) => `dy-${p}-${++uid}`;
 
 export function createForm({ onChange, onReset, onCopy, onToggleGroup, open = [], pure, zones = [] }) {
@@ -189,7 +192,7 @@ export function createForm({ onChange, onReset, onCopy, onToggleGroup, open = []
   const gLock = group(
     'lock',
     'Lock pattern',
-    h('p.dy-note', { text: 'A sheet is one leaf: lined Helions on the front, canvas Helions on the back. A lock is these sheets; the Helions of a Nuclide (77) that no whole lock takes are its retrospection.' }),
+    h('p.dy-note', { text: 'A sheet is one leaf: lined Helions on the front, canvas Helions on the back. A sheet of 5 Helions is a Pentad, of 4 a Semi-pentad. A solar lock is these sheets (3 Pentads and a Semi-pentad: 19 Helions); the Helions of a Nuclide (77) that no whole lock takes are its retrospection.' }),
     sheetList,
     h('div.dy-btns', null, addSheet, lockDefault),
     lockRead,
@@ -247,6 +250,16 @@ export function createForm({ onChange, onReset, onCopy, onToggleGroup, open = []
   const gCanvas = group('canvases', 'Canvases', h('p.dy-note', { text: 'Used in turn for the canvas Helions of every lock.' }), canvasList, h('div.dy-btns', null, addCanvas));
   summaries.canvases = () => opts.canvases.map(canvasText).join(' · ');
 
+  // Semi-pentad --------------------------------------------------------------------------------------------
+  const semiList = h('ol.dy-list.dy-canvases', { 'aria-label': 'Canvases of the Semi-pentad' });
+  const gSemi = group(
+    'semi',
+    'Semi-pentad',
+    checkbox('semi.allCanvas', 'All canvases', { hint: 'Its 4 Helions as canvases, 2 on each side, instead of lined front and canvas back' }),
+    semiList,
+  );
+  summaries.semi = () => (opts.semi.allCanvas ? `4 canvases: ${opts.semi.canvases.map(canvasText).join(' · ')}` : 'like the other sheets');
+
   // Retrospection Helion ---------------------------------------------------------------------------------
   const retroList = h('ol.dy-list.dy-canvases', { 'aria-label': 'Canvas pages of the retrospection Helion' });
   const addRetro = h('button.btn.btn-sm.dy-add', { type: 'button', html: `${ICONS.plus}<span>Add canvas page</span>` });
@@ -265,10 +278,11 @@ export function createForm({ onChange, onReset, onCopy, onToggleGroup, open = []
     if (c.type === 'grid' || c.type === 'dot-grid') return `${c.type === 'grid' ? 'grid' : 'dot grid'} ${c.cols} × ${c.rows}`;
     if (c.type === 'dots') return `${c.count} dots`;
     if (c.type === 'lined') return `${c.lines} lines`;
+    if (c.type === 'nuclide-grid') return 'Nuclide grid';
     return 'blank';
   }
   function canvasRow(base, list, c, i) {
-    const name = base === 'canvases' ? `Canvas ${i + 1}` : `Page ${i + 1}`;
+    const name = base === 'canvases' ? `Canvas ${i + 1}` : base === 'semi.canvases' ? `Helion ${i + 1}` : `Page ${i + 1}`;
     const type = h('select.select.dy-sel.dy-ctype', { 'aria-label': `${name}: type`, dataset: { path: `${base}.${i}.type`, kind: 'select' } });
     for (const t of CANVAS_TYPES) type.append(h('option', { value: t, text: CANVAS_LABEL[t] ?? t }));
     type.value = c.type;
@@ -298,7 +312,7 @@ export function createForm({ onChange, onReset, onCopy, onToggleGroup, open = []
     else if (c.type === 'dots') params.append(num('count', 'dots', 0, 4000));
     else if (c.type === 'lined') params.append(num('lines', 'lines', 1, 80));
     const del = h('button.btn.btn-sm.btn-icon.dy-del', { type: 'button', 'aria-label': `Remove ${name.toLowerCase()}`, title: `Remove ${name.toLowerCase()}`, html: ICONS.close });
-    if (list().length <= 1) del.disabled = true;
+    if (list().length <= 1 || base === 'semi.canvases') del.disabled = true;
     del.addEventListener('click', () => onChange(base, list().filter((_, k) => k !== i)));
     return h('li.dy-item.dy-citem', null, h('span.dy-iname', { text: name }), type, params, del);
   }
@@ -308,22 +322,27 @@ export function createForm({ onChange, onReset, onCopy, onToggleGroup, open = []
     'inserts',
     'Inserts and closing',
     checkbox('inserts.deltaQuarters', 'Delta sheets', { hint: 'A sheet before the lock that holds each Delta quarter threshold (Peak, Node, Valley)' }),
+    checkbox('inserts.eclipses', 'Eclipse sheets', { hint: 'Two sheets before the Helion of each eclipse: the path map or shadow diagram with its Saros series, then the Helion in detail and a canvas' }),
     number('closing.summaryPages', 'Retrospection and summary pages', { min: 0, max: 16 }),
   );
-  summaries.inserts = () => `${opts.inserts.deltaQuarters ? 'Delta sheets' : 'no Delta sheets'} · ${opts.closing.summaryPages} summary ${opts.closing.summaryPages === 1 ? 'page' : 'pages'}`;
+  summaries.inserts = () => `${opts.inserts.deltaQuarters ? 'Delta sheets' : 'no Delta sheets'} · ${opts.inserts.eclipses ? 'eclipse sheets' : 'no eclipse sheets'} · ${opts.closing.summaryPages} summary ${opts.closing.summaryPages === 1 ? 'page' : 'pages'}`;
 
   // Events ---------------------------------------------------------------------------------------------------
   const month = (p) => (p ? '' : ' month');
-  const EVENT_KEYS = ['synodic', 'anomalistic', 'draconic', 'sidereal', 'quarters', 'solar', 'solarSync', 'majors'];
+  const EVENT_KEYS = ['synodic', 'anomalistic', 'draconic', 'sidereal', 'quarters', 'solar', 'lunistices', 'crossQuarters', 'eclipses', 'planets', 'solarSync', 'majors'];
   const gEvents = group(
     'events',
     'Events',
     checkbox('events.synodic', (p) => `Lunar phases (synodic${month(p)})`, { hint: 'New moon, first quarter, full moon, last quarter' }),
     checkbox('events.anomalistic', (p) => `Perigee and apogee (anomalistic${month(p)})`),
     checkbox('events.draconic', (p) => `Lunar nodes (draconic${month(p)})`, { hint: 'The Moon crosses the ecliptic northward or southward' }),
-    checkbox('events.sidereal', (p) => `Lunar longitude (sidereal${month(p)})`, { hint: '0°, 90°, 180°, 270° from the fixed equinox' }),
-    checkbox('events.quarters', 'Quarter events', { hint: 'Halfway points: post-perigee, post-apogee, post-node; sidereal 90° and 270°' }),
+    checkbox('events.sidereal', (p) => `Galactic centre (sidereal${month(p)})`, { hint: 'The Moon passes the galactic centre, then its opposite, the anticentre' }),
+    checkbox('events.quarters', 'Quarter events', { hint: 'Halfway points: post-perigee, post-apogee, post-node, post-centre, post-anticentre' }),
     checkbox('events.solar', 'Equinoxes, solstices, perihelion, aphelion'),
+    checkbox('events.lunistices', 'Lunistices', { hint: 'The Moon farthest north and farthest south' }),
+    checkbox('events.crossQuarters', (p) => (p ? 'Cross-quarter points' : 'Cross-quarter days'), { hint: 'Halfway between equinoxes and solstices: 45°, 135°, 225°, 315°' }),
+    checkbox('events.eclipses', 'Eclipses', { hint: 'Solar and lunar, with their type' }),
+    checkbox('events.planets', 'Planets', { hint: 'Mercury and Venus elongations and conjunctions; Mars, Jupiter, Saturn oppositions and conjunctions' }),
     checkbox('events.solarSync', 'Solar syncs', { hint: 'The start of each sync (19 Helions) as a tick' }),
     checkbox('events.majors', 'Major thresholds', { hint: 'Quarter thresholds of Alpha … Delta as ticks' }),
   );
@@ -331,6 +350,54 @@ export function createForm({ onChange, onReset, onCopy, onToggleGroup, open = []
     const n = EVENT_KEYS.filter((k) => opts.events[k]).length;
     return n === EVENT_KEYS.length ? 'all' : n ? `${n} of ${EVENT_KEYS.length}` : 'none';
   };
+
+  // Sky -------------------------------------------------------------------------------------------------------
+  const placeInput = bindAttrs(h('input.input.dy-text', { type: 'text', maxlength: 60, placeholder: 'Name (optional)', dataset: { kind: 'text' } }), 'sky.place');
+  placeInput.addEventListener('change', () => onChange('sky.place', placeInput.value.trim() || null));
+  const zoneCity = () => zonePlace(opts.gregorian.zone ?? appZone);
+  const where = hintEl(() => {
+    const s = opts.sky;
+    if (Number.isFinite(s.lat) && Number.isFinite(s.lon)) return `${s.place ? s.place + ' · ' : ''}${fmtDeg(s.lat, 'N', 'S')}, ${fmtDeg(s.lon, 'E', 'W')}`;
+    const z = zoneCity();
+    return z ? `${z.place} (the zone’s city) · ${fmtDeg(z.lat, 'N', 'S')}, ${fmtDeg(z.lon, 'E', 'W')}` : 'No place: enter coordinates to draw the sky';
+  });
+  const locate = h('button.btn.btn-sm', { type: 'button', text: 'Use my location' });
+  locate.addEventListener('click', () => {
+    if (!navigator.geolocation) return;
+    locate.disabled = true;
+    navigator.geolocation.getCurrentPosition(
+      (p) => {
+        locate.disabled = false;
+        onChange('sky', { ...opts.sky, lat: Math.round(p.coords.latitude * 1e4) / 1e4, lon: Math.round(p.coords.longitude * 1e4) / 1e4, place: opts.sky.place ?? 'Here' });
+      },
+      () => (locate.disabled = false),
+      { timeout: 15000 },
+    );
+  });
+  const zoneBtn = h('button.btn.btn-sm', { type: 'button', text: 'Zone’s city' });
+  zoneBtn.addEventListener('click', () => onChange('sky', { ...opts.sky, lat: null, lon: null, place: null }));
+  const gSky = group(
+    'sky',
+    'Sky over the place',
+    checkbox('sky.on', 'Solar and lunar altitude', { hint: 'Lined pages: a solar dot on odd lines, a lunar ring on even ones, left below the horizon, right above; rises and sets on the horizon, culminations as squares. Canvases: their paths in the inner margin.' }),
+    field('Place', placeInput, { hint: where }),
+    h('div.dy-row2', null, number('sky.lat', 'Latitude', { min: -90, max: 90, step: 0.0001, unit: '°N' }), number('sky.lon', 'Longitude', { min: -180, max: 180, step: 0.0001, unit: '°E' })),
+    h('div.dy-btns', null, locate, zoneBtn),
+    number('sky.dot', 'Mark size', { min: 0.4, max: 3, step: 0.1, unit: 'mm', hint: hintEl(() => 'The diameter of the solar dot and the lunar ring') }),
+  );
+  summaries.sky = () => {
+    if (!opts.sky.on) return 'off';
+    const z = Number.isFinite(opts.sky.lat) ? { place: opts.sky.place ?? 'custom place' } : zoneCity();
+    return z ? z.place : 'no place';
+  };
+
+  // Edge references -----------------------------------------------------------------------------------------
+  const gNav = group(
+    'nav',
+    'Edge references',
+    checkbox('nav.on', 'Thumb index on the outer edge', { hint: 'Each page points to the previous and next page of its kind: the same Helion one Nuclide away, Semi-pentads, solar locks, Nuclides, the 77th Helion, Delta sheets' }),
+  );
+  summaries.nav = () => (opts.nav.on ? 'on' : 'off');
 
   // Style ----------------------------------------------------------------------------------------------------
   const gStyle = group(
@@ -373,7 +440,7 @@ export function createForm({ onChange, onReset, onCopy, onToggleGroup, open = []
   groups.insertBefore(gPrint, gGreg); // next to the paper it prints on
   summaries.print = () => (opts.print.twoUp ? `2 per sheet · ${pairingWords(opts.print)}` : 'one page per sheet');
 
-  const allGroups = { paper: gPaper, gregorian: gGreg, front: gFront, lock: gLock, lined: gLined, canvases: gCanvas, retro: gRetro, inserts: gInserts, events: gEvents, style: gStyle, print: gPrint };
+  const allGroups = { paper: gPaper, gregorian: gGreg, front: gFront, lock: gLock, lined: gLined, canvases: gCanvas, semi: gSemi, retro: gRetro, inserts: gInserts, events: gEvents, sky: gSky, nav: gNav, style: gStyle, print: gPrint };
 
   // Footer ------------------------------------------------------------------------------------------------------
   const reset = h('button.btn.btn-sm.dy-reset', { type: 'button', html: `${ICONS.reset}<span>Reset to defaults</span>` });
@@ -389,6 +456,7 @@ export function createForm({ onChange, onReset, onCopy, onToggleGroup, open = []
   let sizeSig = '';
   let canvasSig = '';
   let retroSig = '';
+  let semiSig = '';
   function rebuildList(listEl, rows) {
     const active = document.activeElement;
     const path = listEl.contains(active) ? active.dataset.path : null;
@@ -406,8 +474,9 @@ export function createForm({ onChange, onReset, onCopy, onToggleGroup, open = []
       }
       if (el === document.activeElement && kind === 'number') continue;
       if (kind === 'check') el.checked = !!v;
-      else if (kind === 'number') {
-        if (v !== undefined && el.value !== String(v)) el.value = String(v);
+      else if (kind === 'number' || kind === 'text') {
+        const s = v === null || v === undefined ? '' : String(v);
+        if (el.value !== s) el.value = s;
       } else if (kind === 'select') {
         const want = displayValue(path, v);
         if (path === 'gregorian.zone' && want && ![...el.options].some((o) => o.value === want)) el.append(h('option', { value: want, text: want.replace(/_/g, ' ') }));
@@ -448,6 +517,11 @@ export function createForm({ onChange, onReset, onCopy, onToggleGroup, open = []
         canvasSig = cSig;
         rebuildList(canvasList, opts.canvases.map((c, i) => canvasRow('canvases', () => opts.canvases, c, i)));
       }
+      const smSig = JSON.stringify(opts.semi.canvases.map((c) => c.type));
+      if (smSig !== semiSig) {
+        semiSig = smSig;
+        rebuildList(semiList, opts.semi.canvases.map((c, i) => canvasRow('semi.canvases', () => opts.semi.canvases, c, i)));
+      }
       const rSig = JSON.stringify(opts.retro.canvases.map((c) => c.type));
       if (rSig !== retroSig) {
         retroSig = rSig;
@@ -470,6 +544,9 @@ export function createForm({ onChange, onReset, onCopy, onToggleGroup, open = []
       addSheet.disabled = opts.lock.sheets.length >= MAX_SHEETS || shape.perLock + 1 > 77;
       addCanvas.disabled = opts.canvases.length >= MAX_CANVASES;
       addRetro.disabled = opts.retro.canvases.length >= MAX_CANVASES;
+      for (const el of semiList.querySelectorAll('select, input')) el.disabled = !opts.semi.allCanvas;
+      for (const el of gSky.querySelectorAll('input:not([data-path="sky.on"]), button')) el.disabled = !opts.sky.on;
+      if (!navigator.geolocation) locate.disabled = true;
       for (const f of dyn) f();
       for (const [key, det] of Object.entries(allGroups)) setText(det.__sum, summaries[key]());
     },

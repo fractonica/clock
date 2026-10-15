@@ -18,17 +18,21 @@
 import { Svg, frameOf, esc, n2 } from './render/common.js';
 import { paperSize } from './options.js';
 import { contextOf, majorWords } from './render/words.js';
-import { drawHead, drawFolio, sectionTitle } from './render/chrome.js';
+import { drawHead, drawFolio, drawNav, sectionTitle } from './render/chrome.js';
 import { renderLinedBody, renderCanvasBody } from './render/helion.js';
 import { renderCover, renderIndex, renderGregorian, renderEphemeris, renderPlanning } from './render/front.js';
 import { renderNuclide, renderInsert, renderSummary, renderNotes } from './render/book.js';
 import { renderLadder, renderMilestones } from './render/reference.js';
+import { renderEclipse, renderSaros, renderEclipseHelion } from './render/eclipse.js';
 
 const BODY = {
   cover: renderCover,
   index: renderIndex,
   gregorian: renderGregorian,
   ephemeris: renderEphemeris,
+  eclipse: renderEclipse,
+  saros: renderSaros,
+  'eclipse-helion': renderEclipseHelion,
   ladder: renderLadder,
   milestones: renderMilestones,
   planning: renderPlanning,
@@ -48,6 +52,7 @@ export function renderPage(plan, page, env) {
   (BODY[page.kind] ?? renderNotes)(svg, cx, fr, page);
   drawHead(svg, cx, fr, page);
   drawFolio(svg, cx, fr, page);
+  drawNav(svg, cx, fr, page);
   return svg.toString();
 }
 
@@ -69,13 +74,23 @@ export function pageTitle(plan, page) {
     case 'canvas': {
       const ds = page.sections.map((s) => s.d);
       const what = page.kind === 'canvas' ? ' · canvas' : '';
+      if (page.eclipse !== undefined) return `${no}${nu(page.nuclide)} eclipse · ${range(ds)}${what}`;
       if (page.retro) return `${no}${nu(page.nuclide)} retrospection · ${range(ds)}${what}`;
-      return `${no}${nu(page.nuclide)} lock ${page.lock + 1} · ${range(ds)}${what}`;
+      const unit = page.unit === 'pentad' ? ` pentad ${page.unitNo}` : page.unit === 'semi' ? ' semi-pentad' : '';
+      return `${no}${nu(page.nuclide)} lock ${page.lock + 1}${unit} · ${range(ds)}${what}`;
     }
     case 'nuclide':
       return `${no}Nuclide ${nu(page.n)}`;
     case 'insert':
       return `${no}Delta sheet · ${majorWords(page.major)}`;
+    case 'eclipse':
+      return `${no}${plan.eclipses?.[page.eclipse]?.ev.label ?? 'Eclipse'}`;
+    case 'saros': {
+      const s = plan.eclipses?.[page.eclipse]?.saros;
+      return `${no}Saros ${s?.saros ?? ''}`.trim();
+    }
+    case 'eclipse-helion':
+      return `${no}${nu(page.nuclide)} eclipse · ${range([page.helion])}`;
     case 'notes':
       return `${no}Notes`;
     default:

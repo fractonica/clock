@@ -17,12 +17,13 @@
     import { deltaAt, deltaFromPath, deltaRange } from '../src/diary/plan.js';
     import { paperSize } from '../src/diary/options.js';
     import { printDocument } from '../src/diary/render.js';
-    import { buildDiary } from '../src/ui/diary/build.js';
+    import { buildDiary, createEclipseCache } from '../src/ui/diary/build.js';
 
     const model = createModel();
     const pure = createPure(model);
+    const eclipseCache = createEclipseCache();
 
-    window.diaryBuild = ({ t = null, delta = null, path = null, options = {}, zone = null, appZone = null, pure: pureMode = false } = {}) => {
+    window.diaryBuild = async ({ t = null, delta = null, path = null, options = {}, zone = null, appZone = null, pure: pureMode = false } = {}) => {
       const range = deltaRange(model);
       let idx;
       if (path) {
@@ -38,7 +39,14 @@
       }
       const input = structuredClone(options ?? {});
       if (zone) input.gregorian = { ...(input.gregorian ?? {}), zone };
-      const { plan, env, title, opts, zone: z } = buildDiary({ model, pure, input, delta: idx, appZone: zone ?? appZone, pureMode });
+      const args = { model, pure, input, delta: idx, appZone: zone ?? appZone, pureMode, eclipseCache };
+      let built = buildDiary(args);
+      // eclipse paths and the map load asynchronously: build again once they are here
+      for (let i = 0; built.pending && i < 3; i++) {
+        await built.pending;
+        built = buildDiary(args);
+      }
+      const { plan, env, title, opts, zone: z } = built;
       const html = printDocument(plan, env, { title });
       return { html, title, pages: plan.pages.length, width: opts.page.width, height: opts.page.height, paper: paperSize(opts), print: opts.print, delta: idx, stamp: plan.delta.stamp, zone: z };
     };

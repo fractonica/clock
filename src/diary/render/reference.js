@@ -295,7 +295,7 @@ function gammaGrid(svg, cx, fr, top, rowH, headH, M, { pureMode, posText, dateTe
   const colW = (fr.cw - labelW) / 5;
   const two = rowH >= 4.3;
   const fs = Math.min(1.8 * fk, two ? rowH * 0.36 : rowH * 0.48, colW / 7.4);
-  const tiny = Math.min(1.45 * fk, fs * 0.82);
+  const tiny = Math.max(1.5, Math.min(1.45 * fk, fs * 0.82));
   // column heads: the Betas
   M.betas.forEach((b, j) => {
     const x = fr.x0 + labelW + j * colW;

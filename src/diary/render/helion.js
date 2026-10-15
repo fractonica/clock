@@ -7,13 +7,12 @@
  *   margin   in the OUTER margin, along the body's time axis (frac 0 at the header rule, 1 at the section's last
  *            rule): the Helion's wave as two arcs of true circles (crest = positive, to the right; trough to the left,
  *            constant curvature like the library's half-arcs, as deep as the margin allows), a tick at every quarter threshold with the 2-stroke glyph of that state
- *            (4 peak, 8 node, 12 valley, 0 end) and its time, and a tick for every event at its exact fraction with a
- *            symbol, a short name, the Gregorian time and the Fractonica clock. Labels never overlap: they are laid
- *            out along the axis (with leaders when displaced) and shed detail when a section is crowded.
- *   majors   a threshold of Alpha … Delta is a dashed rule across the body in its level colour, said in words
- *            ("Delta Trifracton · Peak ends → Node · 14:02 · 20η 9ι 0λ").
+ *            (4 peak, 8 node, 12 valley, 0 end) and its time, and a tick for every event at its exact fraction. Labels
+ *            never overlap: they are laid out along the axis (with leaders when displaced) and shed detail when crowded.
+ *   events   a threshold of Alpha … Delta and every event is a dashed rule across the body in its colour, said in words
+ *            on the rule ("Delta Trifracton · Peak ends → Node · 14:02 · 20η 9ι 0λ", "○ Full Moon · 19:37 · 73η 6ι 0λ").
  */
-import { SIZE, dodge, packedHeight, rng, seedOf, n2, wrap, measure } from './common.js';
+import { SIZE, dodge, packedHeight, rng, seedOf, n2, measure } from './common.js';
 import { QUARTER_GLYPH } from './words.js';
 
 const HELION_LEVEL = 6;
@@ -90,6 +89,96 @@ export function labelStep(lines, rowH) {
 
 const isQuarter = (f) => [0.25, 0.5, 0.75, 1].some((q) => Math.abs(f - q) < 1e-9);
 
+/** The width the inner-edge line labels will take (before they are drawn): the widest label of the section. */
+function labelReserve(cx, rowH, lines) {
+  const mode = cx.opts.lined.labels;
+  if (mode === 'none') return 0;
+  const fs = Math.max(1.25, Math.min(SIZE.small, rowH * 0.62));
+  const time = mode === 'both' && cx.greg ? measure('00:00', fs * 0.86, { font: cx.font }) + 1 : 0;
+  return measure(lineLabel(lines - 1, lines), fs, { font: cx.font }) + time + 1.5;
+}
+
+// ---- the local sky ------------------------------------------------------------------------------------------
+
+/**
+ * Where the sky goes on a lined section: a vertical horizon at the middle of the writing area (the rules break there),
+ * below the horizon to the left, above to the right, ±90° at ±half. Null without a sky.
+ */
+export function skyFrame(cx, fr, reserve) {
+  if (!cx.plan.sky) return null;
+  const left = fr.x0 + (fr.recto ? reserve : 0) + 1;
+  const right = fr.x1 - (fr.recto ? 0 : reserve) - 1;
+  const xh = (fr.x0 + fr.x1) / 2;
+  const half = Math.max(4, Math.min(xh - left, right - xh) - 1);
+  return { xh, half, gap: 1.8, x: (alt) => xh + Math.max(-1, Math.min(1, alt / 90)) * half };
+}
+/** The radius (mm) of the Sun and Moon marks: half the options' dot diameter. */
+const skyR = (cx) => (cx.opts.sky?.dot ?? 1.1) / 2;
+/** A Sun (filled) or Moon (ring) mark; `square` for a culmination. */
+function skyDot(svg, cx, body, x, y, r = skyR(cx), square = false) {
+  const sun = body === 'sun';
+  const fill = sun ? cx.pal.family('solar') : '#ffffff';
+  const o = sun ? {} : { stroke: cx.pal.ink2, sw: 0.2 };
+  if (square) svg.rect(x - r, y - r, 2 * r, 2 * r, { fill, stroke: o.stroke, sw: o.sw });
+  else svg.circle(x, y, r, fill, o);
+}
+
+/**
+ * The sky on a lined section: on every odd rule the Sun, on every even rule the Moon, at their altitude at the rule's
+ * moment. A rise or a set is a mark on the horizon (in the gap of the rules) at its exact moment, a culmination a square
+ * at its altitude – no words: where they stand says what they are.
+ */
+export function drawSkyLines(svg, cx, fr, box, h, lines, sf) {
+  const sky = cx.plan.sky;
+  const bh = box.bodyBottom - box.bodyTop;
+  const at = (j) => h.t0 + (j / lines) * (h.t1 - h.t0);
+  for (let j = 1; j <= lines; j++) {
+    const body = j % 2 ? 'sun' : 'moon';
+    const alt = sky.altAt(body, Math.min(at(j), sky.t1));
+    if (!Number.isFinite(alt)) continue;
+    skyDot(svg, cx, body, sf.x(alt), box.bodyTop + (j / lines) * bh);
+  }
+  for (const e of sky.events) {
+    if (e.t < h.t0 || e.t >= h.t1) continue;
+    const y = box.bodyTop + ((e.t - h.t0) / (h.t1 - h.t0)) * bh;
+    const transit = e.name === 'transit';
+    skyDot(svg, cx, e.body, transit ? sf.x(e.alt) : sf.xh, y, skyR(cx) * 1.2, transit);
+  }
+}
+
+/**
+ * The sky beside a canvas section, in the INNER margin (the wave is in the outer one): the horizon as a vertical line,
+ * the Sun's altitude as a solid curve and the Moon's dotted, over the Helion from top to bottom (below the horizon
+ * towards the left, above towards the right).
+ */
+export function drawSkyTrack(svg, cx, fr, box, h) {
+  const sky = cx.plan.sky;
+  if (!sky) return;
+  const { pal } = cx;
+  const band = fr.m.inner - 4.5;
+  if (band < 4) return;
+  const xh = fr.recto ? fr.inner - 1.2 - band / 2 : fr.inner + 1.2 + band / 2;
+  const half = band / 2 - 0.3;
+  const X = (alt) => xh + Math.max(-1, Math.min(1, alt / 90)) * half;
+  const top = box.bodyTop;
+  const bot = box.bodyBottom;
+  svg.line(xh, top, xh, bot, pal.ruleStrong, 0.15);
+  const N = 72;
+  for (const body of ['sun', 'moon']) {
+    const pts = [];
+    for (let i = 0; i <= N; i++) {
+      const t = Math.min(h.t0 + (i / N) * (h.t1 - h.t0), sky.t1);
+      const alt = sky.altAt(body, t);
+      if (Number.isFinite(alt)) pts.push(`${n2(X(alt))} ${n2(top + (i / N) * (bot - top))}`);
+    }
+    if (pts.length > 1) {
+      const d = `M${pts.join('L')}`;
+      if (body === 'sun') svg.path(d, { stroke: pal.family('solar'), sw: 0.3 });
+      else svg.path(d, { stroke: pal.ink2, sw: 0.25, dash: '0.25 0.6', cap: 'round' });
+    }
+  }
+}
+
 /** Ruled lines of a lined section; returns the width reserved by the labels at the inner edge. */
 export function drawRuled(svg, cx, fr, box, h, lines) {
   const { pal, opts } = cx;
@@ -97,12 +186,16 @@ export function drawRuled(svg, cx, fr, box, h, lines) {
   const rowH = bh / lines;
   const d = [];
   const dq = [];
+  // with a sky, every rule breaks at the horizon so that the gaps line up into a vertical line
+  const sf = skyFrame(cx, fr, labelReserve(cx, rowH, lines));
   for (let k = 1; k <= lines; k++) {
     const y = n2(box.bodyTop + k * rowH);
-    (isQuarter(k / lines) ? dq : d).push(`M${n2(fr.x0)} ${y}H${n2(fr.x1)}`);
+    const seg = sf ? `M${n2(fr.x0)} ${y}H${n2(sf.xh - sf.gap / 2)}M${n2(sf.xh + sf.gap / 2)} ${y}H${n2(fr.x1)}` : `M${n2(fr.x0)} ${y}H${n2(fr.x1)}`;
+    (isQuarter(k / lines) ? dq : d).push(seg);
   }
   if (d.length) svg.path(d.join(''), { stroke: pal.rule, sw: 0.15 });
   if (dq.length) svg.path(dq.join(''), { stroke: pal.ruleStrong, sw: 0.17 });
+  if (sf) drawSkyLines(svg, cx, fr, box, h, lines, sf);
   const mode = opts.lined.labels;
   if (mode === 'none') return 0;
   const withTime = mode === 'both' && cx.greg;
@@ -131,36 +224,59 @@ export function drawRuled(svg, cx, fr, box, h, lines) {
 
 // ---- majors across the body -------------------------------------------------------------------------------
 
-export function drawMajors(svg, cx, fr, box, h, { reserveInner = 14 } = {}) {
+/**
+ * Thresholds of Alpha … Delta and every event (lunar, solar, planets, syncs) as a dashed rule across the body at its
+ * moment, said in words on the rule at the outer side: "Delta Trifracton · Peak ends → Node · 14:02 · 20η 9ι 0λ",
+ * "○ Full Moon · 19:37 · 73η 6ι 0λ". Rules at the same instant share one rule and stack their labels; a label that
+ * would touch another moves to the other side of its rule or further out. `skip(e)`: events to leave out.
+ */
+export function drawMajors(svg, cx, fr, box, h, { reserveInner = 14, skip = null } = {}) {
   const { pal } = cx;
-  // thresholds at the same instant (a Gamma node is also a Delta node) share one rule, their labels stack
+  const size = 1.8;
+  const lh = size * 1.25;
   const groups = [];
   for (const e of h.events) {
-    if (e.family !== 'major') continue;
+    if (skip?.(e)) continue;
     const g = groups.find((x) => Math.abs(x[0].frac - e.frac) < 1e-7);
     if (g) g.push(e);
     else groups.push([e]);
   }
+  groups.sort((a, b) => a[0].frac - b[0].frac);
+  const order = (e) => (e.family === 'major' ? e.major.level : 10);
+  const placed = []; // baselines in use
+  const free = (yb) => yb - size * 0.8 >= box.bodyTop + 0.2 && yb + 0.4 <= box.bodyBottom + 1.5 && placed.every((p) => Math.abs(p - yb) >= lh);
   for (const g of groups) {
-    g.sort((a, b) => a.major.level - b.major.level);
+    g.sort((a, b) => order(a) - order(b));
     const e0 = g[0];
     const y = yOf(box, e0.frac);
-    svg.line(fr.x0, y, fr.x1, y, pal.level(e0.major.level), 0.26, { 'stroke-dasharray': '1.4 0.9' });
-    const below = e0.frac < 0.08;
-    const tail = [cx.greg ? cx.gTime(e0.t) : null, cx.fClock(e0.t)].filter(Boolean).join(' · ');
-    // the finest level sits next to the rule, coarser ones further out; the time goes on the label nearest the rule
-    const list = below ? g : g.slice().reverse();
-    list.forEach((e, i) => {
-      const text = i === 0 ? `${cx.majorWords(e.major)} · ${tail}` : cx.majorWords(e.major);
-      const yy = below ? y + 2.4 + i * 2.3 : y - 0.8 - i * 2.3;
-      svg.text(fr.outer - fr.dir * 0.6, yy, text, {
-        size: 1.8,
+    const major = e0.family === 'major';
+    const color = major ? pal.level(e0.major.level) : cx.familyColor(e0);
+    // the rule leaves the line labels at the inner edge readable
+    const ra = fr.recto ? fr.x0 + reserveInner : fr.x0;
+    const rb = fr.recto ? fr.x1 : fr.x1 - reserveInner;
+    svg.line(ra, y, rb, y, color, major ? 0.26 : 0.22, { 'stroke-dasharray': major ? '1.4 0.9' : '0.9 0.7' });
+    const tail = (e) => [cx.greg ? cx.gTime(e.t) : null, cx.fClock(e.t)].filter(Boolean).join(' · ');
+    const words = (e) => (e.family === 'major' ? cx.majorWords(e.major) : `${cx.eventSymbol(e)} ${cx.eventName(e)}${e.family === 'sync' && cx.driftText(e) ? ` · drift ${cx.driftText(e)}` : ''}`);
+    // the finest level sits next to the rule; the time goes on the label nearest to it
+    g.forEach((e, i) => {
+      const text = i === 0 ? `${words(e)} · ${tail(e)}` : words(e);
+      const above = [y - 0.8 - i * lh, y + size + 0.5 + i * lh];
+      let yb = above.find(free);
+      for (let k = 1; yb === undefined && k < 8; k++) yb = [y - 0.8 - (i + k) * lh, y + size + 0.5 + (i + k) * lh].find(free);
+      if (yb === undefined) yb = y - 0.8;
+      placed.push(yb);
+      // a paper-white backing: the label stays clear of other rules that pass under it
+      const maxW = fr.cw - reserveInner - 1.2;
+      const w = Math.min(measure(text, size, { weight: 600, font: cx.font }), maxW);
+      const xo = fr.outer - fr.dir * 0.6;
+      svg.rect(fr.recto ? xo - w - 0.5 : xo - 0.5, yb - size * 0.88, w + 1, size * 1.2, { fill: '#ffffff' });
+      svg.text(xo, yb, text, {
+        size,
         weight: 600,
-        fill: pal.level(e.major.level),
+        fill: e.family === 'major' ? pal.level(e.major.level) : cx.familyColor(e),
         anchor: fr.outerAnchor,
-        maxW: fr.cw - reserveInner - 1.2,
+        maxW,
         min: 1.45,
-        halo: true,
       });
     });
   }
@@ -203,7 +319,6 @@ export function drawMargin(svg, cx, fr, box, h, bounds) {
   const depth = 1.6 * k; // the deepest bulge the margin allows on both sides of the axis
   const railEnd = 3.7 * k;
   const glyphX = 4.9 * k;
-  const evX = 4.1 * k;
   const X = (d) => fr.outer + fr.dir * d;
   const anchor = fr.recto ? 'start' : 'end';
   const top = box.bodyTop;
@@ -227,8 +342,7 @@ export function drawMargin(svg, cx, fr, box, h, bounds) {
   let labels = [];
   let fs = SIZE.tiny;
   for (let level = 0; level <= 5; level++) {
-    fs = level >= 3 ? 1.3 : 1.5;
-    const lh = fs * 1.2;
+    fs = level >= 3 ? 1.45 : 1.6;
     labels = [];
     for (const tk of ticks) {
       const text = level >= 4 ? null : cx.greg ? cx.gTime(tk.t) : pureTick(h, tk.name);
@@ -236,28 +350,7 @@ export function drawMargin(svg, cx, fr, box, h, bounds) {
       const hgt = glyphs ? glyphH : fs * 1.25;
       labels.push({ type: 'q', tk, anchor: yOf(box, tk.frac), text, h: hgt, want: yOf(box, tk.frac) - hgt / 2 });
     }
-    if (level < 5) {
-      for (const e of h.events) {
-        if (e.family === 'major') continue;
-        const maxW = usable - evX;
-        const lines = [];
-        const sym = cx.eventSymbol(e);
-        const name = cx.eventName(e);
-        const nameLines = wrap(name, maxW - measure(sym + ' ', fs, { font: cx.font }), fs, { maxLines: level >= 2 || e.family === 'sync' ? 1 : 2, font: cx.font });
-        nameLines.forEach((l, i) => lines.push(i === 0 ? { sym, text: l } : { text: l }));
-        if (e.family === 'sync') {
-          const dr = cx.driftText(e);
-          if (dr && level < 2) lines.push({ text: `drift ${dr}`, fill: pal.ink3 });
-          if (cx.greg && level < 2) lines.push({ text: cx.gTime(e.t), fill: pal.ink2 });
-        } else {
-          if (cx.greg && level < 2) lines.push({ text: cx.gTime(e.t), fill: pal.ink2 });
-          if (level < 1) lines.push({ text: cx.fClock(e.t), fill: pal.ink3 });
-        }
-        const hgt = lines.length * lh;
-        const a = yOf(box, e.frac);
-        labels.push({ type: 'e', e, lines, anchor: a, h: hgt, lh, want: a - fs * 0.62 });
-      }
-    }
+    // the events are said on their rules across the body (drawMajors); the margin keeps only their ticks
     if (packedHeight(labels) <= room) break;
   }
   dodge(labels, bounds.lo, bounds.hi);
@@ -278,26 +371,14 @@ export function drawMargin(svg, cx, fr, box, h, bounds) {
 
   // labels and leaders
   for (const l of labels) {
-    if (l.type === 'q') {
-      const cyl = l.y + l.h / 2;
-      let x = glyphX - (glyphs ? 0 : 1.1 * k);
-      if (Math.abs(cyl - l.anchor) > 0.9) svg.line(X(railEnd), l.anchor, X(x - 1.1 * k), cyl, pal.ink4, 0.12);
-      if (glyphs) {
-        svg.glyph(QUARTER_GLYPH[l.tk.name], X(glyphX), cyl, glyphH, helionColor, 0.2);
-        x = glyphX + 1.45 * k;
-      }
-      if (l.text) svg.text(X(x), cyl + fs * 0.36, l.text, { size: fs, fill: pal.ink2, anchor, maxW: usable - x, min: 1.2 });
-    } else {
-      const c = cx.familyColor(l.e);
-      const first = l.y + fs * 0.86;
-      if (Math.abs(first - fs * 0.32 - l.anchor) > 0.9) svg.line(X(railEnd), l.anchor, X(evX - 0.4), first - fs * 0.32, c, 0.12);
-      l.lines.forEach((ln, i) => {
-        const y = first + i * l.lh;
-        const maxW = usable - evX;
-        if (ln.sym) svg.runs(X(evX), y, [{ text: ln.sym, size: fs, fill: c }, { text: ln.text, size: fs, fill: pal.ink, gap: 0.6 }], { anchor, maxW });
-        else svg.text(X(evX), y, ln.text, { size: fs, fill: ln.fill ?? pal.ink2, anchor, maxW, min: 1.2 });
-      });
+    const cyl = l.y + l.h / 2;
+    let x = glyphX - (glyphs ? 0 : 1.1 * k);
+    if (Math.abs(cyl - l.anchor) > 0.9) svg.line(X(railEnd), l.anchor, X(x - 1.1 * k), cyl, pal.ink4, 0.12);
+    if (glyphs) {
+      svg.glyph(QUARTER_GLYPH[l.tk.name], X(glyphX), cyl, glyphH, helionColor, 0.2);
+      x = glyphX + 1.45 * k;
     }
+    if (l.text) svg.text(X(x), cyl + fs * 0.36, l.text, { size: fs, fill: pal.ink2, anchor, maxW: usable - x, min: 1.4 });
   }
 }
 
@@ -308,6 +389,7 @@ export function drawMargin(svg, cx, fr, box, h, bounds) {
  */
 export function drawCanvas(svg, cx, fr, box, h, canvas, salt = 0) {
   const { pal } = cx;
+  if (canvas.type === 'nuclide-grid') return drawNuclideGrid(svg, cx, fr, box, h);
   const pad = 1.4;
   const x = fr.x0;
   const w = fr.cw;
@@ -361,6 +443,59 @@ export function drawCanvas(svg, cx, fr, box, h, canvas, salt = 0) {
       svg.path(c.map(([px, py, sx, sy]) => `M${n2(px + sx * m)} ${n2(py)}H${n2(px)}V${n2(py + sy * m)}`).join(''), { stroke: pal.ruleStrong, sw: 0.2 });
     }
   }
+}
+
+/** Event families that the ephemeris lists (the grid shows their marks). */
+const ASTRO_FAMILIES = new Set(['synodic', 'anomalistic', 'draconic', 'sidereal', 'solar', 'lunistice', 'cross-quarter', 'eclipse', 'planet']);
+
+/**
+ * The Nuclide's 77 Helions as a 7 × 11 grid to mark each one: a column per ζ (11 Helions), numbered 1…77 down the
+ * columns in the top-left corner of each cell. Cells of Semi-pentads are tinted, the 77th Helion (this page) outlined;
+ * the bottom-right corner carries the symbols of the Helion's ephemeris events in their family colours.
+ */
+export function drawNuclideGrid(svg, cx, fr, box, h) {
+  const { pal, plan } = cx;
+  const pad = 1.4;
+  const w = fr.cw;
+  const hh = box.bodyBottom - box.bodyTop - pad;
+  const cols = 7;
+  const rows = 11;
+  const cell = Math.min(w / cols, hh / rows);
+  if (cell < 3) return;
+  const gw = cell * cols;
+  const gh = cell * rows;
+  const ox = fr.x0 + (w - gw) / 2;
+  const oy = box.bodyTop + pad + (hh - gh) / 2;
+  const base = h.n * 77;
+  const numSize = Math.min(1.7, cell * 0.16);
+  const markSize = Math.min(2, cell * 0.2);
+  for (let c = 0; c < cols; c++) {
+    for (let r = 0; r < rows; r++) {
+      const k = c * rows + r;
+      const hx = plan.helions[base + k];
+      if (!hx) continue;
+      const x = ox + c * cell;
+      const y = oy + r * cell;
+      const page = plan.pages[(hx.page ?? 1) - 1];
+      if (page?.unit === 'semi') svg.rect(x, y, cell, cell, { fill: pal.levelSoft(2) });
+      if (hx.d === h.d) svg.rect(x + 0.3, y + 0.3, cell - 0.6, cell - 0.6, { stroke: pal.level(4), sw: 0.35 });
+      svg.text(x + 0.7, y + numSize + 0.5, hx.label, { size: numSize, fill: page?.unit === 'semi' ? pal.level(2) : pal.ink3 });
+      const marks = hx.events.filter((e) => ASTRO_FAMILIES.has(e.family));
+      if (marks.length) {
+        svg.runs(
+          x + cell - 0.6,
+          y + cell - 0.7,
+          marks.map((e, i) => ({ text: cx.eventSymbol(e), size: markSize, fill: cx.familyColor(e), gap: i ? 0.3 : 0 })),
+          { anchor: 'end', maxW: cell - 1.2, minScale: 0.6 },
+        );
+      }
+    }
+  }
+  const d = [];
+  for (let c = 1; c < cols; c++) d.push(`M${n2(ox + c * cell)} ${n2(oy)}V${n2(oy + gh)}`);
+  for (let r = 1; r < rows; r++) d.push(`M${n2(ox)} ${n2(oy + r * cell)}H${n2(ox + gw)}`);
+  svg.path(d.join(''), { stroke: pal.rule, sw: 0.15 });
+  svg.rect(ox, oy, gw, gh, { stroke: pal.ruleStrong, sw: 0.22 });
 }
 
 /** A filled dot as a path segment (two arcs): many dots stay one element. */
@@ -417,13 +552,15 @@ export function scatter(count, x, y, w, h, seed) {
 
 // ---- whole pages -----------------------------------------------------------------------------------------
 
+const badgeOf = (page) => (page.retro ? 'retrospection' : page.unit === 'semi' ? 'semi-pentad' : null);
+
 /** A lined page (a sheet front, or the retro Helion): sections of ruled lines. */
 export function renderLinedBody(svg, cx, fr, page) {
   const boxes = sectionBoxes(fr, page.sections.length);
   page.sections.forEach((s, i) => {
     const h = cx.plan.helions[s.d];
     const box = boxes[i];
-    drawSectionHeader(svg, cx, fr, box, h, { badge: page.retro ? 'retrospection' : null });
+    drawSectionHeader(svg, cx, fr, box, h, { badge: badgeOf(page) });
     const reserve = drawRuled(svg, cx, fr, box, h, s.lines);
     drawMajors(svg, cx, fr, box, h, { reserveInner: Math.max(reserve, 4) });
     drawMargin(svg, cx, fr, box, h, marginBounds(fr, boxes, i));
@@ -437,9 +574,11 @@ export function renderCanvasBody(svg, cx, fr, page) {
   page.sections.forEach((s, i) => {
     const h = cx.plan.helions[s.d];
     const box = boxes[i];
-    drawSectionHeader(svg, cx, fr, box, h, { badge: page.retro ? 'retrospection' : null });
+    drawSectionHeader(svg, cx, fr, box, h, { badge: badgeOf(page) });
     drawCanvas(svg, cx, fr, box, h, s.canvas, salt);
-    drawMajors(svg, cx, fr, box, h, { reserveInner: 2 });
+    drawSkyTrack(svg, cx, fr, box, h);
+    // the Nuclide grid carries the events of all its Helions; the 77th's own are said on its lined page
+    if (s.canvas.type !== 'nuclide-grid') drawMajors(svg, cx, fr, box, h, { reserveInner: 2 });
     drawMargin(svg, cx, fr, box, h, marginBounds(fr, boxes, i));
   });
 }

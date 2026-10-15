@@ -27,6 +27,52 @@ harmonic sequence), all 63 levels with periods converted to frequency where appr
 period ladder, the other the major milestones of Alpha, Beta and Gamma, with eclipses highlighted."* – the reference
 sheet below.
 
+Third round (applied): *"call 5 Helions a Pentad (3 + 2) and the 4th one a Semi-pentad with 4 blank canvases; each major
+period page from the Semi-pentad up refers to the previous and next such page (page number and arrow) on the edge, each
+reference at its own height, and regular pages to the previous and next page with the same Helion number; Helion 77 gets
+a 7×11 grid with small numbers in the corners to mark each Helion, Semi-pentads distinguished, with the ephemeris marks;
+fill the ephemeris's second page with more events; Sun rise/noon/set and Moon rise/culmination/set for a place, mapped
+on the pages: the rules split at a vertical horizon, the Sun on odd lines and the Moon on even lines (left below, right
+above), rises and sets in the gap; on canvases their trajectories on the side opposite the wave."* Owner's choices: the
+Semi-pentad is all canvases; the references are a thumb index; the default place is the zone's city (Moscow); the
+ephemeris adds lunistices, cross-quarters, eclipses and planets.
+
+Fourth round (applied): *"make an emphasis on eclipses: a Helion that gets an eclipse gets 4 pages (2 sheets). Page 1: the
+eclipse in detail with the path of totality on a map – a cubic gnomonic projection centred on the path, from
+gnomonicube – over half the page, and its Saros family (next, previous …); page 2: every eclipse of the series with its
+Fractonica address; page 3: the Helion with the complete timeline (first contact, maximum …) divided by Preons and
+Flavons; page 4: a blank canvas. A lunar eclipse gets the usual diagram of how much of the Moon is covered."*
+
+Fifth round (applied): Sun and Moon marks without words – a rise or set is a mark on the horizon, a culmination a
+square at its altitude – and `sky.dot` sets their size; every event is said on its own dashed rule across the body like
+the Delta thresholds ("○ Full Moon · 06:19 · 69η 19ι 22λ"), with a white backing, the rule stopping short of the line
+labels (the outer margin keeps only the event's tick); the sidereal month is measured against the galactic centre (Sgr
+A*, λ 266.84° J2000): galactic centre, post-centre, galactic anticentre, post-anticentre; the running head shows the
+Delta's phase at the page's first Helion as two big 2-stroke glyphs in its middle (the "/125 125" is gone, each side
+keeps to its half); no text on an A5 page is smaller than about 1.45 mm (4.1 pt).
+
+## Eclipses
+
+`inserts.eclipses` (needs `events.eclipses`): each eclipse of the Delta gets two sheets right before the sheet that
+holds its Helion (the Helion keeps its regular page too):
+
+| page | side | what |
+|---|---|---|
+| `eclipse` | recto | the name, the Fractonica stamp and Gregorian moment, Saros n · member of count, magnitude, γ; over the top half the figure – solar: the path on a gnomonic cube net (`src/diary/geo/eclipse-map.js`: the globe turned so that greatest eclipse is the centre of the front face and the path runs left to right; front, left, right, top and bottom faces; land, borders, lakes, graticule, the path band, greatest eclipse, the diary's place), lunar: the Moon at each contact crossing the penumbra and umbra (north up, east left); then greatest eclipse (where, solar altitude, duration, path width / magnitudes and phase durations), the global contacts, what the place sees (kind, magnitude, obscuration, local contacts with the solar altitude / the lunar altitude at each contact), and the Saros neighbours (previous, next, first, last) |
+| `saros` | verso | every member of the series in two columns: number, date (normal mode), type, Fractonica address (`—` beyond the catalogue), the page when it is in this diary; this eclipse highlighted. Saros 141 is noted as the clock's own series |
+| `eclipse-helion` | recto | the Helion on one page, 36 lines (a line per Preon) with the sky; in the inner margin a Flavon ruler (a tick every 13λ, longer at each Preon and 9ι) and bars of the eclipse phases (solar P1–P4, U1–U4; lunar P1–P4, U1–U4, U2–U3); each contact inside the Helion a dashed rule at its moment, a label (name, Gregorian time, Fractonica clock) with a picture of the discs at that moment (the Sun and the Moon over the place, or the Moon in the shadow), labels dodged so they never overlap; contacts outside the Helion listed at its top (↑ before) or bottom (↓ after); the sky's rises and sets join the same list |
+| `canvas` | verso | a blank canvas for the Helion |
+
+Data: `plan.eclipses` `[{ev, detail, local, saros, geo, d, page, pages}]` from `createEclipseCache()` in
+src/ui/diary/build.js – `detail` / `local` / `saros` from src/diary/astro/eclipse-detail.js (`solarDetail`, `solarLocal`,
+`lunarDetail`, `lunarVisibility`, `sarosOf`: Besselian-style shadow geometry on moon.js / sun.js; checked against NASA's
+catalogues 1701–2200: Saros numbers exact, contacts within seconds, greatest point within 0.2°, widths 1.4 km rms,
+durations within 0.8 s), `geo` the eclipse's record in src/diary/geo/data/<saros>.bin (NASA predictions by F. Espenak,
+via gnomonicube's saros-geo; 1582–2499) and `plan.world` (src/diary/geo/data/world.json, Natural Earth 1:50m simplified
+to 71 KB). The path data and the map load asynchronously: `buildDiary` returns `pending` until they are in, and the Diary
+tab and the PDF export build again when it settles. Index rows `kind: 'eclipse'`; edge references `eclipse` (between
+the eclipse pages). Pure mode: Fractonica times only, local contacts spelled "1st contact" …
+
 ## Files and owners
 
 | file | what |
@@ -70,7 +116,14 @@ sections, index, helionAt(t), pageOf(t)}`:
   - `cover` · `index {part, of, rows}` · `gregorian {part, of, months:[{y,m}]}` · `ephemeris {part, of, rows:[events]}` ·
     `ladder` · `milestones` · `planning {part, of}` · `predictions {part, of}`
   - `nuclide {n}` – the Nuclide header (a verso, facing the first Helion page)
-  - `lined {sections:[{d, lines}], nuclide, lock, sheet, sheets, retro?, t0, t1}` – a sheet front, or the retro Helion
+  - `lined {sections:[{d, lines}], nuclide, lock, sheet, sheets, unit, unitNo, retro?, t0, t1}` – a sheet front, or the
+    retro Helion. `unit` 'pentad' (a sheet of 5 Helions, `unitNo` 1–3 in its lock) | 'semi' (4 Helions) | 'sheet'.
+    A Semi-pentad with `semi.allCanvas` is two canvas pages (front a recto, `semiSide` 'front' / 'back'), 2 Helions each,
+    canvases from `semi.canvases`.
+  - every Helion page, Nuclide header and Delta sheet carries `nav` `[{kind, label, prev, next}]` (`navigate()`): the
+    thumb index. Kinds: `helion` (the page of the same Helion number one Nuclide earlier / later, same page kind),
+    `semi` (Semi-pentad fronts with fronts, backs with backs), `lock` (first pages of the solar locks), `retro` (each
+    page of the 77th Helion with the same page of the other Nuclides), `nuclide`, `insert`.
   - `canvas {sections:[{d, canvas:{type, cols, rows | count | lines}}], nuclide, lock, sheet, retro?, t0, t1}`
   - `insert {major, nuclide, lock, helion}` – a Delta sheet before the lock that holds a Delta quarter threshold
   - `summary {part, of}` · `notes {filler | insertBack | sheetBack | tail}`
@@ -102,16 +155,32 @@ colours from `src/core/theme.js`, toned for paper) or 'mono'; ruled lines light 
   inward; a full semicircle where the margin allows it, otherwise the deepest circular arc that fits), and at each quarter threshold a tick with the glyph of that state (index 4
   peak, 8 node, 12 valley, 0 end) and its Gregorian time. Events (`helion.events`) get a tick at their exact `frac` in
   the outer margin with a symbol, a short name, the Gregorian time and the Fractonica clock (`33η 29ι 21λ`).
+- **Thumb index** (`opts.nav.on`): a 6 mm strip along the outer paper edge (`frameOf().navW`; the margin labels keep
+  the rest of the outer margin, which is 20 mm by default, the inner 16 mm). One tab per reference, turned to read down
+  the edge – `‹ 37 · 5η · 191 ›` – at the fixed height of its kind (`NAV_SLOTS`: Nuclide 6 %, Delta sheet 21 %, lock
+  37 %, Semi-pentad 53 %, 77th Helion 69 %, Helion 86 % of the content height), tinted in its level's colour to the
+  paper edge; the text stays ≥ 4.4 mm from the edge (the unprintable rim).
+- **The local sky** (`opts.sky`, `plan.sky` = src/diary/astro/sky.js `skyOf` over `places.js placeOf(opts, zone)`: the
+  options' coordinates, else the zone's main city). Lined sections: every rule breaks for 1.8 mm at the middle of the
+  writing area; the gaps line up into a vertical horizon. On rule j (its moment is j/lines of the Helion) the Sun (odd
+  j, a filled amber dot) or the Moon (even j, a ring) sits at its altitude: left of the horizon below it, right above,
+  ±90° at ±half the width. Rises and sets are larger marks on the horizon at their exact moment, culminations at their
+  altitude, each with its time ("rise 05:50", "noon 13:11"; pure mode "culmination 29ι 47λ"). Canvas sections: in the
+  inner margin, the horizon (a vertical line), the Sun's altitude (solid) and the Moon's (dotted) over the Helion.
 - **canvas** – the same section headers and margin ticks/curve/events; the body of each section is its canvas: `grid`
   (cols × rows square cells, 19 × 13 by default, as large as fits), `blank` (the default second canvas), `dots` (`count` dots scattered pseudo-randomly with a
-  seed from the Helion's cycle index, so a diary always prints the same), `dot-grid`, `lined`, `blank`.
+  seed from the Helion's cycle index, so a diary always prints the same), `dot-grid`, `lined`, `blank`, and
+  `nuclide-grid` (the 77th Helion's second canvas by default): the Nuclide's 77 Helions as 7 columns (one per ζ of 11
+  Helions) × 11 rows, numbered 1–77 down the columns in the cells' top-left corners, Semi-pentad cells tinted, the
+  77th outlined, each cell's bottom-right corner carrying the symbols of that Helion's ephemeris events.
 - **index** – title block: the Delta in words (Alpha … Delta), its letters, when it begins and **ends** (Fractonica +
   Gregorian); then the rows: thresholds of the major periods ("Delta Trifracton · Peak ends → Node", "Gamma Nonafracton ·
   Node …"), the Nuclides, the locks (`ε#2 lock 3 · 38η–56η`), the retro Helions, the inserts and the sections, each with
   Fractonica time, Gregorian time and page.
 - **gregorian** – month grids (weeks from Monday), each day of the Delta with its page number; days outside greyed.
 - **ephemeris** – a table: symbol · event · Fractonica (short date down to Flavons) · Gregorian (weekday, date, time,
-  zone) · page; a legend of the four months and the solar events with their definitions.
+  zone) · page; a legend of the event families with their definitions. Rows may pack up to 30 % tighter than
+  `rowsPerPage` when that saves a page (the default Delta's 63 events fill two pages).
 - **ladder** (the reference sheet's front) – how the hierarchy is derived (Alpha = 4 Saros; S = 5, 13, 5, 5, 7, 11, 9, 4
   repeating; P(L) = P(L−1) · S[(L−1) mod 8]; a cycle lasts 4 Saros / P(L); letters α … ω, α1 …), then one row per level
   for depths 1–63: depth · letter · unit name · factor (×) · cycles per Alpha (exact below 10¹²) · period (y d h min s, SI
@@ -152,7 +221,9 @@ order. `turn` 'side' (default; a printer's "flip on short edge") or 'top' ("flip
 
 ## Ephemeris (`astro`)
 
-`events(t0, t1, opts)` → events in [t0, t1) (Unix seconds, UTC), each `{t, family, name, label, labelPure, symbol}`:
+`events(t0, t1, opts)` → events in [t0, t1) (Unix seconds, UTC), each `{t, family, name, label, labelPure, symbol, jde}`
+plus, where they apply, `dist` (perigee/apogee km, perihelion/aphelion AU, planet events AU), `dec` (lunistices, degrees),
+`kind` / `magnitude` / `gamma` (eclipses) and `elongation` (greatest elongations, degrees):
 
 | family | events | definition |
 |---|---|---|
@@ -160,14 +231,41 @@ order. `turn` 'side' (default; a printer's "flip on short edge") or 'top' ("flip
 | anomalistic | perigee · post-perigee · apogee · post-apogee | perigee/apogee = minimum/maximum Earth–Moon distance; post-perigee = the moment halfway (in time) between a perigee and the next apogee; post-apogee likewise |
 | draconic | ascending-node · post-ascending · descending-node · post-descending | the Moon crosses the ecliptic northward/southward (latitude 0); post-ascending = halfway between an ascending node and the next descending node (near the northernmost point); post-descending likewise |
 | sidereal | sidereal-0 · -90 · -180 · -270 | the Moon's geocentric ecliptic longitude referred to the fixed J2000 equinox = 0°, 90°, 180°, 270° |
-| solar | march-equinox · june-solstice · september-equinox · december-solstice · perihelion · aphelion | the Sun's apparent longitude 0°/90°/180°/270°; Earth nearest/farthest from the Sun |
+| lunistice | moon-north △ · moon-south ▽ | the Moon's greatest geocentric apparent declination north/south (λ + Δψ, β → δ with the true obliquity); label "Moon farthest north 28.4°" |
+| solar | march-equinox · june-solstice · september-equinox · december-solstice · perihelion · aphelion · cross-quarter-45 · -135 · -225 · -315 ⊗ | the Sun's apparent longitude 0°/90°/180°/270°; Earth nearest/farthest from the Sun; cross-quarters: apparent longitude 45°/135°/225°/315° ("Cross-quarter 45°") |
+| eclipse | solar-eclipse ◍ · lunar-eclipse ◕ | greatest eclipse; `kind` total · annular · hybrid · partial (solar), total · partial · penumbral (lunar); label "Total solar eclipse", "Penumbral lunar eclipse" |
+| planet | mercury-/venus- elongation-east · elongation-west · inferior-conjunction · superior-conjunction; mars-/jupiter-/saturn- opposition · conjunction (☿ ♀ ♂ ♃ ♄) | greatest elongation = a maximum of the angular distance from the Sun, east (evening) or west (morning), label "Mercury east elongation 18.4°"; conjunction/opposition = geocentric apparent ecliptic longitude equal to / 180° from the Sun's (inferior: the planet nearer than the Sun) |
 
-`quarters: false` drops post-* and the sidereal 90°/270°. `labelPure` never names a month ("northward equinox",
-"northern solstice", "southward equinox", "southern solstice"). Accuracy targets: phases, nodes, sidereal and solar
-longitudes within ~2 min; perigee/apogee within ~30 min; perihelion/aphelion within ~1 h. Algorithms: Meeus,
-*Astronomical Algorithms* (ch. 47 Moon, 25/27 Sun and seasons, 38 perihelion), root-finding on the series; TT ↔ UTC with
-`F.fromUTC` / `F.toUnix` (leap seconds and ΔT). It must cover any Delta of the catalogue (1613–2857) and take < 150 ms for
-one Delta.
+Flags (`options.events`, all default true): synodic, anomalistic, draconic, sidereal, quarters, solar, lunistices,
+crossQuarters (the cross-quarters alone), eclipses, planets. `quarters: false` drops post-* and the sidereal 90°/270°.
+`labelPure` never names a month ("northward equinox", "northern solstice", "southward equinox", "southern solstice") nor
+"Sun"; every pure label passes the hard rules of tools/pure-scan.mjs (tested). Families sort in the order above when
+two events share an instant.
+
+Algorithms: Meeus, *Astronomical Algorithms* (ch. 47 Moon, 25/27 Sun and seasons, 38 perihelion, 22 nutation, 54
+eclipses), root-finding on the series; TT ↔ UTC with `F.fromUTC` / `F.toUnix` (leap seconds and ΔT).
+- Eclipses (eclipses.js): Meeus 54 finds the candidates (|sin F| ≤ 0.36), its time and u; greatest eclipse is then refined
+  on the Moon and Sun series as the least distance of the shadow axis from the Earth's centre (solar) or of the Moon from
+  the axis of the Earth's shadow (lunar), Espenak's definition; γ from that geometry. Solar type by Meeus' criteria
+  (central |γ| < 0.9972: total u < 0, annular u > 0.0047, else hybrid when u < 0.00464 √(1 − γ²)); magnitude from
+  Meeus' formula for partial eclipses, the Moon/Sun apparent diameter ratio for central ones. Lunar type and magnitudes
+  from the shadow geometry with Chauvenet's 2 % enlargement (as the NASA catalogues).
+- Planets (planets.js): VSOP87D truncated per planet (vsop87.js, generated from the original VSOP87D files; truncation
+  error ≤ 2.7" in geocentric longitude over the catalogue range), the Earth from sun.js, light-time and annual aberration;
+  oppositions/conjunctions of the outer planets by angle crossings of λ☉ − λ, the inner planets' conjunctions by sign
+  changes of λ − λ☉, greatest elongations by sign changes of the elongation's rate.
+
+Accuracy (measured; the tests keep samples): phases, nodes, sidereal and solar longitudes within ~2 min;
+perigee/apogee within ~30 min; perihelion/aphelion within ~1 h; lunistices within 0.8 min and 3" of DE440 (Skyfield),
+cross-quarters within 0.9 min; eclipses against F. Espenak's NASA catalogues 1701–2200 – solar: all 1180 found, greatest
+eclipse within 0.3 min (TD), γ within 0.0044, 8 types differ at the hybrid/total/annular or annular/partial boundaries,
+3 extra partials of magnitude < 0.01; lunar: all 1210 found, no extra, every type right, within 0.94 min, magnitudes within
+0.0024; planets against DE440 (371 events in 1620–2604): Mercury within 0.9 min, Venus 2.0, Mars 3.0, Jupiter and Saturn
+0.9, elongation angles within 1". It must cover any Delta of the catalogue (1613–2857) and take < 150 ms for one Delta
+(≈ 25 ms in Node with every family).
+
+The ephemeris page's legend has one entry per enabled family (lunar months, the tropical month for the lunistices, solar
+events with the cross-quarters, eclipses, planets); with every family on it is about 65 mm high (13 table rows of 5.4 mm).
 
 ## The Diary tab (`src/ui/diary.js`)
 

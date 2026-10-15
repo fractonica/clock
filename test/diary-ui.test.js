@@ -123,7 +123,7 @@ test('option paths: get and set without touching the source', () => {
   const o = sanitizeDiaryOptions({});
   assert.equal(getIn(o, 'page.margins.top'), 12);
   assert.equal(getIn(o, 'canvases.0.rows'), 13);
-  assert.equal(getIn(o, 'retro.canvases.1.count'), 385);
+  assert.equal(getIn(o, 'retro.canvases.1.type'), 'nuclide-grid');
   assert.equal(getIn(o, 'print.pairing'), 'spreads');
   assert.equal(getIn(o, 'lock.sheets.3.0'), 2);
   assert.equal(getIn(o, 'nope.deeper'), undefined);

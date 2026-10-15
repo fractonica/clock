@@ -120,7 +120,7 @@ function hsl(h, s, l) {
   return `#${hex(f(0))}${hex(f(8))}${hex(f(4))}`;
 }
 
-const FAMILY_HUE = { synodic: 232, anomalistic: 284, draconic: 330, sidereal: 196, solar: 42, sync: 42 };
+const FAMILY_HUE = { synodic: 232, anomalistic: 284, draconic: 330, sidereal: 196, lunistice: 150, solar: 42, sync: 42, planet: 75 };
 
 /**
  * Paper palette. 'color': the app's level hues (theme.levelHue) toned down for print; 'mono': greys only.
@@ -158,6 +158,8 @@ export function palette(opts) {
       memo(`f${f}`, () => {
         if (mono) return '#3b434b';
         if (f === 'solar' || f === 'sync') return hsl(40, 78, 34);
+        // eclipses: the warm ink of the catalogue's eclipses (milestones)
+        if (f === 'eclipse') return p.eclipse;
         return FAMILY_HUE[f] !== undefined ? hsl(FAMILY_HUE[f], 34, 40) : '#3b434b';
       }),
   };
@@ -218,6 +220,21 @@ export class Svg {
    * o: size, fill, anchor ('start'|'middle'|'end'), weight, italic, ls (letter spacing mm), maxW, min, halo (white
    * outline behind the glyphs, for labels drawn over rules).
    */
+  /**
+   * A line of text turned 90° clockwise about (x, y): it reads downward along a page edge. Returns its length.
+   * o: size, fill, weight, anchor ('start' at (x, y), 'middle', 'end').
+   */
+  textLength(str, size, o = {}) {
+    return measure(str, size, { weight: o.weight ?? 600, font: this.font });
+  }
+  textDown(x, y, str, o = {}) {
+    const size = o.size ?? SIZE.small;
+    const w = measure(str, size, { weight: o.weight, font: this.font });
+    this.out.push(
+      `<text${attrs({ x, y, 'font-size': size, fill: o.fill ?? '#1b2127', 'text-anchor': o.anchor && o.anchor !== 'start' ? o.anchor : undefined, 'font-weight': o.weight && o.weight !== 400 ? o.weight : undefined, transform: `rotate(90 ${n2(x)} ${n2(y)})` })}>${esc(str)}</text>`,
+    );
+    return w;
+  }
   text(x, y, str, o = {}) {
     const size = o.size ?? SIZE.small;
     const mo = { weight: o.weight, font: this.font };
@@ -299,6 +316,11 @@ export class Svg {
     );
     return width(k);
   }
+  /** The width (mm) of glyph `index` drawn `h` mm tall. */
+  glyphWidth(index, h) {
+    const g = glyphGeo(this.F, index);
+    return (g.w * h) / g.h;
+  }
   /** The library's 2-stroke glyph `index` centred at (cx, cy), `h` mm tall (its full cell, dot band included). */
   glyph(index, cx, cy, h, color, sw = 0.2) {
     const g = glyphGeo(this.F, index);
@@ -348,9 +370,18 @@ export function frameOf(opts, page) {
     /** text anchored on the outer / inner content edge */
     outerAnchor: recto ? 'end' : 'start',
     innerAnchor: recto ? 'start' : 'end',
-    /** the margin column that carries the ticks: width */
-    marginW: m.outer,
+    /** the margin column that carries the ticks: width (the thumb index takes the strip along the paper's edge) */
+    marginW: m.outer - navStrip(opts, page),
+    /** the thumb-index strip along the outer paper edge (0 when off or on pages without references) */
+    navW: navStrip(opts, page),
   };
+}
+
+/** Width (mm) of the thumb-index strip at the outer paper edge: on the pages that carry references, when it fits. */
+export const NAV_STRIP = 6;
+export function navStrip(opts, page) {
+  if (!opts.nav?.on || !page?.nav?.length) return 0;
+  return opts.page.margins.outer >= NAV_STRIP + 6 ? NAV_STRIP : 0;
 }
 
 // ---- seeded randomness ---------------------------------------------------------------------------------------

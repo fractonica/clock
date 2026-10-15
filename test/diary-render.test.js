@@ -10,6 +10,7 @@ import { renderPage, printDocument, pageTitle, sheetsOf, duplexSheets } from '..
 import { lineLabel, labelStep, scatter } from '../src/diary/render/helion.js';
 import { seedOf, measure, fit, wrap } from '../src/diary/render/common.js';
 import { RULES } from '../tools/pure-scan.mjs';
+import { createSkyCache, buildDiary, createEclipseCache } from '../src/ui/diary/build.js';
 
 globalThis.Path2D ??= class {};
 const model = createModel();
@@ -33,15 +34,19 @@ function synthetic(t0, t1) {
   series('synodic', 947182440, 29.530589 * DAY, ['new-moon', 'first-quarter', 'full-moon', 'last-quarter'], ['New Moon', 'First Quarter', 'Full Moon', 'Last Quarter'], undefined, ['●', '◐', '○', '◑']);
   series('anomalistic', 948326400, 27.55455 * DAY, ['perigee', 'post-perigee', 'apogee', 'post-apogee'], ['Perigee', 'Post-perigee', 'Apogee', 'Post-apogee']);
   series('draconic', 946700000, 27.212221 * DAY, ['ascending-node', 'post-ascending', 'descending-node', 'post-descending'], ['Ascending node', 'Post-ascending', 'Descending node', 'Post-descending']);
-  series('sidereal', 946900000, 27.321662 * DAY, ['sidereal-0', 'sidereal-90', 'sidereal-180', 'sidereal-270'], ['Sidereal 0°', 'Sidereal 90°', 'Sidereal 180°', 'Sidereal 270°']);
+  series('sidereal', 946900000, 27.321662 * DAY, ['galactic-centre', 'post-centre', 'galactic-anticentre', 'post-anticentre'], ['Galactic centre', 'Post-centre', 'Galactic anticentre', 'Post-anticentre']);
   series('solar', 953537700, 365.2422 * DAY, ['march-equinox', 'june-solstice', 'september-equinox', 'december-solstice'], ['March equinox', 'June solstice', 'September equinox', 'December solstice'], ['Northward equinox', 'Northern solstice', 'Southward equinox', 'Southern solstice']);
   return out.sort((a, b) => a.t - b.t);
 }
 
-function build(input = {}, { pureMode = false, zone = 'Europe/Berlin', events, at = delta } = {}) {
+const skyCache = createSkyCache(8);
+const MOSCOW = { place: 'Moscow', lat: 55.7558, lon: 37.6173 };
+
+function build(input = {}, { pureMode = false, zone = 'Europe/Berlin', events, at = delta, place = MOSCOW } = {}) {
   const opts = sanitizeDiaryOptions(input, { pure: pureMode });
   const C = model.cycleByIndex(3, at);
-  const plan = planDiary({ model, pure, opts, delta: at, zone, events: events ?? synthetic(C.start, C.end) });
+  const sky = opts.sky.on && place ? skyCache(model, at, place) : null;
+  const plan = planDiary({ model, pure, opts, delta: at, zone, events: events ?? synthetic(C.start, C.end), sky });
   const env = { model, pure, F: globalThis.Fractonica, fmt: createFormatter(() => plan.zone), pureMode };
   return { plan, env, opts };
 }
@@ -78,7 +83,9 @@ function texts(svg, font = 'sans') {
       w = measure(s, size, { weight: Number(attr(a, 'font-weight') ?? 400), font }) + ls * [...s].length;
     }
     const x0 = anchor === 'end' ? x - w : anchor === 'middle' ? x - w / 2 : x;
-    out.push({ s, x0, x1: x0 + w, y0: y - size * 0.74, y1: y + size * 0.2, size });
+    // text turned 90° clockwise about (x, y) (the thumb index): it runs down from y, its glyphs stand to the right of x
+    if (/rotate\(90 /.test(attr(a, 'transform') ?? '')) out.push({ s, x0: x - size * 0.2, x1: x + size * 0.74, y0: y, y1: y + w, size });
+    else out.push({ s, x0, x1: x0 + w, y0: y - size * 0.74, y1: y + size * 0.2, size });
   }
   return out;
 }
@@ -90,7 +97,7 @@ function problems(svg, W, H, font) {
   if (!svg.startsWith('<svg xmlns="http://www.w3.org/2000/svg"')) out.push('not an svg');
   if (!svg.includes(`viewBox="0 0 ${W} ${H}"`) || !svg.includes(`width="${W}mm" height="${H}mm"`)) out.push('viewBox / size');
   if (/NaN|undefined|Infinity|\[object/.test(svg)) out.push('bad value in markup');
-  if (/<image|<foreignObject|<script|url\(|href=/.test(svg)) out.push('non-vector or external content');
+  if (/<image|<foreignObject|<script|url\((?!#)|href=/.test(svg)) out.push("non-vector or external content");
   const open = (svg.match(/<(text|tspan|g|svg)\b/g) ?? []).length;
   const close = (svg.match(/<\/(text|tspan|g|svg)>/g) ?? []).length;
   if (open !== close) out.push(`unbalanced tags ${open}/${close}`);
@@ -171,8 +178,8 @@ test('a lined page: section headers, line labels, quarter glyphs, the wave, even
   for (const k of [0, 3, 6, 9, 12, 33]) assert.ok(t.some((x) => x.startsWith(`${k}ι `)), `label ${k}ι`);
   const h0 = plan.helions[page.sections[0].d];
   assert.ok(t.includes(`0ι ${env.fmt.time(Math.round(h0.t0 / 60) * 60, { seconds: false })}`), 'Preon count and Gregorian time at the inner edge');
-  // 4 quarter glyphs per section, drawn from the library geometry; two half-ellipse arcs per section
-  assert.equal((svg.match(/<g transform="translate/g) ?? []).length, 4 * page.sections.length);
+  // 4 quarter glyphs per section, drawn from the library geometry, and the Delta's phase (2 glyphs) in the head
+  assert.equal((svg.match(/<g transform="translate/g) ?? []).length, 4 * page.sections.length + 2);
   // the wave: per section a crest and a trough, arcs of TRUE circles (rx = ry) of the same radius, as deep as allowed
   const waves = [...svg.matchAll(/M([\d.]+) ([\d.]+)A([\d.]+) \3 0 0 1 \1 ([\d.]+)A\3 \3 0 0 0 \1 ([\d.]+)"/g)];
   assert.equal(waves.length, page.sections.length, 'circular crest + trough per section');
@@ -185,9 +192,9 @@ test('a lined page: section headers, line labels, quarter glyphs, the wave, even
   }
   // the running head: Delta words with the quarter and the Nuclide; the global Saros phase as the Helion's number in its Alpha
   const h1 = plan.helions[page.sections[0].d];
-  assert.ok(t.some((x) => /^Delta Trifracton (Peak|Node|Valley|End).* · ε#\d /.test(x) && x.includes(`${pure.groupDigits(h1.alpha)} /${pure.groupDigits(125125)}`)), 'running head');
+  assert.ok(t.some((x) => /^Delta Trifracton (Peak|Node|Valley|End).* · ε#\d /.test(x) && x.includes(pure.groupDigits(h1.alpha)) && !x.includes('125 125')), 'running head');
   assert.ok(!t.some((x) => /Lock \d · sheet/.test(x)), 'no lock/sheet label');
-  assert.ok(!/<circle cx="(?!0")/.test(svg), 'no dial: the number alone (the only circles are glyph dots)');
+  assert.ok(!svg.includes('r="0.32"') && !svg.includes('stroke-width="0.55"'), 'no dial: the number alone');
   assert.ok(t.includes(String(page.no)), 'folio');
 });
 
@@ -204,9 +211,9 @@ test('events: a full moon at 0.4 of a Helion, an equinox, a perigee; syncs and m
   const page = b.plan.pages[b.plan.helions[100].page - 1];
   const t = textOf(renderPage(b.plan, page, b.env));
   const clock = pure.clockText(evs[0].t + 0.01, 'lambda');
-  assert.ok(t.includes('○ Full Moon'), 'symbol and name');
-  assert.ok(t.includes(clock), `Fractonica clock ${clock}`);
-  assert.ok(t.includes(b.env.fmt.time(Math.round(evs[0].t / 60) * 60, { seconds: false })), 'Gregorian time');
+  // said on its rule across the body: symbol, name, Gregorian time, Fractonica clock
+  const time = b.env.fmt.time(Math.round(evs[0].t / 60) * 60, { seconds: false });
+  assert.ok(t.includes(`○ Full Moon · ${time} · ${clock}`), `○ Full Moon · ${time} · ${clock}`);
   assert.ok(t.some((x) => x.includes('Perigee')));
   const eq = textOf(renderPage(b.plan, b.plan.pages[b.plan.helions[200].page - 1], b.env));
   assert.ok(eq.some((x) => x.includes('September equinox') || (x.includes('September') && eq.some((y) => y.includes('equinox')))));
@@ -222,7 +229,7 @@ test('events: a full moon at 0.4 of a Helion, an equinox, a perigee; syncs and m
   const sync = b.plan.events.find((e) => e.family === 'sync');
   const st = textOf(renderPage(b.plan, b.plan.pages[sync.page - 1], b.env));
   assert.ok(st.some((x) => x.includes(`Sync ${sync.sync}`)));
-  assert.ok(st.some((x) => x.startsWith('drift ') && x.endsWith('λ')));
+  assert.ok(st.some((x) => x.includes(`Sync ${sync.sync} · drift `)));
 });
 
 test('coinciding thresholds (Gamma node = Delta node) stack their labels', () => {
@@ -246,17 +253,18 @@ test('canvases: the grid, deterministic dots seeded by the Helion, dot-grid, lin
   const grid = /<path d="((?:M[\d.]+ [\d.]+[VH][\d.]+)+)"[^>]*stroke="#c5cbd1"/.exec(svg)[1];
   assert.equal((grid.match(/V/g) ?? []).length, 18);
   assert.equal((grid.match(/H/g) ?? []).length, 12);
-  // as large as fits: the full content width on A5 (148 − 18 − 14 = 116 mm)
+  // as large as fits: the full content width on A5 (148 − 16 − 20 = 112 mm)
   const vs = [...grid.matchAll(/M([\d.]+) /g)].map((m) => Number(m[1]));
-  assert.ok(Math.abs((vs[1] - vs[0]) * 19 - 116) < 0.1, 'square cells across the width');
+  assert.ok(Math.abs((vs[1] - vs[0]) * 19 - 112) < 0.1, "square cells across the width");
   // the blank canvas: its corner marks
   assert.equal((svg.match(/H[\d.]+V[\d.]+/g) ?? []).length, 4);
-  // the retro Helion's dots: 385 of them (two arcs each)
-  const retroDots = plan.pages.find((p) => p.kind === 'canvas' && p.retro && p.canvas.type === 'dots');
-  const dsvg = renderPage(plan, retroDots, env);
+  // scattered dots on a retro canvas: 385 of them (two arcs each)
+  const dotted = build({ retro: { canvases: [{ type: 'blank' }, { type: 'dots', count: 385 }] } });
+  const retroDots = dotted.plan.pages.find((p) => p.kind === 'canvas' && p.retro && p.canvas.type === 'dots');
+  const dsvg = renderPage(dotted.plan, retroDots, dotted.env);
   const dots = /<path d="((?:M[\d.]+ [\d.]+a[^M]+)+)" fill/.exec(dsvg)[1];
   assert.equal((dots.match(/M/g) ?? []).length, 385);
-  assert.equal(dsvg, renderPage(plan, retroDots, env), 'the same dots every time');
+  assert.equal(dsvg, renderPage(dotted.plan, retroDots, dotted.env), 'the same dots every time');
   const a = scatter(50, 0, 0, 100, 60, seedOf(123, 0, 77));
   assert.deepEqual(a, scatter(50, 0, 0, 100, 60, seedOf(123, 0, 77)), 'deterministic');
   assert.notDeepEqual(a, scatter(50, 0, 0, 100, 60, seedOf(124, 0, 77)), 'another Helion, other dots');
@@ -265,11 +273,11 @@ test('canvases: the grid, deterministic dots seeded by the Helion, dot-grid, lin
   const retro = plan.pages.find((p) => p.kind === 'lined' && p.retro);
   const rt = textOf(renderPage(plan, retro, env));
   for (let k = 0; k < 36; k++) assert.ok(rt.some((x) => x.startsWith(`${k}ι `)), `retro label ${k}ι`);
-  assert.ok(rt.some((x) => x.includes('Retrospection · 77η')));
+  assert.ok(rt.some((x) => x.includes('ε#1 · 77η')));
   const [c1, c2] = [plan.pages[retro.no], plan.pages[retro.no + 1]];
   assert.ok(textOf(renderPage(plan, c1, env)).some((x) => x.includes('canvas 1/2')));
   assert.ok(textOf(renderPage(plan, c2, env)).some((x) => x.includes('canvas 2/2')));
-  assert.deepEqual([c1.canvas.type, c2.canvas.type], ['blank', 'dots']);
+  assert.deepEqual([c1.canvas.type, c2.canvas.type], ['blank', 'nuclide-grid']);
 });
 
 test('front matter: every index row and day page is printed; the ephemeris lists events with a legend', () => {
@@ -330,6 +338,51 @@ test('the reference sheet: the ladder of 63 levels, the milestones of Alpha, Bet
   assert.ok(pmil.includes('pos 21') && pmil.includes('20.985') && !pmil.some((x) => /19\d\d|20[0-4]\d/.test(x)));
 });
 
+/** The default diary as the Diary tab builds it (real ephemeris, the eclipses with their maps), Moscow's sky. */
+async function buildReal({ pureMode = false, input = {} } = {}) {
+  const args = { model, pure, F: globalThis.Fractonica, input, delta, appZone: 'Europe/Moscow', pureMode, eclipseCache: createEclipseCache() };
+  let b = buildDiary(args);
+  for (let i = 0; b.pending && i < 3; i++) {
+    await b.pending;
+    b = buildDiary(args);
+  }
+  return b;
+}
+
+test('eclipses: the map and circumstances, the Saros index, the Helion in detail, a blank canvas', async () => {
+  const b = await buildReal();
+  const { plan, env } = b;
+  assert.deepEqual(plan.eclipses.map((x) => x.ev.label), ['Total solar eclipse', 'Partial lunar eclipse'], 'Delta Trifracton holds 2026-08-12 and 2026-08-28');
+  checkBook(b, 'A5 with eclipses');
+  const [sol, lun] = plan.eclipses;
+  assert.ok(sol.geo && plan.world, 'the path data and the map are loaded');
+  const p1 = renderPage(plan, plan.pages[sol.page - 1], env);
+  const t1 = textOf(p1);
+  assert.ok(t1.includes('● Total solar eclipse'));
+  assert.ok(t1.some((x) => x.startsWith('Saros 126 · 48 of 72')));
+  for (const k of ['Where', 'Totality', 'Path width', 'P1 Partial eclipse begins', 'U4 Total eclipse ends', 'AT MOSCOW', 'SAROS 126']) assert.ok(t1.includes(k), k);
+  assert.ok(p1.length > 20000, 'the map is drawn');
+  const t2 = textOf(renderPage(plan, plan.pages[sol.page], env));
+  assert.ok(t2.some((x) => x.startsWith('Saros 126')));
+  assert.equal(t2.filter((x) => /^\d+$/.test(x)).filter((x) => Number(x) >= 1 && Number(x) <= 72).length >= 72, true, 'every member numbered');
+  const t3 = textOf(renderPage(plan, plan.pages[sol.page + 1], env));
+  assert.ok(t3.some((x) => x.startsWith('max · Greatest eclipse · ')));
+  assert.ok(t3.some((x) => x.startsWith('↑ before this Helion · P1')), 'a contact before the Helion is listed at its top');
+  for (let k = 0; k < 36; k++) assert.ok(t3.some((x) => x.startsWith(`${k}ι `)), `${k}ι`);
+  const l1 = textOf(renderPage(plan, plan.pages[lun.page - 1], env));
+  for (const k of ['Umbral magnitude', 'U1 Partial eclipse begins', 'SAROS 138']) assert.ok(l1.includes(k), k);
+  assert.equal(plan.pages[sol.page + 2].sections[0].canvas.type, 'blank');
+  // pure mode: no hard leaks on the eclipse pages
+  const p = await buildReal({ pureMode: true });
+  const hits = [];
+  for (const x of p.plan.eclipses) {
+    for (const no of x.pages) {
+      for (const str of textOf(renderPage(p.plan, p.plan.pages[no - 1], p.env))) for (const [id, re, sev] of RULES) if (sev === 'hard' && re.test(str)) hits.push(`p${no} ${id}: ${str}`);
+    }
+  }
+  assert.deepEqual(hits, []);
+});
+
 test('pure mode: no Gregorian text anywhere, every word passes the leak rules (0 hard hits)', () => {
   for (const o of [{}, { front: { cover: true, planning: 2, predictions: 2 }, closing: { summaryPages: 1 }, page: { size: 'A6' } }]) {
     const p = build(o, { pureMode: true, zone: 'Asia/Kolkata' });
@@ -349,8 +402,9 @@ test('pageTitle: short labels in Fractonica terms', () => {
   const { plan } = base;
   const titles = plan.pages.map((p) => pageTitle(plan, p));
   const lined = plan.pages.find((p) => p.kind === 'lined');
-  assert.equal(pageTitle(plan, lined), `${lined.no} · ε#1 lock 1 · 1η–3η`);
-  assert.equal(pageTitle(plan, plan.pages[lined.no]), `${lined.no + 1} · ε#1 lock 1 · 4η–5η · canvas`);
+  assert.equal(pageTitle(plan, lined), `${lined.no} · ε#1 lock 1 pentad 1 · 1η–3η`);
+  assert.equal(pageTitle(plan, plan.pages[lined.no]), `${lined.no + 1} · ε#1 lock 1 pentad 1 · 4η–5η · canvas`);
+  assert.ok(titles.includes(`${lined.no + 6} · ε#1 lock 1 semi-pentad · 16η–17η · canvas`), 'the Semi-pentad: all canvases');
   assert.ok(titles.includes(`${plan.nuclides[0].retroPage} · ε#1 retrospection · 77η`));
   assert.equal(pageTitle(plan, plan.pages[0]), '1 · Index 1/2');
   assert.ok(titles.every((t) => t.length < 70));
