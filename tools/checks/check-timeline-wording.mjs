@@ -36,7 +36,7 @@ const own = (e) => /timeline|face/i.test(e) || /pageerror/.test(e);
 
 await withApp(
   async ({ page, url, errors, shot }) => {
-    await page.goto(url(`?t=${T_A}&view=timeline&zone=UTC&sel=7`));
+    await page.goto(url(`?t=${T_A}&view=timeline&zone=UTC&sel=7&face=watch`));
     await page.addStyleTag({ content: '#topbar{max-height:140px;overflow:hidden;} .toast{display:none}' });
     await page.waitForSelector('.tl-canvas');
     await page.waitForSelector('.face-svg .face-glyph path');

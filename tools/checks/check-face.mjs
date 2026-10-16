@@ -89,7 +89,7 @@ await withApp(
     // the harness records only error messages: keep the stacks too, so errors can be attributed to a file
     page.on('pageerror', (e) => errors.push(`pageerror stack: ${e.stack || e.message}`));
     const f = api(page);
-    const q = (t, extra = '') => `?t=${t}&view=rings&zone=UTC${extra}`;
+    const q = (t, extra = '') => `?t=${t}&view=rings&zone=UTC&face=watch${extra}`;
     // other modules may be unfinished while this runs: keep the header from distorting the layout under test
     const open = async (query) => {
       await page.goto(url(query));
@@ -391,7 +391,7 @@ await withApp(
     check('clicking outside closes the popover', !(await page.isVisible('.face-pop')));
 
     // ---- 4. modes: live, time-lapse ------------------------------------------------------------------
-    await open('?view=rings&zone=UTC');
+    await open('?view=rings&zone=UTC&face=watch');
     await page.waitForTimeout(900);
     r = await read();
     check('live mode: no caption under the pill', r.caption === '', JSON.stringify(r.caption));
@@ -466,7 +466,7 @@ await withApp(
 
     // ---- 5. render cost --------------------------------------------------------------------------------
     for (const [label, query] of [
-      ['live', '?view=rings&zone=UTC'],
+      ['live', '?view=rings&zone=UTC&face=watch'],
       ['time-lapse x3600', q(T_A, '&rate=3600')],
       ['time-lapse x31.6M (1 y/s)', q(T_A, '&rate=31557600')],
       ['frozen', q(T_A)],
@@ -918,7 +918,7 @@ await withApp(
       check('... and Escape still closes the dialog', await page.evaluate(() => document.querySelector('.face-pop').hidden));
     }
     // out of the catalogue and back: the accent and labels return
-    await open('?view=rings&zone=UTC&depth=7&sel=7');
+    await open('?view=rings&zone=UTC&face=watch&depth=7&sel=7');
     await page.waitForTimeout(300);
     await page.evaluate(() => {
       window.__realNow = Date.now;
@@ -952,7 +952,7 @@ await withApp(
     await page.unroute('**/src/ui/sound.js');
     // persisted garbage: null / out-of-range depth and selection must not break the face
     await page.evaluate(() => localStorage.setItem('fractonica-clock/v1', JSON.stringify({ topDepth: null, selectedLevel: null, showLetters: 'yes' })));
-    await page.goto(url(`?t=${T_A}&view=rings&zone=UTC`));
+    await page.goto(url(`?t=${T_A}&view=rings&zone=UTC&face=watch`));
     await page.waitForSelector('.face-svg .face-glyph path');
     await page.waitForTimeout(500);
     check('stored topDepth null falls back to the default depth 7', /η 7 · θ 8/.test(await page.textContent('.face-depths')), await page.textContent('.face-depths'));
@@ -1285,7 +1285,7 @@ await withApp(
       await faceCard(page, shot, 'face-pure-live.png');
 
       // ---- 10i. live switching in both directions: P key, header button, store; no reload, no leftovers
-      await open(`?t=${T_A}&view=rings&zone=UTC&pure=0`); // the store persists the mode: say it explicitly
+      await open(`?t=${T_A}&view=rings&zone=UTC&face=watch&pure=0`); // the store persists the mode: say it explicitly
       await page.waitForTimeout(500);
       await page.click('.face-btn[data-act="info"]');
       await page.waitForTimeout(300);
@@ -1348,7 +1348,7 @@ await withApp(
       }
       check('pure/normal: three round trips through the store leave nothing of the other mode behind', toggleProblems.length === 0, toggleProblems.join(' || '));
       // pure mode first, then normal: the normal info overlay is fully normal again
-      await open(`?pure=1&t=${T_A}&view=rings&zone=UTC`);
+      await open(`?pure=1&t=${T_A}&view=rings&zone=UTC&face=watch`);
       await page.click('.face-btn[data-act="info"]');
       await page.waitForTimeout(300);
       await page.keyboard.press('p');
@@ -1366,7 +1366,7 @@ await withApp(
         [320, 640],
       ]) {
         await page.setViewportSize({ width: w, height: h });
-        await open(`?pure=1&t=${T_A}&view=rings`);
+        await open(`?pure=1&t=${T_A}&view=rings&face=watch`);
         await page.waitForTimeout(700);
         const ov = await faceOverflow();
         check(`pure mobile ${w}: nothing in the face card overflows (caption, letters, buttons)`, ov.worst <= 0.5 && ov.cardRight <= ov.innerW, JSON.stringify(ov));
@@ -1396,7 +1396,7 @@ await withApp(
         await page.keyboard.press('Escape');
       }
       await page.setViewportSize({ width: 1440, height: 900 });
-      await open(`?pure=1&t=${T_A}&view=rings`);
+      await open(`?pure=1&t=${T_A}&view=rings&face=watch`);
       await page.waitForTimeout(900);
       await shot('face-pure-full-1440.png');
 
@@ -1405,7 +1405,7 @@ await withApp(
         const tctx = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, deviceScaleFactor: 3, colorScheme: 'dark' });
         const tp = await tctx.newPage();
         tp.on('pageerror', (e) => errors.push('pageerror(touch) stack: ' + (e.stack || e.message)));
-        await tp.goto(url(`?pure=1&t=${T_A}&view=rings`));
+        await tp.goto(url(`?pure=1&t=${T_A}&view=rings&face=watch`));
         await tp.addStyleTag({ content: '#slot-jump{display:none!important;} #topbar{max-height:140px;overflow:hidden;}' });
         await tp.waitForSelector('.face-svg .face-glyph path');
         await tp.waitForTimeout(600);
@@ -1424,7 +1424,7 @@ await withApp(
       }
 
       // ---- 10l. render cost in pure mode (info labels and a tooltip open)
-      await open(`?pure=1&t=${T_A}&view=rings`);
+      await open(`?pure=1&t=${T_A}&view=rings&face=watch`);
       await page.waitForTimeout(400);
       await page.click('.face-btn[data-act="info"]');
       {

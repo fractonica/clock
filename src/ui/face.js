@@ -33,6 +33,7 @@ import {
 } from './face/helpers.js';
 import { createGlyphBook } from './face/glyphs.js';
 import { createScreen } from './face/screen.js';
+import { createJournalFace, journalReading, clampUnit, MAX_UNIT, JOURNAL_UNITS } from './face/journal.js';
 import { createTooltip } from './face/tooltip.js';
 import { buildHowTo, fillHowTo } from './face/howto.js';
 import { pureInfoLabels, pureInfoSpeech, pureTooltipModel, pureRowAriaLabel, pureCaption, letterName, placeText, bigOf, pureRange, PURE_SOLAR_NA, CAPTION_NOTE } from './face/pure.js';
@@ -50,6 +51,7 @@ const ICONS = {
   shorter: icon('<path d="M3.5 5.5L8 10.5l4.5-5"/>'),
   info: icon('<circle cx="8" cy="8" r="5.6"/><path d="M8 7.2v3.6"/><circle cx="8" cy="5.1" r=".5" fill="currentColor"/>'),
   letters: '<span class="face-aa" aria-hidden="true">Aα</span>',
+  face: icon('<rect x="4.5" y="1.8" width="7" height="12.4" rx="3.5"/><path d="M6.5 8h3"/>'),
   help: icon('<circle cx="8" cy="8" r="5.6"/><path d="M6.3 6.4a1.8 1.8 0 1 1 2.5 1.7c-.5.3-.8.6-.8 1.3"/><circle cx="8" cy="11.3" r=".5" fill="currentColor"/>'),
 };
 
@@ -97,7 +99,8 @@ export function mount(el, ctx) {
   const bInfo = btn('info', 'Info', ICONS.info, 'Show info labels (i)');
   const bLetters = btn('letters', 'Letters', ICONS.letters, 'Keep period letters on screen (l)');
   bLetters.setAttribute('aria-pressed', 'false');
-  controls.append(bLonger, bShorter, bInfo, bLetters);
+  const bFace = btn('face', 'Watch', ICONS.face, 'Switch to the watch face');
+  controls.append(bLonger, bShorter, bInfo, bLetters, bFace);
 
   const foot = h('div', 'face-foot');
   const bHelp = h('button', 'btn btn-sm face-help');
@@ -114,7 +117,29 @@ export function mount(el, ctx) {
   status.setAttribute('role', 'status');
   status.setAttribute('aria-live', 'polite');
 
-  wrap.append(stage, caption, controls, foot, pop, status);
+  // the journal face (the default): units as the diary writes them; the watch face (SPEC §8–10) one toggle away
+  const jStage = h('div', 'face-stage face-jstage');
+  const journal = createJournalFace({
+    model,
+    pure,
+    F: ctx.F,
+    theme,
+    uid,
+    onStep: (dir) => {
+      const cur = clampUnit(store.state.journalUnit);
+      const next = Math.min(MAX_UNIT, Math.max(0, cur + dir));
+      if (next === cur) return false;
+      store.set({ journalUnit: next });
+      ctx.select(JOURNAL_UNITS[next][0]);
+      journal.invalidate();
+      ctx.requestRender();
+      return true;
+    },
+  });
+  jStage.append(journal.svg);
+  const isJournal = () => store.state.faceMode !== 'watch';
+
+  wrap.append(stage, jStage, caption, controls, foot, pop, status);
   el.append(wrap);
   const tooltip = createTooltip(wrap, { id: `face-tip-${uid}` });
 
@@ -465,15 +490,27 @@ export function mount(el, ctx) {
     if (!b) return;
     switch (b.dataset.act) {
       case 'longer':
-        screen.pulseRegion('top');
-        stepOrHint(-1);
+        if (isJournal()) journal.step(-1);
+        else {
+          screen.pulseRegion('top');
+          stepOrHint(-1);
+        }
         break;
       case 'shorter':
-        screen.pulseRegion('bottom');
-        stepOrHint(1);
+        if (isJournal()) journal.step(1);
+        else {
+          screen.pulseRegion('bottom');
+          stepOrHint(1);
+        }
         break;
       case 'info':
         showInfo();
+        break;
+      case 'face':
+        store.set({ faceMode: isJournal() ? 'watch' : 'journal' });
+        journal.invalidate();
+        ui.dirty = true;
+        ctx.requestRender();
         break;
       default:
         toggleLetters();
@@ -639,6 +676,14 @@ export function mount(el, ctx) {
 
   // ---- render ------------------------------------------------------------------------------------
   function render(frame, info) {
+    syncFaceMode();
+    if (isJournal()) {
+      ui.lastFrame = frame;
+      journal.render(frame, frame.inRange ? journalReading({ model, pure }, frame.t, store.state.journalUnit) : null);
+      const pureOn = isPure();
+      setText('caption', caption, store.live ? '' : pureOn ? pureCaptionFor(frame.t) : `${fmt.dateTime(frame.t)} ${fmt.tag(frame.t)}`);
+      return;
+    }
     const now = performance.now();
     ui.lastFrame = frame;
     const st = store.state;
@@ -756,7 +801,27 @@ export function mount(el, ctx) {
     if (tipDue) showRowTip(ui.tip.row, ui.tip.at);
   }
 
+  /** Show the face of store.state.faceMode: the journal stage or the watch's; the watch-only controls follow. */
+  let shownMode = null;
+  function syncFaceMode() {
+    const j = isJournal();
+    if (j === shownMode) return;
+    shownMode = j;
+    stage.hidden = j;
+    jStage.hidden = !j;
+    bInfo.hidden = j;
+    bLetters.hidden = j;
+    depths.hidden = j;
+    const label = j ? 'Watch' : 'Journal';
+    bFace.querySelector('span').textContent = label;
+    bFace.title = j ? 'Switch to the watch face (SPEC §8–10)' : 'Switch to the journal face';
+    bFace.setAttribute('aria-label', bFace.title);
+    ui.dirty = true;
+    if (!j) fit();
+  }
+
   applyMode(isPure());
+  syncFaceMode(); // the right stage from the start: two visible stages would share the space until the first frame
 
   function destroy() {
     ro?.disconnect();
@@ -785,5 +850,6 @@ export function mount(el, ctx) {
       return levels();
     },
     svg,
+    journal,
   };
 }

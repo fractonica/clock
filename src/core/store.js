@@ -23,6 +23,8 @@ const DEFAULTS = {
   minDepth: 1, // shared depth range for ring / ladder / timeline lanes
   maxDepth: 10,
   showLetters: false, // SPEC §8 period letters shown permanently
+  faceMode: 'journal', // the clock face: 'journal' (units as the diary writes them) or 'watch' (SPEC §8–10)
+  journalUnit: 5, // the journal face's first unit: 0 α … 3 δ, 4 ε, 5 η, 6 ι (src/ui/face/journal.js)
   pure: false, // pure mode: Fractonica terms only (no Gregorian dates, Earth time units or percentages)
 };
 
@@ -57,6 +59,8 @@ const VALID = {
   minDepth: (v) => isInt(v, 1, 14),
   maxDepth: (v) => isInt(v, 1, 14),
   showLetters: (v) => typeof v === 'boolean',
+  faceMode: (v) => v === 'journal' || v === 'watch',
+  journalUnit: (v) => isInt(v, 0, 6),
   pure: (v) => typeof v === 'boolean',
 };
 /** Keep only valid keys/values of a persisted or incoming object; keep minDepth <= maxDepth. */

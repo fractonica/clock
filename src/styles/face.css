@@ -180,3 +180,13 @@
   .face-overlay, .face-plate, .face-hover, .face-chevron, .face-dot, .face-btn, .face-help { transition: none; }
   .face-pop { animation: none; }
 }
+
+/* ---------- the journal face (src/ui/face/journal.js): fills its stage, the whole pill is the tap target ---------- */
+.face-jstage[hidden] { display: none; }
+.face-journal {
+  display: block; width: 100%; height: 100%; overflow: visible; cursor: pointer; outline: none;
+  user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent; filter: drop-shadow(0 12px 22px rgb(0 0 0 / 0.5));
+}
+.face-journal text { font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace); pointer-events: none; }
+.face-journal:focus-visible .face-body { stroke: var(--cursor); stroke-width: 1.6; }

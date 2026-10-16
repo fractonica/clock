@@ -169,6 +169,10 @@ function applyUrl() {
   if (TAB_IDS.includes(view)) patch.view = view;
   if (q.has('zone')) patch.zone = q.get('zone'); // invalid zones are ignored by the store
   if (q.has('depth')) patch.topDepth = Math.round(Number(q.get('depth')));
+  // the clock face: ?face=watch (SPEC §8–10) or ?face=journal; ?unit=0…6 the journal face's first unit (α … ι)
+  const face = (q.get('face') || '').toLowerCase();
+  if (face === 'watch' || face === 'journal') patch.faceMode = face;
+  if (q.has('unit')) patch.journalUnit = Math.round(Number(q.get('unit')));
   if (q.has('sel')) patch.selectedLevel = Math.round(Number(q.get('sel'))) - 1;
   const pureFlag = flagParam(q.get('pure'));
   if (pureFlag !== null) patch.pure = pureFlag;
@@ -518,6 +522,8 @@ async function copyLink() {
   if (store.state.zone && !isPure()) u.searchParams.set('zone', store.state.zone);
   if (store.state.selectedLevel !== 6) u.searchParams.set('sel', String(store.state.selectedLevel + 1));
   if (store.state.topDepth !== 7) u.searchParams.set('depth', String(store.state.topDepth));
+  if (store.state.faceMode !== 'journal') u.searchParams.set('face', store.state.faceMode);
+  if (store.state.journalUnit !== 5) u.searchParams.set('unit', String(store.state.journalUnit));
   if (store.playing) u.searchParams.set('rate', String(store.rate));
   const text = u.toString();
   let ok = false;

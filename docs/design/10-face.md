@@ -9,6 +9,31 @@ The spec's own display (SPEC §8–§10): the Zepp watch face rebuilt as an inli
 arrangement and numbers, scaled to fill its card, plus a few web affordances that make it readable to a newcomer.
 This is the "reference clock" of the app; the other views explain and navigate it.
 
+## The journal face (default; `src/ui/face/journal.js`)
+
+Owner request: *"make it easier to navigate the journal: the middle shows 72η 24ι 62λ (a triplet of odd periods with
+letters, by the selected depth); the top a double 2-stroke glyph with the phase of the period above the longest one
+shown (ζ for 72η 24ι 62λ); the bottom 2 alternating arcs for the cycle of the middle's longest unit with a tick at its
+position – left arc descending, right ascending; tap the top to go one level up, the bottom to go down; from the Delta
+up, explicit words like 5th Delta Trifracton End, each on its own line with a 3-stroke glyph of its phase below."*
+Owner's choices: the journal face is the default and the watch face stays one toggle away; "5th" is the Nuclide of the
+Delta; a tap moves one named unit; the major mode shows three lines.
+
+- Units (long to short): α β γ δ ε η ι λ ν; `store.state.journalUnit` 0 … 6 is the first one shown (6: ι λ ν).
+- Middle, minor: "34η 29ι 21λ", "ε#05 34η 29ι", "29ι 21λ 03ν" – every count in two digits (owner: *"use 00 00 00 so the
+  font size doesn't change"*), one fixed size for all minor readings; the numbers white, the letters in their level colours.
+- Major periods (α β γ δ, owner's follow-up: *"one major period at a time, only its own: a big 3-stroke glyph on top,
+  text in the middle (4 lines), its arc cycle at the bottom"*): the period's phase as one big 3-stroke glyph (52
+  states) at the top; four lines – the ordinal of its current child, its name, its fracton word, its quarter ("5th /
+  Delta / Trifracton / End": the 5th Nuclide of Delta Trifracton, in its End quarter; "3rd / Gamma / Nonafracton /
+  Valley": its 3rd Delta); its own cycle at the bottom.
+- Top (minor units; owner's follow-up: *"the top glyphs and the bottom arc show the same phase, that of the middle's
+  most significant reading"*): the longest unit's phase (256 states, `pure.pair`) – η for "34η 29ι 21λ", ε for "ε#5 34η 29ι". Bottom: the same unit's cycle as two half-arcs, the left one below the axis (descending), the
+  right one above (ascending), dots at the quarter thresholds and a white tick at the present phase.
+- Taps: top third one unit up (longer), bottom third down; ↑ ↓ on the focused face; the Longer / Shorter buttons; the
+  unit's level becomes the selected level of the other views. The "Watch" button switches to the SPEC face below
+  (`store.state.faceMode`, `?face=watch|journal`, `?unit=0…6`).
+
 ## Spec-faithful screen (logical size 192 × 490 px, pill-shaped, corner radius 96)
 
 Draw one `<svg viewBox="0 0 192 490">` (preserveAspectRatio meet, centred in the card). Inside, **1 design unit = 10 px**
