@@ -78,6 +78,8 @@ final class WaveStage {
     /// Labels grow a little on a big stage (iPad, Mac).
     private(set) var fontScale = 1.0
     var labels = WaveLabelPlacer()
+    /// The labels of a scene still zooming in fade in over the second half of the move.
+    var labelFade = 1.0
     var widths: [String: Double] = [:]
     var colors: [Int: Color] = [:]
     var queue: [QueuedLabel] = []
@@ -112,6 +114,17 @@ final class WaveStage {
         var camTo: WaveCamera
         var t0: Double
         var dur: Double
+        /// A deep zoom passes through the half-arcs between its ends (coarse to fine, the ends included): each is drawn
+        /// while the camera is near its own fitted scale, so the move reads like powers of ten.
+        var chain: [Stop] = []
+    }
+
+    /// A scene on a deep zoom's way: how its frame relates to the target's, and the scale it fits the stage at.
+    struct Stop {
+        var scene: WaveScene
+        var map: WaveFrameMap
+        var fit: Double
+        var level: Int
     }
 
     struct HitArc {
@@ -261,15 +274,31 @@ final class WaveStage {
         }
         snapNext = false
         if !sameLevel, let map = WaveScene.relate(fromScene, next) {
-            let gap: Int
-            if let a = fromScene.focus, let b = next.focus { gap = abs(a.level - b.level) } else { gap = 3 }
-            anim = Move(mode: .zoom, from: fromScene, to: next, map: map, camFrom: fromCam.toFrame(map), camTo: nextCam,
-                             t0: now, dur: min(0.95, 0.42 + 0.09 * Double(max(0, gap - 1))))
+            let la = fromScene.focus?.level ?? -1
+            let lb = next.focus?.level ?? -1
+            let gap = abs(la - lb)
+            var move = Move(mode: .zoom, from: fromScene, to: next, map: map, camFrom: fromCam.toFrame(map), camTo: nextCam,
+                            t0: now, dur: min(1.1, 0.42 + 0.08 * Double(max(0, gap - 1))))
+            if gap >= 2 { move.chain = chain(from: fromScene, la, to: next, lb, map: map, input) }
+            anim = move
         } else {
             anim = Move(mode: .fade, from: fromScene, to: next, map: .identity, camFrom: fromCam, camTo: nextCam, t0: now, dur: 0.24)
         }
         scene = next
         cam = nextCam
+    }
+
+    /// The stops of a deep zoom: the ends and the half-arcs holding the displayed time at every level between them.
+    private func chain(from a: WaveScene, _ la: Int, to b: WaveScene, _ lb: Int, map: WaveFrameMap, _ input: WaveFrameInput) -> [Stop] {
+        guard let cur else { return [] }
+        var stops = [Stop(scene: a, map: map, fit: camera(for: a, input).scale, level: la),
+                     Stop(scene: b, map: .identity, fit: camera(for: b, input).scale, level: lb)]
+        for l in (min(la, lb) + 1)..<max(la, lb) where l >= 0 && l < cur.count && l <= Fractonica.maxLevel {
+            let s = WaveScene.focus(engine.buildFocus(l, cur[l].idx))
+            guard let m = WaveScene.relate(s, b) else { continue }
+            stops.append(Stop(scene: s, map: m, fit: camera(for: s, input).scale, level: l))
+        }
+        return stops.sorted { $0.level < $1.level }
     }
 
     // MARK: The user's pinch and pan
@@ -365,10 +394,24 @@ final class WaveStage {
             let c = animCamera(a, now)
             let to = c.to.adjusted(by: u, width: size.width, height: size.height)
             switch a.mode {
+            case .zoom where !a.chain.isEmpty:
+                // coarse to fine; each stop shows while the camera is within about a factor 6 of its own fit
+                for stop in a.chain {
+                    let target = stop.level == (a.to.focus?.level ?? -1)
+                    let cam = target ? to : to.fromFrame(stop.map)
+                    let w = WaveGeometry.clamp01(1 - abs(log(cam.scale / stop.fit)) / 1.8)
+                    guard w > 0.01 else { continue }
+                    if target { labelFade = WaveGeometry.clamp01((c.e - 0.45) / 0.35) }
+                    drawScene(&g, stop.scene, cam, alpha: w, interactive: target, quiet: !target || c.e < 0.45, input)
+                    labelFade = 1
+                }
             case .zoom:
                 let from = to.fromFrame(a.map)
                 drawScene(&g, a.from, from, alpha: max(0, 1 - c.e * 1.15), interactive: false, quiet: true, input)
-                drawScene(&g, a.to, to, alpha: min(1, 0.3 + c.e), interactive: true, quiet: false, input)
+                // the target's labels wait until its figure is near its size, then fade in
+                labelFade = WaveGeometry.clamp01((c.e - 0.45) / 0.35)
+                drawScene(&g, a.to, to, alpha: min(1, 0.3 + c.e), interactive: true, quiet: c.e < 0.45, input)
+                labelFade = 1
             case .fade:
                 drawScene(&g, a.from, c.from.adjusted(by: u, width: size.width, height: size.height), alpha: 1 - c.e, interactive: false, quiet: true, input)
                 drawScene(&g, a.to, to, alpha: c.e, interactive: true, quiet: false, input)

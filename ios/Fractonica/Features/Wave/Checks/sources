@@ -6,6 +6,9 @@ Fractonica/Features/Wave/WaveNav.swift
 Fractonica/Features/Wave/WaveWords.swift
 Fractonica/Features/Wave/WaveLabels.swift
 Fractonica/Features/Wave/WaveReadout.swift
+Fractonica/Features/Wave/WaveStage.swift
+Fractonica/Features/Wave/WaveRenderer.swift
+Shared/Theme.swift
 Fractonica/Core/Formatting.swift
 Fractonica/Core/AppSettings.swift
 Fractonica/Core/ClockStore.swift

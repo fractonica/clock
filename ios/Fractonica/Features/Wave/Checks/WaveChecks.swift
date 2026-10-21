@@ -28,6 +28,7 @@ struct WaveChecks {
         wordChecks(root, engine)
         readoutChecks(root, engine)
         labelChecks()
+        if let dir = ProcessInfo.processInfo.environment["WAVE_FRAMES"] { WaveFrames.run(into: dir) }
         Checks.finish()
     }
 }

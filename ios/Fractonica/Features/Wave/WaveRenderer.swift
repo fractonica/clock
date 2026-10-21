@@ -92,7 +92,7 @@ extension WaveStage {
         let w = textWidth(g, text, font)
         let x0 = anchor == .leading ? x : anchor == .trailing ? x - w : x - w / 2
         labels.occupy(WaveRect(x0: x0 - 3, y0: y - 8 * fontScale, x1: x0 + w + 3, y1: y + 8 * fontScale), weight: weight)
-        queue.append(QueuedLabel(text: text, at: CGPoint(x: x, y: y), color: color, font: font.font(fontScale), opacity: opacity, anchor: anchor))
+        queue.append(QueuedLabel(text: text, at: CGPoint(x: x, y: y), color: color, font: font.font(fontScale), opacity: opacity * labelFade, anchor: anchor))
     }
 
     /// A label beside a point, on the side with room (`WaveLabelPlacer`).
@@ -101,7 +101,7 @@ extension WaveStage {
                      font: WaveFont, opacity: Double, clearance: Double = 12, weight: Double = 1) -> WaveLabelPlacer.Spot {
         let spot = labels.place(key: key, text: text, width: textWidth(g, text, font), at: WavePoint(x: x, y: y), normal: normal,
                                 clearance: clearance, weight: weight)
-        queue.append(QueuedLabel(text: text, at: CGPoint(x: spot.center.x, y: spot.center.y), color: color, font: font.font(fontScale), opacity: opacity))
+        queue.append(QueuedLabel(text: text, at: CGPoint(x: spot.center.x, y: spot.center.y), color: color, font: font.font(fontScale), opacity: opacity * labelFade))
         return spot
     }
 
@@ -624,7 +624,7 @@ extension WaveStage {
                 if let hover, hover.kind == .marker, hover.level == q.m.level { stroke(&g, circle(q.x, q.y, 11), .white.opacity(0.8), 1.5) }
             }
             let text = nowLabel(.overview(ov), input)
-            if !quiet, !text.isEmpty, let q = pts.first {
+            if !quiet, !text.isEmpty, let q = pts.first, q.x >= 0, q.x <= size.width, q.y >= 0, q.y <= size.height {
                 labels.occupy(WaveRect(x0: q.x - 10, y0: q.y - 10, x1: q.x + 10, y1: q.y + 10))
                 placedLabel(g, key: "now-all", text, at: q.x, q.y, normal: WavePoint(x: 0, y: -1), color: .white, font: .now, opacity: alpha)
             }
