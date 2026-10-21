@@ -1,0 +1,5 @@
+# The app files TimerChecks.swift compiles against (relative to ios/).
+Fractonica/Features/Timer/Ladder.swift
+Fractonica/Features/Timer/TimerModel.swift
+Fractonica/Features/Timer/TickSchedule.swift
+Shared/Notation+Standard.swift
