@@ -1,0 +1,14 @@
+# The app files SoundChecks.swift compiles against (relative to ios/).
+Fractonica/Core/AppSettings.swift
+Fractonica/Core/ClockStore.swift
+Fractonica/Core/ClockTimeline.swift
+Fractonica/Core/Formatting.swift
+Shared/Notation+Standard.swift
+Fractonica/Features/Sound/SoundTuning.swift
+Fractonica/Features/Sound/SoundSchedule.swift
+Fractonica/Features/Sound/SoundPreferences.swift
+Fractonica/Features/Sound/SoundRings.swift
+Fractonica/Features/Sound/SoundReverb.swift
+Fractonica/Features/Sound/SoundRenderer.swift
+Fractonica/Features/Sound/SoundPlanner.swift
+Fractonica/Features/Sound/SoundWords.swift
