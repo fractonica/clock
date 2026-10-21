@@ -1,0 +1,264 @@
+import FractonicaKit
+import Foundation
+
+// Checks of the widgets' logic (ios/scripts/check.sh ios/Widgets/Checks): timelines hold an entry exactly where the
+// picture changes and nowhere else, the snapshots read the SPEC vectors right, and pure words stay pure.
+
+@main
+enum WidgetChecks {
+    /// SPEC §12 vector A: 2026-10-08 12:00 UTC.
+    static let a = 1_791_460_800.0
+    static let clock = FractonicaClock.shared
+
+    static func main() {
+        vectors()
+        words()
+        schedules()
+        pureLeaks()
+        edges()
+        Checks.finish()
+    }
+
+    // MARK: - SPEC vectors
+
+    static func vectors() {
+        let pure = WidgetWords(pure: true)
+        let earth = WidgetWords(pure: false, zone: "UTC")
+
+        let journal = JournalSnapshot(at: a, unit: 5, words: pure)
+        check(journal?.tokens.map(\.text) == ["34η", "29ι"], "Helion face stops at the Preon: \(String(describing: journal?.tokens))")
+        check(journal?.top == .pair(hi: 13, lo: 0), "Helion pair at A is [13, 0] (SPEC §15.6)")
+        check(journal?.leadLevel == 6 && journal?.leadLetter == "η", "the Helion leads")
+        check(journal?.caption == "Delta Trifracton End · ε#5", "caption: \(journal?.caption ?? "nil")")
+        check(journal.map { $0.preon != nil && $0.preon!.contains(a) } == true, "the running Preon holds A")
+
+        let nuclide = JournalSnapshot(at: a, unit: 4, words: pure)
+        check(nuclide?.tokens.map(\.text) == ["ε#05", "34η", "29ι"], "Nuclide face: \(String(describing: nuclide?.tokens.map(\.text)))")
+        check(nuclide?.tokens.first?.prefix == "ε#" && nuclide?.tokens.first?.number == "05", "ε token splits into mark and number")
+
+        let delta = JournalSnapshot(at: a, unit: 3, words: pure)
+        check(delta?.lines == ["5th", "Delta", "Trifracton", "End"], "Delta face: \(delta?.lines ?? [])")
+        check(delta?.preon == nil && delta?.tokens.isEmpty == true, "a major face has no counts")
+        if case .glyph3(let index)? = delta?.top {
+            check(index == clock.level(at: a, 3, strokes: 3)?.index, "major glyph is the 3-stroke state")
+        } else {
+            check(false, "a major face shows a 3-stroke glyph")
+        }
+        check(JournalSnapshot(at: a, unit: 9, words: pure)?.unit == 5, "units beyond η clamp to the Helion face")
+        check(JournalSnapshot(at: a, unit: -3, words: pure)?.unit == 0, "negative units clamp to α")
+
+        let c = ClockSnapshot(at: a, words: pure)
+        check(c?.tokens.map(\.text) == ["34η", "29ι"], "clock tokens")
+        check(c?.helionPair == [13, 0], "clock pair")
+        check(c?.major == "Delta Trifracton End" && c?.nuclide == "ε#5", "clock date: \(c?.major ?? "") \(c?.nuclide ?? "")")
+        check(c?.nextHelion == "35η", "the next Helion: \(c?.nextHelion ?? "nil")")
+        check(c?.nextHelionWhen == "7ι", "pure Helion countdown counts the Preons still to start: \(c?.nextHelionWhen ?? "")")
+        check(c?.earthDay == nil && c?.earthZone == nil, "pure clock has no Earth day or zone")
+        check(c?.solarText.hasPrefix("sync ") == true && c?.solarText.contains("drift") == true && c?.solarText.hasSuffix("λ") == true,
+              "pure solar line: \(c?.solarText ?? "")")
+        check(c?.solarDigits == clock.solar(at: a)?.digits3, "solar odometer")
+
+        let ce = ClockSnapshot(at: a, words: earth)
+        check(ce?.earthDay == "Thu 8 Oct 2026", "Earth day: \(ce?.earthDay ?? "nil")")
+        check(ce?.earthZone == "UTC", "Earth zone tag")
+        let helionEnd = clock.level(at: a, 6)!.end
+        check(abs(helionEnd - a - 3372.428) < 0.01, "SPEC §12: the Helion ends 3372.428 s after A")
+        check(ce?.nextHelionWhen == "12:56", "Earth: the next Helion at 12:56: \(ce?.nextHelionWhen ?? "")")
+        check(ce?.solarText.hasPrefix("sync ") == true && ce?.solarText.contains("began") == true, "Earth solar line: \(ce?.solarText ?? "")")
+
+        let up = UpNextSnapshot(at: a, words: pure)
+        check(up?.turnovers.first?.level == 6 && up?.turnovers.first?.begins == "35η", "first turnover: \(String(describing: up?.turnovers.first))")
+        check(up?.turnovers.first?.countdown == "7ι", "pure countdown: \(up?.turnovers.first?.countdown ?? "nil")")
+        check(up?.turnovers.first?.when == "δ#3 ε#5 35η", "pure when: \(up?.turnovers.first?.when ?? "")")
+        check(up.map { zip($0.turnovers, $0.turnovers.dropFirst()).allSatisfy { $0.time < $1.time } } == true, "turnovers are sorted")
+        check(up.map { Set($0.turnovers.map(\.level)).count == $0.turnovers.count } == true, "one row per level")
+        let delta3 = up?.turnovers.first { $0.level == 3 }
+        check(delta3?.begins == "Delta Tetrafracton", "the next Delta in words: \(delta3?.begins ?? "nil")")
+        // ε#5 is the Delta's last Nuclide: the ε and δ ends coincide and the row names the coarser
+        check(up?.turnovers.contains { $0.level == 4 } == false, "ε ends with δ here, so δ names the row")
+
+        let upE = UpNextSnapshot(at: a, words: earth)
+        check(upE?.turnovers.first?.countdown == nil, "Earth: a close turnover counts down live")
+        check(upE?.turnovers.first?.when == "12:56", "Earth when: \(upE?.turnovers.first?.when ?? "")")
+        check(upE?.turnovers.last?.countdown?.hasSuffix(" d") == true || upE?.turnovers.last?.countdown?.hasSuffix(" h") == true,
+              "Earth: a far turnover is a static span: \(upE?.turnovers.last?.countdown ?? "nil")")
+
+        let rings = RingsSnapshot(at: a, words: pure)
+        check(rings?.rings.map(\.level) == Array(0...6), "rings α … η")
+        check(rings?.rings.allSatisfy { $0.phase >= 0 && $0.phase < 1 && $0.local < $0.siblings } == true, "ring readings in range")
+        check(rings?.next?.begins == "35η", "rings: next Helion")
+
+        let lock = AccessorySnapshot(at: a)
+        check(lock?.helion == 34 && lock?.inline == "34η 29ι", "lock: \(lock?.inline ?? "nil")")
+        check(lock?.major == "Delta Trifracton End" && lock?.nuclide == "ε#5", "lock date")
+    }
+
+    // MARK: - Words
+
+    static func words() {
+        let w = WidgetWords(pure: false, zone: "UTC")
+        check(w.earthWhen(a + 3600, from: a) == "13:00", "same day: \(w.earthWhen(a + 3600, from: a))")
+        check(w.earthWhen(a + 86_400, from: a) == "Fri 12:00", "tomorrow: \(w.earthWhen(a + 86_400, from: a))")
+        check(w.earthWhen(a + 6 * 86_400, from: a) == "Wed 12:00", "six days: \(w.earthWhen(a + 6 * 86_400, from: a))")
+        check(w.earthWhen(a + 10 * 86_400, from: a) == "Oct 18 12:00", "farther: \(w.earthWhen(a + 10 * 86_400, from: a))")
+        check(w.earthWhen(a + 400 * 86_400, from: a) == "Nov 12 2027 12:00", "another year: \(w.earthWhen(a + 400 * 86_400, from: a))")
+        check(w.earthSpan(3 * 86_400 + 4 * 3600 + 5) == "3 d 04 h", "Earth span: \(w.earthSpan(3 * 86_400 + 4 * 3600 + 5))")
+        let berlin = WidgetWords(pure: false, zone: "Europe/Berlin")
+        check(berlin.earthWhen(a, from: a) == "14:00", "zone applies: \(berlin.earthWhen(a, from: a))")
+        check(berlin.earthZone(a) == "UTC+02:00", "zone tag: \(berlin.earthZone(a))")
+
+        let p = WidgetWords(pure: true)
+        // the last Helion of ε#5 rolls into the next Delta's first Nuclide
+        let nuclideEnd = clock.level(at: a, 4)!.end
+        let lastHelion = clock.level(at: nuclideEnd - 1, 6)!
+        check(p.nextCycleName(level: 6, cycle: lastHelion.cycle) == "ε#1 1η", "across a Nuclide: \(p.nextCycleName(level: 6, cycle: lastHelion.cycle) ?? "nil")")
+        let helion = clock.level(at: a, 6)!
+        check(p.nextCycleName(level: 6, cycle: helion.cycle) == "35η", "inside a Nuclide")
+        let lastAlpha = Int64(clock.count(0)) - 1
+        check(p.nextCycleName(level: 0, cycle: lastAlpha) == nil, "nothing begins after the last Alpha")
+        check(WidgetWords.levelWord(3) == "Delta" && WidgetWords.levelWord(6) == "η", "level words")
+        let nu = Journal.reading(at: a, unit: 6)?.tokens?.last.map(CountToken.init(journal:))
+        check(nu?.suffix == "ν" && nu?.number == "03" && nu?.level == 12, "ν token: \(String(describing: nu))")
+    }
+
+    // MARK: - Schedules
+
+    /// What a family draws at t, as a comparable key (continuous values such as the arc's tick are left out where a
+    /// coarser change already schedules them).
+    static func schedules() {
+        let pure = WidgetWords(pure: true)
+        let earth = WidgetWords(pure: false, zone: "UTC")
+        let starts = [a, 946_684_800, 2_886_085_800, clock.tMin + 86_400 * 3]
+        for start in starts {
+            for unit in JournalSnapshot.units {
+                expectHonest("journal \(unit)", from: start, changes: { _ in JournalSnapshot.changes(unit: unit) }) { t in
+                    JournalSnapshot(at: t, unit: unit, words: pure).map { s in
+                        "\(s.top) \(s.tokens.map(\.text)) \(s.lines) \(s.preon.map { "\($0.lowerBound)" } ?? "") \(Notation.pair(s.leadPhase).index)"
+                    }
+                }
+            }
+            for words in [pure, earth] {
+                let mode = words.pure ? "pure" : "earth"
+                expectHonest("clock \(mode)", from: start, changes: { _ in ClockSnapshot.changes(words: words) }) { t in
+                    ClockSnapshot(at: t, words: words).map {
+                        "\($0.tokens.map(\.text)) \($0.helionPair) \($0.solarDigits ?? []) \($0.solarText) \($0.nextHelionWhen) \($0.major) \($0.nuclide) \($0.earthDay ?? "")"
+                    }
+                }
+                // Earth turnovers counting down live change nothing at a Preon start
+                expectHonest("up next \(mode)", from: start, exactChanges: words.pure, changes: { UpNextSnapshot.changes(at: $0, words: words) }) { t in
+                    UpNextSnapshot(at: t, words: words).map { $0.turnovers.map { "\($0.level) \($0.begins ?? "") \($0.when) \($0.countdown ?? "")" }.joined(separator: "|") }
+                }
+                expectHonest("rings \(mode)", from: start, exactChanges: words.pure, changes: { _ in RingsSnapshot.changes(words: words) }) { t in
+                    RingsSnapshot(at: t, words: words).map { "\($0.tokens.map(\.text)) \($0.helionPair) \($0.next?.countdown ?? "") \($0.next?.when ?? "")" }
+                }
+            }
+            expectHonest("accessory", from: start, changes: { _ in AccessorySnapshot.changes }) { t in
+                AccessorySnapshot(at: t).map { "\($0.helion) \($0.helionPair) \($0.inline) \($0.major) \($0.nuclide)" }
+            }
+        }
+
+        // bounds of a timeline
+        let times = EntrySchedule.times(from: a, changes: ClockSnapshot.changes(words: pure))
+        check(times.count == EntrySchedule.maxEntries, "a busy timeline fills its \(EntrySchedule.maxEntries) entries: \(times.count)")
+        check(times.first == a, "a timeline starts now")
+        check(zip(times, times.dropFirst()).allSatisfy { $1 - $0 >= 1 }, "entries at least a second apart")
+        let slow = EntrySchedule.times(from: a, changes: JournalSnapshot.changes(unit: 0), horizon: 86_400)
+        check(slow.count >= 1 && slow.count < 10 && slow.last! <= a + 86_400, "an Alpha face changes a few times a day: \(slow.count)")
+        check(EntrySchedule.times(from: a, changes: []) == [a], "no changes: one entry")
+        // minimumGap merges into the later instant
+        let merged = EntrySchedule.times(from: a, changes: [.pair(level: 6), .cycle(level: 8)], minimumGap: 30)
+        check(zip(merged.dropFirst(), merged.dropFirst(2)).allSatisfy { $1 - $0 >= 30 }, "merged entries keep the gap")
+    }
+
+    /// Every entry of the timeline shows a state that holds until the next entry, and (when `exactChanges`) the state
+    /// really changes at each entry.
+    /// Merged changes may show up to the schedule's `minimumGap` (1 s) late, so "holds until the next entry" is
+    /// checked a second before it.
+    static func expectHonest(_ name: String, from start: Double, exactChanges: Bool = true,
+                             changes: (Double) -> Set<WidgetChange>, key: (Double) -> String?) {
+        let horizon = 30 * 3600.0
+        let times = EntrySchedule.times(from: start, horizon: horizon, maxEntries: 80, changes: changes)
+        guard times.count > 1 else {
+            check(times == [start] && key(start + WidgetChange.settle) == key(start + horizon),
+                  "\(name) from \(start): a single entry holds for the whole horizon")
+            return
+        }
+        var stale = 0, idle = 0
+        for (t0, t1) in zip(times, times.dropFirst()) {
+            let shown = key(t0 + WidgetChange.settle)
+            if key(max(t0 + WidgetChange.settle, t1 - 1)) != shown { stale += 1 }
+            if exactChanges && key(t1 - 0.005) == key(t1 + WidgetChange.settle) { idle += 1 }
+        }
+        check(stale == 0, "\(name) from \(start): \(stale) of \(times.count - 1) entries go stale before the next")
+        check(idle == 0, "\(name) from \(start): \(idle) entries change nothing")
+    }
+
+    // MARK: - Pure words
+
+    /// Earth words a pure widget must never print (docs/design/80-pure.md, rule 2).
+    static let forbidden: [String] = [
+        #"\d:\d\d"#, #"\d\s?(s|ms|min|h|d|wk|mo|y)\b"#, "%", "UTC", "GMT",
+        #"\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\b"#, #"\b(Mon|Tue|Wed|Thu|Fri|Sat|Sun)\b"#,
+        #"\b(1[6-9]|2[0-8])\d\d\b"#, "Hz", "today", "tomorrow", "hour", "minute", "second", "day", "week", "month", "year",
+    ]
+
+    static func pureLeaks() {
+        let pure = WidgetWords(pure: true)
+        var instants: [Double] = [a, 946_684_800, 2_886_085_800, clock.tMin + 3 * 86_400, clock.tMax - 3 * 86_400]
+        var seed: UInt64 = 0x9E37_79B9_7F4A_7C15
+        for _ in 0..<200 {
+            seed = seed &* 6_364_136_223_846_793_005 &+ 1_442_695_040_888_963_407
+            instants.append(clock.tMin + Double(seed >> 11) / Double(1 << 53) * (clock.tMax - clock.tMin))
+        }
+        var leaks: [String] = []
+        for t in instants {
+            var texts: [String] = []
+            for unit in JournalSnapshot.units {
+                if let s = JournalSnapshot(at: t, unit: unit, words: pure) {
+                    texts += s.tokens.map(\.text) + s.lines + [s.caption, s.accessibility]
+                }
+            }
+            if let s = ClockSnapshot(at: t, words: pure) {
+                texts += [s.major, s.nuclide, s.solarText, s.nextHelion ?? "", s.nextHelionWhen, s.accessibility]
+                check(s.earthDay == nil && s.earthZone == nil, "pure clock without Earth fields")
+            }
+            if let s = UpNextSnapshot(at: t, words: pure) {
+                texts += s.turnovers.flatMap { [$0.title, $0.when, $0.countdown ?? ""] }
+                check(s.turnovers.allSatisfy { $0.countdown != nil }, "pure countdowns are never live Earth timers")
+            }
+            if let s = RingsSnapshot(at: t, words: pure) { texts.append(s.accessibility) }
+            if let s = AccessorySnapshot(at: t) { texts += [s.inline, s.major, s.nuclide] }
+            for text in texts {
+                for pattern in forbidden where text.range(of: pattern, options: [.regularExpression, .caseInsensitive]) != nil {
+                    leaks.append("\(pattern) in \"\(text)\"")
+                }
+            }
+        }
+        check(leaks.isEmpty, "pure words leak Earth terms: \(leaks.prefix(5))")
+    }
+
+    // MARK: - Catalogue edges
+
+    static func edges() {
+        let pure = WidgetWords(pure: true)
+        for t in [clock.tMin - 1, clock.tMax + 1, -1e12, 1e12] {
+            check(JournalSnapshot(at: t, unit: 5, words: pure) == nil, "no journal outside the catalogue (\(t))")
+            check(ClockSnapshot(at: t, words: pure) == nil, "no clock outside (\(t))")
+            check(UpNextSnapshot(at: t, words: pure) == nil, "no up next outside (\(t))")
+            check(RingsSnapshot(at: t, words: pure) == nil, "no rings outside (\(t))")
+            check(AccessorySnapshot(at: t) == nil, "no accessory outside (\(t))")
+            check(EntrySchedule.times(from: t, changes: ClockSnapshot.changes(words: pure)).isEmpty, "no timeline outside (\(t))")
+        }
+        // the closing hours: entries never pass the end, the last turnover is the catalogue's end
+        let late = clock.tMax - 3600
+        let times = EntrySchedule.times(from: late, changes: ClockSnapshot.changes(words: pure))
+        check(!times.isEmpty && times.allSatisfy { $0 <= clock.tMax }, "entries stop at the catalogue's end")
+        let up = UpNextSnapshot(at: late, words: pure)
+        check(up?.turnovers.last.map { $0.begins == nil && $0.title == "the catalogue ends" } == true,
+              "the last turnover is the end: \(String(describing: up?.turnovers.last))")
+        check(JournalSnapshot(at: clock.tMax, unit: 5, words: pure) != nil, "the closing instant still reads")
+        // the first instants
+        let early = EntrySchedule.times(from: clock.tMin, changes: JournalSnapshot.changes(unit: 5))
+        check(early.first == clock.tMin && early.count > 1, "a timeline from the catalogue's first instant")
+    }
+}
