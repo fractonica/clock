@@ -254,6 +254,7 @@ enum WidgetChecks {
         let times = EntrySchedule.times(from: late, changes: ClockSnapshot.changes(words: pure))
         check(!times.isEmpty && times.allSatisfy { $0 <= clock.tMax }, "entries stop at the catalogue's end")
         let up = UpNextSnapshot(at: late, words: pure)
+        check(up?.turnovers.last?.when == "α#1 – α#18", "pure: the end is the catalogue's extent: \(up?.turnovers.last?.when ?? "nil")")
         check(up?.turnovers.last.map { $0.begins == nil && $0.title == "the catalogue ends" } == true,
               "the last turnover is the end: \(String(describing: up?.turnovers.last))")
         check(JournalSnapshot(at: clock.tMax, unit: 5, words: pure) != nil, "the closing instant still reads")

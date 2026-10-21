@@ -94,6 +94,8 @@ enum Render {
         let stamp = Notation.standard.stamp(at: t, upTo: "lambda")
         let tag = "t \(Int(t)) · \(stamp)"
 
+        timelines(at: t, words: [pure, earth])
+
         write(Sheet(title: "Journal · \(tag)") {
             HStack(alignment: .top, spacing: 18) {
                 ForEach([5, 4, 3, 0], id: \.self) { unit in
@@ -155,8 +157,10 @@ enum Render {
                         HomeCell(title: "\(words.pure ? "pure" : "Earth") · small", size: Size.small[0]) {
                             UpNextWidgetView(snapshot: snapshot, size: .small)
                         }
-                        HomeCell(title: "medium", size: Size.medium[1]) {
-                            UpNextWidgetView(snapshot: snapshot, size: .medium)
+                        ForEach(Size.medium, id: \.width) { size in
+                            HomeCell(title: "medium \(Int(size.width))", size: size) {
+                                UpNextWidgetView(snapshot: snapshot, size: .medium)
+                            }
                         }
                     }
                     HomeCell(title: "large", size: Size.large[0]) {
@@ -184,6 +188,17 @@ enum Render {
             }
         }, to: out.appendingPathComponent("rings.png"))
 
+        write(Sheet(title: "Overview · \(tag)") {
+            ForEach([pure, earth], id: \.pure) { words in
+                HomeCell(title: "\(words.pure ? "pure" : "Earth") · extra large (iPad Pro 13″)", size: CGSize(width: 715, height: 330)) {
+                    OverviewWidgetView(snapshot: OverviewSnapshot(at: t, words: words))
+                }
+            }
+            HomeCell(title: "Mac · extra large", size: CGSize(width: 690, height: 322)) {
+                OverviewWidgetView(snapshot: OverviewSnapshot(at: t, words: earth))
+            }
+        }, to: out.appendingPathComponent("overview.png"))
+
         write(Sheet(title: "Lock Screen · \(tag)") {
             let snapshot = AccessorySnapshot(at: t)
             HStack(alignment: .top, spacing: 24) {
@@ -204,6 +219,33 @@ enum Render {
                 }
             }
         }, to: out.appendingPathComponent("lock.png"))
+    }
+
+    /// Builds every widget's timeline from t as its provider does, and reports its size and cost: a timeline must be
+    /// cheap to make (the extension has a few seconds) and stay within its entry budget.
+    static func timelines(at t: Double, words: [WidgetWords]) {
+        let now = Date(timeIntervalSince1970: t)
+        func report<S>(_ name: String, _ make: () -> Timeline<SnapshotEntry<S>>) {
+            let clock = ContinuousClock()
+            var timeline: Timeline<SnapshotEntry<S>>?
+            let elapsed = clock.measure { timeline = make() }
+            guard let timeline else { return }
+            let entries = timeline.entries
+            let span = (entries.last!.date.timeIntervalSince(entries.first!.date) / 60).rounded()
+            let empty = entries.filter { $0.snapshot == nil }.count
+            print("timeline \(name): \(entries.count) entries over \(Int(span)) min, \(empty) empty, policy \(timeline.policy), built in \(elapsed)")
+        }
+        for unit in JournalSnapshot.units {
+            report("journal unit \(unit)") { SnapshotTimeline.timeline(now: now, changes: { _ in JournalSnapshot.changes(unit: unit) }) { JournalSnapshot(at: $0, unit: unit) } }
+        }
+        for w in words {
+            let mode = w.pure ? "pure" : "earth"
+            report("clock \(mode)") { SnapshotTimeline.timeline(now: now, changes: { _ in ClockSnapshot.changes(words: w) }) { ClockSnapshot(at: $0, words: w) } }
+            report("up next \(mode)") { SnapshotTimeline.timeline(now: now, changes: { UpNextSnapshot.changes(at: $0, words: w) }) { UpNextSnapshot(at: $0, words: w) } }
+            report("rings \(mode)") { SnapshotTimeline.timeline(now: now, changes: { _ in RingsSnapshot.changes(words: w) }) { RingsSnapshot(at: $0, words: w) } }
+            report("overview \(mode)") { SnapshotTimeline.timeline(now: now, changes: { OverviewSnapshot.changes(at: $0, words: w) }) { OverviewSnapshot(at: $0, words: w) } }
+        }
+        report("lock") { SnapshotTimeline.timeline(now: now, changes: { _ in AccessorySnapshot.changes }) { AccessorySnapshot(at: $0) } }
     }
 
     @MainActor

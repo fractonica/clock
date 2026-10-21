@@ -51,7 +51,11 @@ struct UpNextWidgetView: View {
                     .tracking(0.5)
                     .foregroundStyle(Theme.ink3)
             }
-            Spacer(minLength: 6)
+            if size == .large {
+                Color.clear.frame(height: 10)
+            } else {
+                Spacer(minLength: 6)
+            }
             Text(t.title)
                 .font(.system(size: size == .large ? 20 : 15, weight: .semibold))
                 .foregroundStyle(Theme.ink)
@@ -79,6 +83,13 @@ struct UpNextWidgetView: View {
 
     private func rows(_ list: [Turnover], compact: Bool) -> some View {
         VStack(alignment: .leading, spacing: compact ? 0 : 4) {
+            if list.isEmpty {
+                // the closing cycles all end with the catalogue
+                Text("Nothing else turns over before the catalogue ends.")
+                    .font(.system(size: 12))
+                    .foregroundStyle(Theme.ink3)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
             ForEach(list) { t in
                 // a row opens the ladder just after its turnover
                 WidgetLink(link: AppLink(screen: .ladder, time: t.time + 0.001)) {

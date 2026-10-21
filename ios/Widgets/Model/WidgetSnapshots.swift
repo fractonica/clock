@@ -203,7 +203,9 @@ struct UpNextSnapshot: Hashable, Sendable {
             guard let reading = clock.level(at: t, level) else { continue }
             // the coarsest level wins where several end together; levels are visited finest first
             let begins = reading.clipped ? nil : words.nextCycleName(level: level, cycle: reading.cycle)
-            let when = words.pure ? Self.pureWhen(level: level, at: reading.end, words: words) : words.earthWhen(reading.end, from: t)
+            let when = !words.pure ? words.earthWhen(reading.end, from: t)
+                : begins == nil ? words.notation.catalogueText() // the catalogue's extent, "α#1 – α#18"
+                : Self.pureWhen(level: level, at: reading.end, words: words)
             let countdown: String? = words.pure
                 ? words.span(from: preon.start, to: reading.end)
                 : (reading.end - t < Self.liveLimit ? nil : words.earthSpan(reading.end - t))
@@ -296,5 +298,27 @@ struct AccessorySnapshot: Hashable, Sendable {
         self.tokens = tokens
         major = "\(Notation.periodName(level: 3, ordinal: date.delta)) \(date.quarter.delta)"
         nuclide = "ε#\(date.epsilon)"
+    }
+}
+
+// MARK: - Overview
+
+/// The extra-large overview (iPad, Mac): the clock, the dial and up next side by side.
+struct OverviewSnapshot: Hashable, Sendable {
+    let clock: ClockSnapshot
+    let rings: RingsSnapshot
+    let upNext: UpNextSnapshot
+
+    init?(at t: Double, words: WidgetWords) {
+        guard let clock = ClockSnapshot(at: t, words: words), let rings = RingsSnapshot(at: t, words: words),
+              let upNext = UpNextSnapshot(at: t, words: words) else { return nil }
+        self.clock = clock
+        self.rings = rings
+        self.upNext = upNext
+    }
+
+    /// Everything its three parts follow.
+    static func changes(at t: Double, words: WidgetWords) -> Set<WidgetChange> {
+        ClockSnapshot.changes(words: words).union(UpNextSnapshot.changes(at: t, words: words))
     }
 }
