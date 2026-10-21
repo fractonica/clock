@@ -210,7 +210,9 @@ struct DayDetailView: View {
                                 Text(verbatim: span(s.start, s.end, earth))
                                     .font(.footnote.monospacedDigit())
                                     .foregroundStyle(Theme.ink2)
-                                Text(EarthTime.duration(s.end - s.start, parts: 2)).font(.caption).foregroundStyle(Theme.ink3)
+                                Text(verbatim: EarthTime.duration(s.end - s.start, parts: 2) + driftText(track.band, s))
+                                    .font(.caption)
+                                    .foregroundStyle(Theme.ink3)
                             }
                             Spacer(minLength: 0)
                         }
@@ -219,6 +221,12 @@ struct DayDetailView: View {
                 }
             }
         }
+    }
+
+    /// For a solar sync quarter: how far the sync's start drifts from the civil 4-day grid (month.js tooltip).
+    private func driftText(_ band: CalendarBand, _ s: MonthGrid.Segment) -> String {
+        guard case .sync = band, let sync = store.clock.solarSync(number: Int(s.index)) else { return "" }
+        return " · drift \(sync.drift < 0 ? "−" : "+")\(EarthTime.duration(abs(sync.drift), parts: 2))"
     }
 
     private func span(_ a: Double, _ b: Double, _ earth: EarthFormatter) -> String {
