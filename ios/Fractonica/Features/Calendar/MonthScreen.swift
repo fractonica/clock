@@ -137,7 +137,7 @@ private struct EarthMonthView: View {
                 .accessibilityLabel(Text("Show the displayed day"))
                 .transition(.scale.combined(with: .opacity))
             }
-            StepPair(previous: "Previous month", next: "Next month", step: step)
+            StepPair(previous: "Previous month", next: "Next month", shortcuts: true, step: step)
         }
         .animation(.snappy, value: model.month != displayedMonth)
     }
@@ -163,15 +163,17 @@ private struct EarthMonthView: View {
 struct StepPair: View {
     let previous: String
     let next: String
+    /// ⌘← and ⌘→ (one pair per screen).
+    var shortcuts = false
     let step: (Int) -> Void
 
     var body: some View {
         HStack(spacing: 0) {
             button(-1, "chevron.left", previous)
-                .keyboardShortcut(.leftArrow, modifiers: .command)
+                .keyboardShortcut(shortcuts ? KeyboardShortcut(.leftArrow, modifiers: .command) : nil)
             Divider().frame(height: 18).overlay(Theme.line2)
             button(1, "chevron.right", next)
-                .keyboardShortcut(.rightArrow, modifiers: .command)
+                .keyboardShortcut(shortcuts ? KeyboardShortcut(.rightArrow, modifiers: .command) : nil)
         }
         .glassEffect(.regular.interactive(), in: .capsule)
     }

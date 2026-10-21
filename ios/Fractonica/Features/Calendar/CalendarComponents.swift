@@ -353,7 +353,8 @@ enum Pasteboard {
 
 /// The calendar's launch arguments (harmless test hooks, never persisted): read from UserDefaults' argument domain.
 ///
-///     -FXConverterTime <unix s>      pin the converter on a moment (not clamped: try an instant outside the catalogue)
+///     -FXConverterTime <unix s|ISO>  pin the converter on a moment (not clamped: try 1600-01-01T12:00Z, outside the
+///                                    catalogue)
 ///     -FXConverterZone <IANA id>     the converter's own zone
 ///     -FXConverterPick <level>       open the glyph state picker of a level (0 … 13)
 ///     -FXCalendarScroll <anchor>     scroll the converter or the month to a section: earth, position, address, glyphs,
@@ -369,5 +370,10 @@ enum CalendarLaunch {
     }
 
     static func double(_ key: String) -> Double? { string(key).flatMap(Double.init) }
+    /// Unix seconds, or an ISO date ("1600-01-01T12:00Z": a negative number would read as another argument).
+    static func time(_ key: String) -> Double? {
+        guard let s = string(key) else { return nil }
+        return Double(s) ?? CalMath.parseISO(s, zone: TimeZone(identifier: "UTC")!)
+    }
     static func int(_ key: String) -> Int? { string(key).flatMap { Int($0) } }
 }

@@ -374,8 +374,13 @@ private struct EarthCard: View {
                 guard let v, v.isFinite else { return CalendarError("Type Unix seconds, e.g. 1791460800.000") }
                 return model.set(v, from: .unix) ? nil : CalendarError("Years 1000 to 9999 only")
             }
+            CommitField(label: "ISO 8601", value: iso(p), prompt: "2026-10-08T12:00:00.000+00:00") { text in
+                guard let v = CalMath.parseISO(text, zone: zone) else {
+                    return CalendarError("Write an ISO date like 2026-10-08T12:00:00+03:00 (without an offset: in the converter's zone)")
+                }
+                return model.set(v, from: .earth) ? nil : CalendarError("Years 1000 to 9999 only")
+            }
             Divider().overlay(Theme.line)
-            CalValueRow(label: "ISO 8601", value: iso(p), mono: true)
             CalValueRow(label: "Day", value: "\(EarthNames.weekdays[p.weekday]) · day \(doy) of \(daysInYear)")
             CalValueRow(label: "Offset", value: (earth.zone == "UTC" ? "UTC" : "UTC" + EarthTime.offsetLabel(Double(p.offset)))
                 + (abs(dayLength - 86_400) > 1 ? " · a \(EarthTime.duration(dayLength, parts: 2)) day" : ""))

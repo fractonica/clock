@@ -140,7 +140,7 @@ private struct DeltaHeader: View {
                 .accessibilityLabel(Text("Show the shown moment's Delta"))
             }
             VStack(spacing: 4) {
-                StepPair(previous: "Previous \(model.pageStep.name)", next: "Next \(model.pageStep.name)", step: step)
+                StepPair(previous: "Previous \(model.pageStep.name)", next: "Next \(model.pageStep.name)", shortcuts: true, step: step)
                 Text("by \(model.pageStep.name)")
                     .font(.caption2)
                     .foregroundStyle(Theme.levelColor(model.pageStep.level))
@@ -484,11 +484,13 @@ private struct GammaRibbon: View {
                                     }
                                 }
                                 .frame(height: 26)
-                                Text(width(i))
-                                    .font(.caption2.weight(index == page.index ? .bold : .regular))
-                                    .foregroundStyle(index == page.index ? Theme.ink : Theme.ink3)
-                                    .lineLimit(1)
-                                    .minimumScaleFactor(0.6)
+                                ViewThatFits(in: .horizontal) {
+                                    Text(verbatim: "\(Notation.ordinalName(i + 1)) · δ#\(i + 1)")
+                                    Text(verbatim: "δ#\(i + 1)")
+                                }
+                                .font(.caption2.weight(index == page.index ? .bold : .regular))
+                                .foregroundStyle(index == page.index ? Theme.ink : Theme.ink3)
+                                .lineLimit(1)
                             }
                             .contentShape(.rect)
                         }
@@ -503,7 +505,6 @@ private struct GammaRibbon: View {
         }
     }
 
-    private func width(_ i: Int) -> String { "δ#\(i + 1)" }
 }
 
 /// A cell in detail: its Helions with go buttons, the quarter(s) of the Delta it lies in, its eclipse and syncs.

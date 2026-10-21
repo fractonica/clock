@@ -89,7 +89,7 @@ final class ConverterModel {
     func applyLaunchOptions() {
         guard !launched else { return }
         launched = true
-        if let t = CalendarLaunch.double("FXConverterTime") { set(t, from: .unix) }
+        if let t = CalendarLaunch.time("FXConverterTime") { set(t, from: .unix) }
         if let zone = CalendarLaunch.string("FXConverterZone") {
             zoneMode = zone == "UTC" ? .utc : TimeZone(identifier: zone) != nil ? .zone(zone) : .app
         }

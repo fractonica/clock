@@ -351,6 +351,10 @@ struct StatePicker: View {
         }
         .frame(minWidth: 320, idealWidth: 380, minHeight: 420)
         .background { Backdrop() }
+        .onAppear {
+            // pure mode asks about the whole pair showing now, until the fine glyph is set to Any
+            if pure, coarse == nil, fine == nil, current.count > 1 { fine = current[1] }
+        }
     }
 
     private func stateGrid(selected: Int, now: Int, choose: @escaping (Int) -> Void) -> some View {

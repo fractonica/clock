@@ -217,6 +217,28 @@ enum CalMath {
         return .success(e[k] + f * (e[k + 1] - e[k]))
     }
 
+    /// An ISO 8601 moment: "2026-10-08T12:00:00.123+03:00", "…Z", or a wall time without an offset ("2026-10-08 14:30"),
+    /// read in `zone` (a skipped wall time moves ahead, a repeated one is the first). nil when it is not a real moment.
+    static func parseISO(_ text: String, zone: TimeZone) -> Double? {
+        let s = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let pattern = /(-?\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,3}))?)?)?\s*(Z|[+-]\d{2}(?::?\d{2})?)?/
+        guard let m = s.wholeMatch(of: pattern.ignoresCase()),
+              let y = Int(m.1), let mo = Int(m.2), let d = Int(m.3) else { return nil }
+        let h = m.4.flatMap { Int($0) } ?? 0, mi = m.5.flatMap { Int($0) } ?? 0, se = m.6.flatMap { Int($0) } ?? 0
+        let ms = m.7.flatMap { Int(String($0).padding(toLength: 3, withPad: "0", startingAt: 0)) } ?? 0
+        guard (1...12).contains(mo), d >= 1, d <= EarthTime.daysInMonth(y, mo), h <= 23, mi <= 59, se <= 59 else { return nil }
+        let fields = EarthTime.CivilTime(year: y, month: mo, day: d, hour: h, minute: mi, second: se, ms: ms)
+        guard let tz = m.8.map(String.init) else { return EarthTime.zonedToUnix(fields, zone: zone) }
+        var offset = 0
+        if tz.uppercased() != "Z" {
+            let digits = tz.dropFirst().replacingOccurrences(of: ":", with: "")
+            let hours = Int(digits.prefix(2)) ?? 0, minutes = digits.count > 2 ? Int(digits.suffix(2)) ?? 0 : 0
+            guard hours <= 18, minutes <= 59 else { return nil }
+            offset = (hours * 3600 + minutes * 60) * (tz.first == "-" ? -1 : 1)
+        }
+        return EarthTime.zonedToUnix(fields, zone: TimeZone(identifier: "UTC")!) - Double(offset)
+    }
+
     // MARK: Eclipses
 
     /// The eclipses around t: the previous (E[k] ≤ t) and the next one.

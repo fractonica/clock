@@ -11,6 +11,7 @@ struct CalendarChecks {
     static func main() {
         positionChecks()
         addressChecks()
+        isoChecks()
         dayChecks()
         monthChecks()
         dayEventChecks()
@@ -88,6 +89,19 @@ private func addressChecks() {
     let range = CalMath.syncRange(clock)
     check(clock.solarSync(number: range.lowerBound) != nil && clock.solarSync(number: range.lowerBound - 1) == nil, "the first full sync")
     check(clock.solarSync(number: range.upperBound) != nil && clock.solarSync(number: range.upperBound + 1) == nil, "the last full sync")
+}
+
+private func isoChecks() {
+    let moscow = TimeZone(identifier: "Europe/Moscow")!
+    check(CalMath.parseISO("2026-10-08T12:00:00.000+00:00", zone: moscow) == vectorA, "ISO with an offset")
+    check(CalMath.parseISO("2026-10-08T15:00:00+03:00", zone: utc) == vectorA, "ISO with another offset")
+    check(CalMath.parseISO("2026-10-08T12:00Z", zone: moscow) == vectorA, "ISO in UTC, minutes only")
+    check(CalMath.parseISO("2026-10-08 15:00", zone: moscow) == vectorA, "a wall time is read in the zone")
+    check(CalMath.parseISO("2026-10-08T12:00:00.25Z", zone: utc) == vectorA + 0.25, "milliseconds")
+    check(CalMath.parseISO("2026-10-08", zone: utc) == vectorA - 43_200, "a date alone is its midnight")
+    for bad in ["2026-02-30", "2026-13-01", "2026-10-08T24:00", "yesterday", "2026-10-08T12:00+25:00"] {
+        check(CalMath.parseISO(bad, zone: utc) == nil, "“\(bad)” is refused")
+    }
 }
 
 private func dayChecks() {
