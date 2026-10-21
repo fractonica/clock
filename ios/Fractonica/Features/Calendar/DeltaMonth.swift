@@ -34,10 +34,16 @@ struct DeltaMonthView: View {
                         DeltaPageGrid(model: model, page: model.deltaPage(index), metrics: metrics)
                     }
                     .frame(height: metrics.gridHeight)
-                    Text("A cell is 11 Helions. Gold diamonds mark the quarters of a solar sync (19η); a line in the Delta colour marks where a quarter of the Delta begins. Tap a cell for its Helions.")
-                        .font(.footnote)
-                        .foregroundStyle(Theme.ink3)
-                        .fixedSize(horizontal: false, vertical: true)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("A cell is 11 Helions. Gold diamonds mark the quarters of a solar sync (19η); a line in the Delta colour marks where a quarter of the Delta begins. Tap a cell for its Helions.")
+                        if let last = page.cells.last(where: \.inRange), last.index < DeltaPage.cells - 1 || last.cut < 1 {
+                            Label("The catalogue ends with eclipse #\(store.clock.extent), in ε#\(last.epsilon) \(last.firstHelion)η: the rest of this Delta lies after it.", systemImage: "moon.zzz")
+                                .foregroundStyle(Theme.ink2)
+                        }
+                    }
+                    .font(.footnote)
+                    .foregroundStyle(Theme.ink3)
+                    .fixedSize(horizontal: false, vertical: true)
                     GammaRibbon(model: model, page: page).id("ribbon")
                 }
                 .padding(.horizontal, 16)
@@ -313,7 +319,7 @@ private struct DeltaCell: View, Equatable {
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
             }
-            if let q = cell.quarters.first(where: \.startsHere) {
+            if cell.inRange, let q = cell.quarters.first(where: \.startsHere) {
                 // a quarter of the Delta begins in this cell
                 Text(Notation.quarterWords[q.quarter])
                     .font(.system(size: metrics.regular ? 11 : 8.5, weight: .semibold))
@@ -335,7 +341,7 @@ private struct DeltaCell: View, Equatable {
                     .fill(isSelected ? Theme.panel3 : cell.inRange ? Theme.panel.opacity(0.7) : Theme.panel.opacity(0.2))
                 // the Delta's quarters as a faint tint, a line where one begins
                 Canvas { context, size in
-                    for q in cell.quarters {
+                    for q in cell.quarters where cell.inRange {
                         let rect = CGRect(x: q.x0 * size.width, y: 0, width: (q.x1 - q.x0) * size.width, height: size.height)
                         context.fill(Path(rect), with: .color(Theme.levelColor(3, opacity: q.quarter % 2 == 0 ? 0.07 : 0.0)))
                         if q.startsHere {
@@ -549,7 +555,7 @@ private struct CellDetailView: View {
                     .font(.code(13))
                     .foregroundStyle(Theme.teal)
                     .textSelection(.enabled)
-                Text("11 Helions · \(n.between(cell.start, cell.end))")
+                Text(cell.cut < 1 ? "The catalogue ends inside this cell" : "11 Helions, one ζ cycle")
                     .font(.footnote)
                     .foregroundStyle(Theme.ink3)
             }

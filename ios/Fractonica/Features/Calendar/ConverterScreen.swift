@@ -158,7 +158,7 @@ private struct EarthConverterContent: View {
             AddressCard(model: model, snap: snap, earth: earth, pure: false).id("address")
             GlyphStatesCard(model: model, snap: snap, earth: earth).id("glyphs")
         } else {
-            OutOfRangeCard(model: model, t: snap.t)
+            OutOfRangeCard(model: model, t: snap.t).id("position")
         }
     }
 }
@@ -353,7 +353,8 @@ private struct EarthCard: View {
         let p = earth.parts(t)
         let doy = EarthTime.daysFromCivil(p.year, p.month, p.day) - EarthTime.daysFromCivil(p.year, 1, 1) + 1
         let daysInYear = EarthTime.daysFromCivil(p.year + 1, 1, 1) - EarthTime.daysFromCivil(p.year, 1, 1)
-        let dayLength = CalMath.dayStart(zone, CalMath.addDays(p.year, p.month, p.day, 1).year, CalMath.addDays(p.year, p.month, p.day, 1).month, CalMath.addDays(p.year, p.month, p.day, 1).day) - CalMath.dayStart(zone, p.year, p.month, p.day)
+        let next = CalMath.addDays(p.year, p.month, p.day, 1)
+        let dayLength = CalMath.dayStart(zone, next.year, next.month, next.day) - CalMath.dayStart(zone, p.year, p.month, p.day)
         CalCard("Earth", systemImage: "globe.europe.africa") {
             DatePicker(selection: dateBinding, in: dateRange, displayedComponents: [.date, .hourAndMinute]) {
                 Text("Date and time").font(.subheadline).foregroundStyle(Theme.ink3)
