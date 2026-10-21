@@ -1,0 +1,220 @@
+# XcodeGen spec for the native Fractonica apps (iOS + macOS) and their widgets.
+# Generate the project with `xcodegen generate` in this folder (ios/scripts/build.sh does it for you).
+# The generated Fractonica.xcodeproj is not committed. This file is the source of truth for it and for the Info.plist
+# and entitlements files under Support/, which xcodegen rewrites from the `info` and `entitlements` properties below:
+# change keys here, never in the generated files.
+# `Checks` folders anywhere in the sources hold logic checks run by ios/scripts/check.sh; they never ship.
+name: Fractonica
+
+options:
+  bundleIdPrefix: app.fractonica
+  deploymentTarget:
+    iOS: "26.0"
+    macOS: "26.0"
+  createIntermediateGroups: true
+  groupSortPosition: top
+  developmentLanguage: en
+
+settings:
+  base:
+    DEVELOPMENT_TEAM: G23G724G3D
+    CODE_SIGN_STYLE: Automatic
+    SWIFT_VERSION: "6.0"
+    SWIFT_STRICT_CONCURRENCY: complete
+    MARKETING_VERSION: "1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
+    LOCALIZATION_PREFERS_STRING_CATALOGS: YES
+
+packages:
+  FractonicaKit:
+    path: FractonicaKit
+
+targets:
+  # ---------------------------------------------------------------- iOS app
+  Fractonica:
+    type: application
+    platform: iOS
+    sources:
+      - path: Fractonica
+        excludes: ["**/Checks"]
+      - path: Shared
+        excludes: ["**/Checks"]
+    dependencies:
+      - package: FractonicaKit
+      - target: FractonicaWidgets
+    preBuildScripts:
+      - name: Copy web diary renderer
+        script: "\"${SRCROOT}/scripts/copy-web.sh\""
+        inputFiles:
+          - $(SRCROOT)/scripts/copy-web.sh
+          - $(SRCROOT)/../fractonica.js
+          - $(SRCROOT)/../src
+        outputFiles:
+          - $(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/web
+        basedOnDependencyAnalysis: false
+    info:
+      path: Support/Fractonica-iOS-Info.plist
+      properties:
+        CFBundleDisplayName: Fractonica
+        CFBundleURLTypes:
+          - CFBundleURLName: app.fractonica.clock
+            CFBundleURLSchemes: [fractonica]
+        ITSAppUsesNonExemptEncryption: false
+        NSSupportsLiveActivities: true
+        UIBackgroundModes: [audio, fetch]
+        BGTaskSchedulerPermittedIdentifiers: [app.fractonica.clock.refresh]
+        UILaunchScreen:
+          UIColorName: LaunchBackground
+        UIUserInterfaceStyle: Dark
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+    settings:
+      base:
+        PRODUCT_NAME: Fractonica
+        PRODUCT_BUNDLE_IDENTIFIER: app.fractonica.clock
+        TARGETED_DEVICE_FAMILY: "1,2"
+        SUPPORTS_MACCATALYST: NO
+        SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: NO
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        # the web copy reads a whole folder tree, which the user-script sandbox cannot declare
+        ENABLE_USER_SCRIPT_SANDBOXING: NO
+
+  # -------------------------------------------------------------- macOS app
+  FractonicaMac:
+    type: application
+    platform: macOS
+    sources:
+      - path: Fractonica
+        excludes: ["**/Checks"]
+      - path: Shared
+        excludes: ["**/Checks"]
+    dependencies:
+      - package: FractonicaKit
+      - target: FractonicaWidgetsMac
+    preBuildScripts:
+      - name: Copy web diary renderer
+        script: "\"${SRCROOT}/scripts/copy-web.sh\""
+        inputFiles:
+          - $(SRCROOT)/scripts/copy-web.sh
+          - $(SRCROOT)/../fractonica.js
+          - $(SRCROOT)/../src
+        outputFiles:
+          - $(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/web
+        basedOnDependencyAnalysis: false
+    info:
+      path: Support/Fractonica-macOS-Info.plist
+      properties:
+        CFBundleDisplayName: Fractonica
+        CFBundleURLTypes:
+          - CFBundleURLName: app.fractonica.clock
+            CFBundleURLSchemes: [fractonica]
+        ITSAppUsesNonExemptEncryption: false
+        LSApplicationCategoryType: public.app-category.utilities
+    entitlements:
+      path: Support/FractonicaMac.entitlements
+      properties:
+        com.apple.security.app-sandbox: true
+        com.apple.security.files.user-selected.read-write: true
+        com.apple.security.print: true
+    settings:
+      base:
+        PRODUCT_NAME: Fractonica
+        PRODUCT_BUNDLE_IDENTIFIER: app.fractonica.clock
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        ENABLE_HARDENED_RUNTIME: YES
+        COMBINE_HIDPI_IMAGES: YES
+        ENABLE_USER_SCRIPT_SANDBOXING: NO
+
+  # ------------------------------------------------------------ iOS widgets
+  FractonicaWidgets:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: Widgets
+        excludes: ["**/Checks"]
+      - path: Shared
+        excludes: ["**/Checks"]
+    dependencies:
+      - package: FractonicaKit
+      - sdk: WidgetKit.framework
+      - sdk: SwiftUI.framework
+    info:
+      path: Support/Widgets-iOS-Info.plist
+      properties:
+        CFBundleDisplayName: Fractonica
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    settings:
+      base:
+        PRODUCT_NAME: FractonicaWidgets
+        PRODUCT_BUNDLE_IDENTIFIER: app.fractonica.clock.widgets
+        TARGETED_DEVICE_FAMILY: "1,2"
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME: WidgetBackground
+        SKIP_INSTALL: YES
+
+  # ---------------------------------------------------------- macOS widgets
+  FractonicaWidgetsMac:
+    type: app-extension
+    platform: macOS
+    sources:
+      - path: Widgets
+        excludes: ["**/Checks"]
+      - path: Shared
+        excludes: ["**/Checks"]
+    dependencies:
+      - package: FractonicaKit
+      - sdk: WidgetKit.framework
+      - sdk: SwiftUI.framework
+    info:
+      path: Support/Widgets-macOS-Info.plist
+      properties:
+        CFBundleDisplayName: Fractonica
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    entitlements:
+      path: Support/FractonicaWidgetsMac.entitlements
+      properties:
+        com.apple.security.app-sandbox: true
+    settings:
+      base:
+        PRODUCT_NAME: FractonicaWidgets
+        PRODUCT_BUNDLE_IDENTIFIER: app.fractonica.clock.widgets
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME: WidgetBackground
+        ENABLE_HARDENED_RUNTIME: YES
+        SKIP_INSTALL: YES
+
+schemes:
+  Fractonica:
+    build:
+      targets:
+        Fractonica: all
+    run:
+      config: Debug
+    profile:
+      config: Release
+    archive:
+      config: Release
+  FractonicaMac:
+    build:
+      targets:
+        FractonicaMac: all
+    run:
+      config: Debug
+    profile:
+      config: Release
+    archive:
+      config: Release
