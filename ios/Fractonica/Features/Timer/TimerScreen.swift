@@ -27,7 +27,12 @@ struct TimerScreen: View {
         } message: { ringing in
             Text(alertMessage(ringing))
         }
-        .onAppear { store.screen(visible: true) }
+        .onAppear {
+            store.screen(visible: true)
+            #if DEBUG && os(iOS)
+            TimerDemo.rotateIfAsked()
+            #endif
+        }
         .onDisappear { store.screen(visible: false) }
         #if DEBUG && os(iOS) && canImport(ActivityKit)
         .overlay(alignment: .bottom) { TimerActivityPreview() }

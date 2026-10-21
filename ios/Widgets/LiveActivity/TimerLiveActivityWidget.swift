@@ -23,9 +23,11 @@ struct TimerLiveActivityWidget: Widget {
                     HStack(spacing: 10) {
                         TimerActivityBadge(attributes: attributes, state: state, size: 36, lineWidth: 4)
                         VStack(alignment: .leading, spacing: 1) {
-                            Text(attributes.kind == .timer ? "Timer" : "Stopwatch")
-                                .font(.caption2.weight(.semibold))
-                                .foregroundStyle(Theme.ink3)
+                            if attributes.kind == .timer {
+                                Text("Timer")
+                                    .font(.caption2.weight(.semibold))
+                                    .foregroundStyle(Theme.ink3)
+                            }
                             Text(state.title)
                                 .font(.subheadline.weight(.semibold))
                                 .foregroundStyle(Theme.ink)

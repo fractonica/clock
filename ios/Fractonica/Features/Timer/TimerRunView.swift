@@ -16,10 +16,10 @@ struct TimerRunView: View {
             let side = w > h * 1.25 && h < 600
             if side {
                 HStack(spacing: 24) {
-                    dial(size: min(h - 24, w * 0.56))
+                    dial(size: min(h - 16, w * 0.56))
                         .frame(maxWidth: .infinity)
-                    controls(vertical: true)
-                        .frame(width: 210)
+                    controls(vertical: true, size: min(78, max(56, (h - 70) / 2)))
+                        .frame(width: 220)
                 }
                 .padding(.horizontal, 24)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -82,19 +82,30 @@ struct TimerRunView: View {
                     .foregroundStyle(Theme.ink2)
                     .lineLimit(1)
                     .accessibilityLabel(words.spokenTitle(run.spec))
-                LadderReadoutView(
-                    span: blinks.map(LadderSpan.init(blinks:)),
-                    lead: lead,
-                    size: readoutSize,
-                    weight: .light,
-                    ink: run.isRunning ? Theme.ink : Theme.ink2
-                )
-                .accessibilityAddTraits(.updatesFrequently)
-                if !words.pure {
-                    Text(EarthClockText.countdown(run.remainingSeconds(at: now, clock: clock)))
-                        .font(.reading(17))
-                        .foregroundStyle(Theme.ink3)
-                        .accessibilityLabel("\(EarthClockText.countdown(run.remainingSeconds(at: now, clock: clock))) left")
+                let earth = EarthClockText.countdown(run.remainingSeconds(at: now, clock: clock))
+                if run.measure == .earth && !words.pure {
+                    // set in Earth units: the Earth countdown leads, the ladder follows
+                    Text(earth)
+                        .font(.reading(min(readoutSize * 1.35, innerDiameter * 0.84 / (CGFloat(earth.count) * 0.62)), weight: .light))
+                        .foregroundStyle(run.isRunning ? Theme.ink : Theme.ink2)
+                        .accessibilityLabel("\(earth) left")
+                        .accessibilityAddTraits(.updatesFrequently)
+                    LadderReadoutView(span: blinks.map(LadderSpan.init(blinks:)), lead: lead, size: 19, weight: .regular, ink: Theme.ink2)
+                } else {
+                    LadderReadoutView(
+                        span: blinks.map(LadderSpan.init(blinks:)),
+                        lead: lead,
+                        size: readoutSize,
+                        weight: .light,
+                        ink: run.isRunning ? Theme.ink : Theme.ink2
+                    )
+                    .accessibilityAddTraits(.updatesFrequently)
+                    if !words.pure {
+                        Text(earth)
+                            .font(.reading(17))
+                            .foregroundStyle(Theme.ink3)
+                            .accessibilityLabel("\(earth) left")
+                    }
                 }
                 Group {
                     if let end = run.end {
@@ -116,19 +127,29 @@ struct TimerRunView: View {
 
     // MARK: Controls
 
+    /// In a row under the dial; beside it (landscape), the two round controls side by side above +1.
     @ViewBuilder
-    private func controls(vertical: Bool) -> some View {
-        let layout = vertical ? AnyLayout(VStackLayout(spacing: 22)) : AnyLayout(HStackLayout(spacing: 0))
-        layout {
-            RoundControl("Cancel") { withAnimation(.smooth) { store.cancel() } }
-                .keyboardShortcut(.cancelAction)
-            if !vertical { Spacer(minLength: 12) }
-            addMenu
-            if !vertical { Spacer(minLength: 12) }
-            RoundControl(run.isRunning ? "Pause" : "Resume", tint: Theme.teal) {
-                store.togglePause()
-            }
+    private func controls(vertical: Bool, size: CGFloat = 78) -> some View {
+        let cancel = RoundControl("Cancel", size: size) { withAnimation(.smooth) { store.cancel() } }
+            .keyboardShortcut(.cancelAction)
+        let toggle = RoundControl(run.isRunning ? "Pause" : "Resume", tint: Theme.teal, size: size) { store.togglePause() }
             .keyboardShortcut(.defaultAction)
+        if vertical {
+            VStack(spacing: 14) {
+                HStack(spacing: 20) {
+                    cancel
+                    toggle
+                }
+                addMenu
+            }
+        } else {
+            HStack(spacing: 0) {
+                cancel
+                Spacer(minLength: 12)
+                addMenu
+                Spacer(minLength: 12)
+                toggle
+            }
         }
     }
 

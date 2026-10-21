@@ -60,7 +60,7 @@ enum TimerActivities {
                 pausedAt: nil,
                 reading: reading == "—" ? title : reading,
                 compact: compactTitle(run, words: words),
-                detail: words.pure ? "Ends at \(words.clockReading(end))" : "Ends \(words.ringTime(end))",
+                detail: words.pure ? "Ends at \(words.clockReading(end))" : "Ends \(words.ringTime(end, short: true))",
                 pure: words.pure
             )
         }
@@ -74,7 +74,7 @@ enum TimerActivities {
             pausedAt: now,
             reading: readout,
             compact: blinks.map { leadName(LadderSpan(blinks: $0)) } ?? "—",
-            detail: words.pure ? "Paused" : "Paused · \(readout) left",
+            detail: words.pure ? "Paused" : "Paused · \(readout)",
             pure: words.pure
         )
     }

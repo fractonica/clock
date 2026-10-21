@@ -90,7 +90,7 @@ struct TimerDemo {
             if stopwatch == "stopped" { run.stop(at: now) }
         case "long":
             run.since = now.addingTimeInterval(-seconds(LadderSpan(eta: 1, iota: 3, lambda: 22, nu: 14)))
-            run.marks = [seconds(LadderSpan(iota: 20, lambda: 5)), seconds(LadderSpan(iota: 41, lambda: 30)), seconds(LadderSpan(eta: 1, iota: 1))]
+            run.marks = [seconds(LadderSpan(iota: 20, lambda: 5)), seconds(LadderSpan(eta: 1, iota: 1)), seconds(LadderSpan(eta: 1, iota: 2, lambda: 40))]
         default:
             break
         }
@@ -98,3 +98,18 @@ struct TimerDemo {
         return true
     }
 }
+
+#if DEBUG && os(iOS)
+import UIKit
+
+extension TimerDemo {
+    /// Debug builds: `-FXTimerLandscape 1` turns the window to landscape when the Timer or Stopwatch appears, for
+    /// screenshots (the simulator tools cannot rotate it).
+    @MainActor
+    static func rotateIfAsked() {
+        guard UserDefaults.standard.bool(forKey: "FXTimerLandscape"),
+              let scene = UIApplication.shared.connectedScenes.first(where: { $0 is UIWindowScene }) as? UIWindowScene else { return }
+        scene.requestGeometryUpdate(.iOS(interfaceOrientations: .landscapeRight))
+    }
+}
+#endif

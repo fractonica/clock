@@ -29,6 +29,9 @@ struct StopwatchScreen: View {
         .sensoryFeedback(.impact(weight: .light), trigger: store.run.isRunning) { _, _ in settings.haptics }
         .sensoryFeedback(.impact(weight: .medium), trigger: store.lapCount) { old, new in settings.haptics && new > old }
         .onAppear {
+            #if DEBUG && os(iOS)
+            TimerDemo.rotateIfAsked()
+            #endif
             if let forced = UserDefaults.standard.string(forKey: "FXStopwatchFace"), Face(rawValue: forced) != nil { face = forced }
         }
     }
@@ -65,25 +68,28 @@ struct StopwatchScreen: View {
         }
     }
 
-    /// iPhone in landscape: the dial on the left; digits, controls and laps on the right.
+    /// iPhone in landscape: the dial, then the digits over the controls, then the laps.
     private func landscape(width: CGFloat, height: CGFloat) -> some View {
-        HStack(spacing: 20) {
+        let dial = min(height - 12, width * 0.34)
+        return HStack(spacing: 16) {
             dialFace
-                .frame(width: min(height - 24, width * 0.42), height: min(height - 24, width * 0.42))
-            VStack(spacing: 10) {
-                digitsFace(size: 40)
-                controls
-                    .padding(.horizontal, 12)
-                laps
+                .frame(width: dial, height: dial)
+            VStack(spacing: 6) {
+                digitsFace(size: 30, bars: false)
+                    .fixedSize(horizontal: false, vertical: true)
+                controls(size: min(64, max(50, height - 110)))
             }
+            .frame(width: min(300, width * 0.36))
+            laps
+                .frame(maxWidth: .infinity)
         }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 8)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
     }
 
     /// iPad and Mac: the dial and controls on the left; the digits above the laps on the right.
     private func wide(width: CGFloat, height: CGFloat) -> some View {
-        let dial = min(height - 170, width * 0.44, 560)
+        let dial = min(height - 170, width * 0.5, 620)
         return HStack(alignment: .center, spacing: 40) {
             VStack(spacing: 28) {
                 dialFace
@@ -93,9 +99,10 @@ struct StopwatchScreen: View {
             }
             VStack(spacing: 18) {
                 digitsFace(size: 64)
+                    .fixedSize(horizontal: false, vertical: true)
                     .padding(.vertical, 12)
                 laps
-                    .frame(maxHeight: .infinity)
+                    .frame(maxHeight: dial + 60)
             }
             .frame(maxWidth: 520)
         }
@@ -106,7 +113,7 @@ struct StopwatchScreen: View {
     // MARK: Faces
 
     /// The digits: the ladder readout, the Earth reading in Earth mode, and the phase of λ, ι and η.
-    private func digitsFace(size: CGFloat) -> some View {
+    private func digitsFace(size: CGFloat, bars: Bool = true) -> some View {
         let run = store.run
         let clock = store.clock
         return TimelineView(.animation(minimumInterval: nil, paused: !run.isRunning)) { context in
@@ -132,7 +139,7 @@ struct StopwatchScreen: View {
                         .foregroundStyle(Theme.ink3)
                         .accessibilityLabel("\(EarthClockText.stopwatch(seconds)) elapsed")
                 }
-                if let blinks {
+                if bars, let blinks {
                     PhaseBars(blinks: reduceMotion ? blinks.rounded(.down) : blinks)
                         .frame(maxWidth: size * 4.6)
                 }
@@ -187,16 +194,18 @@ struct StopwatchScreen: View {
 
     // MARK: Controls
 
-    private var controls: some View {
+    private var controls: some View { controls() }
+
+    private func controls(size: CGFloat = 78) -> some View {
         let run = store.run
         return HStack {
-            RoundControl(run.isRunning || run.isClear ? "Lap" : "Reset") {
+            RoundControl(run.isRunning || run.isClear ? "Lap" : "Reset", size: size) {
                 withAnimation(.snappy) { store.lapOrReset() }
             }
             .disabled(run.isClear)
             .keyboardShortcut("l", modifiers: .command)
             Spacer()
-            RoundControl(run.isRunning ? "Stop" : "Start", tint: run.isRunning ? Theme.danger : Theme.teal) {
+            RoundControl(run.isRunning ? "Stop" : "Start", tint: run.isRunning ? Theme.danger : Theme.teal, size: size) {
                 store.toggle()
             }
             .keyboardShortcut(.defaultAction)

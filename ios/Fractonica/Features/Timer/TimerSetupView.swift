@@ -29,7 +29,7 @@ struct TimerSetupView: View {
                     }
                     .padding(.horizontal, 32)
                     .padding(.vertical, 28)
-                    .frame(maxWidth: .infinity)
+                    .frame(maxWidth: .infinity, minHeight: geo.size.height * 0.9)
                 } else {
                     VStack(spacing: 28) {
                         notices

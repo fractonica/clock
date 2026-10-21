@@ -93,6 +93,33 @@ enum TimerActivityAction: String, Sendable {
 extension EnvironmentValues {
     /// The activity is past its stale date: a timer that rang while the app could not end its activity.
     @Entry var timerActivityStale = false
+    /// Draw the draining ring and bar as they stand now instead of with the system's self-updating timer views (the
+    /// app's own previews: inside an app the circular timer view draws a spinner, not a ring).
+    @Entry var timerActivityStill = false
+}
+
+/// A timer's ring draining with the system clock; static while paused (or in the app's previews).
+struct TimerActivityRing: View {
+    let state: TimerActivityAttributes.ContentState
+    var lineWidth: CGFloat = 3
+
+    @Environment(\.timerActivityStill) private var still
+
+    var body: some View {
+        if state.isPaused || still {
+            ProgressView(value: state.fractionLeft())
+                .progressViewStyle(TimerActivityRingStyle(lineWidth: lineWidth, paused: state.isPaused))
+        } else {
+            ProgressView(timerInterval: state.interval, countsDown: true) {
+                EmptyView()
+            } currentValueLabel: {
+                EmptyView()
+            }
+            .progressViewStyle(.circular)
+            .tint(Theme.teal)
+            .labelsHidden()
+        }
+    }
 }
 
 /// The Lock Screen (and banner) presentation.
@@ -144,24 +171,20 @@ struct TimerActivityBadge: View {
         Group {
             switch attributes.kind {
             case .timer:
-                if stale {
+                if state.pure && !state.isPaused && !stale && size > 30 {
+                    Image(systemName: "timer")
+                        .font(.system(size: size * 0.46, weight: .semibold))
+                        .foregroundStyle(Theme.teal)
+                        .frame(width: size, height: size)
+                        .background(Theme.teal.opacity(0.16), in: .circle)
+                } else if stale {
                     Image(systemName: "bell.fill")
                         .font(.system(size: size * 0.42, weight: .semibold))
                         .foregroundStyle(Theme.teal)
                         .frame(width: size, height: size)
                         .background(Theme.teal.opacity(0.16), in: .circle)
-                } else if state.isPaused {
-                    ProgressView(value: state.fractionLeft())
-                        .progressViewStyle(TimerActivityRingStyle(lineWidth: lineWidth, paused: true))
                 } else {
-                    ProgressView(timerInterval: state.interval, countsDown: true) {
-                        EmptyView()
-                    } currentValueLabel: {
-                        EmptyView()
-                    }
-                    .progressViewStyle(.circular)
-                    .tint(Theme.teal)
-                    .labelsHidden()
+                    TimerActivityRing(state: state, lineWidth: lineWidth)
                 }
             case .stopwatch:
                 Image(systemName: state.isPaused ? "stopwatch" : "stopwatch.fill")
@@ -207,6 +230,16 @@ struct TimerActivityReading: View {
             if stale && attributes.kind == .timer {
                 Text("Done")
                     .font(.system(size: size * 0.72, weight: .medium))
+            } else if state.pure && attributes.kind == .timer && !state.isPaused {
+                // no Earth digits: the timer's name inside its draining ring
+                ZStack {
+                    TimerActivityRing(state: state, lineWidth: size * 0.09)
+                    Text(state.compact)
+                        .font(.reading(size * 0.34, weight: .semibold))
+                        .minimumScaleFactor(0.5)
+                        .padding(size * 0.16)
+                }
+                .frame(width: size * 1.35, height: size * 1.35)
             } else if state.pure {
                 Text(state.reading)
                     .font(.reading(size * 0.62, weight: .medium))
@@ -233,12 +266,13 @@ struct TimerActivityBar: View {
     let state: TimerActivityAttributes.ContentState
 
     @Environment(\.timerActivityStale) private var stale
+    @Environment(\.timerActivityStill) private var still
 
     var body: some View {
         Group {
             if stale {
                 ProgressView(value: 0.0)
-            } else if state.isPaused {
+            } else if state.isPaused || still {
                 ProgressView(value: state.fractionLeft())
             } else {
                 ProgressView(timerInterval: state.interval, countsDown: true) {

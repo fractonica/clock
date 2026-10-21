@@ -21,6 +21,7 @@ struct TimerActivityPreview: View {
                 }
                 .padding(16)
                 .environment(\.timerActivityStale, mode == "stale")
+                .environment(\.timerActivityStill, true)
             }
             .frame(maxHeight: 520)
             .background(
@@ -55,7 +56,7 @@ struct TimerActivityPreview: View {
                     HStack(spacing: 10) {
                         TimerActivityBadge(attributes: a, state: s, size: 36, lineWidth: 4)
                         VStack(alignment: .leading, spacing: 1) {
-                            Text(a.kind == .timer ? "Timer" : "Stopwatch").font(.caption2.weight(.semibold)).foregroundStyle(Theme.ink3)
+                            if a.kind == .timer { Text("Timer").font(.caption2.weight(.semibold)).foregroundStyle(Theme.ink3) }
                             Text(s.title).font(.subheadline.weight(.semibold)).foregroundStyle(Theme.ink)
                         }
                     }
