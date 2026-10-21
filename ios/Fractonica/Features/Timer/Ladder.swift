@@ -107,6 +107,12 @@ struct LadderSpan: Hashable, Sendable {
         return parts.isEmpty ? "0ν" : parts.joined(separator: " ")
     }
 
+    /// The name cut to its `parts` leading non-zero counts: "1η 12ι" for 1η 12ι 3λ 4ν with 2 parts.
+    func name(parts: Int) -> String {
+        let all = LadderUnit.allCases.compactMap { u in count(u) > 0 ? "\(count(u))\(u.symbol)" : nil }
+        return all.isEmpty ? "0ν" : all.prefix(max(1, parts)).joined(separator: " ")
+    }
+
     /// "1 Helion 12 Preons": the name in words, for VoiceOver.
     var spoken: String {
         let parts = LadderUnit.allCases.compactMap { u in count(u) > 0 ? "\(count(u)) \(u.name(count: count(u)))" : nil }
@@ -225,9 +231,8 @@ struct AlignedTarget: Codable, Hashable, Sendable {
     /// When it begins (catalogue instant).
     let time: Double
 
-    /// The levels a timer can align to: λ, ι, θ, η, ζ and ε (the units and the depths between them that are whole
-    /// counts of a unit).
-    static let levels = [10, 8, 7, 6, 5, 4]
+    /// The levels a timer can align to, short to long: κ (13λ), ι, θ (4ι), η, ζ (11η) and ε.
+    static let levels = [9, 8, 7, 6, 5, 4]
 
     /// The next start of a cycle of `level` strictly after `t`; nil outside the catalogue or when the running cycle is
     /// the catalogue's last.

@@ -206,6 +206,8 @@ struct TimerRun: Codable, Hashable, Sendable, Identifiable {
 
 /// A stopwatch: banked time plus the run since `since`, and the lap marks.
 struct StopwatchRun: Codable, Hashable, Sendable {
+    /// Identifies a run from its first start to its reset (its Live Activity).
+    var id = UUID()
     /// Running since this device date; nil while stopped.
     var since: Date?
     /// Seconds counted before `since`.
