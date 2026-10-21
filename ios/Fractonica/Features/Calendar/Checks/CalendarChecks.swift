@@ -11,13 +11,16 @@ struct CalendarChecks {
     static func main() {
         positionChecks()
         addressChecks()
+        stepChecks()
         isoChecks()
+        wallTimeChecks()
         dayChecks()
         monthChecks()
         dayEventChecks()
         ribbonChecks()
         pureCounterChecks()
         pureInputChecks()
+        pureWordChecks()
         deltaPageChecks()
         Checks.finish()
     }
@@ -89,6 +92,61 @@ private func addressChecks() {
     let range = CalMath.syncRange(clock)
     check(clock.solarSync(number: range.lowerBound) != nil && clock.solarSync(number: range.lowerBound - 1) == nil, "the first full sync")
     check(clock.solarSync(number: range.upperBound) != nil && clock.solarSync(number: range.upperBound + 1) == nil, "the last full sync")
+}
+
+private func stepChecks() {
+    // + on the last ε of a δ carries into the next δ's first ε (the odometer way); − carries back
+    let path = CalMath.path(clock, at: vectorA, depth: 5)!
+    check(path == [6, 4, 9, 3, 5], "vector A's address: \(path)")
+    check(CalMath.step(clock, path: path, level: 4, by: 1) == [6, 4, 9, 4, 1], "ε#5 + 1 is the next δ's ε#1")
+    check(CalMath.step(clock, path: [6, 4, 9, 4, 1], level: 4, by: -1) == [6, 4, 9, 3, 5], "ε#1 − 1 is the previous δ's ε#5")
+    check(CalMath.step(clock, path: [6, 5, 13, 5, 2], level: 1, by: 1) == [7, 1, 13, 5, 2], "β#5 + 1 carries into the next α, finer entries kept")
+    check(CalMath.step(clock, path: [1, 1, 1], level: 2, by: -1) == nil, "nothing before the first γ")
+    let last = clock.cycleToPath(level: 3, cycle: Int64(clock.count(3)) - 1)
+    check(CalMath.step(clock, path: last, level: 3, by: 1) == nil, "nothing after the last δ")
+    check(CalMath.step(clock, path: last, level: 3, by: -1) != nil, "the last δ steps back")
+    // a step into the clipped last cycles clamps the finer entries into what exists
+    let lastAlpha = CalMath.childCount(clock, parent: [18])
+    if let p = CalMath.step(clock, path: [17, 5, 13], level: 0, by: 1) {
+        check(p[0] == 18 && p[1] <= lastAlpha && clock.pathToCycle(p) != nil, "stepping into the clipped last α keeps a path that exists: \(p)")
+    } else {
+        check(false, "α#17 steps into α#18")
+    }
+    check(CalMath.nominalCount(clock, parent: []) == 18 && CalMath.nominalCount(clock, parent: [6]) == 5 && CalMath.nominalCount(clock, parent: [6, 4]) == 13,
+          "nominal counts follow the hierarchy")
+    check(CalMath.nominalCount(clock, parent: [18]) == 5 && CalMath.childCount(clock, parent: [18]) < 5, "the clipped α: nominally 5 β, fewer in the catalogue")
+    // stepping η by one at depth 7 moves by exactly one η cycle
+    let deep = CalMath.path(clock, at: vectorA, depth: 7)!
+    if let next = CalMath.step(clock, path: deep, level: 6, by: 1) {
+        check(clock.pathToCycle(next)! == clock.pathToCycle(deep)! + 1, "η + 1 is the next η")
+    }
+}
+
+private func wallTimeChecks() {
+    let berlin = TimeZone(identifier: "Europe/Berlin")!
+    let gap = EarthTime.CivilTime(year: 2026, month: 3, day: 29, hour: 2, minute: 30)
+    let fold = EarthTime.CivilTime(year: 2026, month: 10, day: 25, hour: 2, minute: 30)
+    let fine = EarthTime.CivilTime(year: 2026, month: 10, day: 8, hour: 14, minute: 0)
+    check(CalMath.wallTimeIssue(gap, zone: berlin) == .gap, "02:30 on Berlin's spring-forward day does not exist")
+    check(CalMath.wallTimeIssue(fold, zone: berlin) == .fold, "02:30 on Berlin's fall-back day happens twice")
+    check(CalMath.wallTimeIssue(fine, zone: berlin) == nil, "an ordinary wall time happens once")
+    check(CalMath.wallTimeIssue(gap, zone: utc) == nil, "UTC has no gaps")
+    let earth = EarthFormatter(timeZone: berlin)
+    let t = EarthTime.zonedToUnix(gap, zone: berlin)
+    let note = CalMath.wallTimeNote(gap, zone: berlin, resolved: t, earth: earth, place: "Berlin")
+    check(note == "02:30 does not exist in Berlin (the clocks skip it): moved ahead to 03:30", "the gap sentence: \(note ?? "nil")")
+    check(CalMath.wallTimeNote(fold, zone: berlin, resolved: 0, earth: earth, place: "Berlin") == "02:30 happens twice in Berlin (the clocks go back): showing the first", "the fold sentence")
+    // ISO: the wall fields come back only for a time without an offset
+    check(CalMath.readISO("2026-03-29T02:30", zone: berlin)?.wall == gap, "a wall time without an offset is reported")
+    check(CalMath.readISO("2026-03-29T02:30+01:00", zone: berlin)?.wall == nil, "with an offset it is an instant")
+    check(CalMath.readISO("2026-03-29", zone: berlin)?.wall == nil, "a date alone is its day's start, not a wall time")
+    check(EarthTime.zonedToUnix(.init(year: 1583, month: 1, day: 1), zone: utc) == -12_212_553_600, "1583-01-01 UTC, the first day of the converter's date picker")
+}
+
+private func pureWordChecks() {
+    check(PureMath.madeOf(level: 3) == "5ε" && PureMath.madeOf(level: 4) == "77η" && PureMath.madeOf(level: 6) == "36ι", "units are made of the next unit: \(PureMath.madeOf(level: 4))")
+    check(PureMath.madeOf(level: 5) == "11η" && PureMath.madeOf(level: 7) == "4ι", "a depth between units is said in the unit below: \(PureMath.madeOf(level: 5))")
+    check(PureMath.madeOf(level: 13).isEmpty == false && PureMath.madeOf(level: 12) == "", "the Blink is the finest unit; ξ is a fraction of it: \(PureMath.madeOf(level: 13))")
 }
 
 private func isoChecks() {

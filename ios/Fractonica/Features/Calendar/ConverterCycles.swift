@@ -123,19 +123,31 @@ struct AddressCard: View {
 
     var body: some View {
         let clock = store.clock
-        let path = pure ? Array(snap.path.prefix(5)) : snap.path
+        let path = snap.path
+        let level = path.count - 1
+        let index = path.isEmpty ? nil : clock.pathToCycle(path)
+        // pure mode numbers α β γ δ and the Nuclide; a finer cycle is placed by where it begins in its Nuclide
+        let numbered = pure ? Array(path.prefix(5)) : path
+        let place = pure && level >= 5 ? index : nil
+        let point = pointTime(path, index: index)
         CalCard("Cycle address", systemImage: "point.3.connected.trianglepath.dotted") {
-            if !pure {
-                NudgeStepper(value: model.depth, range: 1...14, label: "Depth", display: { "depth \($0)" }) { d in
-                    withAnimation(.snappy) { model.depth = d }
-                }
+            NudgeStepper(value: model.depth, range: 1...14, label: "Depth", display: { "depth \($0)" }) { d in
+                withAnimation(.snappy) { model.depth = d }
             }
         } content: {
             FlowLayout(spacing: 4, lineSpacing: 6) {
-                ForEach(Array(path.enumerated()), id: \.offset) { level, n in
+                ForEach(Array(numbered.enumerated()), id: \.offset) { level, n in
                     HStack(spacing: 4) {
-                        if level > 0 { Text("›").foregroundStyle(Theme.ink3).accessibilityHidden(true) }
-                        Text(CalMath.cycleLabel(level: level, ordinal: n))
+                        if level > 0 { Text(verbatim: "›").foregroundStyle(Theme.ink3).accessibilityHidden(true) }
+                        Text(verbatim: CalMath.cycleLabel(level: level, ordinal: n))
+                            .font(.code(15, weight: .semibold))
+                            .foregroundStyle(Theme.levelColor(level))
+                    }
+                }
+                if let place {
+                    HStack(spacing: 4) {
+                        Text(verbatim: "›").foregroundStyle(Theme.ink3).accessibilityHidden(true)
+                        Text(verbatim: Notation.standard.cycleName(level: level, cycle: place, short: true))
                             .font(.code(15, weight: .semibold))
                             .foregroundStyle(Theme.levelColor(level))
                     }
@@ -144,23 +156,10 @@ struct AddressCard: View {
             .textSelection(.enabled)
             .accessibilityElement(children: .combine)
             VStack(spacing: 6) {
-                ForEach(Array(path.enumerated()), id: \.offset) { level, n in
-                    let maximum = max(1, CalMath.childCount(clock, parent: Array(path.prefix(level))))
-                    HStack(spacing: 10) {
-                        LevelChip(text: "\(CalMath.letter(level)) \(level + 1)", level: level, compact: true)
-                            .frame(width: 46, alignment: .leading)
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text(name(level, n)).font(.subheadline).foregroundStyle(Theme.ink)
-                            Text("of \(maximum)\(level == 0 ? " in the catalogue" : " in its \(CalMath.letter(level - 1))")")
-                                .font(.caption)
-                                .foregroundStyle(Theme.ink3)
-                        }
-                        Spacer(minLength: 4)
-                        NudgeStepper(value: n, range: 1...maximum, label: name(level, n), display: { "#\($0)" }, tint: Theme.levelColor(level)) { v in
-                            edit(path, level: level, to: v)
-                        }
-                    }
+                ForEach(Array(numbered.enumerated()), id: \.offset) { level, n in
+                    entryRow(path, level: level, n: n)
                 }
+                if let place { placeRow(path, level: level, index: place) }
             }
             HStack {
                 Text("Point in the cycle").font(.subheadline).foregroundStyle(Theme.ink3)
@@ -170,14 +169,59 @@ struct AddressCard: View {
                     edit(path, level: nil, to: 0)
                 })) {
                     ForEach(CalMath.Point.allCases) { p in
-                        Text(pure && p == .phase ? "Same phase as now" : p.label).tag(p)
+                        Text(pure && p == .phase ? "Same phase as this moment" : p.label).tag(p)
                     }
                 }
                 .pickerStyle(.menu)
                 .labelsHidden()
                 .tint(Theme.ink)
             }
-            result(path)
+            result(path, index: index, at: point)
+        }
+    }
+
+    /// One numbered entry: its name, how many its parent holds, and − n + (stepping carries into the parent).
+    private func entryRow(_ path: [Int], level: Int, n: Int) -> some View {
+        let clock = store.clock
+        let parent = Array(path.prefix(level))
+        let maximum = max(1, CalMath.childCount(clock, parent: parent))
+        let nominal = CalMath.nominalCount(clock, parent: parent)
+        let of = level == 0 ? "of \(maximum) in the catalogue" : "of \(nominal) in its \(CalMath.letter(level - 1))"
+        let clipped = level > 0 && maximum < nominal ? " · the catalogue ends after #\(maximum)" : ""
+        return HStack(spacing: 10) {
+            LevelChip(text: "\(CalMath.letter(level)) \(level + 1)", level: level, compact: true)
+                .frame(width: 46, alignment: .leading)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(verbatim: name(level, n)).font(.subheadline).foregroundStyle(Theme.ink)
+                Text(verbatim: of + clipped)
+                    .font(.caption)
+                    .foregroundStyle(Theme.ink3)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 4)
+            NudgeStepper(value: n, range: 1...maximum, label: name(level, n), display: { "#\($0)" }, tint: Theme.levelColor(level),
+                         carry: { step(path, level: level, by: $0) }, canStep: canStep(path, level: level)) { v in
+                edit(path, level: level, to: v)
+            }
+        }
+    }
+
+    /// Pure mode, a cycle finer than the Nuclide: where it begins in its Nuclide ("45η", "5η 9ι"), stepped one cycle of
+    /// its depth at a time.
+    private func placeRow(_ path: [Int], level: Int, index: Int64) -> some View {
+        let n = Notation.standard
+        let name = Notation.unit(level: level)?.name ?? "\(CalMath.letter(level)) cycle"
+        return HStack(spacing: 10) {
+            LevelChip(text: "\(CalMath.letter(level)) \(level + 1)", level: level, compact: true)
+                .frame(width: 46, alignment: .leading)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(verbatim: name).font(.subheadline).foregroundStyle(Theme.ink)
+                Text("where it begins in its Nuclide").font(.caption).foregroundStyle(Theme.ink3)
+            }
+            Spacer(minLength: 4)
+            NudgeStepper(value: 0, range: 0...0, label: name, display: { _ in n.cycleName(level: level, cycle: index, short: true) },
+                         tint: Theme.levelColor(level), menu: false,
+                         carry: { step(path, level: level, by: $0) }, canStep: canStep(path, level: level)) { _ in }
         }
     }
 
@@ -189,46 +233,116 @@ struct AddressCard: View {
         return Notation.levelNames[level]
     }
 
-    @ViewBuilder
-    private func result(_ path: [Int]) -> some View {
-        let clock = store.clock
-        if let index = clock.pathToCycle(path), let facts = clock.cycle(level: path.count - 1, index: index) {
-            let level = path.count - 1
-            VStack(alignment: .leading, spacing: 4) {
-                if pure {
-                    Text("→ \(Notation.standard.stamp(at: model.t, upTo: Notation.resolutionOf(level)))")
-                        .font(.code(14))
-                        .foregroundStyle(Theme.ink)
-                    Text("\(Notation.standard.dateText(at: model.t, upTo: Notation.resolutionOf(max(4, level)))) · one cycle is \(Notation.standard.cycleLength(level: level))")
-                        .font(.footnote)
-                        .foregroundStyle(Theme.ink3)
-                } else {
-                    Text("→ \(earth.long(model.t)).\(CalMath.pad(earth.parts(model.t).ms, 3)) \(earth.tag(model.t))")
-                        .font(.subheadline.monospacedDigit())
-                        .foregroundStyle(Theme.ink)
-                    Text("\(CalMath.cycleLabel(level: level, ordinal: path[level])) lasts \(EarthTime.duration(facts.duration, parts: 3))\(facts.clipped ? ", clipped by the catalogue's end" : "")")
-                        .font(.footnote)
-                        .foregroundStyle(Theme.ink3)
-                }
-            }
-            .textSelection(.enabled)
-            .padding(.top, 2)
-        }
+    /// The addressed point: its first millisecond, or nil beyond the catalogue's end.
+    private func pointTime(_ path: [Int], index: Int64?) -> Double? {
+        guard index != nil else { return nil }
+        let phaseNow = snap.levels.indices.contains(path.count - 1) ? snap.levels[path.count - 1].phase : 0
+        return CalMath.time(store.clock, path: path, point: model.point, phaseNow: phaseNow)
     }
 
-    /// Step one entry (or re-place the point when `level` is nil); finer entries keep their numbers where they exist.
-    private func edit(_ path: [Int], level: Int?, to v: Int) {
+    @ViewBuilder
+    private func result(_ path: [Int], index: Int64?, at t: Double?) -> some View {
         let clock = store.clock
+        let level = path.count - 1
+        let n = Notation.standard
+        let chain = pure && level >= 5 && index != nil
+            ? CalMath.pathText(Array(path.prefix(5)), separator: " › ") + " › " + n.cycleName(level: level, cycle: index!, short: true)
+            : CalMath.pathText(path, separator: " › ")
+        let pointName = model.point == .phase ? "Same phase" : model.point.label
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .center, spacing: 8) {
+                Text(verbatim: "\(pointName) of \(chain)")
+                    .font(.footnote)
+                    .foregroundStyle(Theme.ink3)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 4)
+                if let t, index != nil {
+                    if abs(t - model.t) > 0.0005 {
+                        Button("Pin the converter there", systemImage: "pin") {
+                            model.setAddress(path, t: t)
+                            Haptics.play(.selection)
+                        }
+                        .labelStyle(.iconOnly)
+                        .buttonStyle(.glass)
+                        .buttonBorderShape(.circle)
+                        .help("Pin the converter on this point")
+                    }
+                    Button("Go there", systemImage: "location.fill") {
+                        model.setAddress(path, t: t)
+                        store.travel(to: t)
+                        Haptics.play(.step)
+                        toasts.show(pure ? "Showing \(n.stamp(at: t, upTo: "eta"))" : "Showing \(earth.long(t))")
+                    }
+                    .labelStyle(.iconOnly)
+                    .buttonStyle(.glass)
+                    .buttonBorderShape(.circle)
+                    .help("Travel there")
+                }
+            }
+            if let t, let index, let facts = clock.cycle(level: level, index: index) {
+                VStack(alignment: .leading, spacing: 3) {
+                    if pure {
+                        Text(verbatim: n.stamp(at: t, upTo: "nu"))
+                            .font(.code(14))
+                            .foregroundStyle(Theme.ink)
+                        Text(verbatim: n.dateText(at: t, upTo: level <= 3 ? "delta" : Notation.resolutionOf(level)))
+                            .font(.footnote)
+                            .foregroundStyle(Theme.ink2)
+                        let made = PureMath.madeOf(level: level)
+                        Text(verbatim: [clock.position(at: t).map { String(format: "pos %.12f", $0) },
+                                        made.isEmpty ? nil : "\(level <= 3 ? Notation.levelNames[level] : CalMath.letter(level)) lasts \(made)\(facts.clipped ? " (clipped)" : "")",
+                                        "global index \(index)"].compactMap { $0 }.joined(separator: " · "))
+                            .font(.caption.monospacedDigit())
+                            .foregroundStyle(Theme.ink3)
+                    } else {
+                        Text(verbatim: "\(earth.long(t)).\(CalMath.pad(earth.parts(t).ms, 3)) \(earth.tag(t))")
+                            .font(.subheadline.monospacedDigit())
+                            .foregroundStyle(Theme.ink)
+                        Text(verbatim: "\(CalMath.cycleLabel(level: level, ordinal: path[level])) lasts \(EarthTime.duration(facts.duration, parts: 3))\(facts.clipped ? ", clipped by the catalogue's end" : "") · global index \(index)")
+                            .font(.caption.monospacedDigit())
+                            .foregroundStyle(Theme.ink3)
+                    }
+                }
+                .textSelection(.enabled)
+                .fixedSize(horizontal: false, vertical: true)
+            } else {
+                Text("lies beyond the end of the catalogue (its last cycle is clipped)")
+                    .font(.subheadline)
+                    .foregroundStyle(Theme.ink3)
+            }
+        }
+        .padding(.top, 2)
+    }
+
+    /// Whether the entry at `level` can step back and forward (only the catalogue's ends stop it).
+    private func canStep(_ path: [Int], level: Int) -> (down: Bool, up: Bool) {
+        let clock = store.clock
+        guard let index = clock.pathToCycle(Array(path.prefix(level + 1))) else { return (false, false) }
+        return (index > 0, Int128(index) + 1 < clock.count(level))
+    }
+
+    /// Step an entry by whole cycles, carrying into its parents; false at an end of the catalogue.
+    private func step(_ path: [Int], level: Int, by delta: Int) -> Bool {
+        guard let next = CalMath.step(store.clock, path: path, level: level, by: delta) else { return false }
+        return land(next)
+    }
+
+    /// Set one entry (or re-place the point when `level` is nil); finer entries keep their numbers where they exist.
+    private func edit(_ path: [Int], level: Int?, to v: Int) {
         var p = path
         if let level { p[level] = v }
-        p = CalMath.normalize(clock, path: p)
+        _ = land(CalMath.normalize(store.clock, path: p))
+    }
+
+    /// Pin the converter on the chosen point of the cycle at `path`.
+    private func land(_ p: [Int]) -> Bool {
         let phaseNow = snap.levels.indices.contains(p.count - 1) ? snap.levels[p.count - 1].phase : 0
-        guard let t = CalMath.time(clock, path: p, point: model.point, phaseNow: phaseNow) else {
+        guard let t = CalMath.time(store.clock, path: p, point: model.point, phaseNow: phaseNow) else {
             toasts.show("That point lies beyond the end of the catalogue")
-            Haptics.play(.warning)
-            return
+            return false
         }
         model.setAddress(p, t: t)
+        return true
     }
 }
 
@@ -289,7 +403,7 @@ private struct GlyphTile: View {
         .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Theme.panel2.opacity(0.9)))
         .contentShape(.rect)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(Text("\(r.name) depth \(r.depth), state \(r.index) of \(r.states), \(GlyphWords.words(value: r.value, derivative: r.derivative))"))
+        .accessibilityLabel(Text("\(r.name) depth \(r.depth), state \(r.index) of \(r.states), \(GlyphWords.meaning(index: r.index))"))
         .accessibilityHint(Text("Shows when this depth shows another state"))
     }
 }
@@ -300,6 +414,13 @@ enum GlyphWords {
         if derivative > 0 { return "rising ↗" }
         if derivative < 0 { return "falling ↘" }
         return value > 0 ? "peak ▲" : value < 0 ? "valley ▼" : "zero"
+    }
+
+    /// "value −3, rising ↗" (convert.js `stateMeaning`).
+    static func meaning(index: Int) -> String {
+        let g = GlyphState.of(index: index, strokes: 2)
+        let sign = g.value < 0 ? "−" : g.value > 0 ? "+" : ""
+        return "value \(sign)\(abs(g.value)), \(words(value: g.value, derivative: g.derivative))"
     }
 }
 
@@ -333,6 +454,10 @@ struct StatePicker: View {
                         .buttonStyle(.glass)
                         .buttonBorderShape(.circle)
                 }
+                Text(verbatim: stateLine(chosen))
+                    .font(.subheadline.monospacedDigit())
+                    .foregroundStyle(Theme.ink2)
+                    .contentTransition(.numericText())
                 if pure { Text("Coarse glyph").font(.footnote.weight(.semibold)).foregroundStyle(Theme.ink3) }
                 stateGrid(selected: chosen[0], now: current[0]) { coarse = $0 }
                 if pure {
@@ -355,6 +480,15 @@ struct StatePicker: View {
             // pure mode asks about the whole pair showing now, until the fine glyph is set to Any
             if pure, coarse == nil, fine == nil, current.count > 1 { fine = current[1] }
         }
+    }
+
+    /// What the chosen state is: "State 13 of 16 · value −3, rising ↗ · showing now"; pure: "Pair 13·0 of 256".
+    private func stateLine(_ chosen: [Int]) -> String {
+        let now = chosen == Array(current.prefix(chosen.count)) ? " · showing now" : ""
+        if pure {
+            return chosen.count > 1 ? "Pair \(chosen[0])·\(chosen[1]) of 256\(now)" : "Coarse glyph \(chosen[0]), any fine glyph\(now)"
+        }
+        return "State \(chosen[0]) of 16 · \(GlyphWords.meaning(index: chosen[0]))\(now)"
     }
 
     private func stateGrid(selected: Int, now: Int, choose: @escaping (Int) -> Void) -> some View {

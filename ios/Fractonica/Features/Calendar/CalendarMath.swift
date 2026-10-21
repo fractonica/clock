@@ -112,6 +112,22 @@ enum CalMath {
         return n
     }
 
+    /// How many cycles a parent holds nominally (the hierarchy's count; the catalogue may end sooner): convert.js
+    /// `nominalCount`.
+    static func nominalCount(_ clock: FractonicaClock, parent: [Int]) -> Int {
+        parent.isEmpty ? Int(clock.count(0)) : clock.levelInfo(parent.count).siblings ?? 0
+    }
+
+    /// Step the entry at `level` of a path by `delta` cycles of that level, carrying into the parents the odometer way
+    /// (the last ε of a δ steps into the next δ's first ε); the finer entries keep their numbers where they exist.
+    /// nil at the ends of the catalogue (pure-converter.js `stepLevel`).
+    static func step(_ clock: FractonicaClock, path: [Int], level: Int, by delta: Int) -> [Int]? {
+        guard level >= 0, level < path.count, let index = clock.pathToCycle(Array(path.prefix(level + 1))) else { return nil }
+        let next = Int128(index) + Int128(delta)
+        guard next >= 0, next < clock.count(level) else { return nil }
+        return normalize(clock, path: clock.cycleToPath(level: level, cycle: Int64(next)) + path.dropFirst(level + 1))
+    }
+
     /// Every entry clamped into what exists under its parents.
     static func normalize(_ clock: FractonicaClock, path: [Int]) -> [Int] {
         var out: [Int] = []
@@ -219,7 +235,11 @@ enum CalMath {
 
     /// An ISO 8601 moment: "2026-10-08T12:00:00.123+03:00", "…Z", or a wall time without an offset ("2026-10-08 14:30"),
     /// read in `zone` (a skipped wall time moves ahead, a repeated one is the first). nil when it is not a real moment.
-    static func parseISO(_ text: String, zone: TimeZone) -> Double? {
+    static func parseISO(_ text: String, zone: TimeZone) -> Double? { readISO(text, zone: zone)?.t }
+
+    /// An ISO 8601 moment read in detail: the instant, and the wall-clock fields when they were given without an offset
+    /// (a time of the zone, which may not exist or may happen twice there: see `wallTimeIssue`).
+    static func readISO(_ text: String, zone: TimeZone) -> (t: Double, wall: EarthTime.CivilTime?)? {
         let s = text.trimmingCharacters(in: .whitespacesAndNewlines)
         let pattern = /(-?\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,3}))?)?)?\s*(Z|[+-]\d{2}(?::?\d{2})?)?/
         guard let m = s.wholeMatch(of: pattern.ignoresCase()),
@@ -228,7 +248,9 @@ enum CalMath {
         let ms = m.7.flatMap { Int(String($0).padding(toLength: 3, withPad: "0", startingAt: 0)) } ?? 0
         guard (1...12).contains(mo), d >= 1, d <= EarthTime.daysInMonth(y, mo), h <= 23, mi <= 59, se <= 59 else { return nil }
         let fields = EarthTime.CivilTime(year: y, month: mo, day: d, hour: h, minute: mi, second: se, ms: ms)
-        guard let tz = m.8.map(String.init) else { return EarthTime.zonedToUnix(fields, zone: zone) }
+        guard let tz = m.8.map(String.init) else {
+            return (EarthTime.zonedToUnix(fields, zone: zone), m.4 != nil ? fields : nil)
+        }
         var offset = 0
         if tz.uppercased() != "Z" {
             let digits = tz.dropFirst().replacingOccurrences(of: ":", with: "")
@@ -236,7 +258,34 @@ enum CalMath {
             guard hours <= 18, minutes <= 59 else { return nil }
             offset = (hours * 3600 + minutes * 60) * (tz.first == "-" ? -1 : 1)
         }
-        return EarthTime.zonedToUnix(fields, zone: TimeZone(identifier: "UTC")!) - Double(offset)
+        return (EarthTime.zonedToUnix(fields, zone: TimeZone(identifier: "UTC")!) - Double(offset), nil)
+    }
+
+    /// A wall time a zone does not have exactly once.
+    enum WallIssue: Sendable { case gap, fold }
+
+    /// Whether the wall time `fields` is skipped (`gap`, the clocks jump over it) or repeated (`fold`, the clocks go
+    /// back) in `zone`; nil when it happens exactly once (convert.js `localTimeIssue`).
+    static func wallTimeIssue(_ fields: EarthTime.CivilTime, zone: TimeZone) -> WallIssue? {
+        var utcFields = fields
+        utcFields.ms = 0
+        let g = EarthTime.zonedToUnix(utcFields, zone: TimeZone(identifier: "UTC")!)
+        guard g.isFinite else { return nil }
+        let offsetAt = { (t: Double) in EarthTime.zonedParts(t, zone: zone).offset }
+        let offsets = Set([offsetAt(g - 86_400), offsetAt(g), offsetAt(g + 86_400)])
+        let hits = offsets.filter { offsetAt(g - Double($0)) == $0 }.count
+        return hits == 0 ? .gap : hits > 1 ? .fold : nil
+    }
+
+    /// The sentence under a typed wall time the zone does not have exactly once (convert.js `wallTimeNote`):
+    /// "02:30 does not exist in Berlin (the clocks skip it): moved ahead to 03:30".
+    static func wallTimeNote(_ fields: EarthTime.CivilTime, zone: TimeZone, resolved t: Double, earth: EarthFormatter, place: String) -> String? {
+        guard let issue = wallTimeIssue(fields, zone: zone) else { return nil }
+        let hm = "\(pad(fields.hour)):\(pad(fields.minute))"
+        switch issue {
+        case .gap: return "\(hm) does not exist in \(place) (the clocks skip it): moved ahead to \(earth.time(r3(t), seconds: false))"
+        case .fold: return "\(hm) happens twice in \(place) (the clocks go back): showing the first"
+        }
     }
 
     // MARK: Eclipses

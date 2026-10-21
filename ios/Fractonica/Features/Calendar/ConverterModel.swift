@@ -25,6 +25,8 @@ final class ConverterModel {
 
     /// The moment the converter shows (Unix seconds, whole milliseconds).
     var t: Double { isPinned ? pinnedT : followT }
+    /// The displayed time, as last pushed by the screen (what a pinned moment is compared with).
+    var displayedT: Double { followT }
 
     var zoneMode: ZoneMode = .app
     /// How deep the cycle address goes (1 … 14).
@@ -85,7 +87,8 @@ final class ConverterModel {
         }
     }
 
-    /// The launch arguments, once (-FXConverterTime, -FXConverterZone, -FXConverterPick, -FXCalendarScroll).
+    /// The launch arguments, once (-FXConverterTime, -FXConverterZone, -FXConverterPick, -FXConverterDepth,
+    /// -FXConverterPoint, -FXCalendarScroll).
     func applyLaunchOptions() {
         guard !launched else { return }
         launched = true
@@ -94,6 +97,9 @@ final class ConverterModel {
             zoneMode = zone == "UTC" ? .utc : TimeZone(identifier: zone) != nil ? .zone(zone) : .app
         }
         if let level = CalendarLaunch.int("FXConverterPick"), (0...13).contains(level) { pickLevel = level }
-        scrollTarget = CalendarLaunch.string("FXCalendarScroll")
+        if let d = CalendarLaunch.int("FXConverterDepth"), (1...14).contains(d) { depth = d }
+        if let p = CalendarLaunch.string("FXConverterPoint").flatMap(CalMath.Point.init(rawValue:)) { point = p }
+        // the glyph tiles live in a lazy grid: the picker can only open on a tile that is on screen
+        scrollTarget = CalendarLaunch.string("FXCalendarScroll") ?? (pickLevel != nil ? "glyphs" : nil)
     }
 }

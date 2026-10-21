@@ -173,6 +173,11 @@ struct NudgeStepper: View {
     var tint: Color = Theme.ink
     /// A menu of every value on the number (short ranges only).
     var menu = true
+    /// Steps that carry past the range into the parent (the cycle address, odometer style): − and + call this with
+    /// the step instead of changing the value inside `range`; it returns false at an end of the catalogue.
+    var carry: ((Int) -> Bool)? = nil
+    /// With `carry`: whether there is anywhere to go each way (dims the button that has nowhere to go).
+    var canStep: (down: Bool, up: Bool)? = nil
     let onChange: (Int) -> Void
 
     var body: some View {
@@ -199,6 +204,8 @@ struct NudgeStepper: View {
         Text(display(value))
             .font(.reading(16, weight: .semibold))
             .foregroundStyle(tint)
+            .lineLimit(1)
+            .fixedSize()
             .frame(minWidth: 44)
             .padding(.horizontal, 4)
             .contentTransition(.numericText(value: Double(value)))
@@ -233,12 +240,21 @@ struct NudgeStepper: View {
                 .contentShape(.circle)
         }
         .buttonStyle(.plain)
-        .foregroundStyle(range.contains(value + delta) ? Theme.ink2 : Theme.ink3.opacity(0.4))
+        .foregroundStyle(possible(delta) ? Theme.ink2 : Theme.ink3.opacity(0.4))
         .buttonRepeatBehavior(.enabled)
         .accessibilityLabel(Text(delta < 0 ? "Previous" : "Next"))
     }
 
+    private func possible(_ delta: Int) -> Bool {
+        if carry != nil, let canStep { return delta < 0 ? canStep.down : canStep.up }
+        return range.contains(value + delta)
+    }
+
     private func step(_ delta: Int) {
+        if let carry {
+            Haptics.play(carry(delta) ? .selection : .warning)
+            return
+        }
         guard range.contains(value + delta) else {
             Haptics.play(.warning)
             return
@@ -362,7 +378,14 @@ enum Pasteboard {
 ///     -FXMonth <yyyy-mm>             show a month (Month) instead of following the displayed time
 ///     -FXMonthBands <keys>           the month's bands for this launch, e.g. "3,4,6,sync"
 ///     -FXMonthDay <d>                open the detail of day d of the shown month (pure mode: cell d of the page, 0 … 34)
+///     -FXConverterDepth <1…14>       the cycle address's depth
+///     -FXConverterPoint <point>      the point in the cycle: begin, peak, node, valley, end, phase
+///     -FXMonthPick 1                 open the month picker (pure mode: the Delta picker)
+///     -FXCalendarShort 1             lay the month and the Delta page out as in a short window (iPhone in landscape)
 enum CalendarLaunch {
+    /// -FXCalendarShort 1: the flat cells of a short window, to look at them on any device.
+    static let forcesShort = int("FXCalendarShort") == 1
+
     /// The value of `-<key>` ("FXMonth" for -FXMonth), if the app was launched with it.
     static func string(_ key: String) -> String? {
         let value = UserDefaults.standard.volatileDomain(forName: UserDefaults.argumentDomain)[key]

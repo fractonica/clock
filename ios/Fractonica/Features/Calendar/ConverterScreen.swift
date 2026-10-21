@@ -239,9 +239,10 @@ private struct EarthHero: View {
     }
 }
 
-/// Following / pinned, as a small status line.
+/// Following / pinned, as a small status line; pinned, how far the moment lies from the displayed time.
 struct ConverterStatus: View {
     let model: ConverterModel
+    var pure = false
     @Environment(ClockStore.self) private var store
 
     var body: some View {
@@ -250,13 +251,37 @@ struct ConverterStatus: View {
             : store.isLive ? ("Following · live", Theme.live, "dot.radiowaves.left.and.right")
             : store.isPlaying ? ("Following · time-lapse", Theme.cursor, "forward.fill")
             : ("Following · paused", Theme.cursor, "pause.fill")
-        Label(text, systemImage: symbol)
-            .font(.caption.weight(.semibold))
-            .textCase(.uppercase)
-            .tracking(0.8)
-            .foregroundStyle(color)
-            .labelStyle(.titleAndIcon)
-            .contentTransition(.symbolEffect(.replace))
+        VStack(alignment: .leading, spacing: 2) {
+            Label(text, systemImage: symbol)
+                .font(.caption.weight(.semibold))
+                .textCase(.uppercase)
+                .tracking(0.8)
+                .foregroundStyle(color)
+                .labelStyle(.titleAndIcon)
+                .contentTransition(.symbolEffect(.replace))
+            if model.isPinned {
+                Text(verbatim: offsetText)
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(Theme.ink3)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+            }
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    /// "3 d 4 h after the displayed time" (pure: "2ε 5η after the shown moment").
+    private var offsetText: String {
+        let shown = model.displayedT
+        let d = model.t - shown
+        if abs(d) < 0.0005 { return pure ? "the shown moment" : "the displayed time" }
+        let side = d > 0 ? "after" : "before"
+        if pure {
+            let clock = store.clock
+            guard clock.inRange(model.t), clock.inRange(shown) else { return "outside the catalogue" }
+            return "\(Notation.standard.between(min(model.t, shown), max(model.t, shown))) \(side) the shown moment"
+        }
+        return "\(EarthTime.duration(abs(d))) \(side) the displayed time"
     }
 }
 
@@ -348,6 +373,8 @@ private struct EarthCard: View {
     let zone: TimeZone
 
     @Environment(AppSettings.self) private var settings
+    /// The note under a typed wall time the zone skips or repeats, for the moment and zone it explains.
+    @State private var wall: (note: String, t: Double, zone: String)?
 
     var body: some View {
         let p = earth.parts(t)
@@ -360,6 +387,10 @@ private struct EarthCard: View {
                 Text("Date and time").font(.subheadline).foregroundStyle(Theme.ink3)
             }
             .environment(\.timeZone, zone)
+            // this side speaks the Gregorian calendar whatever calendar the device uses; before 1583 Foundation's
+            // Gregorian calendar turns Julian, so such moments are typed below instead
+            .environment(\.calendar, Self.gregorian)
+            .disabled(t < dateRange.lowerBound.timeIntervalSince1970)
             NavigationLink(value: CalendarRoute.zone) {
                 HStack {
                     Text("Zone").font(.subheadline).foregroundStyle(Theme.ink3)
@@ -376,10 +407,22 @@ private struct EarthCard: View {
                 return model.set(v, from: .unix) ? nil : CalendarError("Years 1000 to 9999 only")
             }
             CommitField(label: "ISO 8601", value: iso(p), prompt: "2026-10-08T12:00:00.000+00:00") { text in
-                guard let v = CalMath.parseISO(text, zone: zone) else {
+                guard let read = CalMath.readISO(text, zone: zone) else {
                     return CalendarError("Write an ISO date like 2026-10-08T12:00:00+03:00 (without an offset: in the converter's zone)")
                 }
-                return model.set(v, from: .earth) ? nil : CalendarError("Years 1000 to 9999 only")
+                guard model.set(read.t, from: .earth) else { return CalendarError("Years 1000 to 9999 only") }
+                // a wall time without an offset may not exist in the zone, or happen twice: say what was converted
+                wall = read.wall.flatMap { fields in
+                    CalMath.wallTimeNote(fields, zone: zone, resolved: read.t, earth: earth, place: TimeZoneWords.city(earth.zone))
+                }.map { ($0, model.t, zone.identifier) }
+                return nil
+            }
+            if let wall, wall.t == t, wall.zone == zone.identifier {
+                Label(wall.note, systemImage: "clock.badge.exclamationmark")
+                    .font(.footnote)
+                    .foregroundStyle(Theme.gold)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .transition(.opacity)
             }
             Divider().overlay(Theme.line)
             CalValueRow(label: "Day", value: "\(EarthNames.weekdays[p.weekday]) · day \(doy) of \(daysInYear)")
@@ -400,9 +443,17 @@ private struct EarthCard: View {
         "\(earth.date(t))T\(earth.time(t, seconds: true, ms: true))\(EarthTime.offsetLabel(Double(p.offset)))"
     }
 
+    /// 1583 … 9999: the picker's Gregorian calendar is proleptic only from 1583 on.
     private var dateRange: ClosedRange<Date> {
-        Date(timeIntervalSince1970: ConverterModel.earthRange.lowerBound)...Date(timeIntervalSince1970: ConverterModel.earthRange.upperBound)
+        Date(timeIntervalSince1970: -12_212_553_600)...Date(timeIntervalSince1970: ConverterModel.earthRange.upperBound)
     }
+
+    private static let gregorian: Calendar = {
+        var c = Calendar(identifier: .gregorian)
+        c.locale = .current
+        c.firstWeekday = Calendar.current.firstWeekday
+        return c
+    }()
 
     /// The picker sets the date and the minute; the seconds and milliseconds of the moment are kept.
     private var dateBinding: Binding<Date> {
@@ -567,6 +618,8 @@ private struct ConverterZonePicker: View {
     @Environment(AppSettings.self) private var settings
     @Environment(\.dismiss) private var dismiss
     @State private var query = ""
+    /// The moment whose offsets the rows show, taken once: the list need not redraw with a running clock.
+    @State private var t: Double?
 
     private static let zones = TimeZone.knownTimeZoneIdentifiers.filter { $0 != "UTC" && $0 != "GMT" }.sorted {
         (TimeZoneWords.city($0), $0) < (TimeZoneWords.city($1), $1)
@@ -590,6 +643,7 @@ private struct ConverterZonePicker: View {
         .background { Backdrop() }
         .searchable(text: $query, prompt: "City or region")
         .navigationTitle("Converter zone")
+        .onAppear { if t == nil { t = model.t } }
     }
 
     private var matches: [String] {
@@ -611,7 +665,7 @@ private struct ConverterZonePicker: View {
                     Text(detail).font(.caption).foregroundStyle(Theme.ink3)
                 }
                 Spacer()
-                Text(EarthFormatter.calendar(zone).tag(model.t)).font(.reading(13)).foregroundStyle(Theme.ink2)
+                Text(EarthFormatter.calendar(zone).tag(t ?? model.t)).font(.reading(13)).foregroundStyle(Theme.ink2)
                 Image(systemName: "checkmark").foregroundStyle(Theme.teal).opacity(selected ? 1 : 0)
             }
             .contentShape(.rect)

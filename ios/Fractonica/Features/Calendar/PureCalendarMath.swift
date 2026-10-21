@@ -176,6 +176,16 @@ enum PureMath {
         return .success(CalMath.firstMs(estimate, want) ?? clock.clamp((estimate * 1000).rounded(.up) / 1000))
     }
 
+    /// What one cycle of a depth is made of, in the next unit down (pure-conv.js `madeOf`): "5ε" for a Delta, "77η" for a
+    /// Nuclide, "11η" for a ζ, "4ι" for a θ; "" for the Blink, the finest unit.
+    static func madeOf(level: Int) -> String {
+        let units = Notation.units
+        guard let i = units.firstIndex(where: { $0.level == level }) else { return Notation.standard.cycleLength(level: level) }
+        guard i + 1 < units.count else { return "" }
+        let n = Notation.standard
+        return "\(Int((n.unitPos(units[i]) / n.unitPos(units[i + 1])).rounded()))\(units[i + 1].sym)"
+    }
+
     /// Solar drift and spans are said by `Notation`; the eclipse distances in position.
     static func eclipseSpans(_ clock: FractonicaClock, at t: Double) -> (previous: (k: Int, text: String)?, next: (k: Int, text: String)?) {
         guard let pos = clock.position(at: CalMath.r3(t)) else { return (nil, nil) }

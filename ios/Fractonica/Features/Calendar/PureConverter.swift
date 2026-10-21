@@ -11,7 +11,7 @@ struct PureConverterContent: View {
     @State private var wide = false
 
     var body: some View {
-        let snap = ConverterSnapshot(clock: store.clock, t: model.t, depth: 5, editedPath: model.editedPath)
+        let snap = ConverterSnapshot(clock: store.clock, t: model.t, depth: model.depth, editedPath: model.editedPath)
         let earth = EarthFormatter(zone: "UTC") // (unused in pure mode; the shared cards take one)
         VStack(spacing: 16) {
             if snap.inRange {
@@ -61,7 +61,7 @@ private struct PureHero: View {
         let c = n.clock(at: t)
         CalCard {
             HStack {
-                ConverterStatus(model: model)
+                ConverterStatus(model: model, pure: true)
                 Spacer()
             }
             VStack(alignment: .leading, spacing: 6) {
@@ -290,7 +290,7 @@ private struct PureOutOfRange: View {
     var body: some View {
         let before = model.t < store.clock.tMin
         CalCard {
-            ConverterStatus(model: model)
+            ConverterStatus(model: model, pure: true)
             Label(before ? "Before the catalogue begins" : "After the catalogue ends", systemImage: "moon.zzz")
                 .font(.headline)
                 .foregroundStyle(Theme.ink)
