@@ -1,5 +1,8 @@
 import FractonicaKit
 import SwiftUI
+#if os(iOS)
+import UIKit
+#endif
 
 /// Jump: go to any moment by typing it (src/ui/jump.js, docs/design/60-calendar.md §1). The search tab of the app: on
 /// iPhone its field sits in the tab bar's place, on iPad and Mac it is the sidebar's search item (⌘K).
@@ -12,7 +15,7 @@ import SwiftUI
 ///
 /// Launch arguments for screenshots: `-FXJumpQuery <text>` starts with that text, `-FXJumpFocus 0` keeps the keyboard
 /// down, `-FXJumpDemo 1` shows a sample history (never saved), `-FXJumpSubmit 1` presses Return once (the jump lands
-/// on Now with its toast).
+/// on Now with its toast), `-FXJumpLandscape 1` turns an iPhone to landscape (iOS).
 struct JumpScreen: View {
     @Environment(ClockStore.self) private var store
     @Environment(AppSettings.self) private var settings
@@ -76,6 +79,12 @@ struct JumpScreen: View {
             visible = true
             model.refresh(situation())
             if JumpModel.launchFocus { searchFocused = true }
+            #if os(iOS)
+            if JumpModel.launchLandscape {
+                let scene = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first
+                scene?.requestGeometryUpdate(.iOS(interfaceOrientations: .landscapeRight)) { _ in }
+            }
+            #endif
             if JumpModel.launchSubmit, !model.isEmpty {
                 Task {
                     try? await Task.sleep(for: .seconds(1))

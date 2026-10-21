@@ -110,7 +110,7 @@ private func displayChecks() {
     check(JumpCandidate.Kind.allCases.allSatisfy { !$0.title.isEmpty && !$0.systemImage.isEmpty }, "every kind has a name and a symbol")
 
     // layout: a phone column, wide from iPhone landscape on; margins follow the search field
-    check(!JumpLayout.isWide(393) && JumpLayout.isWide(874) && JumpLayout.isWide(1032), "wide from landscape iPhone on")
+    check(!JumpLayout.isWide(393) && !JumpLayout.isWide(440) && JumpLayout.isWide(756) && JumpLayout.isWide(1032), "wide from landscape iPhone on")
     check(JumpLayout.margin(for: 393) == 16 && JumpLayout.margin(for: 1032) == 20, "margins of the search field")
     check(JumpLayout.contentWidth(for: 393) == 680 && JumpLayout.contentWidth(for: 1400) == 1200, "content widths")
     // refresh cadence: on the second live or at real speed, four times a real second in a time-lapse, sane on junk

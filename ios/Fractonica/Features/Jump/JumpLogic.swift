@@ -99,7 +99,7 @@ enum JumpInterpreter {
 enum JumpLayout {
     /// From this width on, recent jumps and examples sit side by side and the best reading shows its Earth and
     /// Fractonica halves side by side (iPad, Mac, iPhone in landscape).
-    static let wideWidth: CGFloat = 760
+    static let wideWidth: CGFloat = 700
     static func isWide(_ width: CGFloat) -> Bool { width > wideWidth }
     /// Side margins: those of the search field above the content (16 pt on iPhone, 20 pt on iPad).
     static func margin(for width: CGFloat) -> CGFloat { isWide(width) ? 20 : 16 }

@@ -124,6 +124,8 @@ final class JumpModel {
     static var launchFocus: Bool { UserDefaults.standard.string(forKey: "FXJumpFocus") != "0" }
     /// `-FXJumpSubmit 1`: press Return once the screen is up (with `-FXJumpQuery`), to see a jump land on Now.
     static var launchSubmit: Bool { UserDefaults.standard.string(forKey: "FXJumpSubmit") == "1" }
+    /// `-FXJumpLandscape 1`: turn the device to landscape when the screen appears (iOS screenshots).
+    static var launchLandscape: Bool { UserDefaults.standard.string(forKey: "FXJumpLandscape") == "1" }
     /// `-FXJumpDemo 1`: show a sample history (never saved).
     static var launchDemoHistory: Bool { UserDefaults.standard.string(forKey: "FXJumpDemo") == "1" }
 
