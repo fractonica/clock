@@ -309,12 +309,24 @@ struct JumpKindBadge: View {
     var live = false
 
     var body: some View {
+        let tint = live ? Theme.live : kind.tint
         Label(live ? "Live" : kind.title, systemImage: live ? "dot.radiowaves.left.and.right" : kind.systemImage)
             .font(.caption.weight(.semibold))
-            .foregroundStyle(kind == .error ? Theme.danger : live ? Theme.live : Theme.teal)
+            .foregroundStyle(tint)
             .padding(.horizontal, 9)
             .padding(.vertical, 4)
-            .background((kind == .error ? Theme.danger : live ? Theme.live : Theme.teal).opacity(0.12), in: .capsule)
+            .background(tint.opacity(0.12), in: .capsule)
+    }
+}
+
+extension JumpCandidate.Kind {
+    /// The kind's colour: gold for the solar sync, the danger red for an error, teal for the rest.
+    var tint: Color {
+        switch self {
+        case .sync: Theme.gold
+        case .error: Theme.danger
+        default: Theme.teal
+        }
     }
 }
 
@@ -335,7 +347,7 @@ struct JumpCandidateRow: View {
             HStack(spacing: 12) {
                 Image(systemName: candidate.kind.systemImage)
                     .font(.body)
-                    .foregroundStyle(Theme.teal)
+                    .foregroundStyle(candidate.kind.tint)
                     .frame(width: iconWidth)
                 VStack(alignment: .leading, spacing: 3) {
                     Text(title)
