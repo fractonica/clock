@@ -19,7 +19,7 @@ struct LevelChip: View {
         VStack(spacing: -2) {
             Text(LadderText.letter(level))
                 .font(.system(size: side * 0.47, weight: .semibold))
-            Text("\(level + 1)")
+            Text(verbatim: "\(level + 1)")
                 .font(.system(size: side * 0.24, weight: .medium).monospacedDigit())
                 .foregroundStyle(Theme.ink3)
         }
@@ -45,7 +45,7 @@ struct MiniChip: View {
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 3) {
             Text(LadderText.letter(level)).font(.subheadline.weight(.semibold))
-            Text("\(level + 1)").font(.caption2.weight(.medium).monospacedDigit()).opacity(0.75)
+            Text(verbatim: "\(level + 1)").font(.caption2.weight(.medium).monospacedDigit()).opacity(0.75)
         }
         .foregroundStyle(Theme.levelColor(level))
         .padding(.horizontal, 7)
@@ -101,23 +101,27 @@ struct SegmentBar: View {
         for i in 0..<n {
             let rect = CGRect(x: x(i), y: y, width: width, height: h)
             let shape = Path(roundedRect: rect, cornerRadius: radius, style: .continuous)
+            var g = context
             guard let seg else {
-                context.fill(shape, with: .color(Theme.line))
+                g.fill(shape, with: .color(Theme.line))
                 continue
             }
-            if let clipX, rect.minX >= clipX {
-                context.stroke(shape.strokedPath(StrokeStyle(lineWidth: 0.75, dash: [2, 2])), with: .color(Theme.line2))
-                continue
+            if let clipX, rect.maxX > clipX {
+                // past the end of the catalogue: an outline of what would have been
+                var beyond = context
+                beyond.clip(to: Path(CGRect(x: clipX, y: 0, width: size.width, height: size.height)))
+                beyond.stroke(shape.strokedPath(StrokeStyle(lineWidth: 0.75, dash: [2, 2])), with: .color(Theme.line2))
+                if rect.minX >= clipX { continue }
+                g.clip(to: Path(CGRect(x: 0, y: 0, width: clipX, height: size.height)))
             }
             if still {
-                context.fill(shape, with: .color(Theme.levelColor(level, opacity: 0.32)))
+                g.fill(shape, with: .color(Theme.levelColor(level, opacity: 0.32)))
                 continue
             }
-            context.fill(shape, with: .color(Theme.levelColor(level, opacity: i < seg.index ? 0.5 : 0.13)))
+            g.fill(shape, with: .color(Theme.levelColor(level, opacity: i < seg.index ? 0.5 : 0.13)))
             if i == seg.index, seg.frac > 0 {
-                var part = context
-                part.clip(to: Path(CGRect(x: rect.minX, y: rect.minY, width: rect.width * CGFloat(seg.frac), height: h)))
-                part.fill(shape, with: .color(color))
+                g.clip(to: Path(CGRect(x: rect.minX, y: rect.minY, width: rect.width * CGFloat(seg.frac), height: h)))
+                g.fill(shape, with: .color(color))
             }
         }
 

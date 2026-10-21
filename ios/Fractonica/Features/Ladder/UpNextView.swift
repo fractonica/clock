@@ -256,17 +256,17 @@ private struct TurnoverHero: View {
             .accessibilityValue(pure ? progressWords(p) : "\(LadderText.pctWhole(p)) percent")
             HStack(alignment: .center, spacing: 8) {
                 if pure {
-                    Text("began \(text.left(from: start, to: t)) ago")
+                    Text(verbatim: "began \(text.left(from: start, to: t)) ago")
                     Spacer(minLength: 6)
                     if Notation.isMajor(turnover.top) {
-                        Text("\(LadderPureText.quarterWord(p)) quarter")
+                        Text(verbatim: "\(LadderPureText.quarterWord(p)) quarter")
                     } else {
                         PairView(fraction: p, color: Theme.teal, height: 13)
                     }
                 } else {
-                    Text("since \(LadderText.whenLabel(words.earth, start, ref: t, span: max(1, span)))")
+                    Text(verbatim: "since \(LadderText.whenLabel(words.earth, start, ref: t, span: max(1, span)))")
                     Spacer(minLength: 6)
-                    Text("\(LadderText.pctWhole(p))\(LadderText.nnbsp)% of this cycle")
+                    Text(verbatim: "\(LadderText.pctWhole(p))\(LadderText.nnbsp)% of this cycle")
                 }
             }
             .font(.caption.monospacedDigit())
@@ -337,7 +337,7 @@ private struct ThresholdStrip: View {
                 MiniChip(level: level)
                 if let lv, let when = lv.next.time {
                     VStack(alignment: .leading, spacing: 1) {
-                        Text("next \(Notation.quarterWords[lv.quarter])")
+                        Text(verbatim: "next \(Notation.quarterWords[lv.quarter])")
                             .font(.subheadline.weight(.medium))
                             .foregroundStyle(Theme.ink)
                         LiveCountdown(target: when, t: t, container: LadderCadence.readout, pure: pure) { now in
@@ -448,7 +448,7 @@ private struct TurnoverRowView: View {
                         .foregroundStyle(Theme.ink2)
                         .lineLimit(1)
                     if e.finer > 0 {
-                        Text("+\(e.finer)")
+                        Text(verbatim: "+\(e.finer)")
                             .font(.caption2.weight(.medium).monospacedDigit())
                             .foregroundStyle(Theme.ink3)
                             .padding(.horizontal, 5)

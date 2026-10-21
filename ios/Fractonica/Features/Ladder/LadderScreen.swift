@@ -214,7 +214,7 @@ private struct LadderHeader: View {
         let navigator = LadderNavigator(store: store, toasts: toasts, pure: words.pure)
         return VStack(alignment: .leading, spacing: 8) {
             Label {
-                Text(words.pure
+                Text(verbatim: words.pure
                     ? "Outside the catalogue (\(words.notation.catalogueText()))."
                     : "Outside the Saros 141 catalogue (\(words.earth.parts(clock.tMin).year)–\(words.earth.parts(clock.tMax).year)).")
             } icon: {
@@ -225,7 +225,7 @@ private struct LadderHeader: View {
             Button {
                 navigator.edge(before ? clock.tMin + 0.001 : clock.tMax)
             } label: {
-                Text("Go to \(side) (\(words.pure ? words.notation.stamp(at: edge, upTo: "beta") : words.earth.date(edge)))")
+                Text(verbatim: "Go to \(side) (\(words.pure ? words.notation.stamp(at: edge, upTo: "beta") : words.earth.date(edge)))")
             }
             .buttonStyle(.bordered)
             .controlSize(.small)
@@ -260,7 +260,7 @@ private struct DepthMenu: View {
             }
         } label: {
             HStack(spacing: 4) {
-                Text("\(LadderText.chip(settings.minDepth - 1)) – \(LadderText.chip(settings.maxDepth - 1))")
+                Text(verbatim: "\(LadderText.chip(settings.minDepth - 1)) – \(LadderText.chip(settings.maxDepth - 1))")
                     .monospacedDigit()
                 Image(systemName: "chevron.up.chevron.down").imageScale(.small)
             }
@@ -295,7 +295,11 @@ private struct LadderFooter: View {
                 Button {
                     withAnimation(.snappy) { setRange(settings.minDepth, 14) }
                 } label: {
-                    Label("\(hidden.count) finer \(hidden.count == 1 ? "depth" : "depths") (\(hidden.joined(separator: " ")))", systemImage: "plus")
+                    Label {
+                        Text(verbatim: "\(hidden.count) finer \(hidden.count == 1 ? "depth" : "depths") (\(hidden.joined(separator: " ")))")
+                    } icon: {
+                        Image(systemName: "plus")
+                    }
                 }
             } else if settings.minDepth <= 10 {
                 Button {

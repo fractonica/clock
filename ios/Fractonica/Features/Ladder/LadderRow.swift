@@ -146,8 +146,6 @@ struct LadderDetail: View {
     let container: Double?
     let navigator: LadderNavigator
 
-    @Environment(\.horizontalSizeClass) private var sizeClass
-
     private var level: Int { reading.level }
     private var pure: Bool { words.pure }
     private var text: LadderPureText { LadderPureText(notation: words.notation) }
@@ -303,7 +301,7 @@ struct LadderDetail: View {
             } else if major {
                 HStack(spacing: 8) {
                     QuarterPips(quarter: lv.quarter)
-                    Text("\(LadderPureText.quarterWord(lv.phase)) · \(lv.quarter + 1) of 4").foregroundStyle(Theme.ink)
+                    Text(verbatim: "\(LadderPureText.quarterWord(lv.phase)) · \(lv.quarter + 1) of 4").foregroundStyle(Theme.ink)
                 }
             } else {
                 HStack(spacing: 8) {
@@ -320,7 +318,7 @@ struct LadderDetail: View {
                 let sector = text.sectorName(lv, index: seg.index, frac: seg.frac)
                 HStack(spacing: 8) {
                     if !sector.major { PairView(fraction: seg.frac, color: Theme.teal.opacity(0.8), height: 13) }
-                    Text("\(sector.name)\(sector.quarter.map { " \($0)" } ?? "") · \(seg.index + 1) of \(lv.factor)")
+                    Text(verbatim: "\(sector.name)\(sector.quarter.map { " \($0)" } ?? "") · \(seg.index + 1) of \(lv.factor)")
                         .foregroundStyle(Theme.ink)
                 }
             }
@@ -337,7 +335,7 @@ struct LadderDetail: View {
         }
         GridRow {
             label("Started")
-            Text("\(text.left(from: lv.start, to: t)) ago")
+            Text(verbatim: "\(text.left(from: lv.start, to: t)) ago")
                 .monospacedDigit()
                 .foregroundStyle(Theme.ink)
         }
@@ -394,7 +392,7 @@ struct LadderDetail: View {
         Button {
             navigator.start(level)
         } label: {
-            Label("Start", systemImage: "backward.end")
+            ActionLabel(title: "Start", symbol: "backward.end")
         }
         .buttonStyle(.bordered)
         .tint(Theme.ink2)
@@ -402,7 +400,7 @@ struct LadderDetail: View {
         Button {
             navigator.justBefore(level)
         } label: {
-            Label(compact ? "Before" : "Just before", systemImage: "play")
+            ActionLabel(title: compact ? "Before" : "Just before", symbol: "play")
         }
         .buttonStyle(.bordered)
         .tint(color)
@@ -411,12 +409,27 @@ struct LadderDetail: View {
         Button {
             navigator.justAfter(level)
         } label: {
-            Label(compact ? "After" : "Just after", systemImage: "forward.end")
+            ActionLabel(title: compact ? "After" : "Just after", symbol: "forward.end")
         }
         .buttonStyle(.borderedProminent)
         .tint(color.opacity(0.85))
         .foregroundStyle(Theme.background)
         .disabled(last)
         .help("Just after: \(pure ? text.blinks(0.001) : "1 ms") into the next cycle (↩)")
+    }
+}
+
+/// An icon and a title of a small action button, on one line at their natural width.
+private struct ActionLabel: View {
+    let title: String
+    let symbol: String
+
+    var body: some View {
+        HStack(spacing: 5) {
+            Image(systemName: symbol).imageScale(.small)
+            Text(title).lineLimit(1)
+        }
+        .font(.subheadline.weight(.medium))
+        .fixedSize()
     }
 }
