@@ -10,6 +10,7 @@ struct SoundScreen: View {
     @Environment(AppSettings.self) private var settings
     @Environment(ToastCenter.self) private var toasts
     @State private var width: CGFloat = 0
+    @State private var height: CGFloat = 0
 
     private var engine: SoundEngine { .shared }
 
@@ -56,23 +57,32 @@ struct SoundScreen: View {
             .scrollIndicators(.hidden)
             .onAppear { scrollToLaunchSection(proxy) }
         }
-        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
+        .onGeometryChange(for: CGSize.self) { $0.size } action: {
+            width = $0.width
+            height = $0.height
+        }
         .navigationTitle(Screen.sound.title)
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
         #endif
         .onChange(of: store.revision) { engine.clockChanged() }
+        .onAppear { engine.clockChanged() }
         .animation(.snappy, value: engine.preferences.physical)
     }
 
     private func hero(_ words: SoundWords) -> some View {
-        SoundHeroView(words: words, side: heroSide)
+        SoundHeroView(words: words, side: heroSide, horizontal: short)
             .padding(.top, 4)
     }
 
+    /// A short, wide window (iPhone in landscape): the ring stands beside its words.
+    private var short: Bool { height > 0 && height < 520 && width > height * 1.4 && !wide }
+
     private var heroSide: CGFloat {
         let available = wide ? (width - 68) / 2 : width - 32
-        return max(220, min(available, wide ? 440 : 290))
+        // keep the ring, its status and the moment button on screen together in a short sheet or window
+        let tall = height > 0 ? height * (short ? 0.82 : 0.62) : .infinity
+        return max(220, min(available, wide ? 440 : short ? 330 : 290, tall))
     }
 
     private func spectrum(_ words: SoundWords) -> some View {
@@ -88,6 +98,17 @@ struct SoundScreen: View {
 
     private func scrollToLaunchSection(_ proxy: ScrollViewProxy) {
         let args = UserDefaults.standard.volatileDomain(forName: UserDefaults.argumentDomain)
+        #if os(iOS)
+        // `-FXSoundLandscape 1` turns the window to landscape (screenshots of the short layout)
+        if (args["FXSoundLandscape"] as? String) == "1" {
+            Task {
+                try? await Task.sleep(for: .milliseconds(800))
+                for scene in UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }) {
+                    scene.requestGeometryUpdate(.iOS(interfaceOrientations: .landscapeRight)) { _ in }
+                }
+            }
+        }
+        #endif
         guard let name = args["FXSoundScroll"] as? String, let section = Section(rawValue: name) else { return }
         Task {
             try? await Task.sleep(for: .milliseconds(400))

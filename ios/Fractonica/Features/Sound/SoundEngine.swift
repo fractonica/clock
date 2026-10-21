@@ -31,8 +31,14 @@ final class SoundEngine {
     /// Why the audio could not start, if it could not.
     private(set) var failure: String?
     private(set) var sampleRate = 0.0
-    /// The tempo lock while it holds.
+    /// The tempo lock while it holds (see `activeLock`).
     private(set) var lock: TempoLock?
+
+    /// The lock, unless the speed was changed elsewhere since (it lets go at the next clock change it sees).
+    var activeLock: TempoLock? {
+        guard let lock, !store.isLive, store.rate == lock.rate else { return nil }
+        return lock
+    }
     /// The last "Hear this moment": when each of its notes starts, in real time.
     private(set) var moment: MomentPlay?
 
@@ -275,11 +281,13 @@ final class SoundEngine {
     }
 
     /// Test hooks for screenshots: `-FXSoundSilent 1` keeps the speakers silent, `-FXSoundDemo 1` starts the (silent)
-    /// sound at launch so the screen shows it playing.
+    /// sound at launch so the screen shows it playing, `-FXSoundPhysical 1` turns the physical register on for the
+    /// launch (unsaved), `-FXSoundLock 1` locks the tempo.
     func applyLaunchOptions(_ defaults: UserDefaults = .standard) {
         let args = defaults.volatileDomain(forName: UserDefaults.argumentDomain)
         func flag(_ key: String) -> Bool { ["1", "yes", "true"].contains(((args[key] as? String) ?? (args[key] as? NSNumber)?.stringValue ?? "").lowercased()) }
         silentOutput = flag("FXSoundSilent") || flag("FXSoundDemo")
+        if flag("FXSoundPhysical") { preferences.physical = true } // for this launch only, never saved
         if flag("FXSoundDemo") { start() }
         if flag("FXSoundLock") { lockTempo(words: nil) }
     }

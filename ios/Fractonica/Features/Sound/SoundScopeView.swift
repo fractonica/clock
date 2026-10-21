@@ -66,8 +66,10 @@ struct SoundScopeView: View {
             path.move(to: CGPoint(x: lx, y: top))
             path.addLine(to: CGPoint(x: lx, y: bottom))
             context.stroke(path, with: .color(Theme.line), lineWidth: 1)
-            context.draw(Text(line.main).font(.system(size: 9.5).monospacedDigit()).foregroundStyle(Theme.ink3), at: CGPoint(x: lx, y: bottom + 9))
-            context.draw(Text(line.sub).font(.system(size: 9)).foregroundStyle(Theme.ink3.opacity(0.75)), at: CGPoint(x: lx, y: bottom + 20))
+            // labels stay inside the canvas: the last octave line stands close to the right edge
+            let edge: (x: CGFloat, anchor: UnitPoint) = lx > width - 18 ? (width, .trailing) : lx < 18 ? (0, .leading) : (lx, .center)
+            context.draw(Text(line.main).font(.system(size: 9.5).monospacedDigit()).foregroundStyle(Theme.ink3), at: CGPoint(x: edge.x, y: bottom + 9), anchor: edge.anchor)
+            context.draw(Text(line.sub).font(.system(size: 9)).foregroundStyle(Theme.ink3.opacity(0.75)), at: CGPoint(x: edge.x, y: bottom + 20), anchor: edge.anchor)
         }
         var axis = Path()
         axis.move(to: CGPoint(x: 0, y: bottom + 0.5))

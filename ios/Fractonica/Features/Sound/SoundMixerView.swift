@@ -212,15 +212,16 @@ struct SoundMixerView: View {
                 .lineLimit(2)
                 .minimumScaleFactor(0.8)
             HStack(spacing: 10) {
-                Text("Valley")
+                Text("Floor")
                     .font(.subheadline)
                     .foregroundStyle(Theme.ink2)
+                    .help("How much of the voice stays at its cycle’s valley")
                 Slider(value: floor, in: SoundPreferences.voiceFloorRange)
                     .tint(Theme.levelColor(row.level, lightness: 0.64))
                     .accessibilityLabel("How much of \(row.letter) stays at its valley")
                     .accessibilityValue(words.pure ? pairWords(floor.wrappedValue / 0.5) : "\(Int((floor.wrappedValue * 100).rounded())) percent")
                 SoundReadout(text: floor.wrappedValue == 0 ? "silent" : "\(Int((floor.wrappedValue * 100).rounded())) %",
-                             fraction: floor.wrappedValue / 0.5, label: "valley", pure: words.pure)
+                             fraction: floor.wrappedValue / 0.5, label: "floor", pure: words.pure)
             }
             .disabled(!on)
             .opacity(on ? 1 : 0.5)
@@ -342,7 +343,7 @@ struct SoundVoiceExplanation: View {
 
     private func pair(_ fraction: Double, label: String) -> some View {
         let p = Notation.pair(fraction)
-        return PairView(fraction: fraction, color: Theme.levelColor(row.level, lightness: 0.72), height: 15)
+        return PairView(fraction: fraction, color: Theme.levelColor(row.level, lightness: 0.72), height: 22)
             .accessibilityLabel(Text("\(label) \(p.hi) and \(p.lo) of 256"))
     }
 

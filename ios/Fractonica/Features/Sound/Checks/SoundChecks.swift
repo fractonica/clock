@@ -246,7 +246,8 @@ func plannerChecks() {
 func geometryChecks() {
     let g = SoundRingGeometry(size: CGSize(width: 300, height: 300), labelRoom: 22)
     let cents = table.map(\.pcCents)
-    check(g.radius(0) == 128 && abs(g.radius(13) - 128 * 0.44) < 1e-9, "α outside, ξ inside")
+    check(g.radius(0) == 128 && abs(g.radius(13) - 64) < 1e-9 && g.buttonDiameter == 88, "α outside, ξ inside, the button between")
+    check(SoundRingGeometry(size: CGSize(width: 248, height: 248), labelRoom: 22).buttonDiameter < 2 * 51, "a small ring keeps its button clear of ξ")
     let top = g.point(level: 0, cents: 0)
     check(abs(top.x - 150) < 1e-9 && abs(top.y - 22) < 1e-9, "the ground at the top")
     let right = g.point(radius: 100, cents: 300)

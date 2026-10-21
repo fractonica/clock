@@ -16,7 +16,7 @@ struct SoundTempoView: View {
     var body: some View {
         let prefs = engine.preferences
         SoundCard("Tempo") {
-            if let lock = engine.lock {
+            if let lock = engine.activeLock {
                 lockChip(lock)
             }
         } content: {
@@ -41,7 +41,7 @@ struct SoundTempoView: View {
             }
         }
         .sensoryFeedback(.selection, trigger: prefs.tempoSeconds) { _, _ in settings.haptics }
-        .sensoryFeedback(.success, trigger: engine.lock != nil) { _, locked in locked && settings.haptics }
+        .sensoryFeedback(.success, trigger: engine.activeLock != nil) { _, locked in locked && settings.haptics }
     }
 
     // MARK: "One η lasts 4 s"
@@ -125,7 +125,7 @@ struct SoundTempoView: View {
     // MARK: Lock
 
     private var lockButton: some View {
-        let locked = engine.lock != nil
+        let locked = engine.activeLock != nil
         return Button {
             if locked {
                 if let toast = engine.unlockTempo(words: words) { toasts.show(toast) }

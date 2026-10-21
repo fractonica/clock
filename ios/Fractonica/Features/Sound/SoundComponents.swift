@@ -103,7 +103,7 @@ struct SoundReadout: View {
     var body: some View {
         Group {
             if pure, let fraction {
-                PairView(fraction: fraction, color: Theme.teal, height: 15)
+                PairView(fraction: fraction, color: Theme.teal, height: 20)
                     .accessibilityLabel(Text("\(label) \(Notation.pair(fraction).hi) and \(Notation.pair(fraction).lo) of 256"))
             } else {
                 Text(text)

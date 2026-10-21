@@ -245,6 +245,11 @@ final class SoundRenderer: @unchecked Sendable {
         harmonicSmoothing = Float(1 - exp(-block / (0.02 * sampleRate)))
         limiterAttack = Float(1 - exp(-1 / (0.003 * sampleRate)))
         limiterRelease = Float(1 - exp(-1 / (0.25 * sampleRate)))
+        // touch every global the audio thread reads, so none is first initialised there
+        _ = SoundSchedule.voiceLoudness(phase: 0, hz: SoundSchedule.amFullHz) + SoundSchedule.directionWeight(0) + SoundSchedule.directionCue(0)
+        _ = (Self.voiceAmp, Self.chorusGain, Self.chorusHz, Self.harmonicBase, Self.harmonicDepth, Self.reverbSendScale, Self.makeup)
+        _ = (Self.maxBells, Self.bellSlots, Self.pendingSlots, Self.controlFrames, Self.voiceCount, Self.physicalSlots, Self.sineSize)
+        for kind in SoundSchedule.Kind.allCases { _ = Self.recipe(kind.rawValue) }
     }
 
     deinit {

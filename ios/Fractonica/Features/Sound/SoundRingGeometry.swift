@@ -15,9 +15,12 @@ struct SoundRingGeometry: Sendable {
     init(size: CGSize, labelRoom: CGFloat, levels: Int = SoundTuning.levelCount) {
         center = CGPoint(x: size.width / 2, y: size.height / 2)
         outer = max(10, min(size.width, size.height) / 2 - labelRoom)
-        inner = outer * 0.44
+        inner = outer * 0.5
         self.levels = levels
     }
+
+    /// The power button's diameter: it fills the middle, clear of ξ's ring.
+    var buttonDiameter: CGFloat { min(88, max(56, inner * 2 - 22)) }
 
     func radius(_ level: Int) -> CGFloat {
         outer - (outer - inner) * CGFloat(level) / CGFloat(max(1, levels - 1))

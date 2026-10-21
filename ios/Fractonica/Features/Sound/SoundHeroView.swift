@@ -14,27 +14,47 @@ struct SoundHeroView: View {
 
     private var engine: SoundEngine { .shared }
 
-    var body: some View {
-        VStack(spacing: 12) {
-            ZStack {
-                ClockTimeline(engine.isRunning && !reduceMotion ? .continuous : .animation) { t in
-                    let live = SoundLive.at(t, rate: store.rate, prefs: engine.preferences)
-                    SoundRingView(live: live, words: words, selected: settings.selectedLevel, running: engine.isOn,
-                                  reduceMotion: reduceMotion, now: .now)
-                }
-                .contentShape(.circle)
-                .gesture(SpatialTapGesture().onEnded { value in select(at: value.location) })
-                PowerButton(words: words)
-            }
-            .frame(width: side, height: side)
+    /// Ring beside its words (a short, wide window: iPhone in landscape) instead of above them.
+    var horizontal = false
 
-            ClockTimeline(engine.isRunning ? .continuous : .periodic(1)) { t in
-                statusLine(t)
+    var body: some View {
+        if horizontal {
+            HStack(spacing: 28) {
+                ring
+                VStack(spacing: 14) { details }
+                    .frame(maxWidth: 420)
             }
-            chips
-            MomentButton(words: words)
+            .frame(maxWidth: .infinity)
+        } else {
+            VStack(spacing: 12) {
+                ring
+                details
+            }
+            .frame(maxWidth: .infinity)
         }
-        .frame(maxWidth: .infinity)
+    }
+
+    private var ring: some View {
+        ZStack {
+            ClockTimeline(engine.isRunning && !reduceMotion ? .continuous : .animation) { t in
+                let live = SoundLive.at(t, rate: store.rate, prefs: engine.preferences)
+                SoundRingView(live: live, words: words, selected: settings.selectedLevel, running: engine.isOn,
+                              reduceMotion: reduceMotion, now: .now)
+            }
+            .contentShape(.circle)
+            .gesture(SpatialTapGesture().onEnded { value in select(at: value.location) })
+            PowerButton(words: words, diameter: SoundRingGeometry(size: CGSize(width: side, height: side), labelRoom: SoundRingView.labelRoom(pure: words.pure)).buttonDiameter)
+        }
+        .frame(width: side, height: side)
+    }
+
+    @ViewBuilder
+    private var details: some View {
+        ClockTimeline(engine.isRunning ? .continuous : .periodic(1)) { t in
+            statusLine(t)
+        }
+        chips
+        MomentButton(words: words)
     }
 
     private func select(at location: CGPoint) {
@@ -82,6 +102,7 @@ struct SoundHeroView: View {
 /// The big round switch in the middle of the ring.
 private struct PowerButton: View {
     let words: SoundWords
+    var diameter: CGFloat = 88
 
     @Environment(AppSettings.self) private var settings
     @Environment(ToastCenter.self) private var toasts
@@ -96,11 +117,11 @@ private struct PowerButton: View {
             if let failure = engine.failure { toasts.show("Audio could not start: \(failure)") }
         } label: {
             Image(systemName: on ? "speaker.wave.3.fill" : "speaker.slash.fill")
-                .font(.system(size: 30, weight: .semibold))
+                .font(.system(size: diameter * 0.34, weight: .semibold))
                 .symbolEffect(.variableColor.iterative.dimInactiveLayers.nonReversing, options: .repeating, isActive: on && !reduceMotion)
                 .contentTransition(.symbolEffect(.replace))
                 .foregroundStyle(on ? Theme.teal : Theme.ink2)
-                .frame(width: 88, height: 88)
+                .frame(width: diameter, height: diameter)
                 .contentShape(.circle)
         }
         .buttonStyle(.plain)
