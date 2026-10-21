@@ -83,12 +83,18 @@ private struct SarosRuler: View {
         }
         .frame(height: 34)
         .contentShape(.rect)
-        .gesture(
-            DragGesture(minimumDistance: 0)
+        // a tap lands on a position; a sideways drag scrubs. The drag runs beside the page's scrolling and ignores a
+        // vertical swipe, so scrolling past the ruler never moves (and pins) the converter.
+        .onTapGesture { location in
+            Haptics.play(.selection)
+            scrub(position(at: location.x))
+        }
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 6)
                 .onChanged { g in
-                    // the canvas is laid out with the same inset as above
-                    let w = max(1, rulerWidth - 12)
-                    let pos = min(Double(extent) - 1e-9, max(0, Double((g.location.x - 6) / w) * Double(extent)))
+                    if sideways == nil { sideways = abs(g.translation.width) > abs(g.translation.height) }
+                    guard sideways == true else { return }
+                    let pos = position(at: g.location.x)
                     let whole = Int(pos)
                     if whole != lastWhole {
                         lastWhole = whole
@@ -96,7 +102,10 @@ private struct SarosRuler: View {
                     }
                     scrub(pos)
                 }
-                .onEnded { _ in lastWhole = -1 }
+                .onEnded { _ in
+                    lastWhole = -1
+                    sideways = nil
+                }
         )
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { rulerWidth = $0 }
         .accessibilityElement()
@@ -108,6 +117,14 @@ private struct SarosRuler: View {
     }
 
     @State private var rulerWidth: CGFloat = 300
+    /// Whether the current drag is a sideways scrub (decided by its first movement).
+    @State private var sideways: Bool?
+
+    /// The position under x (the canvas is laid out with a 6 pt inset on each side).
+    private func position(at x: CGFloat) -> Double {
+        let w = max(1, rulerWidth - 12)
+        return min(Double(extent) - 1e-9, max(0, Double((x - 6) / w) * Double(extent)))
+    }
 }
 
 // MARK: - Address

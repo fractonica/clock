@@ -190,7 +190,8 @@ struct DayDetailView: View {
     /// The cycles of the chosen bands that run through the day, end to end.
     @ViewBuilder
     private func running(_ ref: MonthModel.DayRef, _ earth: EarthFormatter) -> some View {
-        let grid = model.grid(model.month, zone: zone)
+        // the chosen day's own month: the page may have moved on while the detail stays open
+        let grid = model.grid(CalMath.monthIndex(year: ref.year, month: ref.month), zone: zone)
         if let day = grid.days.first(where: { $0.year == ref.year && $0.month == ref.month && $0.day == ref.day }) {
             VStack(alignment: .leading, spacing: 8) {
                 Text("Running through it").font(.footnote.weight(.semibold)).textCase(.uppercase).tracking(0.8).foregroundStyle(Theme.ink3)
