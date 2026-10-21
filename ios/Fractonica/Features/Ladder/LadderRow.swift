@@ -281,6 +281,7 @@ struct LadderDetail: View {
             if pure {
                 pureFacts(lv, seg: seg)
             } else {
+                fact("Cycle", LadderText.place(level: level, local: lv.local, siblings: lv.siblings, cycle: lv.cycle))
                 fact("Through", still ? "too fast to follow" : "\(LadderText.pctTenths(lv.phase)) of this cycle")
                 fact("Sector", still ? "—" : LadderText.sector(level: level, index: seg.index, frac: seg.frac, factor: lv.factor))
                 fact("Started", LadderText.whenFull(words.earth, lv.start, precise: lv.duration < 10))

@@ -214,6 +214,9 @@ private func staticChecks(_ fixtures: [String: Any]) {
     check(LadderText.segment(phase: .nan, factor: 4) == (0, 0), "NaN reads as the start")
     check(LadderText.pctWhole(1) == 99 && LadderText.pctWhole(0.66) == 66, "percent floors and never reaches 100")
     check(LadderText.ratioToDecimal(2, 3, decimals: 6) == "0.666667" && LadderText.ratioToDecimal(5, 2, decimals: 0) == "3", "exact decimals")
+    check(LadderText.place(level: 6, local: 0, siblings: 11, cycle: 717_211) == "1 of 11 in ζ 6 · #717\u{202F}212", "the place of a cycle")
+    check(LadderText.place(level: 0, local: 5, siblings: 18, cycle: 5) == "6 of 18 in the catalogue", "an Alpha's place")
+    check(LadderText.grouped(1_234_567) == "1\u{202F}234\u{202F}567" && LadderText.grouped(12) == "12", "digit groups")
     check(Importance.all.map(\.label) == ["α–γ", "α–δ", "α–ε", "α–ζ", "α–η"], "importance labels")
     check(Importance.byID("nonsense").id == "ζ" && Importance.byID(nil).label == "α–ζ", "importance falls back to α–ζ")
 }

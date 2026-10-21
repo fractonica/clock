@@ -44,6 +44,24 @@ enum LadderText {
         "\(min(max(local + 1, 1), siblings)) of \(siblings)"
     }
 
+    /// "1 of 11 in ζ 6 · #717 212": the cycle's place in its parent and its number since the catalogue began.
+    static func place(level: Int, local: Int, siblings: Int, cycle: Int64) -> String {
+        let parent = level == 0 ? "the catalogue" : chip(level - 1)
+        let number = level == 0 ? "" : " · #\(grouped(cycle + 1))"
+        return "\(counter(local: local, siblings: siblings)) in \(parent)\(number)"
+    }
+
+    /// 717212 → "717 212" (narrow no-break spaces, so a count never reads as a year).
+    static func grouped(_ n: Int64) -> String {
+        let digits = Array(String(n.magnitude))
+        var out = ""
+        for (i, d) in digits.enumerated() {
+            if i > 0 && (digits.count - i) % 3 == 0 { out.append("\u{202F}") }
+            out.append(d)
+        }
+        return (n < 0 ? "−" : "") + out
+    }
+
     // MARK: Percent
 
     /// Whole percent through a cycle, floored, never 100 (lib.js `pctWhole`).
