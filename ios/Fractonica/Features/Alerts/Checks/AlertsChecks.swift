@@ -277,12 +277,12 @@ func textChecks() {
 
     let sync = AlertPreset.solarQuarters.rule(pure: false)
     let s = planner.occurrences(of: sync, after: vectorA, limit: 1)[0]
-    check(earth.title(sync, s).hasPrefix("solar sync \(s.index) "), "sync title: \(earth.title(sync, s))")
+    check(earth.title(sync, s).hasPrefix("Solar sync \(s.index) "), "sync title: \(earth.title(sync, s))")
 
     let eclipse = AlertPreset.eclipse.rule(pure: false)
     let e = planner.occurrences(of: eclipse, after: vectorA, limit: 1)[0]
     check(earth.title(eclipse, e) == "Saros 141 eclipse #23", "eclipse title: \(earth.title(eclipse, e))")
-    check(earth.body(eclipse, e).hasPrefix("Greatest eclipse in 1 day · Jan 26 "), "eclipse body: \(earth.body(eclipse, e))")
+    check(earth.body(eclipse, e).hasPrefix("Greatest eclipse in 1\u{00A0}day · Jan 26 "), "eclipse body: \(earth.body(eclipse, e))")
     let pureEclipse = AlertPreset.eclipse.rule(pure: true)
     let pe = planner.occurrences(of: pureEclipse, after: vectorA, limit: 1)[0]
     check(pure.body(pureEclipse, pe).hasPrefix("Greatest eclipse in 5η · "), "pure eclipse body: \(pure.body(pureEclipse, pe))")
@@ -297,10 +297,14 @@ func textChecks() {
     check(earth.body(helion, h, also: [(AlertPreset.nuclide.rule(pure: false), n)]).contains("\nAlso: "), "folded alerts are listed")
 
     // leads in words
-    check(earth.leadSummary(AlertLead(count: 15, unit: .minute), at: vectorA) == "15 min before", "Earth lead")
+    check(earth.leadSummary(AlertLead(count: 15, unit: .minute), at: vectorA) == "15\u{00A0}min before", "Earth lead")
     check(earth.leadSummary(AlertLead(count: 3, unit: .preon), at: vectorA) == "3ι before", "Fractonica lead")
     check(pure.leadSummary(AlertLead(count: 15, unit: .minute), at: vectorA).hasPrefix("≈ 1ι "), "an Earth lead in pure words: \(pure.leadSummary(AlertLead(count: 15, unit: .minute), at: vectorA))")
     check(earth.filterSummary(rule(.level(3), [.begin], ordinal: 5)) == "only Delta Pentafracton", "ordinal words")
+    let nuclides = planner.occurrences(of: rule(.level(4), [.begin]), after: vectorA, limit: 2)
+    check(pure.title(rule(.level(4), [.begin]), nuclides[0]) == "Delta Tetrafracton begins",
+          "a Nuclide beginning a Delta is told as the Delta: \(pure.title(rule(.level(4), [.begin]), nuclides[0]))")
+    check(pure.title(rule(.level(4), [.begin]), nuclides[1]) == "ε#2 begins", "a Greek letter is never capitalized")
     check(earth.filterSummary(rule(.level(6), [.begin], coarser: 4)) == "when a Nuclide turns too", "coarser words")
     check(earth.subjectName(.level(5)) == "ζ 6" && earth.subjectName(.level(6)) == "Helion", "subject names")
 

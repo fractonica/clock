@@ -29,12 +29,12 @@ struct AlertText: Sendable {
     /// The notification's title for an occurrence of `rule`.
     func title(_ rule: AlertRule, _ o: AlertOccurrence) -> String {
         let text = render(rule.title, rule, o)
-        return text.isEmpty ? render(AlertRule.defaultTitle, rule, o) : text
+        return (text.isEmpty ? render(AlertRule.defaultTitle, rule, o) : text).capitalizedLatinFirst
     }
 
     /// The notification's body; occurrences of other rules folded into it are listed after it.
     func body(_ rule: AlertRule, _ o: AlertOccurrence, also: [(rule: AlertRule, occurrence: AlertOccurrence)] = []) -> String {
-        var lines = [render(rule.body, rule, o)].filter { !$0.isEmpty }
+        var lines = [render(rule.body, rule, o).capitalizedLatinFirst].filter { !$0.isEmpty }
         if !also.isEmpty {
             lines.append("Also: " + also.map { title($0.rule, $0.occurrence) }.joined(separator: " · "))
         }
@@ -219,9 +219,9 @@ struct AlertText: Sendable {
     /// "15 min", "1 h", "2 days".
     static func earthLead(_ lead: AlertLead) -> String {
         switch lead.unit {
-        case .minute: "\(lead.count) min"
-        case .hour: "\(lead.count) h"
-        case .day: lead.count == 1 ? "1 day" : "\(lead.count) days"
+        case .minute: "\(lead.count)\u{00A0}min"
+        case .hour: "\(lead.count)\u{00A0}h"
+        case .day: lead.count == 1 ? "1\u{00A0}day" : "\(lead.count)\u{00A0}days"
         default: "\(lead.count)\(lead.unit.symbol ?? "")"
         }
     }
@@ -233,6 +233,13 @@ struct AlertText: Sendable {
 }
 
 extension String {
+    /// The string with a leading Latin letter in upper case ("solar sync 4820 …" → "Solar sync 4820 …"); Greek
+    /// period letters and digits stay as they are ("ε#3", "35η").
+    var capitalizedLatinFirst: String {
+        guard let first, first.isASCII, first.isLowercase else { return self }
+        return first.uppercased() + dropFirst()
+    }
+
     /// The string with its first letter in lower case ("At the moment" → "at the moment").
     var lowercasedFirst: String {
         guard let first else { return self }

@@ -409,3 +409,63 @@ enum AlertPreset: String, CaseIterable, Identifiable, Sendable {
         }
     }
 }
+
+// MARK: - Pure-mode helpers
+
+extension AlertLead {
+    /// The nearest lead counted on the Fractonica ladder (pure mode cannot show minutes): the longest of ε η ι λ that
+    /// fits at least once, by mean length. Fractonica leads come back unchanged.
+    func inFractonicaUnits(clock: FractonicaClock = .shared) -> AlertLead {
+        guard let seconds = unit.seconds, count > 0 else { return self }
+        let span = Double(count) * seconds
+        for unit in LeadUnit.fractonica.reversed() {
+            let n = (span / clock.levelInfo(unit.level!).meanSeconds).rounded()
+            if n >= 1 { return AlertLead(count: min(AlertLead.counts.upperBound, Int(n)), unit: unit) }
+        }
+        return AlertLead(count: 1, unit: .flavon)
+    }
+}
+
+/// The solar quarter running at an instant: a quarter of the solar sync, 4η 27ι = 171ι, which keeps step with the
+/// civil day (SPEC §7). Pure mode places quiet hours in it, since it cannot show a time of day.
+struct SolarQuarter: Hashable, Sendable {
+    /// Preons in a quarter: 19 Helions / 4 = 4.75η = 171ι.
+    static let preons = 171
+
+    let start: Double
+    let length: Double
+
+    init?(at t: Double, clock: FractonicaClock = .shared) {
+        guard let s = clock.solar(at: t) else { return nil }
+        length = (s.end - s.start) / 4
+        start = s.start + Double(s.quarter) * length
+    }
+
+    /// Where local minute `minute` of the day falls in this quarter, in Preons from its start (0 ..< 171): its first
+    /// occurrence at or after the quarter's start.
+    func preons(ofMinute minute: Int, zone: TimeZone) -> Double {
+        let p = EarthTime.zonedParts(start, zone: zone)
+        let m = ((minute % QuietHours.minutesPerDay) + QuietHours.minutesPerDay) % QuietHours.minutesPerDay
+        var t = EarthTime.zonedToUnix(EarthTime.CivilTime(year: p.year, month: p.month, day: p.day, hour: m / 60,
+                                                          minute: m % 60), zone: zone)
+        if t < start {
+            let next = EarthTime.civilFromDays(EarthTime.daysFromCivil(p.year, p.month, p.day) + 1)
+            t = EarthTime.zonedToUnix(EarthTime.CivilTime(year: next.year, month: next.month, day: next.day, hour: m / 60,
+                                                          minute: m % 60), zone: zone)
+        }
+        let offset = min(length, max(0, t - start))
+        return offset / length * Double(Self.preons)
+    }
+
+    /// The local minute of the day at `preons` Preons into this quarter, to the nearest minute.
+    func minute(atPreons preons: Double, zone: TimeZone) -> Int {
+        let p = EarthTime.zonedParts(start + preons / Double(Self.preons) * length + 30, zone: zone)
+        return p.hour * 60 + p.minute
+    }
+
+    /// "+2η 8ι", "+27ι", "+0ι": an offset into the quarter in Helions and Preons.
+    static func label(preons: Int) -> String {
+        let eta = preons / 36, iota = preons % 36
+        return eta > 0 ? (iota > 0 ? "+\(eta)η \(iota)ι" : "+\(eta)η") : "+\(iota)ι"
+    }
+}
