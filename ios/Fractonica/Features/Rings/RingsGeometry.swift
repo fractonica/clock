@@ -163,6 +163,21 @@ enum RingsMath {
         speed > 0 && meanSeconds / speed < 2
     }
 
+    /// How many redraws per real second keep the fastest moving hand honest: each frame moves it at most `step`
+    /// points along its ring. Blurred rings have no hand; under Reduce Motion fast rings hold still. 0 when nothing
+    /// moves.
+    static func redrawRate(rings: [(meanSeconds: Double, radius: CGFloat)], speed: Double, frozenWhenFast: Bool, step: Double = 0.5) -> Double {
+        guard speed > 0 else { return 0 }
+        var fastest = 0.0
+        for ring in rings {
+            if isBlur(meanSeconds: ring.meanSeconds, speed: speed) { continue }
+            if frozenWhenFast && isFast(meanSeconds: ring.meanSeconds, speed: speed) { continue }
+            let turn = ring.meanSeconds / speed // real seconds per turn
+            fastest = max(fastest, tau * Double(ring.radius) / turn)
+        }
+        return fastest / step
+    }
+
     /// A drag that starts at `start` and has moved by `translation` runs along the rings (around `center`) rather than
     /// across them: the tangential part of the motion outweighs the radial one. Radial drags belong to the page scroll.
     static func isTangentialDrag(start: CGPoint, translation: CGSize, center: CGPoint) -> Bool {

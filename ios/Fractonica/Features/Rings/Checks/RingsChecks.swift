@@ -312,6 +312,15 @@ private func nativeChecks() {
     check(!RingsMath.isBlur(meanSeconds: 0.01, speed: 0), "nothing blurs while paused")
     check(RingsMath.isFast(meanSeconds: clock.levelInfo(11).meanSeconds, speed: 1) && !RingsMath.isFast(meanSeconds: lambda, speed: 1), "μ is fast, λ is not")
 
+    // redraw cadence: the default rings live need about ten frames a second, λ needs every frame
+    let kappa = clock.levelInfo(9).meanSeconds
+    let slow = RingsMath.redrawRate(rings: [(clock.levelInfo(6).meanSeconds, 120), (kappa, 85)], speed: 1, frozenWhenFast: false)
+    check(slow > 5 && slow < 15, "κ at 85 points needs about ten redraws a second (\(slow))")
+    check(RingsMath.redrawRate(rings: [(lambda, 80)], speed: 1, frozenWhenFast: false) > 30, "λ needs every frame")
+    check(RingsMath.redrawRate(rings: [(clock.levelInfo(13).meanSeconds, 60)], speed: 1, frozenWhenFast: false) == 0, "a blurred ring needs no redraws")
+    check(RingsMath.redrawRate(rings: [(clock.levelInfo(11).meanSeconds, 60)], speed: 1, frozenWhenFast: true) == 0, "a frozen ring needs no redraws")
+    check(RingsMath.redrawRate(rings: [(kappa, 85)], speed: 0, frozenWhenFast: false) == 0, "nothing moves while paused")
+
     // continuous scrubbing: a cycle position runs through the cycles without gaps or jumps back
     let t = 1_791_460_800.0
     for level in [0, 3, 6, 9, 12, 13] {

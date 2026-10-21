@@ -279,10 +279,22 @@ private struct DialStack: View, Animatable {
 
     var body: some View {
         if animated {
-            ClockTimeline(.animation) { t in canvases(t) }
+            ClockTimeline(cadence) { t in canvases(t) }
         } else {
             canvases(store.time())
         }
+    }
+
+    /// Every display frame while a hand moves fast enough to need it; otherwise only as often as the fastest hand
+    /// moves half a point (live, the default rings need about ten redraws a second, not 120).
+    private var cadence: ClockCadence {
+        let speed = RingsScreenModel.speed(of: store)
+        guard speed > 0 else { return .animation }
+        let rings = range.levels.enumerated().map { i, level in
+            (meanSeconds: FractonicaClock.shared.levelInfo(level).meanSeconds, radius: layout.track(i).mid)
+        }
+        let hz = RingsMath.redrawRate(rings: rings, speed: speed, frozenWhenFast: reduceMotion)
+        return hz > 30 ? .animation : .periodic(speed / max(hz, 1))
     }
 
     private func canvases(_ t: Double) -> some View {
