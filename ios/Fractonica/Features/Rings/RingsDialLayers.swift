@@ -337,7 +337,7 @@ struct DialLabelLayer: View, Equatable {
                 let qf = min(11, max(8, lay.thick * 0.75))
                 for (q, name) in ["begin", "peak", "node", "valley"].enumerated() {
                     let pt = lay.point(radius: mid, phase: Double(q) * 0.25)
-                    pill(&layer, name, at: pt, size: qf, palette: p, leading: q == 0)
+                    pill(&layer, name, at: pt, size: qf, palette: p, leading: q == 0, bounds: lay.size)
                 }
             }
         }
@@ -367,13 +367,16 @@ struct DialLabelLayer: View, Equatable {
         }
     }
 
-    private static func pill(_ g: inout GraphicsContext, _ text: String, at pt: CGPoint, size: CGFloat, palette p: LevelPalette, leading: Bool) {
+    /// A quarter name in a capsule, kept inside the dial's square (the outermost ring's 3 and 9 o'clock pills would
+    /// otherwise hang over its edge).
+    private static func pill(_ g: inout GraphicsContext, _ text: String, at pt: CGPoint, size: CGFloat, palette p: LevelPalette, leading: Bool, bounds: CGFloat) {
         let resolved = g.resolve(Text(text).font(.system(size: size, weight: .semibold)).foregroundStyle(p.c(1, 0.76)))
         let ts = resolved.measure(in: CGSize(width: 200, height: 50))
         let w = ts.width + 10
         let h = size + 6
-        let x = leading ? pt.x + 6 : pt.x - w / 2
-        let rect = CGRect(x: x, y: pt.y - h / 2, width: w, height: h)
+        let x = min(max(leading ? pt.x + 6 : pt.x - w / 2, 1), bounds - w - 1)
+        let y = min(max(pt.y - h / 2, 1), bounds - h - 1)
+        let rect = CGRect(x: x, y: y, width: w, height: h)
         let shape = Path(roundedRect: rect, cornerRadius: h / 2)
         g.fill(shape, with: .color(Theme.background.opacity(0.92)))
         g.stroke(shape, with: .color(p.c(0.72)), lineWidth: 0.75)

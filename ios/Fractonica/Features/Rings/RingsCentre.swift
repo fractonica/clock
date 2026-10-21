@@ -67,7 +67,6 @@ struct RingsCentre: View {
                 .opacity(blurred ? 0.5 : 1)
                 .lineLimit(1)
                 .minimumScaleFactor(0.5)
-                .contentTransition(.numericText(countsDown: true))
             if !compact {
                 Text(endLine(r, pure: pure))
                     .font(.system(size: radius * 0.065).monospacedDigit())
