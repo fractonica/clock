@@ -183,13 +183,14 @@ struct TimelineLayout: Equatable, Sendable {
 
     /// The layout of a canvas `width` × `height` with `lanes` lanes. Lanes share the height left by the fixed rows,
     /// within limits; when they would get too thin the catalogue map goes first, then the eclipse lane shrinks.
-    init(width: Double, height: Double, lanes: Int) {
+    /// `textScale` is the canvas labels' Dynamic Type scale: the gutter widens with it.
+    init(width: Double, height: Double, lanes: Int, textScale: Double = 1) {
         let n = max(1, lanes)
         compact = width < Self.compactWidth
         self.width = width
         self.height = height
         self.lanes = lanes
-        gutter = compact ? 54 : 96
+        gutter = ((compact ? 54 : 96) * min(1.3, max(1, textScale))).rounded()
         px0 = gutter
         px1 = max(gutter + 40, width - (compact ? 6 : 10))
         let pad = 4.0

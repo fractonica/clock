@@ -96,7 +96,7 @@ struct TimelineScreen: View {
     @ViewBuilder
     private func canvas(size: CGSize, words: TimelineWords) -> some View {
         let levels = self.levels
-        let layout = TimelineLayout(width: size.width, height: size.height, lanes: levels.count)
+        let layout = TimelineLayout(width: size.width, height: size.height, lanes: levels.count, textScale: textScale)
         ClockTimeline(cadence(layout: layout, words: words)) { t in
             let frame = makeFrame(t: t, layout: layout, words: words, levels: levels)
             Canvas(opaque: false) { context, _ in
