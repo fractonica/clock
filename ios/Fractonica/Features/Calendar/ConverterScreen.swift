@@ -287,7 +287,43 @@ struct ConverterActions: View {
                 .help("Freeze this moment to study it")
             }
             Spacer(minLength: 0)
+            Menu {
+                ForEach(copyItems, id: \.0) { title, text in
+                    Button(title) { Pasteboard.copy(text) }
+                }
+            } label: {
+                Label("Copy", systemImage: "doc.on.doc")
+                    .labelStyle(.iconOnly)
+                    .font(.subheadline.weight(.semibold))
+                    .frame(width: 22, height: 22)
+            }
+            .menuStyle(.button)
+            .buttonStyle(.glass)
+            .buttonBorderShape(.circle)
+            .help("Copy the moment")
         }
+    }
+
+    /// What can be copied, in the mode's vocabulary.
+    private var copyItems: [(String, String)] {
+        let t = model.t
+        let clock = store.clock
+        let n = Notation.standard
+        let position = CalMath.position(clock, at: t).map { "\($0.ordinal).\($0.fraction)" }
+        let link = AppLink(screen: .converter, time: t).url.absoluteString
+        if settings.pure {
+            return [("Stamp", n.stamp(at: t, upTo: "nu")), ("Date in words", n.dateText(at: t, form: "full", upTo: "iota"))]
+                + (position.map { [("Saros position", $0)] } ?? []) + [("Link", link)]
+        }
+        let earth = EarthFormatter.calendar(model.timeZone(app: settings.timeZone))
+        let p = earth.parts(t)
+        var items = [("Date and time", "\(earth.long(t)) \(earth.tag(t))"),
+                     ("ISO 8601", "\(earth.date(t))T\(earth.time(t, seconds: true, ms: true))\(EarthTime.offsetLabel(Double(p.offset)))"),
+                     ("Unix seconds", String(format: "%.3f", t))]
+        if clock.inRange(t) { items.append(("Stamp", n.stamp(at: t, upTo: "nu"))) }
+        if let position { items.append(("Saros position", position)) }
+        items.append(("Link", link))
+        return items
     }
 
     private func travel() {

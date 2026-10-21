@@ -10,10 +10,16 @@ struct DeltaMonthView: View {
 
     @Environment(ClockStore.self) private var store
     @State private var width: CGFloat = 360
+    #if os(iOS)
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
+    private var short: Bool { verticalSizeClass == .compact }
+    #else
+    private let short = false
+    #endif
 
     var body: some View {
         @Bindable var model = model
-        let metrics = DeltaMetrics(width: width)
+        let metrics = DeltaMetrics(width: width, short: short)
         let page = model.deltaPage(model.page)
         ScrollViewReader { proxy in
             ScrollView {
@@ -84,10 +90,11 @@ struct DeltaMonthView: View {
 
 struct DeltaMetrics: Equatable {
     let width: CGFloat
+    var short = false
     var gap: CGFloat { width < 500 ? 4 : 6 }
     var rowLabel: CGFloat { width < 500 ? 30 : 40 }
     var cellWidth: CGFloat { max(28, (width - rowLabel - 7 * gap) / 7) }
-    var cellHeight: CGFloat { min(116, max(56, cellWidth * 1.2)) }
+    var cellHeight: CGFloat { short ? 60 : min(116, max(56, cellWidth * 1.2)) }
     var gridHeight: CGFloat { 5 * cellHeight + 4 * gap }
     var regular: Bool { cellWidth >= 72 }
 }
@@ -101,7 +108,7 @@ private struct DeltaHeader: View {
 
     var body: some View {
         let path = page.path
-        let shown = DeltaPage.page(store.clock, at: store.time())
+        let shown = model.displayedPage
         HStack(alignment: .center, spacing: 10) {
             VStack(alignment: .leading, spacing: 3) {
                 Text(Notation.periodName(level: 3, ordinal: page.delta))
@@ -303,6 +310,14 @@ private struct DeltaCell: View, Equatable {
                 Text(verbatim: "S\(s.sync)")
                     .font(.system(size: metrics.regular ? 10 : 8, weight: .medium).monospacedDigit())
                     .foregroundStyle(Theme.gold.opacity(0.85))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+            }
+            if let q = cell.quarters.first(where: \.startsHere) {
+                // a quarter of the Delta begins in this cell
+                Text(Notation.quarterWords[q.quarter])
+                    .font(.system(size: metrics.regular ? 11 : 8.5, weight: .semibold))
+                    .foregroundStyle(Theme.levelColor(3))
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
             }

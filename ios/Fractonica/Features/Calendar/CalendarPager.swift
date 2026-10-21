@@ -13,6 +13,7 @@ struct CalendarPager<Page: View>: View {
 
     @State private var center: Int
     @State private var position: Int?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private static var reach: Int { 48 }
 
@@ -44,7 +45,7 @@ struct CalendarPager<Page: View>: View {
             guard position != new else { return }
             let near = position.map { abs($0 - new) == 1 } ?? false
             if abs(new - center) > Self.reach - 8 { center = new }
-            if near {
+            if near, !reduceMotion {
                 withAnimation(.snappy) { position = new }
             } else {
                 position = new

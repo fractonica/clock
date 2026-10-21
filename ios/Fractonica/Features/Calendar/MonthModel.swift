@@ -16,6 +16,9 @@ final class MonthModel {
     var month: Int = CalMath.monthIndex(year: 2026, month: 10)
     /// The page follows the displayed time until the person navigates away.
     var follows = true
+    /// The month and the Delta page of the displayed time, kept by the screens' clock timelines.
+    private(set) var displayedMonth: Int?
+    private(set) var displayedPage: Int?
     /// The day whose detail is open: its date.
     var selectedDay: DayRef?
     var showsDetail = false
@@ -170,13 +173,16 @@ final class MonthModel {
 
     /// Follow the displayed time: the page moves with it while `follows`.
     func follow(_ t: Double, zone: TimeZone) {
-        guard follows else { return }
         let m = Self.monthIndex(of: t, zone: zone)
+        if displayedMonth != m { displayedMonth = m }
+        guard follows else { return }
         if m != month { month = m }
     }
 
     func followPage(_ t: Double) {
-        guard pageFollows, let p = DeltaPage.page(.shared, at: t) else { return }
+        let p = DeltaPage.page(.shared, at: t)
+        if displayedPage != p { displayedPage = p }
+        guard pageFollows, let p else { return }
         if p != page { page = p }
     }
 

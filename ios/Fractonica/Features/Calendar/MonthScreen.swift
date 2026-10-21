@@ -27,11 +27,17 @@ private struct EarthMonthView: View {
     @Environment(AppSettings.self) private var settings
     @State private var width: CGFloat = 360
     @State private var picking = false
+    #if os(iOS)
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
+    private var short: Bool { verticalSizeClass == .compact }
+    #else
+    private let short = false
+    #endif
 
     var body: some View {
         @Bindable var model = model
         let zone = settings.timeZone
-        let metrics = MonthMetrics(width: width, bands: model.bands.count)
+        let metrics = MonthMetrics(width: width, bands: model.bands.count, short: short)
         ScrollViewReader { proxy in
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
@@ -98,7 +104,7 @@ private struct EarthMonthView: View {
 
     private func header(_ zone: TimeZone) -> some View {
         let (y, m) = CalMath.yearMonth(model.month)
-        let displayedMonth = MonthModel.monthIndex(of: store.time(), zone: zone)
+        let displayedMonth = model.displayedMonth ?? model.month
         return HStack(alignment: .center, spacing: 10) {
             Button {
                 picking = true
@@ -188,9 +194,14 @@ struct StepPair: View {
 struct MonthMetrics: Equatable {
     let width: CGFloat
     let bands: Int
+    /// A short window (iPhone in landscape): flatter cells so the month fits.
+    var short = false
     var gap: CGFloat { width < 500 ? 4 : 6 }
     var cellWidth: CGFloat { max(30, (width - 6 * gap) / 7) }
-    var cellHeight: CGFloat { min(124, max(58 + CGFloat(max(0, bands - 2)) * 8, cellWidth * 1.18)) }
+    var cellHeight: CGFloat {
+        let least = 58 + CGFloat(max(0, bands - 2)) * 8
+        return short ? least : min(124, max(least, cellWidth * 1.18))
+    }
     var gridHeight: CGFloat { 6 * cellHeight + 5 * gap }
     var regular: Bool { cellWidth >= 72 }
 }
