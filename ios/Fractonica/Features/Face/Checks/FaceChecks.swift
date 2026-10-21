@@ -328,6 +328,8 @@ func wordChecks() {
             }
         }
     }
+    leaks += (FaceGuideText.glyphLines(pure: true) + FaceGuideText.journalLines(pure: true) + FaceGuideText.watchLines(pure: true)
+        + FaceGuideText.gestureLines).compactMap { s in earthLeak(s).map { "\($0) in “\(s)”" } }
     leaks += (FaceWords.outOfRange(words: pure).title + FaceWords.outOfRange(words: pure).range + FaceWords.solarUnavailable(pure: true))
         .compactMap { s in earthLeak(s).map { "\($0) in “\(s)”" } }
     check(leaks.isEmpty, "pure mode says nothing Earth-ish: \(leaks.prefix(5))")

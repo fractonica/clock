@@ -20,8 +20,10 @@ struct FacePager<First: View, Second: View>: View {
     @State private var dragX: CGFloat = 0
     @State private var nudgeY: CGFloat = 0
     @State private var axis: FaceSwipe.Axis?
-    /// A page that is sliding out after a page change.
-    @State private var leaving: Int?
+    /// The page shown before the last change, kept drawn while it slides out.
+    @State private var settled: Int?
+    /// A released sideways drag is springing back into place: both pages stay drawn.
+    @State private var springing = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
@@ -37,10 +39,17 @@ struct FacePager<First: View, Second: View>: View {
             .gesture(drag(width: w))
         }
         .clipped()
+        .onAppear { settled = page }
+        .onChange(of: page) { _, new in
+            Task { @MainActor in
+                try? await Task.sleep(for: .seconds(0.7))
+                settled = new
+            }
+        }
     }
 
     private func pageView(_ content: some View, index: Int, size: CGSize) -> some View {
-        let visible = index == page || index == leaving || axis == .horizontal
+        let visible = index == page || index == (settled ?? page) || axis == .horizontal || springing
         return ZStack {
             if visible { content }
         }
@@ -48,14 +57,6 @@ struct FacePager<First: View, Second: View>: View {
         .frame(width: size.width, height: size.height)
         .allowsHitTesting(index == page)
         .accessibilityHidden(index != page)
-        .onChange(of: page) { old, _ in
-            guard index == old else { return }
-            leaving = old
-            Task { @MainActor in
-                try? await Task.sleep(for: .seconds(0.7))
-                if leaving == old, old != page { leaving = nil }
-            }
-        }
     }
 
     private func drag(width: CGFloat) -> some Gesture {
@@ -77,9 +78,12 @@ struct FacePager<First: View, Second: View>: View {
                 case .horizontal:
                     let next = FaceSwipe.page(page, count: 2, translation: value.translation.width,
                                               predicted: value.predictedEndTranslation.width, width: width)
+                    springing = true
                     withAnimation(reduceMotion ? .easeInOut(duration: 0.2) : .spring(duration: 0.42, bounce: 0.12)) {
                         dragX = 0
                         if next != page { onPage(next) }
+                    } completion: {
+                        springing = false
                     }
                 case .vertical:
                     withAnimation(.spring(duration: 0.35, bounce: 0.3)) { nudgeY = 0 }

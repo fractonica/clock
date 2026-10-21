@@ -16,8 +16,16 @@ struct NowDateLine: View {
         let words = settings.wording
         let pure = words.pure
         NowTimeline(fixed: fixed, next: { FaceCadence.dateLine(after: $0, pure: pure) }) { t in
+            let inside = words.notation.model.inRange(t)
             VStack(spacing: 3) {
-                if pure {
+                if pure && !inside {
+                    Text(verbatim: "outside the catalogue")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(Theme.ink2)
+                    Text(verbatim: words.notation.catalogueText())
+                        .font(.caption)
+                        .foregroundStyle(Theme.ink3)
+                } else if pure {
                     Text(verbatim: words.notation.dateText(at: t))
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(Theme.ink)
@@ -27,9 +35,9 @@ struct NowDateLine: View {
                 } else {
                     Text("\(Text(verbatim: "\(words.day(t)) · \(words.time(t))").foregroundStyle(Theme.ink)) \(Text(verbatim: words.tag(t)).font(.caption.weight(.medium)).foregroundStyle(Theme.ink3))")
                         .font(.subheadline.weight(.semibold))
-                    Text(verbatim: words.notation.dateText(at: t))
+                    Text(verbatim: inside ? words.notation.dateText(at: t) : "outside the catalogue")
                         .font(.caption)
-                        .foregroundStyle(Theme.ink2)
+                        .foregroundStyle(inside ? Theme.ink2 : Theme.ink3)
                 }
             }
             .monospacedDigit()
@@ -111,7 +119,14 @@ struct ReadingsPanel: View {
     private func primary(_ t: Double, _ words: Wording) -> some View {
         let n = words.notation
         VStack(alignment: .leading, spacing: 4) {
-            if words.pure {
+            if words.pure && !n.model.inRange(t) {
+                Text(verbatim: "outside the catalogue")
+                    .font(.title2)
+                    .foregroundStyle(Theme.ink2)
+                Text(verbatim: n.catalogueText())
+                    .font(.title3)
+                    .foregroundStyle(Theme.ink3)
+            } else if words.pure {
                 Text(verbatim: n.clockText(at: t))
                     .font(.system(size: bigSize, weight: .light))
                     .foregroundStyle(Theme.ink)

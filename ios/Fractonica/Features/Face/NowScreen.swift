@@ -27,6 +27,7 @@ struct NowScreen: View {
     @State private var refusals = 0
     @State private var overlay = TransientOverlay()
     @State private var lastMiddleTap: TimeInterval?
+    @State private var guideShown = FaceLaunch.current.guide
     @FocusState private var focused: Bool
 
     private var face: AppSettings.FaceMode { launch.face ?? settings.faceMode }
@@ -74,6 +75,14 @@ struct NowScreen: View {
             try? await Task.sleep(for: .seconds(max(0, until.timeIntervalSinceNow)))
             guard !Task.isCancelled else { return }
             withAnimation(.easeInOut(duration: 0.25)) { overlay.mode = .none }
+        }
+        .sheet(isPresented: $guideShown) {
+            NavigationStack { FaceGuide() }
+                #if os(iOS)
+                .presentationDetents([.medium, .large])
+                #else
+                .frame(minWidth: 480, minHeight: 560)
+                #endif
         }
         .sensoryFeedback(.selection, trigger: steps) { _, _ in settings.haptics }
         .sensoryFeedback(.impact(weight: .light, intensity: 0.7), trigger: refusals) { _, _ in settings.haptics }
@@ -145,7 +154,7 @@ struct NowScreen: View {
                             onTap: journalTap)
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel(Text(verbatim: frame?.accessibilityLabel ?? FaceWords.outOfRange(words: words).title.joined(separator: " ")))
-                .accessibilityHint(Text("Swipe up or down for a longer or shorter unit"))
+                .accessibilityHint(Text("Adjust up for a longer unit, down for a shorter one"))
                 .accessibilityAdjustableAction { direction in adjust(direction) }
                 .accessibilityAction(named: Text("Watch face")) { setFace(.watch) }
         }
@@ -167,7 +176,7 @@ struct NowScreen: View {
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel(Text(verbatim: frame?.accessibilityLabel ?? FaceWords.outOfRange(words: words).title.joined(separator: " ")))
                 .accessibilityValue(Text(verbatim: watchValue(frame, words: words)))
-                .accessibilityHint(Text("Swipe up or down for a longer or shorter period"))
+                .accessibilityHint(Text("Adjust up for a longer period, down for a shorter one"))
                 .accessibilityAdjustableAction { direction in adjust(direction) }
                 .accessibilityAction(named: Text("Show info labels")) { showInfo() }
                 .accessibilityAction(named: Text(settings.showLetters ? "Hide period letters" : "Keep period letters")) { toggleLetters() }
@@ -218,6 +227,9 @@ struct NowScreen: View {
                         Toggle("Keep Period Letters", systemImage: "character", isOn: Binding(
                             get: { settings.showLetters }, set: { _ in toggleLetters() }))
                     }
+                }
+                Section {
+                    Button("How to Read", systemImage: "questionmark.circle") { guideShown = true }
                 }
             } label: {
                 Label("Face", systemImage: "capsule.portrait")

@@ -235,3 +235,50 @@ enum FaceWords {
         return "Journal face: \(middle); the \(r.leadLetter) phase above and its cycle below"
     }
 }
+
+/// The lines of "How to read" (`FaceGuide`; howto.js and pure.js `pureHowToLines`), Markdown for bold.
+enum FaceGuideText {
+    static func glyphLines(pure: Bool) -> [String] {
+        var lines = [
+            "**Glyph = phase.** It shows where a cycle is: the value climbs to +4, falls to −4 and returns – 16 states per cycle.",
+            "**Dot = falling.** A dot above the stem marks the falling half; rising and the two turning points have none.",
+            pure
+                ? "**Pair = odometer.** The left glyph is the coarse step, the right one the fine step inside it: 16 × 16 = 256 phases of a cycle."
+                : "**Pair = odometer.** The left glyph is the coarse step, the right one the fine step inside it.",
+        ]
+        if pure {
+            lines.append("**Numbers from 1, counts from 0.** 34η is the 34th Helion of its Nuclide (1–77); ε#5 and Delta Trifracton are numbered from 1 too. 29ι 21λ count the Preons and Flavons completed, from 0.")
+        }
+        return lines
+    }
+
+    static func journalLines(pure: Bool) -> [String] {
+        [
+            "**Middle:** three units from the longest down, every count in two digits – 34η 29ι 21λ. From the Delta up a period is shown alone, in words: 5th / Delta / Trifracton / End.",
+            "**Top:** the phase of the longest unit shown, as a pair of glyphs (a period from Alpha to Delta as one 3-stroke glyph).",
+            "**Bottom:** that unit's whole cycle – the left arc descends, the right one ascends; the white tick is now, the bright part already run.",
+            pure
+                ? "**The Helion is the basic reading:** its number and its phase. Preons and Flavons are the fine time."
+                : "**The Helion is the basic reading** (about 5 hours): its number and its phase. Preons and Flavons are the fine time, like minutes and seconds.",
+        ]
+    }
+
+    static func watchLines(pure: Bool) -> [String] {
+        [
+            "**Teal pairs:** two periods, the longer on top – the top pair at its depth, the lower one a depth below.",
+            "**Counter dots** are the cycles of the parent period; lit up to the one you are in.",
+            pure
+                ? "**Yellow** is the solar sync: 19η cycles, 19 Helions. Its start drifts a little earlier with every sync, counted in λ."
+                : "**Yellow** is the solar sync: 19 η cycles ≈ 4 civil days, landing about 10 s earlier each time.",
+            pure
+                ? "**Info labels** count down to the next threshold of the top period and of the sync, and give the sync's number and drift."
+                : "**Info labels** give the next threshold of the top period and of the sync, and the time the sync began.",
+        ]
+    }
+
+    static let gestureLines = [
+        "**Tap the top or the bottom** of a face, or swipe down or up, for a longer or shorter unit; the rail of letters beside it jumps straight there.",
+        "**Watch face:** tap the middle for the info labels, double tap to keep the period letters.",
+        "**Swipe sideways** or use the dots to switch faces. Keys: ↑ ↓ step, ← → switch, i info, l letters.",
+    ]
+}

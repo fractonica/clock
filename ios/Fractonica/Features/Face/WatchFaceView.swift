@@ -84,6 +84,7 @@ struct WatchFaceView: View {
         } else {
             solarUnavailableView(fit)
         }
+        rowHelp(f, fit)
         if overlay == .letters {
             letters(f, fit).transition(.opacity)
         }
@@ -106,6 +107,23 @@ struct WatchFaceView: View {
             }
         }
         .accessibilityHidden(true)
+    }
+
+    /// Under a pointer (Mac, iPad), each row explains itself after a moment, like the web face's tooltips.
+    private func rowHelp(_ f: WatchFrame, _ fit: FaceFit) -> some View {
+        ZStack(alignment: .topLeading) {
+            let rows = [(WatchGeometry.Row.top, f.top.accessibilityLabel), (.solar, f.solarLabel),
+                        (.bottom, f.bottom.accessibilityLabel)]
+            ForEach(rows.indices, id: \.self) { i in
+                let (row, label) = rows[i]
+                let r = fit.rect(WatchGeometry.plate(row))
+                Color.clear
+                    .contentShape(.rect)
+                    .frame(width: r.width, height: r.height)
+                    .position(x: r.midX, y: r.midY)
+                    .help(Text(verbatim: label))
+            }
+        }
     }
 
     private func row(_ row: WatchGeometry.Row, digits: [Int], color: Color, calm: [Bool], fit: FaceFit) -> some View {
