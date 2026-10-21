@@ -4,9 +4,11 @@ import SwiftUI
 /// Jump: go to any moment by typing it (src/ui/jump.js, docs/design/60-calendar.md §1). The search tab of the app: on
 /// iPhone its field sits in the tab bar's place, on iPad and Mac it is the sidebar's search item (⌘K).
 ///
-/// As you type, the best reading shows the moment it lands on — in Earth and Fractonica terms, or only Fractonica
-/// terms in pure mode — with the other readings below and a precise message for text that does not read. Return
-/// (or a tap) travels there and goes back to Now. With an empty field: the recent jumps of the mode and examples to try.
+/// As you type, the best reading shows the moment it lands on — in Earth and Fractonica terms (side by side on a wide
+/// screen), or only Fractonica terms in pure mode — with the other readings below and a precise message for text that
+/// does not read. Return (or a tap) travels there and goes back to Now. With an empty field: the recent jumps of the
+/// mode and examples to try. On iPhone and iPad a glass bar of the notation's Greek letters floats over the keyboard.
+/// The readings follow the displayed time while it moves (`ClockTimeline`, on screen only).
 ///
 /// Launch arguments for screenshots: `-FXJumpQuery <text>` starts with that text, `-FXJumpFocus 0` keeps the keyboard
 /// down, `-FXJumpDemo 1` shows a sample history (never saved), `-FXJumpSubmit 1` presses Return once (the jump lands
@@ -16,11 +18,12 @@ struct JumpScreen: View {
     @Environment(AppSettings.self) private var settings
     @Environment(AppRouter.self) private var router
     @Environment(ToastCenter.self) private var toasts
-    @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @State private var model = JumpModel()
     @State private var width: CGFloat = 0
+    /// On screen (the readings follow the clock only then).
+    @State private var visible = false
     @FocusState private var searchFocused: Bool
 
     /// Does the device's locale write the day first in 06/01/2031? (it ranks the two readings)
@@ -30,8 +33,8 @@ struct JumpScreen: View {
         @Bindable var model = model
         ScrollView {
             content
-                .frame(maxWidth: width > 900 ? 860 : 680)
-                .padding(.horizontal, 16)
+                .frame(maxWidth: JumpLayout.contentWidth(for: width))
+                .padding(.horizontal, JumpLayout.margin(for: width))
                 .padding(.top, 8)
                 .padding(.bottom, 24)
                 .frame(maxWidth: .infinity)
@@ -46,10 +49,32 @@ struct JumpScreen: View {
         .autocorrectionDisabled()
         #if os(iOS)
         .textInputAutocapitalization(.never)
+        .safeAreaInset(edge: .bottom) {
+            // the notation's Greek letters, floating above the keyboard while the field has focus
+            if searchFocused {
+                JumpLetterKeys(pure: settings.pure) { model.query += $0 }
+                    .frame(maxWidth: 720)
+                    .padding(.horizontal, JumpLayout.margin(for: width))
+                    .padding(.bottom, 8)
+                    .transition(.opacity)
+            }
+        }
         #endif
         .onSubmit(of: .search) { submit() }
-        .task(id: refreshKey) { await refreshLoop() }
+        .onChange(of: refreshKey) { model.refresh(situation()) }
+        .background {
+            // While the displayed time moves, read the field again with it: on the second live, four times a
+            // second during a time-lapse; never while paused or in the background (ClockTimeline stops then).
+            if visible && !model.isEmpty {
+                ClockTimeline(.periodic(JumpLayout.refreshInterval(live: store.isLive, rate: store.rate))) { t in
+                    Color.clear.onChange(of: t) { model.refresh(situation()) }
+                }
+            }
+        }
+        .onDisappear { visible = false }
         .onAppear {
+            visible = true
+            model.refresh(situation())
             if JumpModel.launchFocus { searchFocused = true }
             if JumpModel.launchSubmit, !model.isEmpty {
                 Task {
@@ -85,9 +110,11 @@ struct JumpScreen: View {
             if model.isEmpty {
                 idle(earth)
             } else if let best = model.best {
-                JumpResultCard(candidate: best, pure: settings.pure, earth: earth) { go(model.fresh(best, situation()), text: model.query) }
-                    .id(best.kind.rawValue + best.label)
-                    .transition(reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 0.98, anchor: .top)))
+                JumpResultCard(candidate: best, pure: settings.pure, earth: earth, wide: JumpLayout.isWide(width)) {
+                    go(model.fresh(best, situation()), text: model.query)
+                }
+                .id(best.kind.rawValue + best.label)
+                .transition(reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 0.98, anchor: .top)))
                 if !model.alternatives.isEmpty {
                     JumpSection(title: "Other readings") {
                         JumpCard {
@@ -113,7 +140,7 @@ struct JumpScreen: View {
     @ViewBuilder
     private func idle(_ earth: EarthFormatter) -> some View {
         let recent = recentSection(earth)
-        if width > 760 && !model.history.entries.isEmpty {
+        if JumpLayout.isWide(width) && !model.history.entries.isEmpty {
             HStack(alignment: .top, spacing: 24) {
                 recent.frame(maxWidth: .infinity, alignment: .topLeading)
                 examples(compact: false).frame(maxWidth: .infinity, alignment: .topLeading)
@@ -163,6 +190,7 @@ struct JumpScreen: View {
                             Text(group.title)
                                 .font(.caption.weight(.medium))
                                 .foregroundStyle(Theme.ink3)
+                                .padding(.leading, 4)
                         }
                         FlowLayout(spacing: 8) {
                             ForEach(group.items, id: \.text) { example in
@@ -183,29 +211,18 @@ struct JumpScreen: View {
     /// What the screen shows: idle, a reading, or an error (the animation key).
     private var phase: Int { model.isEmpty ? 0 : model.best != nil ? 1 : 2 }
 
+    /// What the readings depend on besides the displayed time: a change reads the field again at once.
     private struct RefreshKey: Hashable {
         var query: String
         var pure: Bool
         var zone: String?
         var level: Int
         var revision: Int
-        var paused: Bool
-        var active: Bool
     }
 
     private var refreshKey: RefreshKey {
         RefreshKey(query: model.query, pure: settings.pure, zone: settings.zone, level: settings.selectedLevel,
-                   revision: store.revision, paused: store.isPaused, active: scenePhase == .active)
-    }
-
-    /// Reads the field at once, then again while the displayed time moves: once a second live, four times a second
-    /// during a time-lapse (offsets and the distances shown count from the displayed time); never while paused.
-    private func refreshLoop() async {
-        while !Task.isCancelled {
-            model.refresh(situation())
-            guard !model.isEmpty, scenePhase == .active, !store.isPaused else { return }
-            try? await Task.sleep(for: store.isLive ? .seconds(1) : .milliseconds(250))
-        }
+                   revision: store.revision)
     }
 
     private func situation() -> JumpInterpreter.Situation {
@@ -228,8 +245,9 @@ struct JumpScreen: View {
     /// Travels to a reading (or back to the live clock for "now"), remembers it, and shows Now.
     private func go(_ candidate: JumpCandidate, text: String) {
         if candidate.live {
+            let wasLive = store.isLive
             store.goLive()
-            toasts.show(settings.pure ? "Back to the live clock" : "Back to the device clock")
+            toasts.show(wasLive ? "Showing the live clock" : settings.pure ? "Back to the live clock" : "Back to the device clock")
         } else if let t = candidate.time {
             store.travel(to: t)
             let moment = settings.pure ? Notation.standard.stamp(at: t, upTo: "eta") : EarthFormatter(zone: settings.zone).long(t)
