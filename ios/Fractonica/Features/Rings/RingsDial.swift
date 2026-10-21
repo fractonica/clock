@@ -103,8 +103,13 @@ struct RingsDial: View {
         .accessibilityAdjustableAction { direction in
             selectRelative(direction == .increment ? 1 : -1, range: range, selected: selected)
         }
-        .accessibilityAction(named: Text("Go to the start of the running child cycle")) {
-            goToRunningChild(selected: selected)
+        .accessibilityAction(named: Text(model.outOfRange ? "Go to the start of the catalogue" : "Go to the start of the running child cycle")) {
+            if model.outOfRange {
+                model.outOfRange = false
+                store.travel(to: clock.tMin + 0.001)
+            } else {
+                goToRunningChild(selected: selected)
+            }
         }
     }
 

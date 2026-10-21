@@ -235,70 +235,72 @@ struct RingsCard: View {
 
     // MARK: Facts
 
+    /// One fact: a label, its lines and a dimmer note under them.
+    private struct Fact {
+        let label: String
+        let lines: [String]
+        var note: String?
+    }
+
     @ViewBuilder
     private func facts(_ t: Double, level: Int) -> some View {
         if let r = reading(t, level) {
-            Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 14, verticalSpacing: 10) {
-                if settings.pure {
-                    pureFacts(r, t: t)
-                } else {
-                    earthFacts(r, t: t)
+            let rows = settings.pure ? pureFacts(r, t: t) : earthFacts(r, t: t)
+            if typeSize.isAccessibilitySize {
+                // large type: each label above its value, the full width for both
+                VStack(alignment: .leading, spacing: 12) {
+                    ForEach(rows.indices, id: \.self) { i in
+                        VStack(alignment: .leading, spacing: 2) {
+                            factLabel(rows[i].label)
+                            factValue(rows[i].lines, note: rows[i].note)
+                        }
+                    }
+                    VStack(alignment: .leading, spacing: 2) {
+                        factLabel("Address")
+                        addressText(r)
+                    }
                 }
-                GridRow {
-                    factLabel("Address")
-                    Text(address(r))
-                        .font(.footnote.monospaced())
-                        .fixedSize(horizontal: false, vertical: true)
+            } else {
+                Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 14, verticalSpacing: 10) {
+                    ForEach(rows.indices, id: \.self) { i in
+                        GridRow {
+                            factLabel(rows[i].label)
+                            factValue(rows[i].lines, note: rows[i].note)
+                        }
+                    }
+                    GridRow {
+                        factLabel("Address")
+                        addressText(r)
+                    }
                 }
             }
         }
     }
 
-    @ViewBuilder
-    private func earthFacts(_ r: LevelReading, t: Double) -> some View {
+    private func earthFacts(_ r: LevelReading, t: Double) -> [Fact] {
         let earth = settings.wording.earth
         let start = RingsText.whenParts(earth, r.start, span: r.duration)
         let end = RingsText.whenParts(earth, r.end, span: r.duration)
-        GridRow {
-            factLabel("Started")
-            factValue([start.date, start.time], note: t >= r.start ? "\(RingsText.countdownBody(t - r.start)) ago" : "in \(RingsText.countdownBody(r.start - t))")
-        }
-        GridRow {
-            factLabel("Ends")
-            factValue([end.date, end.time] + (r.clipped ? ["end of the catalogue"] : []), note: "in \(RingsText.countdownBody(r.end - t))")
-        }
-        GridRow {
-            factLabel("Length")
-            factValue(["\(EarthTime.duration(r.duration))\(r.clipped ? " (clipped by the catalogue)" : "")"], note: nil)
-        }
-        GridRow {
-            factLabel("Glyph")
-            factValue(["state \(r.index) of 0–\(r.states - 1)", "value \(RingsText.value(r.value))\(r.dotted ? " · dotted" : "")"], note: nil)
-        }
+        return [
+            Fact(label: "Started", lines: [start.date, start.time],
+                 note: t >= r.start ? "\(RingsText.countdownBody(t - r.start)) ago" : "in \(RingsText.countdownBody(r.start - t))"),
+            Fact(label: "Ends", lines: [end.date, end.time] + (r.clipped ? ["end of the catalogue"] : []), note: "in \(RingsText.countdownBody(r.end - t))"),
+            Fact(label: "Length", lines: ["\(EarthTime.duration(r.duration))\(r.clipped ? " (clipped by the catalogue)" : "")"]),
+            Fact(label: "Glyph", lines: ["state \(r.index) of 0–\(r.states - 1)", "value \(RingsText.value(r.value))\(r.dotted ? " · dotted" : "")"]),
+        ]
     }
 
-    @ViewBuilder
-    private func pureFacts(_ r: LevelReading, t: Double) -> some View {
+    private func pureFacts(_ r: LevelReading, t: Double) -> [Fact] {
         let words = RingsPureText()
         let res = words.resolution(span: words.cycleSpan(r.level))
         let start = words.when(r.start, res: res, dateTokens: 3, timeTokens: 3)
         let end = words.when(r.end, res: res, dateTokens: 3, timeTokens: 3)
-        GridRow {
-            factLabel("Started")
-            factValue([start.date, start.time], note: words.inText(now: t, r.start))
-        }
-        GridRow {
-            factLabel("Ends")
-            factValue([end.date, end.time, words.endLine(r)], note: words.inText(now: t, r.end))
-        }
-        GridRow {
-            factLabel("Length")
-            factValue(["\(words.lengthWithName(level: r.level, start: r.start, end: r.end, clipped: r.clipped))\(r.clipped ? " (clipped by the catalogue)" : "")"], note: nil)
-        }
-        GridRow {
-            factLabel("Glyph")
-            factValue([RingsPureText.stateText(r.phase, level: r.level), "value \(RingsText.value(r.value))\(r.dotted ? " · dotted" : "")"], note: nil)
-        }
+        return [
+            Fact(label: "Started", lines: [start.date, start.time], note: words.inText(now: t, r.start)),
+            Fact(label: "Ends", lines: [end.date, end.time, words.endLine(r)], note: words.inText(now: t, r.end)),
+            Fact(label: "Length", lines: ["\(words.lengthWithName(level: r.level, start: r.start, end: r.end, clipped: r.clipped))\(r.clipped ? " (clipped by the catalogue)" : "")"]),
+            Fact(label: "Glyph", lines: [RingsPureText.stateText(r.phase, level: r.level), "value \(RingsText.value(r.value))\(r.dotted ? " · dotted" : "")"]),
+        ]
     }
 
     private func factLabel(_ text: String) -> some View {
@@ -322,6 +324,12 @@ struct RingsCard: View {
             }
         }
         .accessibilityElement(children: .combine)
+    }
+
+    private func addressText(_ r: LevelReading) -> some View {
+        Text(address(r))
+            .font(.footnote.monospaced())
+            .fixedSize(horizontal: false, vertical: true)
     }
 
     /// The path of the cycle from α down, each step in its level's colour.
