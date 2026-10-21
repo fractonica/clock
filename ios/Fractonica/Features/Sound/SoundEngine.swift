@@ -282,7 +282,8 @@ final class SoundEngine {
 
     /// Test hooks for screenshots: `-FXSoundSilent 1` keeps the speakers silent, `-FXSoundDemo 1` starts the (silent)
     /// sound at launch so the screen shows it playing, `-FXSoundPhysical 1` turns the physical register on for the
-    /// launch (unsaved), `-FXSoundLock 1` locks the tempo.
+    /// launch (unsaved), `-FXSoundLock 1` locks the tempo, `-FXSoundMoment <seconds>` plays the moment (silently) that
+    /// long after launch.
     func applyLaunchOptions(_ defaults: UserDefaults = .standard) {
         let args = defaults.volatileDomain(forName: UserDefaults.argumentDomain)
         func flag(_ key: String) -> Bool { ["1", "yes", "true"].contains(((args[key] as? String) ?? (args[key] as? NSNumber)?.stringValue ?? "").lowercased()) }
@@ -290,6 +291,14 @@ final class SoundEngine {
         if flag("FXSoundPhysical") { preferences.physical = true } // for this launch only, never saved
         if flag("FXSoundDemo") { start() }
         if flag("FXSoundLock") { lockTempo(words: nil) }
+        // `-FXSoundMoment <seconds>`: "Hear this moment" that long after launch (silent unless asked otherwise)
+        if let delay = ((args["FXSoundMoment"] as? String) ?? (args["FXSoundMoment"] as? NSNumber)?.stringValue).flatMap(Double.init) {
+            silentOutput = true
+            Task {
+                try? await Task.sleep(for: .seconds(delay))
+                self.playMoment(at: self.store.time())
+            }
+        }
     }
 
     // MARK: The scope
