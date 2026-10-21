@@ -234,6 +234,9 @@ func frameChecks() {
     check(delta.lines == ["5th", "Delta", "Trifracton", "End"] && delta.isMajor && delta.pair == nil && delta.tokens.isEmpty,
           "unit δ: 5th / Delta / Trifracton / End: \(delta.lines)")
     check(JournalFrame.make(at: clock.tMax + 10, unit: 5) == nil, "outside the catalogue: no frame")
+    check(helion.calmText && helion.calmGlyphs, "η ι λ: λ counts roll, the Helion pair cross-fades")
+    let preon = JournalFrame.make(at: a, unit: 6)!
+    check(!preon.calmText && preon.calmGlyphs, "ι λ ν: the Blink count just turns; the Preon pair (2 s a state) still fades")
     check(helion.accessibilityLabel.hasPrefix("Journal face: 34η 29ι 21λ"), "the journal's label: \(helion.accessibilityLabel)")
 
     let w = WatchFrame.make(at: a, topDepth: 7, words: utc, info: true)!

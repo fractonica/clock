@@ -27,6 +27,10 @@ struct JournalFrame: Equatable, Sendable {
     /// A major period: "5th" "Delta" "Trifracton" "End".
     let lines: [String]
     let accessibilityLabel: String
+    /// The middle reading changes no faster than every 1.5 s: its digits may roll (a ν count simply turns).
+    let calmText: Bool
+    /// The lead glyphs change no faster than every 1.5 s: they may cross-fade (SPEC §10: no blinking).
+    let calmGlyphs: Bool
 
     var isMajor: Bool { glyph3 != nil }
 
@@ -42,6 +46,9 @@ struct JournalFrame: Equatable, Sendable {
     static func make(at t: Double, unit: Int, notation: Notation = .standard) -> JournalFrame? {
         guard let r = Journal.reading(at: t, unit: unit, notation: notation) else { return nil }
         let pair = r.tokens == nil ? nil : Notation.pair(r.leadPhase)
+        let mean = { (level: Int) in notation.model.levelInfo(level).meanSeconds }
+        let finest = r.levels.last ?? r.leadLevel
+        let glyphStates = Double(r.tokens == nil ? 52 : 256)
         return JournalFrame(
             unit: r.unit,
             leadLevel: r.leadLevel,
@@ -51,7 +58,9 @@ struct JournalFrame: Equatable, Sendable {
             glyph3: r.major?.index3,
             tokens: (r.tokens ?? []).map { Token(level: $0.level, parts: FaceWords.parts(of: $0.text)) },
             lines: r.major?.lines ?? [],
-            accessibilityLabel: FaceWords.journalLabel(r)
+            accessibilityLabel: FaceWords.journalLabel(r),
+            calmText: mean(r.tokens == nil ? min(r.leadLevel + 1, 4) : finest) >= 1.5,
+            calmGlyphs: mean(r.leadLevel) / glyphStates >= 1.5
         )
     }
 }

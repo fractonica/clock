@@ -157,7 +157,7 @@ private struct JournalReadingView: View {
             FaceGlyph(index: glyph, strokes: 3, color: color,
                       rect: GlyphLayout.logicalRect(strokes: 3, height: JournalGeometry.majorGlyphHeight,
                                                     centerX: FaceSpace.cx, centerY: JournalGeometry.glyphCenterY),
-                      fit: fit, ink: 2.8, glow: 0.35, animated: animated)
+                      fit: fit, ink: 2.8, glow: 0.35, animated: animated && frame.calmGlyphs)
         } else if let pair = frame.pair {
             let h = JournalGeometry.pairGlyphHeight
             let one = GlyphLayout.logicalRect(strokes: 2, height: h, centerX: 0, centerY: 0).width
@@ -166,7 +166,7 @@ private struct JournalReadingView: View {
                 FaceGlyph(index: index, strokes: 2, color: color,
                           rect: GlyphLayout.logicalRect(strokes: 2, height: h, centerX: FaceSpace.cx + (i == 0 ? -half : half),
                                                         centerY: JournalGeometry.glyphCenterY),
-                          fit: fit, ink: 2.6, glow: 0.35, animated: animated)
+                          fit: fit, ink: 2.6, glow: 0.35, animated: animated && frame.calmGlyphs)
             }
             letter(at: JournalGeometry.topLetterY, color)
         }
@@ -188,8 +188,8 @@ private struct JournalReadingView: View {
             FaceText(text: tokensText.font(.system(size: fit.length(JournalGeometry.minorTextSize), weight: .semibold))
                 .monospacedDigit().foregroundStyle(Theme.ink),
                      fit: fit, x: FaceSpace.cx, y: FaceSpace.cy, width: JournalGeometry.middleWidth, height: 40)
-                .contentTransition(animated ? .numericText() : .identity)
-                .animation(animated ? .smooth(duration: 0.45) : nil, value: frame.middleText)
+                .contentTransition(animated && frame.calmText ? .numericText() : .identity)
+                .animation(animated && frame.calmText ? .smooth(duration: 0.45) : nil, value: frame.middleText)
                 .accessibilityHidden(true)
         }
     }
