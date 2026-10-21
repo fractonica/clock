@@ -15,6 +15,7 @@ struct SoundChecks {
         loudnessChecks()
         eventChecks()
         plannerChecks()
+        geometryChecks()
         preferenceChecks()
         wordChecks()
         pureWordChecks()
@@ -238,6 +239,24 @@ func plannerChecks() {
     check(silenced.count == 3 && started.count == 2 && Set(silenced).isDisjoint(with: started), "a new transposition fades the old voices out in their own slots")
     let third = slots.assign([], now: 0.2)
     check(third.count == 2 && third.allSatisfy { $0.gain == 0 }, "switching the layer off silences what sounds")
+}
+
+// MARK: - Ring geometry
+
+func geometryChecks() {
+    let g = SoundRingGeometry(size: CGSize(width: 300, height: 300), labelRoom: 22)
+    let cents = table.map(\.pcCents)
+    check(g.radius(0) == 128 && abs(g.radius(13) - 128 * 0.44) < 1e-9, "α outside, ξ inside")
+    let top = g.point(level: 0, cents: 0)
+    check(abs(top.x - 150) < 1e-9 && abs(top.y - 22) < 1e-9, "the ground at the top")
+    let right = g.point(radius: 100, cents: 300)
+    check(abs(right.x - 250) < 1e-9 && abs(right.y - 150) < 1e-9, "300 cents a quarter turn clockwise")
+    for level in 0..<14 { check(g.hit(g.point(level: level, cents: cents[level]), cents: cents) == level, "a tap on dot \(level) hits it") }
+    check(g.hit(g.center, cents: cents) == nil, "the centre (the power button) hits no voice")
+    let theta = g.point(level: 7, cents: cents[7])
+    let iota = g.point(level: 8, cents: cents[8])
+    check(abs(cents[7] - cents[8]) < 1e-9 && hypot(theta.x - iota.x, theta.y - iota.y) > 5, "θ and ι share a spoke at different radii")
+    check(soundLabelSlots([(key: 3, x: 50), (key: 1, x: 10), (key: 2, x: 20), (key: 0, x: 60)]) == [1, 3], "labels where there is room, in x order")
 }
 
 // MARK: - Preferences

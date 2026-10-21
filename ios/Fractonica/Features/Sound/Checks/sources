@@ -12,3 +12,4 @@ Fractonica/Features/Sound/SoundReverb.swift
 Fractonica/Features/Sound/SoundRenderer.swift
 Fractonica/Features/Sound/SoundPlanner.swift
 Fractonica/Features/Sound/SoundWords.swift
+Fractonica/Features/Sound/SoundRingGeometry.swift

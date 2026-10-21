@@ -524,7 +524,7 @@ struct SoundWords: Sendable {
 
     /// The mixer's one-line legend.
     var mixerHint: String {
-        "Tap a voice to mute it, drag it up to keep some of it at its valley, hold it for where its note comes from."
+        "Tap a letter to mute its voice, a meter to look at it here, hold a meter for where its note comes from."
     }
 
     /// What the chime floor does.
