@@ -235,7 +235,7 @@ struct TimelineReadout: View {
         VStack(spacing: 10) {
             HStack(spacing: 10) {
                 Button {
-                    controller.travel(to: start + 0.001)
+                    controller.travel(to: start + 0.001, reveal: true)
                     dismiss()
                 } label: {
                     Label("Travel here", systemImage: "clock.arrow.trianglehead.counterclockwise.rotate.90")
@@ -319,7 +319,7 @@ struct TimelineReadout: View {
             .foregroundStyle(Theme.ink3)
         HStack(spacing: 10) {
             Button {
-                controller.travel(to: e)
+                controller.travel(to: e, reveal: true)
                 dismiss()
             } label: {
                 Label("Travel here", systemImage: "clock.arrow.trianglehead.counterclockwise.rotate.90")

@@ -35,6 +35,8 @@ final class TimelineController {
     private enum Drag { case plot, scrub(grab: Double), overview(grab: Double) }
     @ObservationIgnored private var drag: Drag?
     @ObservationIgnored private var pinching = false
+    /// The clock's revision after the timeline's own last move of the cursor.
+    @ObservationIgnored private var ownRevision = -1
     /// A pinch happened during the current pan: no coasting when the fingers lift.
     @ObservationIgnored private var pinched = false
 
@@ -141,10 +143,17 @@ final class TimelineController {
         viewport.pan(fraction: fraction, cursor: cursor, cursorIn: cursorIn, reduceMotion: reduceMotion)
     }
 
-    /// Move the cursor (the displayed time) to t, inside the catalogue.
-    func travel(to t: Double) {
+    /// Move the cursor (the displayed time) to t, inside the catalogue. The view does not chase a move it made itself
+    /// (the web view ignores its own 'timeline' moves): scrubbing near an edge must not re-centre the window.
+    func travel(to t: Double, reveal: Bool = false) {
         guard let store else { return }
-        store.travel(to: clock.clamp(t))
+        let target = clock.clamp(t)
+        store.travel(to: target)
+        ownRevision = store.revision
+        // a read-out's "Travel here" may go to a start off screen: bring it into view
+        if reveal, !viewport.goal(cursor: target, cursorIn: true).contains(target) {
+            viewport.centre(on: target, cursor: target, cursorIn: true, reduceMotion: reduceMotion)
+        }
     }
 
     /// Select the level of the lane above or below the selected one.
@@ -158,7 +167,7 @@ final class TimelineController {
     }
 
     func clockChanged() {
-        guard let store else { return }
+        guard let store, store.revision != ownRevision else { return }
         viewport.clockChanged(store.lastChange, cursor: cursor, cursorIn: cursorIn, playing: store.isPlaying, reduceMotion: reduceMotion)
     }
 
