@@ -95,6 +95,24 @@ enum JumpInterpreter {
     }
 }
 
+/// The jump screen's layout and refresh rules (numbers only, so ios/scripts/check.sh can check them).
+enum JumpLayout {
+    /// From this width on, recent jumps and examples sit side by side and the best reading shows its Earth and
+    /// Fractonica halves side by side (iPad, Mac, iPhone in landscape).
+    static let wideWidth: CGFloat = 760
+    static func isWide(_ width: CGFloat) -> Bool { width > wideWidth }
+    /// Side margins: those of the search field above the content (16 pt on iPhone, 20 pt on iPad).
+    static func margin(for width: CGFloat) -> CGFloat { isWide(width) ? 20 : 16 }
+    /// The widest the content gets: a phone column, or most of a big window.
+    static func contentWidth(for width: CGFloat) -> CGFloat { isWide(width) ? 1200 : 680 }
+    /// Displayed seconds between two readings of the field while the clock moves: every second live or at real
+    /// speed, a quarter of a real second during a time-lapse (offsets and distances count from the displayed time).
+    static func refreshInterval(live: Bool, rate: Double) -> Double {
+        guard !live, rate.isFinite, rate != 0 else { return 1 }
+        return max(1, abs(rate) / 4)
+    }
+}
+
 /// An example input and what it means.
 struct JumpExample: Hashable, Sendable {
     var text: String

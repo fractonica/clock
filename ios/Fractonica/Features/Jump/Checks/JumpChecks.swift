@@ -108,6 +108,19 @@ private func displayChecks() {
     check(!JumpInterpreter.repeats("", in: ["x"]), "an empty note repeats nothing")
 
     check(JumpCandidate.Kind.allCases.allSatisfy { !$0.title.isEmpty && !$0.systemImage.isEmpty }, "every kind has a name and a symbol")
+
+    // layout: a phone column, wide from iPhone landscape on; margins follow the search field
+    check(!JumpLayout.isWide(393) && JumpLayout.isWide(874) && JumpLayout.isWide(1032), "wide from landscape iPhone on")
+    check(JumpLayout.margin(for: 393) == 16 && JumpLayout.margin(for: 1032) == 20, "margins of the search field")
+    check(JumpLayout.contentWidth(for: 393) == 680 && JumpLayout.contentWidth(for: 1400) == 1200, "content widths")
+    // refresh cadence: on the second live or at real speed, four times a real second in a time-lapse, sane on junk
+    check(JumpLayout.refreshInterval(live: true, rate: 1) == 1, "live: every second")
+    check(JumpLayout.refreshInterval(live: false, rate: 1) == 1, "real-speed travel: every second")
+    check(JumpLayout.refreshInterval(live: false, rate: 3600) == 900, "1 h/s: every 900 displayed seconds (4 Hz)")
+    check(JumpLayout.refreshInterval(live: false, rate: -86_400) == 21_600, "backwards too")
+    check(JumpLayout.refreshInterval(live: false, rate: 2) == 1, "never faster than the displayed second")
+    check(JumpLayout.refreshInterval(live: false, rate: 0) == 1 && JumpLayout.refreshInterval(live: false, rate: .nan) == 1,
+          "paused or junk: a harmless 1")
 }
 
 private func historyChecks() {
