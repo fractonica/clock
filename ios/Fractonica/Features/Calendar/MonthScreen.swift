@@ -101,8 +101,11 @@ private struct EarthMonthView: View {
                     }
                     Button("Show the displayed day", systemImage: "scope") { showDisplayed(zone) }
                     Button("Show today", systemImage: "calendar.circle") {
-                        // the month of the device clock, without travelling there
-                        model.show(month: MonthModel.monthIndex(of: Date.now.timeIntervalSince1970, zone: zone))
+                        // the month of the device clock, without travelling there (it keeps following when that is
+                        // the displayed month anyway)
+                        let today = MonthModel.monthIndex(of: Date.now.timeIntervalSince1970, zone: zone)
+                        model.show(month: today)
+                        if today == model.displayedMonth { model.follows = true }
                         Haptics.play(.selection)
                     }
                     Toggle("Day details", systemImage: "sidebar.trailing", isOn: Binding(get: { model.showsDetail && model.selectedDay != nil }, set: { on in
@@ -134,6 +137,9 @@ private struct EarthMonthView: View {
                 }
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
+                // the month heads a grid of fixed cells: it grows with the text size up to where "September 2026"
+                // still fits beside the arrows
+                .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
                 .contentTransition(.numericText(value: Double(model.month)))
             }
             .buttonStyle(.plain)

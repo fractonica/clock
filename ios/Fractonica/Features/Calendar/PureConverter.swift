@@ -110,7 +110,7 @@ private struct PureDateCard: View {
             CalCard("Date", systemImage: "calendar") {
                 VStack(spacing: 8) {
                     ForEach(PureEntry.allCases.filter(\.isMajor)) { entry in
-                        HStack(spacing: 10) {
+                        StepRow {
                             LevelChip(text: entry.sym, level: entry.level, compact: true).frame(width: 28)
                             VStack(alignment: .leading, spacing: 1) {
                                 Text(entry.name).font(.subheadline).foregroundStyle(Theme.ink)
@@ -118,7 +118,7 @@ private struct PureDateCard: View {
                                     .font(.caption)
                                     .foregroundStyle(Theme.ink3)
                             }
-                            Spacer(minLength: 4)
+                        } control: {
                             NudgeStepper(value: c[entry], range: entry.range(clock), label: entry.name, display: { Notation.ordinalName($0) },
                                          tint: Theme.levelColor(entry.level)) { set(entry, $0) }
                         }
@@ -126,7 +126,7 @@ private struct PureDateCard: View {
                     Divider().overlay(Theme.line)
                     ForEach(PureEntry.allCases.filter { !$0.isMajor }) { entry in
                         let r = entry.range(clock)
-                        HStack(spacing: 10) {
+                        StepRow {
                             LevelChip(text: entry.sym, level: entry.level, compact: true).frame(width: 28)
                             VStack(alignment: .leading, spacing: 1) {
                                 Text(entry.unit.name).font(.subheadline).foregroundStyle(Theme.ink)
@@ -134,7 +134,7 @@ private struct PureDateCard: View {
                                     .font(.caption)
                                     .foregroundStyle(Theme.ink3)
                             }
-                            Spacer(minLength: 4)
+                        } control: {
                             NudgeStepper(value: c[entry], range: r, label: entry.unit.name, display: { entry.text($0) },
                                          tint: Theme.levelColor(entry.level)) { set(entry, $0) }
                         }

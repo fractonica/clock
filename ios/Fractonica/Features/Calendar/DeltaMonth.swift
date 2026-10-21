@@ -139,6 +139,7 @@ private struct DeltaHeader: View {
                             .minimumScaleFactor(0.7)
                         Image(systemName: "chevron.down").font(.footnote.weight(.bold)).foregroundStyle(Theme.ink3)
                     }
+                    .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
                     .contentShape(.rect)
                 }
                 .buttonStyle(.plain)

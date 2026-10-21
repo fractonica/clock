@@ -39,6 +39,8 @@ struct CalCard<Content: View, Accessory: View>: View {
                         .textCase(.uppercase)
                         .tracking(0.9)
                         .foregroundStyle(Theme.ink3)
+                        .lineLimit(2)
+                        .dynamicTypeSize(...DynamicTypeSize.accessibility1)
                         .accessibilityAddTraits(.isHeader)
                     Spacer(minLength: 8)
                     accessory
@@ -129,6 +131,30 @@ struct CalValueRow: View {
                     Button("Copy", systemImage: "doc.on.doc") { Pasteboard.copy(value) }
                 }
             }
+    }
+}
+
+/// A labelled row with a control on its right (an address entry, a date entry); at accessibility text sizes the
+/// control moves under the label, so neither is squeezed into a column of single words.
+struct StepRow<Label: View, Control: View>: View {
+    @ViewBuilder var label: Label
+    @ViewBuilder var control: Control
+    @Environment(\.dynamicTypeSize) private var typeSize
+
+    var body: some View {
+        if typeSize.isAccessibilitySize {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(alignment: .firstTextBaseline, spacing: 10) { label }
+                control
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        } else {
+            HStack(spacing: 10) {
+                label
+                Spacer(minLength: 4)
+                control
+            }
+        }
     }
 }
 

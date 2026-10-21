@@ -138,7 +138,7 @@ struct AddressCard: View {
             FlowLayout(spacing: 4, lineSpacing: 6) {
                 ForEach(Array(numbered.enumerated()), id: \.offset) { level, n in
                     HStack(spacing: 4) {
-                        if level > 0 { Text(verbatim: "›").foregroundStyle(Theme.ink3).accessibilityHidden(true) }
+                        if level > 0 { Text(verbatim: "›").font(.code(15)).foregroundStyle(Theme.ink3).accessibilityHidden(true) }
                         Text(verbatim: CalMath.cycleLabel(level: level, ordinal: n))
                             .font(.code(15, weight: .semibold))
                             .foregroundStyle(Theme.levelColor(level))
@@ -146,7 +146,7 @@ struct AddressCard: View {
                 }
                 if let place {
                     HStack(spacing: 4) {
-                        Text(verbatim: "›").foregroundStyle(Theme.ink3).accessibilityHidden(true)
+                        Text(verbatim: "›").font(.code(15)).foregroundStyle(Theme.ink3).accessibilityHidden(true)
                         Text(verbatim: Notation.standard.cycleName(level: level, cycle: place, short: true))
                             .font(.code(15, weight: .semibold))
                             .foregroundStyle(Theme.levelColor(level))
@@ -188,9 +188,10 @@ struct AddressCard: View {
         let nominal = CalMath.nominalCount(clock, parent: parent)
         let of = level == 0 ? "of \(maximum) in the catalogue" : "of \(nominal) in its \(CalMath.letter(level - 1))"
         let clipped = level > 0 && maximum < nominal ? " · the catalogue ends after #\(maximum)" : ""
-        return HStack(spacing: 10) {
+        return StepRow {
             LevelChip(text: "\(CalMath.letter(level)) \(level + 1)", level: level, compact: true)
-                .frame(width: 46, alignment: .leading)
+                .fixedSize()
+                .frame(minWidth: 46, alignment: .leading)
             VStack(alignment: .leading, spacing: 1) {
                 Text(verbatim: name(level, n)).font(.subheadline).foregroundStyle(Theme.ink)
                 Text(verbatim: of + clipped)
@@ -198,7 +199,7 @@ struct AddressCard: View {
                     .foregroundStyle(Theme.ink3)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            Spacer(minLength: 4)
+        } control: {
             NudgeStepper(value: n, range: 1...maximum, label: name(level, n), display: { "#\($0)" }, tint: Theme.levelColor(level),
                          carry: { step(path, level: level, by: $0) }, canStep: canStep(path, level: level)) { v in
                 edit(path, level: level, to: v)
@@ -211,14 +212,15 @@ struct AddressCard: View {
     private func placeRow(_ path: [Int], level: Int, index: Int64) -> some View {
         let n = Notation.standard
         let name = Notation.unit(level: level)?.name ?? "\(CalMath.letter(level)) cycle"
-        return HStack(spacing: 10) {
+        return StepRow {
             LevelChip(text: "\(CalMath.letter(level)) \(level + 1)", level: level, compact: true)
-                .frame(width: 46, alignment: .leading)
+                .fixedSize()
+                .frame(minWidth: 46, alignment: .leading)
             VStack(alignment: .leading, spacing: 1) {
                 Text(verbatim: name).font(.subheadline).foregroundStyle(Theme.ink)
                 Text("where it begins in its Nuclide").font(.caption).foregroundStyle(Theme.ink3)
             }
-            Spacer(minLength: 4)
+        } control: {
             NudgeStepper(value: 0, range: 0...0, label: name, display: { _ in n.cycleName(level: level, cycle: index, short: true) },
                          tint: Theme.levelColor(level), menu: false,
                          carry: { step(path, level: level, by: $0) }, canStep: canStep(path, level: level)) { _ in }
