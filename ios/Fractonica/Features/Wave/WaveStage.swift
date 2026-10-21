@@ -97,6 +97,11 @@ final class WaveStage {
 
     /// Asks the screen for continuous frames for a while (an animation, a gliding label).
     var requestFrames: (Double) -> Void = { _ in }
+    /// The displayed seconds after which the picture visibly changes (a dot moves half a point, the time label turns
+    /// over), measured on every frame: the screen redraws no faster than that.
+    var requestCadence: (Double) -> Void = { _ in }
+    /// This frame's estimate (see `requestCadence`).
+    var frameInterval = Double.infinity
     /// The focused half-arc changed (for VoiceOver).
     var sceneChanged: (WaveHalfInfo?, Double) -> Void = { _, _ in }
     /// The user's pinch or pan was reset by a scene change.
@@ -386,6 +391,7 @@ final class WaveStage {
         labels.begin(stage: WaveRect(x0: 0, y0: 0, x1: size.width, y1: size.height), now: now)
         for r in input.avoid { labels.occupy(r) }
         queue.removeAll(keepingCapacity: true)
+        frameInterval = .infinity
         hitArcs.removeAll(keepingCapacity: true)
         hitMarkers.removeAll(keepingCapacity: true)
         hitSun = nil
@@ -423,6 +429,27 @@ final class WaveStage {
         }
         flushLabels(&g)
         if anim != nil || userAnim != nil || labels.settling { requestFrames(0.12) }
+        requestCadence(frameInterval)
+    }
+
+    /// A dot of `level` riding an arc of `arcPoints` points: it moves half a point every so many displayed seconds.
+    func noteMotion(level: Int, arcPoints: Double) {
+        guard arcPoints > 0 else { return }
+        let half = engine.clock.levelInfo(level).meanSeconds / 2
+        frameInterval = min(frameInterval, 0.5 * half / arcPoints)
+    }
+
+    /// How often the time label next to the focus dot turns over (displayed seconds).
+    func noteLabel(level: Int, duration: Double, pure: Bool) {
+        let interval: Double
+        if pure {
+            // three tokens of the stamp: down to λ from ζ on, ι at ε, η at δ, coarser above
+            let finest = [0: 2, 1: 3, 2: 4, 3: 6, 4: 8].first { $0.key == min(level, 5) }?.value ?? 10
+            interval = engine.clock.levelInfo(finest).meanSeconds
+        } else {
+            interval = duration >= 2 * 365.25 * 86400 ? 86400 : duration >= 86400 ? 60 : duration < 10 ? 0.001 : 1
+        }
+        frameInterval = min(frameInterval, interval)
     }
 
     // MARK: Picking

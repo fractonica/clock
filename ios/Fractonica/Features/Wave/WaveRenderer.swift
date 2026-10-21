@@ -376,6 +376,7 @@ extension WaveStage {
         // fine markers first, so the coarse ones stay on top of the cluster
         var nowAt: (Double, Double)?
         for q in pts.reversed() where q.inside {
+            if interactive { noteMotion(level: q.m.level, arcPoints: view.arc(q.m.arc).length()) }
             let emph = q.m.level == level
             let size = emph ? 6.2 : q.m.level < level ? 4.4 : max(2.2, 4 - Double(q.m.level - level) * 0.45)
             drawMarker(&g, q.x, q.y, level: q.m.level, emphasis: emph, size: size, grey: grey)
@@ -400,6 +401,7 @@ extension WaveStage {
                 }
             }
             let text = nowLabel(.focus(s), input)
+            if interactive, !text.isEmpty { noteLabel(level: level, duration: s.info.duration, pure: input.words.pure) }
             if let (x, y) = nowAt, !text.isEmpty {
                 let len = max(1e-9, hypot(x - sf.x, y - sf.y))
                 placedLabel(g, key: "now", text, at: x, y, normal: WavePoint(x: (x - sf.x) / len, y: (y - sf.y) / len), color: .white,
@@ -619,11 +621,13 @@ extension WaveStage {
                 stroke(&g, p, color(pts[i].m.level, 0.7, 68), 1.2)
             }
             for q in pts.reversed() {
+                if interactive { noteMotion(level: q.m.level, arcPoints: view.arc(q.m.arc).length()) }
                 let emph = q.m.level == 0
                 drawMarker(&g, q.x, q.y, level: q.m.level, emphasis: emph, size: emph ? 6 : max(2.4, 4.2 - Double(q.m.level) * 0.8), grey: false)
                 if let hover, hover.kind == .marker, hover.level == q.m.level { stroke(&g, circle(q.x, q.y, 11), .white.opacity(0.8), 1.5) }
             }
             let text = nowLabel(.overview(ov), input)
+            if interactive, !text.isEmpty { noteLabel(level: 0, duration: .infinity, pure: input.words.pure) }
             if !quiet, !text.isEmpty, let q = pts.first, q.x >= 0, q.x <= size.width, q.y >= 0, q.y <= size.height {
                 labels.occupy(WaveRect(x0: q.x - 10, y0: q.y - 10, x1: q.x + 10, y1: q.y + 10))
                 placedLabel(g, key: "now-all", text, at: q.x, q.y, normal: WavePoint(x: 0, y: -1), color: .white, font: .now, opacity: alpha)

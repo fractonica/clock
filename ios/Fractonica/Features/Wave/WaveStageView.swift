@@ -57,7 +57,7 @@ struct WaveStageView: View {
         )
         ZStack {
             if model.visible {
-                ClockTimeline(model.continuous ? .continuous : .animation) { t in
+                ClockTimeline(cadence) { t in
                     Canvas { context, size in
                         let now = WaveStage.now
                         if stage.update(size: size, t: control.shown(t), input: input, now: now) {
@@ -124,6 +124,15 @@ struct WaveStageView: View {
             try? await Task.sleep(for: .seconds(1.2))
             if let pick = stage.pick(p, touch: touch) { model.tip = (pick, p) }
         }
+    }
+
+    /// Every frame while something moves of its own accord (a glide, a gesture); otherwise only as often as the
+    /// picture visibly changes: a time-lapse at full frame rate, the live clock at η a few times a second.
+    private var cadence: ClockCadence {
+        if model.continuous { return .continuous }
+        let rate = abs(control.store.isLive ? 1 : control.store.rate)
+        guard rate > 0 else { return .animation }
+        return model.cadence / rate < 1.0 / 30 ? .animation : .periodic(model.cadence)
     }
 
     // MARK: Controls

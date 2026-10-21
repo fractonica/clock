@@ -92,19 +92,6 @@ enum WaveGeometry {
         return r - .pi
     }
 
-    /// Bounds of the part [t0, t1] of an arc, by sampling (as the library's svg() does).
-    static func bounds(of arc: WaveArc, from t0: Double = 0, to t1: Double = 1, samples n: Int = 48) -> WaveRect {
-        var b = WaveRect(x0: .infinity, y0: .infinity, x1: -.infinity, y1: -.infinity)
-        for i in 0...n {
-            let p = arc.point(t0 + (t1 - t0) * Double(i) / Double(n))
-            b.x0 = min(b.x0, p.x)
-            b.x1 = max(b.x1, p.x)
-            b.y0 = min(b.y0, p.y)
-            b.y1 = max(b.y1, p.y)
-        }
-        return b
-    }
-
     /// The rotation that turns a focused arc so its middle points up for a crest and down for a trough: every
     /// half-arc then reads like the wave it is.
     static func viewRotation(_ arc: WaveArc) -> Double {
@@ -129,12 +116,6 @@ enum WaveGeometry {
         if j >= m { j = m - 1 }
         if j < 0 { j = 0 }
         return (idx * Int64(m) + Int64(j), x - Double(j), j)
-    }
-
-    /// The parent half-arc of child half-arc `idx` when the parent level has factor m.
-    static func parentOf(idx: Int64, local: Double, m: Int) -> (idx: Int64, local: Double, j: Int) {
-        let j = Int(idx % Int64(m))
-        return ((idx - Int64(j)) / Int64(m), (Double(j) + local) / Double(m), j)
     }
 
     /// Fraction (0…1) of half-arc `idx` travelled when the current half-arc of its level is `cur`.

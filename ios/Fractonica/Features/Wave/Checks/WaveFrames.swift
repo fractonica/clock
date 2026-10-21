@@ -74,6 +74,20 @@ enum WaveFrames {
         // and all the way out to the catalogue
         for (i, dt) in [0.05, 0.15, 0.3, 0.5, 0.7, 1.5].enumerated() { shot("to-all-deep-\(i)", level: 13, overview: true, now: 16 + dt) }
 
+        // a short, wide stage (an iPhone in landscape beside its reading panel), η and the catalogue
+        let short = CGSize(width: 520, height: 290)
+        let shortInput = { (overview: Bool) in
+            WaveFrameInput(
+                overview: overview, level: 6, eff: 6, solar: true, words: words, reduceMotion: false,
+                focusPad: WavePad(l: 40, r: 66, t: 16, b: 10 + 72), overviewPad: WavePad(l: 28, r: 84, t: 12, b: 10 + 72),
+                avoid: [WaveRect(x0: short.width - 62, y0: 6, x1: short.width - 10, y1: 110), WaveRect(x0: 10, y0: short.height - 72, x1: short.width - 10, y1: short.height - 4)],
+                touch: true)
+        }
+        let landscape = WaveStage()
+        write(frame(landscape, t: a, input: shortInput(false), now: 0, size: short), folder.appendingPathComponent("90-landscape-eta.png"))
+        let landscape2 = WaveStage()
+        write(frame(landscape2, t: a, input: shortInput(true), now: 0, size: short), folder.appendingPathComponent("91-landscape-all.png"))
+
         // the cost of a frame (render included, so an upper bound for update + draw)
         let input6 = input(words, level: 6, size: size)
         let clock = ContinuousClock()

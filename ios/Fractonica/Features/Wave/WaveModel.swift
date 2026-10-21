@@ -16,6 +16,8 @@ final class WaveModel {
     }
     /// The stage needs every display frame (an animation, a gesture), even while the clock stands still.
     private(set) var continuous = false
+    /// Displayed seconds between visible changes of the stage (a power of two), as the stage last measured it.
+    private(set) var cadence = 1.0 / 128
     /// The user has pinched or panned away from the fitted view (Recenter shows).
     var adjusted = false
     /// The item under the pointer or a holding finger, and where.
@@ -113,6 +115,13 @@ final class WaveModel {
                 try? await Task.sleep(for: .seconds(wait))
             }
         }
+    }
+
+    /// The stage's measured interval, kept as a power of two so small changes never switch the cadence; deferred.
+    func requestCadence(_ interval: Double) {
+        let bucket = exp2(max(-7, min(12, log2(max(interval, 1e-6)).rounded(.down))))
+        guard bucket != cadence else { return }
+        Task { @MainActor [weak self] in self?.cadence = bucket }
     }
 
     /// The same, from inside a frame: deferred, so no observed state changes while SwiftUI draws.

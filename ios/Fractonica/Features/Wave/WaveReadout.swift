@@ -16,11 +16,13 @@ struct WaveReadout: Equatable, Sendable {
     var title: String
     /// "trough" / "crest" · "35 α half-arcs · 69 intervals".
     var note: String
-    /// "θ is too fast to follow" while a time-lapse outruns the selection.
+    /// "θ is too fast to follow" while a time-lapse outruns the selection, and why.
     var fast: String?
+    var fastHelp = ""
     var span: String
-    /// "2 of 11 in this ζ half-arc" (nil for the catalogue).
+    /// "2 of 11 in this ζ half-arc" (nil for the catalogue), and what that number counts.
     var loop: String?
+    var loopHint = ""
     var cycle: String
     var primary: WaveShare
     var primaryWhat: String
@@ -70,8 +72,9 @@ struct WaveReadout: Equatable, Sendable {
         let d = engine.describe(l, h.idx)
         let through = WaveNav.throughOf(d, local: h.local, t: t, tMax: clock.tMax)
         let major = words.isMajor(l)
-        let selected = Fractonica.periodName(min(max(level, 0), Fractonica.maxLevel)).text
-        return WaveReadout(
+        let sel = min(max(level, 0), Fractonica.maxLevel)
+        let selected = Fractonica.periodName(sel).text
+        var reading = WaveReadout(
             kind: .focus, level: l, badge: d.letter, title: "half-arc \(d.signed)", note: d.crest ? "crest" : "trough",
             fast: level > l ? "\(selected) is too fast to follow" : nil,
             span: words.span(d), loop: words.loop(d), cycle: WaveWords.cap(words.cycle(d)),
@@ -83,6 +86,11 @@ struct WaveReadout: Equatable, Sendable {
             next: words.nextLines(d, h, t: t),
             glyph: h.reading?.index, message: nil, spoken: words.canvasLabel(d, local: h.local)
         )
+        if reading.fast != nil {
+            reading.fastHelp = "\(selected) half-arcs last \(words.halfLength(sel)): too short to follow at this speed, so the view stays on \(d.letter); the finer depths are its loops"
+        }
+        reading.loopHint = words.loopHint(d)
+        return reading
     }
 
     /// Every text of the reading (for the pure-mode checks).
@@ -99,6 +107,8 @@ struct WaveReadout: Equatable, Sendable {
 
 /// The level chips' live state: where each level is in its current half-arc.
 struct WaveChipState: Equatable, Sendable {
+    var idx: Int64
+    var local: Double
     var crest: Bool
     /// 0…1 through the half-arc, in 48ths (so a chip redraws only when its bar visibly moves).
     var progress: Double
@@ -106,7 +116,7 @@ struct WaveChipState: Equatable, Sendable {
     static func all(t: Double, engine: WaveEngine) -> [WaveChipState]? {
         guard let cur = engine.readHalves(t) else { return nil }
         return (0...Fractonica.maxLevel).map { l in
-            WaveChipState(crest: cur[l].idx % 2 == 0, progress: (cur[l].local * 48).rounded() / 48)
+            WaveChipState(idx: cur[l].idx, local: cur[l].local, crest: cur[l].idx % 2 == 0, progress: (cur[l].local * 48).rounded() / 48)
         }
     }
 }

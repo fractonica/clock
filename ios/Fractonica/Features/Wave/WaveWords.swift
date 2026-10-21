@@ -327,11 +327,6 @@ struct WaveWords {
         pure ? pureSpan(2 * d.fraction / engine.prefix(d.level)) : EarthTime.duration(d.duration)
     }
 
-    /// One cycle of a level: "≈ 5 h 3 min" · "1η (Helion) = 36ι".
-    func cycleLength(_ level: Int) -> String {
-        pure ? cycleNamedPure(level) : "≈ " + EarthTime.duration(clock.levelInfo(level).meanSeconds)
-    }
-
     /// The help line of a depth chip: "η · depth 7 · cycle ≈ 5 h 3 min · 9 child half-arcs per half-arc".
     func chipTitle(_ level: Int) -> String {
         let info = clock.levelInfo(level)

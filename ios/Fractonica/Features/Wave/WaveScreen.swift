@@ -111,6 +111,7 @@ struct WaveScreen: View {
         let settings = settings
         let store = store
         stage.requestFrames = { [weak model] seconds in model?.requestFrames(seconds) }
+        stage.requestCadence = { [weak model] interval in model?.requestCadence(interval) }
         stage.userReset = { [weak model] in
             Task { @MainActor in model?.adjusted = false }
         }
@@ -261,12 +262,16 @@ struct WaveController {
         let touch = false
         #endif
         let compact = size.width < 500
-        let side = compact ? 28.0 : 56
+        // a short stage (iPhone in landscape) keeps only what the floating depth bar needs
+        let short = size.height < 440
+        let side = compact ? 28.0 : short ? 40 : 56
         return WaveFrameInput(
             overview: model.overview, level: level, eff: eff, solar: model.solar, words: words, reduceMotion: reduceMotion,
             // the focused figure is centred and only its edges meet the floating controls; the catalogue fills the stage
-            focusPad: WavePad(l: side, r: side + trailingInset * 0.5, t: 24 + topInset * 0.5, b: 34 + bottomInset),
-            overviewPad: WavePad(l: 20, r: 20 + trailingInset, t: 8 + topInset, b: 14 + bottomInset),
+            focusPad: WavePad(l: side, r: side + trailingInset * 0.5, t: short ? 16 : 24 + topInset * 0.5, b: (short ? 10 : 34) + bottomInset),
+            // the catalogue keeps clear of the zoom controls: below them, or beside them on a short stage
+            overviewPad: short ? WavePad(l: 28, r: 84, t: 12, b: 10 + bottomInset)
+                : WavePad(l: 28, r: 28 + trailingInset, t: 8 + topInset, b: 14 + bottomInset),
             avoid: avoid, touch: touch
         )
     }

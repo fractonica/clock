@@ -59,6 +59,12 @@ struct WaveDepthBar: View {
         }
     }
 
+    /// The selected chip also says where its level is now (a screen reader cannot see the bar under it).
+    private func liveValue(_ level: Int?, _ state: WaveChipState?) -> String {
+        guard let level, let state else { return "" }
+        return control.words.chipLive(control.engine.describe(level, state.idx), local: state.local)
+    }
+
     private func stepButton(_ dir: Int) -> some View {
         Button { control.step(dir) } label: {
             Image(systemName: dir < 0 ? "chevron.left" : "chevron.right")
@@ -104,6 +110,11 @@ struct WaveDepthBar: View {
             }
             .frame(width: 34, height: 44)
             .background {
+                // the depth actually shown while a time-lapse is too fast for the selection
+                if level != nil, level == control.eff, control.eff < control.level, !model.overview {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .strokeBorder(tint.opacity(0.6), style: StrokeStyle(lineWidth: 1, dash: [3, 3]))
+                }
                 if selected {
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
                         .fill(tint.opacity(0.16))
@@ -122,6 +133,7 @@ struct WaveDepthBar: View {
         .disabled(!enabled)
         .accessibilityLabel(level.map { control.words.chipAccessibility($0) } ?? control.words.catalogueTitle())
         .accessibilityAddTraits(selected ? .isSelected : [])
+        .accessibilityValue(Text(selected ? liveValue(level, state) : ""))
         .help(level.map { control.words.chipTitle($0) } ?? control.words.catalogueTitle())
     }
 }

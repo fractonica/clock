@@ -17,6 +17,8 @@ struct WaveHeader: View {
             .onGeometryChange(for: Double.self) { $0.size.width } action: { width = $0 }
             if model.solar {
                 WaveSolarStrip(model: model, control: control, wide: false)
+                    .frame(maxWidth: 640, alignment: .leading)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     .transition(.move(edge: .top).combined(with: .opacity))
             }
         }
@@ -44,7 +46,7 @@ struct WaveSidePanel: View {
                     WaveSolarStrip(model: model, control: control, wide: true)
                         .transition(.opacity)
                 }
-                WaveLegend(words: control.words, overview: model.overview, solar: model.solar)
+                WaveLegend(words: control.words, overview: model.overview, solar: model.solar, tint: Theme.levelColor(model.overview ? 0 : control.eff))
                     .padding(.top, 4)
             }
             .padding(20)
@@ -67,7 +69,7 @@ struct WaveShareView: View {
         case .percent(let s):
             Text(s).font(.system(size: size, weight: .semibold).monospacedDigit()).foregroundStyle(color)
         case .pair(let f):
-            PairView(fraction: f, color: color, height: size * 0.82)
+            PairView(fraction: f, color: color, height: max(13, size * 0.95))
                 .accessibilityLabel(Text(WaveWords.pairSpoken(f, label: label)))
         case .quarter(let q):
             Text(q).font(.system(size: size * 0.82, weight: .semibold)).foregroundStyle(color)
@@ -120,13 +122,18 @@ struct WaveReadoutCard: View {
                     .background(Capsule().strokeBorder(Theme.line2, lineWidth: 1))
                     .lineLimit(1)
             }
-            if let fast = readout.fast {
-                Text(fast)
-                    .font(.caption2.weight(.medium))
-                    .foregroundStyle(Theme.now)
-                    .lineLimit(1)
-                    .help("Its half-arcs pass too quickly to follow at this speed, so the view stays on \(readout.badge)")
-            }
+        }
+    }
+
+    /// While a time-lapse outruns the selected depth, the reading follows a coarser one and says so.
+    @ViewBuilder
+    private var fastLine: some View {
+        if let fast = readout.fast {
+            Label(fast, systemImage: "hare")
+                .font(.caption2.weight(.medium))
+                .foregroundStyle(Theme.now)
+                .lineLimit(1)
+                .help(readout.fastHelp)
         }
     }
 
@@ -173,6 +180,7 @@ struct WaveReadoutCard: View {
                 badge
                 VStack(alignment: .leading, spacing: 3) {
                     titleRow
+                    fastLine
                     Text(WaveReadoutCard.glue(readout.span))
                         .font(.caption.monospaced())
                         .foregroundStyle(Theme.ink2)
@@ -216,6 +224,7 @@ struct WaveReadoutCard: View {
             badge
             VStack(alignment: .leading, spacing: 3) {
                 titleRow
+                fastLine
                 Text(WaveReadoutCard.glue(readout.span)).font(.footnote.monospaced()).foregroundStyle(Theme.ink2).lineLimit(1).minimumScaleFactor(0.8)
                 Text([readout.loop, readout.cycle].compactMap { $0 }.joined(separator: " · "))
                     .font(.footnote).foregroundStyle(Theme.ink3).lineLimit(2).fixedSize(horizontal: false, vertical: true)
@@ -252,13 +261,14 @@ struct WaveReadoutCard: View {
                 badge
                 VStack(alignment: .leading, spacing: 2) {
                     titleRow
+                    fastLine
                     Text(WaveReadoutCard.glue(readout.span)).font(.footnote.monospaced()).foregroundStyle(Theme.ink2).lineLimit(2).minimumScaleFactor(0.8)
                 }
                 Spacer(minLength: 0)
                 glyph
             }
             VStack(alignment: .leading, spacing: 2) {
-                if let loop = readout.loop { Text(loop).font(.subheadline).foregroundStyle(Theme.ink2) }
+                if let loop = readout.loop { Text(loop).font(.subheadline).foregroundStyle(Theme.ink2).help(readout.loopHint) }
                 Text(readout.cycle).font(.subheadline).foregroundStyle(Theme.ink3).fixedSize(horizontal: false, vertical: true)
             }
             VStack(alignment: .leading, spacing: 6) {
@@ -460,6 +470,8 @@ struct WaveLegend: View {
     let words: WaveWords
     let overview: Bool
     let solar: Bool
+    /// The colour of the level in view, which the keys wear.
+    var tint = Theme.levelColor(6)
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -469,7 +481,7 @@ struct WaveLegend: View {
                 key(line: 1, "travelled")
                 key(line: 0.34, "remaining")
                 if overview {
-                    key(symbol: "circle.fill", words.eclipseLegend())
+                    key(symbol: "circle.fill", words.eclipseLegend(), color: Theme.ink2)
                 } else {
                     key(text: "+3  −2", "crest · trough: the n-th loop in the parent half-arc")
                     key(text: "┼", "begin · peak or valley · node or end")
@@ -489,13 +501,13 @@ struct WaveLegend: View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             Group {
                 if dot {
-                    Circle().fill(Theme.levelColor(6)).frame(width: 8, height: 8).overlay(Circle().fill(.white).frame(width: 3, height: 3))
+                    Circle().fill(tint).frame(width: 8, height: 8).overlay(Circle().fill(.white).frame(width: 3, height: 3))
                 } else if let line {
-                    Capsule().fill(Theme.levelColor(6, opacity: line)).frame(width: 18, height: 3)
+                    Capsule().fill(tint.opacity(line)).frame(width: 18, height: 3)
                 } else if let symbol {
-                    Image(systemName: symbol).font(.caption2).foregroundStyle(color ?? Theme.levelColor(6))
+                    Image(systemName: symbol).font(.caption2).foregroundStyle(color ?? tint)
                 } else if let text {
-                    Text(text).font(.caption2.monospaced().weight(.semibold)).foregroundStyle(Theme.levelColor(7))
+                    Text(text).font(.caption2.monospaced().weight(.semibold)).foregroundStyle(tint)
                 }
             }
             .frame(width: 34, alignment: .center)
