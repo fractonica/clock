@@ -50,7 +50,7 @@ private struct EarthMonthView: View {
                     }) { index in
                         MonthPage(model: model, grid: model.grid(index, zone: zone), metrics: metrics, zone: zone)
                     }
-                    .frame(height: metrics.gridHeight)
+                    .frame(height: metrics.gridHeight + 2) // the page's 1 pt above and below keep the rings unclipped
                     MonthFootnote(model: model, zone: zone)
                     YearRibbonCard(model: model, zone: zone).id("ribbon")
                 }
@@ -86,7 +86,8 @@ private struct EarthMonthView: View {
             model.follows = true
             withAnimation(.snappy) { model.follow(store.time(), zone: zone) }
         }
-        .inspector(isPresented: $model.showsDetail) {
+        // never an empty inspector: it shows a chosen day (a column restored by the system without one stays shut)
+        .inspector(isPresented: Binding(get: { model.showsDetail && model.selectedDay != nil }, set: { model.showsDetail = $0 })) {
             DayDetailView(model: model, zone: zone)
                 .inspectorColumnWidth(min: 300, ideal: 340, max: 420)
                 .presentationDetents([.medium, .large])
@@ -104,7 +105,14 @@ private struct EarthMonthView: View {
                         model.show(month: MonthModel.monthIndex(of: Date.now.timeIntervalSince1970, zone: zone))
                         Haptics.play(.selection)
                     }
-                    Toggle("Day details", systemImage: "sidebar.trailing", isOn: $model.showsDetail)
+                    Toggle("Day details", systemImage: "sidebar.trailing", isOn: Binding(get: { model.showsDetail && model.selectedDay != nil }, set: { on in
+                        // with no day chosen yet, the details are the displayed day's
+                        if on, model.selectedDay == nil {
+                            let p = EarthTime.zonedParts(store.time(), zone: zone)
+                            model.selectedDay = MonthModel.DayRef(year: p.year, month: p.month, day: p.day)
+                        }
+                        model.showsDetail = on
+                    }))
                 } label: {
                     Label("Options", systemImage: "ellipsis")
                 }
@@ -556,10 +564,11 @@ private struct DisplayedCursor: View {
         Canvas { context, size in
             guard let i = grid.dayIndex(of: t) else { return }
             let day = grid.days[i]
+            // the overlay covers the grid exactly (it is attached inside the page's vertical padding)
             let w = (size.width - 6 * metrics.gap) / 7
-            let h = (size.height - 2 - 5 * metrics.gap) / 6
+            let h = (size.height - 5 * metrics.gap) / 6
             let x = CGFloat(i % 7) * (w + metrics.gap)
-            let y = 1 + CGFloat(i / 7) * (h + metrics.gap)
+            let y = CGFloat(i / 7) * (h + metrics.gap)
             let cell = CGRect(x: x, y: y, width: w, height: h)
             let r: CGFloat = metrics.regular ? 12 : 9
             context.stroke(RoundedRectangle(cornerRadius: r, style: .continuous).path(in: cell.insetBy(dx: 0.75, dy: 0.75)),

@@ -24,7 +24,7 @@ final class MonthModel {
     var showsDetail = false
 
     var bands: [CalendarBand] {
-        didSet { save() }
+        didSet { if !launching { save() } }
     }
 
     /// 1 Monday, 0 Sunday.
@@ -72,6 +72,8 @@ final class MonthModel {
     // MARK: Launch
 
     var scrollTarget: String?
+    /// While the launch arguments are applied: they hold for this launch and are never saved.
+    @ObservationIgnored private var launching = false
     /// -FXMonthPick: open the month (or Delta) picker once the screen is up.
     var launchPick = false
     @ObservationIgnored private var launched = false
@@ -194,7 +196,9 @@ final class MonthModel {
         launched = true
         if let keys = CalendarLaunch.string("FXMonthBands") {
             let b = keys.split(separator: ",").compactMap { CalendarBand(key: String($0)) }
+            launching = true
             if !b.isEmpty { bands = Array(b.prefix(Self.maxBands)) }
+            launching = false
         }
         if let ym = CalendarLaunch.string("FXMonth"), let m = ym.wholeMatch(of: /(\d{4})-(\d{1,2})/), let y = Int(m.1), let mo = Int(m.2), (1...12).contains(mo) {
             show(month: CalMath.monthIndex(year: y, month: mo))

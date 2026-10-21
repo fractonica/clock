@@ -436,8 +436,8 @@ private struct QuarterFlag: View {
         if centred {
             chip
                 .fixedSize()
-                .frame(maxWidth: .infinity, alignment: .leading)
                 .alignmentGuide(.leading) { d in d[HorizontalAlignment.center] - (line - padding) }
+                .frame(maxWidth: .infinity, alignment: .leading)
         } else {
             chip
                 .padding(.leading, right ? max(0, line - 0.75 - padding) : 0)
