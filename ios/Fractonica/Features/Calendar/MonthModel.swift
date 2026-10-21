@@ -72,6 +72,8 @@ final class MonthModel {
     // MARK: Launch
 
     var scrollTarget: String?
+    /// -FXMonthPick: open the month (or Delta) picker once the screen is up.
+    var launchPick = false
     @ObservationIgnored private var launched = false
 
     // MARK: Caches
@@ -211,5 +213,6 @@ final class MonthModel {
         }
         if let p = DeltaPage.page(.shared, at: t) { page = p }
         scrollTarget = CalendarLaunch.string("FXCalendarScroll")
+        launchPick = CalendarLaunch.int("FXMonthPick") == 1
     }
 }

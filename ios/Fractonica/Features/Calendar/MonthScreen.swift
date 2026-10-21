@@ -29,9 +29,9 @@ private struct EarthMonthView: View {
     @State private var picking = false
     #if os(iOS)
     @Environment(\.verticalSizeClass) private var verticalSizeClass
-    private var short: Bool { verticalSizeClass == .compact }
+    private var short: Bool { verticalSizeClass == .compact || CalendarLaunch.forcesShort }
     #else
-    private let short = false
+    private let short = CalendarLaunch.forcesShort
     #endif
 
     var body: some View {
@@ -63,6 +63,11 @@ private struct EarthMonthView: View {
             }
             .task {
                 model.applyLaunchOptions(zone: zone, displayed: store.time())
+                if model.launchPick {
+                    model.launchPick = false
+                    try? await Task.sleep(for: .milliseconds(350))
+                    picking = true
+                }
                 if let target = model.scrollTarget {
                     model.scrollTarget = nil
                     try? await Task.sleep(for: .milliseconds(350))
@@ -94,6 +99,11 @@ private struct EarthMonthView: View {
                         Text("Sunday").tag(0)
                     }
                     Button("Show the displayed day", systemImage: "scope") { showDisplayed(zone) }
+                    Button("Show today", systemImage: "calendar.circle") {
+                        // the month of the device clock, without travelling there
+                        model.show(month: MonthModel.monthIndex(of: Date.now.timeIntervalSince1970, zone: zone))
+                        Haptics.play(.selection)
+                    }
                     Toggle("Day details", systemImage: "sidebar.trailing", isOn: $model.showsDetail)
                 } label: {
                     Label("Options", systemImage: "ellipsis")
@@ -205,7 +215,9 @@ struct MonthMetrics: Equatable {
         return short ? least : min(124, max(least, cellWidth * 1.18))
     }
     var gridHeight: CGFloat { 6 * cellHeight + 5 * gap }
-    var regular: Bool { cellWidth >= 72 }
+    /// Roomy cells (iPad, Mac): larger type and the list of what begins on the day. Never in a short window, whose
+    /// flat cells hold only the number and the bands.
+    var regular: Bool { cellWidth >= 72 && !short }
 }
 
 private struct WeekdayRow: View {
@@ -249,7 +261,7 @@ private struct BandChooser: View {
                             Text(band.lengthText).font(.caption).foregroundStyle(on ? color.opacity(0.85) : Theme.ink3)
                         }
                         .foregroundStyle(on ? color : Theme.ink3)
-                        .padding(.horizontal, 10)
+                        .padding(.horizontal, 8)
                         .padding(.vertical, 6)
                         .background {
                             Capsule().fill(on ? color.opacity(0.16) : Theme.panel.opacity(0.6))
@@ -315,6 +327,7 @@ private struct MonthPage: View {
 
     var body: some View {
         let today = grid.dayIndex(of: Date.now.timeIntervalSince1970)
+        let earth = EarthFormatter.calendar(zone)
         VStack(spacing: metrics.gap) {
             ForEach(0..<6, id: \.self) { row in
                 HStack(spacing: metrics.gap) {
@@ -325,10 +338,11 @@ private struct MonthPage: View {
                             select(day, ref)
                         } label: {
                             DayCell(day: day, metrics: metrics, isToday: today == day.index, isSelected: model.showsDetail && model.selectedDay == ref,
-                                    events: metrics.regular ? events(day) : [])
+                                    events: metrics.regular ? events(day, earth) : [])
                         }
                         .buttonStyle(.plain)
-                        .accessibilityLabel(Text(label(day)))
+                        .help(label(day, today: today == day.index, earth: earth))
+                        .accessibilityLabel(Text(label(day, today: today == day.index, earth: earth)))
                         .accessibilityAddTraits(model.selectedDay == ref ? .isSelected : [])
                     }
                 }
@@ -345,8 +359,7 @@ private struct MonthPage: View {
     }
 
     /// What begins on a day, for the roomy cells of iPad and Mac: the coarse cycles, the syncs, the eclipse.
-    private func events(_ day: MonthGrid.Day) -> [CellEvent] {
-        let earth = EarthFormatter.calendar(zone)
+    private func events(_ day: MonthGrid.Day, _ earth: EarthFormatter) -> [CellEvent] {
         var out: [CellEvent] = []
         if let e = day.eclipse {
             out.append(CellEvent(label: "#\(e)", time: earth.time(store.clock.catalogue[e], seconds: false), level: nil))
@@ -378,13 +391,20 @@ private struct MonthPage: View {
         }
     }
 
-    private func label(_ day: MonthGrid.Day) -> String {
+    /// The day for VoiceOver and the pointer's tooltip: "Thursday 8 October, today, ε#5 begins at 09:09, 5 η cycles begin".
+    private func label(_ day: MonthGrid.Day, today: Bool, earth: EarthFormatter) -> String {
         var parts = ["\(EarthNames.weekdays[day.weekday]) \(day.day) \(EarthTime.monthsLong[day.month - 1])"]
+        if today { parts.append("today") }
         if !day.inRange { parts.append("outside the catalogue") }
         for track in day.tracks {
             let starts = track.segments.filter(\.startsHere)
             if case .level(let l) = track.band, !starts.isEmpty {
-                parts.append(starts.count == 1 ? "\(CalMath.cycleLabel(level: l, ordinal: starts[0].ordinal)) begins" : "\(starts.count) \(CalMath.letter(l)) cycles begin")
+                parts.append(starts.count == 1
+                    ? "\(CalMath.cycleLabel(level: l, ordinal: starts[0].ordinal)) begins at \(earth.time(starts[0].start, seconds: false))"
+                    : "\(starts.count) \(CalMath.letter(l)) cycles begin")
+            }
+            if case .sync = track.band, let s = starts.first(where: { $0.ordinal == 0 }) {
+                parts.append("solar sync \(s.index) begins at \(earth.time(s.start, seconds: false))")
             }
         }
         if let e = day.eclipse { parts.append("eclipse #\(e)") }

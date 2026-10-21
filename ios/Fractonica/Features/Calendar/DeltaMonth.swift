@@ -9,12 +9,13 @@ struct DeltaMonthView: View {
     let model: MonthModel
 
     @Environment(ClockStore.self) private var store
+    @Environment(AppSettings.self) private var settings
     @State private var width: CGFloat = 360
     #if os(iOS)
     @Environment(\.verticalSizeClass) private var verticalSizeClass
-    private var short: Bool { verticalSizeClass == .compact }
+    private var short: Bool { verticalSizeClass == .compact || CalendarLaunch.forcesShort }
     #else
-    private let short = false
+    private let short = CalendarLaunch.forcesShort
     #endif
 
     var body: some View {
@@ -54,7 +55,7 @@ struct DeltaMonthView: View {
                 .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = min($0, 980) - 32 }
             }
             .task {
-                model.applyLaunchOptions(zone: .current, displayed: store.time())
+                model.applyLaunchOptions(zone: settings.timeZone, displayed: store.time())
                 if let target = model.scrollTarget {
                     model.scrollTarget = nil
                     try? await Task.sleep(for: .milliseconds(350))
@@ -86,6 +87,14 @@ struct DeltaMonthView: View {
                         model.pageFollows = true
                         model.followPage(store.time())
                     }
+                    Button("Show the live clock's Delta", systemImage: "dot.radiowaves.left.and.right") {
+                        // the page of the device clock, without travelling there
+                        if let p = DeltaPage.page(store.clock, at: Date.now.timeIntervalSince1970) {
+                            model.pageFollows = store.isLive
+                            model.page = p
+                            Haptics.play(.selection)
+                        }
+                    }
                 } label: {
                     Label("Options", systemImage: "ellipsis")
                 }
@@ -102,7 +111,8 @@ struct DeltaMetrics: Equatable {
     var cellWidth: CGFloat { max(28, (width - rowLabel - 7 * gap) / 7) }
     var cellHeight: CGFloat { short ? 60 : min(116, max(56, cellWidth * 1.2)) }
     var gridHeight: CGFloat { 5 * cellHeight + 4 * gap }
-    var regular: Bool { cellWidth >= 72 }
+    /// Roomy cells (iPad, Mac); a short window keeps the compact type so its flat cells hold everything.
+    var regular: Bool { cellWidth >= 72 && !short }
 }
 
 /// The page in words and letters, with the arrows.
@@ -111,17 +121,38 @@ private struct DeltaHeader: View {
     let page: DeltaPage
 
     @Environment(ClockStore.self) private var store
+    @State private var picking = false
 
     var body: some View {
         let path = page.path
         let shown = model.displayedPage
         HStack(alignment: .center, spacing: 10) {
             VStack(alignment: .leading, spacing: 3) {
-                Text(Notation.periodName(level: 3, ordinal: page.delta))
-                    .font(.title.weight(.bold))
-                    .foregroundStyle(Theme.ink)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
+                Button {
+                    picking = true
+                } label: {
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Text(Notation.periodName(level: 3, ordinal: page.delta))
+                            .font(.title.weight(.bold))
+                            .foregroundStyle(Theme.ink)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.7)
+                        Image(systemName: "chevron.down").font(.footnote.weight(.bold)).foregroundStyle(Theme.ink3)
+                    }
+                    .contentShape(.rect)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(Text("\(Notation.periodName(level: 3, ordinal: page.delta)), choose a Delta"))
+                .popover(isPresented: $picking) {
+                    DeltaPagePicker(model: model, page: page)
+                        .presentationCompactAdaptation(.popover)
+                }
+                .task(id: model.launchPick) {
+                    guard model.launchPick else { return }
+                    model.launchPick = false
+                    try? await Task.sleep(for: .milliseconds(350))
+                    picking = true
+                }
                 Text("\(Notation.periodName(level: 2, ordinal: path[2])) · \(Notation.periodName(level: 1, ordinal: path[1])) · \(Notation.periodName(level: 0, ordinal: path[0]))")
                     .font(.footnote)
                     .foregroundStyle(Theme.ink2)
@@ -180,7 +211,7 @@ private struct QuarterBar: View {
             let onPage = DeltaPage.page(clock, at: t) == page.index
             let current = onPage ? Notation.standard.quarter(at: t, level: 3) : nil
             let fraction = onPage ? (clock.level(at: t, 3)?.phase ?? 0) : nil
-            VStack(spacing: 4) {
+            VStack(spacing: 3) {
                 HStack(spacing: 3) {
                     ForEach(0..<4, id: \.self) { q in
                         Button {
@@ -205,16 +236,19 @@ private struct QuarterBar: View {
                         .accessibilityLabel(Text("\(Notation.quarterWords[q]) quarter: go to where it begins"))
                     }
                 }
-                .overlay(alignment: .leading) {
-                    if let fraction {
-                        GeometryReader { geo in
-                            Capsule().fill(Theme.cursor)
-                                .frame(width: 2, height: geo.size.height + 6)
-                                .offset(x: geo.size.width * fraction - 1, y: -3)
-                        }
-                        .allowsHitTesting(false)
-                    }
+                // the shown moment: a caret under the bar, so the quarter words stay clear
+                Canvas { context, size in
+                    guard let fraction else { return }
+                    let x = size.width * fraction
+                    var caret = Path()
+                    caret.move(to: CGPoint(x: x, y: 0))
+                    caret.addLine(to: CGPoint(x: x + 4.5, y: size.height))
+                    caret.addLine(to: CGPoint(x: x - 4.5, y: size.height))
+                    caret.closeSubpath()
+                    context.fill(caret, with: .color(Theme.cursor))
                 }
+                .frame(height: 6)
+                .accessibilityHidden(true)
                 HStack(spacing: 0) {
                     ForEach(1...5, id: \.self) { e in
                         Text("ε#\(e)")
@@ -273,6 +307,7 @@ private struct DeltaPageGrid: View {
                         }
                         .buttonStyle(.plain)
                         .disabled(!cell.inRange)
+                        .help(label(cell))
                         .accessibilityLabel(Text(label(cell)))
                     }
                 }
@@ -288,6 +323,9 @@ private struct DeltaPageGrid: View {
 
     private func label(_ cell: DeltaPage.Cell) -> String {
         var parts = ["ε#\(cell.epsilon), \(cell.firstHelion)η to \(cell.firstHelion + 10)η"]
+        if let q = cell.quarters.first(where: \.startsHere), cell.inRange {
+            parts.append("\(Notation.periodName(level: 3, ordinal: page.delta)) \(Notation.quarterWords[q.quarter]) begins")
+        }
         if let e = cell.eclipse { parts.append("eclipse \(Notation.eclipseName(e))") }
         if let s = cell.syncs.first(where: { $0.quarter == 0 }) { parts.append("solar sync \(s.sync) begins") }
         if !cell.inRange { parts.append("after the catalogue") }
@@ -320,12 +358,9 @@ private struct DeltaCell: View, Equatable {
                     .minimumScaleFactor(0.7)
             }
             if cell.inRange, let q = cell.quarters.first(where: \.startsHere) {
-                // a quarter of the Delta begins in this cell
-                Text(Notation.quarterWords[q.quarter])
-                    .font(.system(size: metrics.regular ? 11 : 8.5, weight: .semibold))
-                    .foregroundStyle(Theme.levelColor(3))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
+                // a quarter of the Delta begins in this cell: its word flies as a flag from the line
+                QuarterFlag(word: Notation.quarterWords[q.quarter], x: q.x0, cellWidth: metrics.cellWidth,
+                            padding: metrics.regular ? 6 : 4, regular: metrics.regular)
             }
             Spacer(minLength: 0)
             if cell.inRange {
@@ -366,6 +401,108 @@ private struct DeltaCell: View, Equatable {
             }
         }
         .contentShape(.rect)
+    }
+}
+
+/// The word of a Delta quarter flying from the line where the quarter begins: attached to the line's right when the
+/// line is in the cell's left half, to its left otherwise, the pole side square.
+private struct QuarterFlag: View {
+    let word: String
+    /// Where the line is, 0 … 1 of the cell.
+    let x: Double
+    let cellWidth: CGFloat
+    /// The cell's inner padding (the flag is laid out inside it; the line is drawn across the whole cell).
+    let padding: CGFloat
+    let regular: Bool
+
+    var body: some View {
+        let line = x == 0 ? 1 : CGFloat(x) * cellWidth // the line's centre, in cell coordinates (see DeltaCell)
+        // near the middle neither side has room for a word: the flag then sits across the line, centred on it
+        let centred = x > 0.3 && x < 0.7
+        let right = x <= 0.5
+        let radius: CGFloat = 3
+        let chip = Text(verbatim: word)
+            .font(.system(size: regular ? 10 : 8, weight: .bold))
+            .foregroundStyle(Theme.background)
+            .lineLimit(1)
+            .minimumScaleFactor(0.7)
+            .padding(.horizontal, regular ? 4 : 3)
+            .padding(.vertical, 1)
+            .background {
+                UnevenRoundedRectangle(topLeadingRadius: right && !centred ? 0 : radius, bottomLeadingRadius: right && !centred ? 0 : radius,
+                                       bottomTrailingRadius: right || centred ? radius : 0, topTrailingRadius: right || centred ? radius : 0)
+                    .fill(Theme.levelColor(3))
+            }
+        if centred {
+            chip
+                .fixedSize()
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .alignmentGuide(.leading) { d in d[HorizontalAlignment.center] - (line - padding) }
+        } else {
+            chip
+                .padding(.leading, right ? max(0, line - 0.75 - padding) : 0)
+                .padding(.trailing, right ? 0 : max(0, cellWidth - padding - line - 0.75))
+                .offset(x: right ? min(0, line - 0.75 - padding) : 0)
+                .frame(maxWidth: .infinity, alignment: right ? .leading : .trailing)
+        }
+    }
+}
+
+/// Choose a Delta by the fracton names of its Alpha, Beta, Gamma and its own.
+private struct DeltaPagePicker: View {
+    let model: MonthModel
+    let page: DeltaPage
+
+    @Environment(ClockStore.self) private var store
+    @Environment(\.dismiss) private var dismiss
+    @State private var path: [Int] = [1, 1, 1, 1]
+
+    var body: some View {
+        let clock = store.clock
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Show a Delta").font(.headline).foregroundStyle(Theme.ink)
+            ForEach(0..<4, id: \.self) { level in
+                let maximum = max(1, CalMath.childCount(clock, parent: Array(path.prefix(level))))
+                HStack(spacing: 10) {
+                    LevelChip(text: CalMath.letter(level), level: level, compact: true).frame(width: 28)
+                    Text(verbatim: Notation.levelNames[level]).foregroundStyle(Theme.ink2).lineLimit(1)
+                    Spacer(minLength: 8)
+                    Picker(Notation.levelNames[level], selection: Binding(get: { min(path[level], maximum) }, set: { n in
+                        var p = path
+                        p[level] = n
+                        path = CalMath.normalize(clock, path: p)
+                    })) {
+                        ForEach(1...maximum, id: \.self) { n in
+                            Text(verbatim: Notation.ordinalName(n)).tag(n)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .labelsHidden()
+                    .tint(Theme.levelColor(level))
+                    .fixedSize()
+                }
+            }
+            Text(verbatim: CalMath.pathText(path))
+                .font(.code(13))
+                .foregroundStyle(Theme.teal)
+            HStack {
+                Button("Cancel", role: .cancel) { dismiss() }
+                Spacer()
+                Button("Show") {
+                    model.pageFollows = false
+                    model.page = DeltaPage.page(clock, alpha: path[0], beta: path[1], gamma: path[2], delta: path[3])
+                    Haptics.play(.selection)
+                    dismiss()
+                }
+                .buttonStyle(.glassProminent)
+                .tint(Theme.teal)
+                .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(16)
+        .frame(minWidth: 320)
+        .fixedSize(horizontal: false, vertical: true)
+        .onAppear { path = CalMath.normalize(clock, path: page.path + [page.delta]) }
     }
 }
 
@@ -555,6 +692,19 @@ private struct CellDetailView: View {
                     .font(.code(13))
                     .foregroundStyle(Theme.teal)
                     .textSelection(.enabled)
+                HStack(spacing: 8) {
+                    // the Nuclide's phase where the cell begins: a cell is a seventh of its Nuclide
+                    PairView(fraction: Double(cell.column) / Double(DeltaPage.columns), color: Theme.teal, height: 16)
+                    Text(verbatim: "Nuclide phase at \(cell.firstHelion)η · \(Notation.pairText(Double(cell.column) / Double(DeltaPage.columns)))")
+                        .font(.footnote.monospacedDigit())
+                        .foregroundStyle(Theme.ink2)
+                }
+                .accessibilityElement(children: .combine)
+                ClockTimeline(.periodic(store.isPlaying ? max(60, abs(store.rate) / 8) : 60)) { t in
+                    Text(verbatim: relative(cell, at: t))
+                        .font(.footnote.monospacedDigit())
+                        .foregroundStyle(Theme.ink3)
+                }
                 Text(cell.cut < 1 ? "The catalogue ends inside this cell" : "11 Helions, one ζ cycle")
                     .font(.footnote)
                     .foregroundStyle(Theme.ink3)
@@ -625,5 +775,16 @@ private struct CellDetailView: View {
         store.travel(to: t)
         Haptics.play(.step)
         toasts.show("Showing \(what)")
+    }
+
+    /// Where the cell lies from the shown moment: "Begins 2ε 5η after the shown moment", "The shown moment is in this
+    /// cell; it ends in 4η 2ι", "Began 3η before the shown moment".
+    private func relative(_ cell: DeltaPage.Cell, at t: Double) -> String {
+        let n = Notation.standard
+        let end = cell.cut < 1 ? store.clock.tMax : cell.end
+        guard store.clock.inRange(t) else { return "" }
+        if t >= cell.start, t < end { return "The shown moment is in this cell; it ends in \(n.between(t, end))" }
+        if cell.start > t { return "Begins \(n.between(t, cell.start)) after the shown moment" }
+        return "Began \(n.between(cell.start, t)) before the shown moment"
     }
 }
