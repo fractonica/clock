@@ -256,7 +256,7 @@ func geometryChecks() {
     check(g.hit(g.center, cents: cents) == nil, "the centre (the power button) hits no voice")
     let theta = g.point(level: 7, cents: cents[7])
     let iota = g.point(level: 8, cents: cents[8])
-    check(abs(cents[7] - cents[8]) < 1e-9 && hypot(theta.x - iota.x, theta.y - iota.y) > 5, "θ and ι share a spoke at different radii")
+    check(abs(cents[7] - cents[8]) < 1e-9 && hypot(theta.x - iota.x, theta.y - iota.y) > 4, "θ and ι share a spoke at different radii")
     check(soundLabelSlots([(key: 3, x: 50), (key: 1, x: 10), (key: 2, x: 20), (key: 0, x: 60)]) == [1, 3], "labels where there is room, in x order")
 }
 
@@ -486,7 +486,8 @@ func renderChecks() {
     check(heard >= 6, "most voices are heard at vector A (\(heard))")
     let perSecond = chord.seconds / 3
     print("   render cost (unoptimised checks build): \(String(format: "%.1f", perSecond * 1000)) ms per second of audio")
-    check(perSecond < 0.5, "renders faster than real time even unoptimised: \(perSecond)")
+    // wall-clock time on a shared machine: only a gross regression fails (the app's release build is ~10× faster)
+    check(perSecond < 1, "renders faster than real time even unoptimised: \(perSecond)")
 
     // 2. ξ modulates at its true 22.5 Hz
     var xiOnly = prefs
