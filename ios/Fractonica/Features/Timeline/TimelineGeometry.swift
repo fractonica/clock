@@ -179,7 +179,7 @@ struct TimelineLayout: Equatable, Sendable {
     /// Width below which the timeline uses its phone layout.
     static let compactWidth = 560.0
     /// The tallest a lane grows.
-    static func maxLane(compact: Bool) -> Double { compact ? 44 : 52 }
+    static func maxLane(compact: Bool) -> Double { compact ? 46 : 112 }
 
     /// The layout of a canvas `width` × `height` with `lanes` lanes. Lanes share the height left by the fixed rows,
     /// within limits; when they would get too thin the catalogue map goes first, then the eclipse lane shrinks.
@@ -193,27 +193,29 @@ struct TimelineLayout: Equatable, Sendable {
         px0 = gutter
         px1 = max(gutter + 40, width - (compact ? 6 : 10))
         let pad = 4.0
-        let ctx = 18.0, tick = 20.0, mark = 20.0
-        ctxH = ctx
-        tickH = tick
-        markH = mark
-        var overview = compact ? 30.0 : 36.0
-        var eclipse = compact ? 38.0 : 44.0
+        var overview = compact ? 30.0 : 38.0
+        var eclipse = compact ? 38.0 : 48.0
+        var rows = (ctx: 18.0, tick: 20.0, mark: 20.0)
         let minLane = 18.0
-        let laneHeight = { (overview: Double, eclipse: Double) -> Double in
-            let fixed = pad + (overview > 0 ? overview + 8 : 0) + ctx + tick + mark + eclipse + pad
+        let laneHeight = { (overview: Double, eclipse: Double, rows: (ctx: Double, tick: Double, mark: Double)) -> Double in
+            let fixed = pad + (overview > 0 ? overview + 8 : 0) + rows.ctx + rows.tick + rows.mark + eclipse + pad
             return ((height - fixed) / Double(n)).rounded(.down)
         }
-        if laneHeight(overview, eclipse) < minLane { overview = 0 }
-        if laneHeight(overview, eclipse) < minLane { eclipse = 28 }
+        // a short canvas (a phone in landscape) gives up the map first, then shrinks the eclipse lane and the axis
+        if laneHeight(overview, eclipse, rows) < minLane { overview = 0 }
+        if laneHeight(overview, eclipse, rows) < minLane { eclipse = 28 }
+        if laneHeight(overview, eclipse, rows) < minLane { rows = (15, 18, 17) }
+        ctxH = rows.ctx
+        tickH = rows.tick
+        markH = rows.mark
         overviewY = pad
         overviewH = overview
         let axis = overview > 0 ? pad + overview + 8 : pad
         axisY = axis
-        let lane = min(Self.maxLane(compact: compact), max(14, laneHeight(overview, eclipse)))
+        let lane = min(Self.maxLane(compact: compact), max(12, laneHeight(overview, eclipse, rows)))
         laneH = lane
-        lanesY = axis + ctx + tick + mark
-        eclipseY = axis + ctx + tick + mark + lane * Double(lanes)
+        lanesY = axis + rows.ctx + rows.tick + rows.mark
+        eclipseY = lanesY + lane * Double(lanes)
         eclipseH = eclipse
     }
 
