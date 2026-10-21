@@ -93,6 +93,7 @@ final class JumpModel {
 
     /// Records a jump to `candidate` typed as `text`, and clears the field.
     func didJump(to candidate: JumpCandidate, text: String, pure: Bool) {
+        loadHistory(pure: pure)
         history.remember(text, label: candidate.label, kind: candidate.kind.rawValue)
         save(pure: pure)
         jumps += 1
@@ -121,6 +122,8 @@ final class JumpModel {
     static var launchQuery: String? { UserDefaults.standard.string(forKey: "FXJumpQuery") }
     /// `-FXJumpFocus 0`: do not raise the keyboard on appear.
     static var launchFocus: Bool { UserDefaults.standard.string(forKey: "FXJumpFocus") != "0" }
+    /// `-FXJumpSubmit 1`: press Return once the screen is up (with `-FXJumpQuery`), to see a jump land on Now.
+    static var launchSubmit: Bool { UserDefaults.standard.string(forKey: "FXJumpSubmit") == "1" }
     /// `-FXJumpDemo 1`: show a sample history (never saved).
     static var launchDemoHistory: Bool { UserDefaults.standard.string(forKey: "FXJumpDemo") == "1" }
 

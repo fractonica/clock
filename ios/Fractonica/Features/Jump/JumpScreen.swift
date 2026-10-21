@@ -9,7 +9,8 @@ import SwiftUI
 /// (or a tap) travels there and goes back to Now. With an empty field: the recent jumps of the mode and examples to try.
 ///
 /// Launch arguments for screenshots: `-FXJumpQuery <text>` starts with that text, `-FXJumpFocus 0` keeps the keyboard
-/// down, `-FXJumpDemo 1` shows a sample history (never saved).
+/// down, `-FXJumpDemo 1` shows a sample history (never saved), `-FXJumpSubmit 1` presses Return once (the jump lands
+/// on Now with its toast).
 struct JumpScreen: View {
     @Environment(ClockStore.self) private var store
     @Environment(AppSettings.self) private var settings
@@ -48,7 +49,15 @@ struct JumpScreen: View {
         #endif
         .onSubmit(of: .search) { submit() }
         .task(id: refreshKey) { await refreshLoop() }
-        .onAppear { if JumpModel.launchFocus { searchFocused = true } }
+        .onAppear {
+            if JumpModel.launchFocus { searchFocused = true }
+            if JumpModel.launchSubmit, !model.isEmpty {
+                Task {
+                    try? await Task.sleep(for: .seconds(1))
+                    submit()
+                }
+            }
+        }
         .onChange(of: router.selection) { _, screen in
             if screen == .jump { searchFocused = true }
         }
