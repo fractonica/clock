@@ -54,7 +54,8 @@ final class WaveModel {
         solar = defaults.bool(forKey: Self.solarKey)
         // launch hooks for screenshots (never saved): -FXWaveSolar 1|0, -FXWaveOverview 1|0, -FXWaveLevel n,
         // -FXWaveInspect x,y (show the tooltip of what lies at that stage point), -FXWavePlay rate (start a time-lapse),
-        // -FXWaveOffset seconds (see `offset`), -FXWaveWide 1|0 (the layout), -FXWaveDemo +1,-1 (zoom steps)
+        // -FXWaveOffset seconds (see `offset`), -FXWaveWide 1|0 (the layout), -FXWaveDemo +1,-1 (zoom steps),
+        // -FXWaveInfo 1 (open How to read)
         let args = defaults.volatileDomain(forName: UserDefaults.argumentDomain)
         func string(_ key: String) -> String? { (args[key] as? String) ?? (args[key] as? NSNumber)?.stringValue }
         func flag(_ key: String) -> Bool? {
@@ -70,6 +71,7 @@ final class WaveModel {
         }
         offset = string("FXWaveOffset").flatMap(Double.init).flatMap { $0.isFinite ? $0 : nil } ?? 0
         forceWide = flag("FXWaveWide")
+        showInfo = flag("FXWaveInfo") ?? false
         demo = string("FXWaveDemo")?.split(separator: ",").compactMap { Int($0.trimmingCharacters(in: .whitespaces)) } ?? []
         launchLevel = string("FXWaveLevel").flatMap(Int.init).map { min(max($0, 0), 13) }
         launchRate = string("FXWavePlay").flatMap(Double.init).flatMap { $0.isFinite && $0 != 0 ? $0 : nil }

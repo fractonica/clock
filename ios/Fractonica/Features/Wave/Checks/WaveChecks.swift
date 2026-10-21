@@ -440,6 +440,19 @@ private func readoutChecks(_ root: [String: Any], _ engine: WaveEngine) {
         }
     }
     check(count > 300, "readings were checked: \(count)")
+    // tooltips: every line of a half-arc, a point on it and a marker, at every depth
+    for t in arr(root["times"]).map(dbl).prefix(12) {
+        guard let cur = engine.readHalves(t) else { continue }
+        for level in 0...13 {
+            let d = engine.describe(level, cur[level].idx)
+            for (p, marker) in [(0.37, false), (cur[level].local, true)] {
+                let tip = pure.tip(d, p: p, at: engine.timeAt(level, d.idx, p), now: t, marker: marker, action: nil)
+                let lines = [tip.title, tip.sign, tip.span, tip.place, tip.length, tip.pairSuffix, tip.when] + [tip.glyph?.label, tip.glyph?.note, tip.glyph?.at, tip.glyph?.direction].compactMap { $0 }
+                for text in lines { check(!pureLeaks(text), "pure tooltip at \(t) depth \(level + 1): «\(text)»") }
+                if Notation.isMajor(level) { check(tip.pair == nil, "a major half-arc's tooltip shows no pair") }
+            }
+        }
+    }
     // the reading follows the focused level, and says when the selection is too fast to follow
     let fast = WaveReadout.make(t: 1791460800, overview: false, level: 12, eff: 8, words: earth)
     check(fast.badge == "ι" && fast.fast == "ν is too fast to follow", "a time-lapse too fast for ν reads ι: \(fast.badge) \(fast.fast ?? "-")")
