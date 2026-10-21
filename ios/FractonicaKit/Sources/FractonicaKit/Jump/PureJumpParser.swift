@@ -96,8 +96,10 @@ public enum PureJumpParser {
         keyword, offset, state, global, date, address, sync, position, boundary, levelOnly,
     ]
 
-    static let help = "Delta Trifracton Node · α#6 β#4 γ#9 δ#3 · ε#2 5η · 34η 17ι · +2ε 5η · +4 Blinks · next Helion · pos 24.5 · sync 4820"
-    static let glossary = "# numbers and Helions start at 1, counts at 0. Press ? for the glossary."
+    /// The forms the generic answers suggest ("Try …. ").
+    public static let help = "Delta Trifracton Node · α#6 β#4 γ#9 δ#3 · ε#2 5η · 34η 17ι · +2ε 5η · +4 Blinks · next Helion · pos 24.5 · sync 4820"
+    /// Where the notation is explained, the tail of every help line.
+    public static let glossary = "# numbers and Helions start at 1, counts at 0. Press ? for the glossary."
 
     // MARK: - Vocabulary
 
@@ -220,7 +222,8 @@ public enum PureJumpParser {
             return .error("\(label) is outside the catalogue", "The catalogue runs \(c.notation.catalogueText())")
         }
         let when = "\(c.notation.stamp(at: t, upTo: upTo)) (\(relText(c, t)))"
-        return JumpCandidate(kind: kind, label: label, time: t, detail: [when, extra].filter { !$0.isEmpty }.joined(separator: " · "))
+        return JumpCandidate(kind: kind, label: label, time: t, detail: [when, extra].filter { !$0.isEmpty }.joined(separator: " · "),
+                             note: extra)
     }
 
     /// "ε lasts 77η": what one cycle of a level is made of ("" for the Blink).

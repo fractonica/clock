@@ -22,6 +22,9 @@ public enum JumpParser {
     /// The placeholder of the Earth box.
     public static let placeholder = "2031-06-01 · +3d · α#6 β#3 γ#11 · pos 24.5 · sync 4820"
 
+    /// The forms the generic "Cannot read" answer suggests ("Try …. ").
+    public static let help = "2031-06-01 14:30 · +3d · α#6 β#3 γ#11 · pos 24.5 · sync 4820 · next ε"
+
     /// Examples offered while the box is empty: the text and what it means. The slash date follows the locale.
     public static func examples(dayFirst: Bool?) -> [(text: String, meaning: String)] {
         [
@@ -76,7 +79,7 @@ public enum JumpParser {
         if !bad.isEmpty { return bad }
         return [.error(
             "Cannot read \"\(JumpMaths.clip(raw))\"",
-            "Try 2031-06-01 14:30 · +3d · α#6 β#3 γ#11 · pos 24.5 · sync 4820 · next ε. A time without an offset is read in \(zone.replacingOccurrences(of: "_", with: " ")): add a city or zone (14:30 Tokyo), an offset (+03:00), or change the zone in the header."
+            "Try \(help). A time without an offset is read in \(zone.replacingOccurrences(of: "_", with: " ")): add a city or zone (14:30 Tokyo), an offset (+03:00), or change the zone in the header."
         )]
     }
 
@@ -106,7 +109,7 @@ public enum JumpParser {
         }
         let detail = [JumpMaths.describeTime(c.clock, c.formatter, t, ref: c.now, date: date), extra]
             .filter { !$0.isEmpty }.joined(separator: " · ")
-        return JumpCandidate(kind: kind, label: label, time: t, detail: detail)
+        return JumpCandidate(kind: kind, label: label, time: t, detail: detail, note: extra)
     }
 
     private static func refDate(_ c: Context) -> (year: Int, month: Int, day: Int) {

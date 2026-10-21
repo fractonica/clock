@@ -30,16 +30,21 @@ public struct JumpCandidate: Hashable, Sendable {
     public let time: Double?
     /// Where the result sits and how far it is from the displayed time, or the hint of an error.
     public let detail: String
+    /// The part of `detail` that is about the reading itself rather than where the moment sits: "ε lasts 77η",
+    /// "input read in Asia/Tokyo", "drift +12λ", "ζ#6 ends · ζ#7 starts" ("" when there is none). A screen that shows
+    /// the moment in its own way shows this beside it.
+    public let note: String
     /// "now": choosing it returns the app to the live clock instead of freezing on this instant.
     public internal(set) var live: Bool = false
     /// A second guess, ranked after the others (pure "34η 29ι 21λ" read as a span).
     var rank: Int = 0
 
-    public init(kind: Kind, label: String, time: Double?, detail: String, live: Bool = false) {
+    public init(kind: Kind, label: String, time: Double?, detail: String, note: String = "", live: Bool = false) {
         self.kind = kind
         self.label = label
         self.time = time
         self.detail = detail
+        self.note = note
         self.live = live
     }
 
