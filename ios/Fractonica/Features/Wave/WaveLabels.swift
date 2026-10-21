@@ -17,7 +17,8 @@ struct WaveLabelPlacer {
     /// Time constant of a label's glide to a new spot (seconds) and the most it moves per frame (points).
     static let glide = 0.07
     static let maxStep = 14.0
-    static let halfHeight = 8.0
+    /// Half the height of a label's box (larger fonts set more).
+    var halfHeight = 8.0
 
     struct Spot {
         /// The centre of the text.
@@ -71,7 +72,7 @@ struct WaveLabelPlacer {
     mutating func place(key: String, text: String, width: Double, at point: WavePoint, normal: WavePoint,
                         clearance: Double = 12, weight: Double = 1) -> Spot {
         let hw = width / 2 + 3
-        let hh = Self.halfHeight
+        let hh = halfHeight
         let nx = normal.x
         let ny = normal.y
         let dirs: [(Double, Double)] = [

@@ -26,6 +26,7 @@ struct WaveChecks {
         solarChecks(root, engine)
         navChecks(root, engine)
         wordChecks(root, engine)
+        readoutChecks(root, engine)
         labelChecks()
         Checks.finish()
     }
@@ -404,6 +405,43 @@ private func wordChecks(_ root: [String: Any], _ engine: WaveEngine) {
         let v = arr(e)
         check(earth.countdownText(dbl(v[0])) == str(v[1]), "countdown \(v) got \(earth.countdownText(dbl(v[0])))")
     }
+}
+
+/// The readings beside the stage, over the sample times at every depth and for the catalogue: pure mode never says
+/// anything Earthly, never shows a percentage, and α β γ δ are read by their quarter word, never by a pair.
+@MainActor
+private func readoutChecks(_ root: [String: Any], _ engine: WaveEngine) {
+    let utc = TimeZone(identifier: "UTC")!
+    let pure = WaveWords(wording: Wording(pure: true, timeZone: utc), engine: engine)
+    let earth = WaveWords(wording: Wording(pure: false, timeZone: utc), engine: engine)
+    var count = 0
+    for t in arr(root["times"]).map(dbl) + [engine.clock.tMax + 86400 * 900, engine.clock.tMin - 3600] {
+        for overview in [false, true] {
+            for level in overview ? [6] : Array(0...13) {
+                let r = WaveReadout.make(t: t, overview: overview, level: level, eff: level, words: pure)
+                for text in r.texts { check(!pureLeaks(text), "pure reading at \(t) depth \(level + 1): «\(text)»") }
+                if r.kind == .focus {
+                    let major = Notation.isMajor(level)
+                    if case .quarter = r.primary { check(major, "only α β γ δ are read by their quarter (depth \(level + 1))") }
+                    if case .pair = r.primary { check(!major, "a minor depth is read by its pair (depth \(level + 1))") }
+                    if case .percent = r.primary { check(false, "no percentage in pure mode (depth \(level + 1))") }
+                    check(major == (r.secondary == nil), "a major depth has no second pair (depth \(level + 1))")
+                    let e = WaveReadout.make(t: t, overview: false, level: level, eff: level, words: earth)
+                    if case .percent(let p) = e.primary { check(p.hasSuffix(" %"), "Earth mode reads a percentage: \(p)") } else { check(false, "Earth mode reads a percentage") }
+                } else if r.kind == .outOfRange {
+                    check(!engine.clock.inRange(t), "out of range only outside the catalogue")
+                }
+                count += 1
+            }
+        }
+        if let s = WaveSolarReadout.make(t: t, words: pure) {
+            for text in [s.number, s.next, s.drift, s.edge ?? "", s.spoken] { check(!pureLeaks(text), "pure solar strip at \(t): «\(text)»") }
+        }
+    }
+    check(count > 300, "readings were checked: \(count)")
+    // the reading follows the focused level, and says when the selection is too fast to follow
+    let fast = WaveReadout.make(t: 1791460800, overview: false, level: 12, eff: 8, words: earth)
+    check(fast.badge == "ι" && fast.fast == "ν is too fast to follow", "a time-lapse too fast for ν reads ι: \(fast.badge) \(fast.fast ?? "-")")
 }
 
 /// Whether a pure-mode text gives away an Earth reading: a percentage, a year-like date, a clock time or an Earth unit.
