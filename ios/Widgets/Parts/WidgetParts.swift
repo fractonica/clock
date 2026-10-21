@@ -111,8 +111,16 @@ struct RingDial: View {
                 var track = Path()
                 track.addArc(center: center, radius: r, startAngle: .zero, endAngle: .degrees(360), clockwise: false)
                 context.stroke(track, with: .color(color.opacity(0.16)), lineWidth: width)
+                let end = Angle.degrees(-90 + 360 * ring.phase)
+                var arc = Path()
+                arc.addArc(center: center, radius: r, startAngle: .degrees(-90), endAngle: end, clockwise: false)
+                context.stroke(arc, with: .color(color), style: StrokeStyle(lineWidth: width, lineCap: .butt))
+                // gaps are cut out rather than painted dark, so they stay gaps when the system tints the widget
+                // (tinted Home Screen, StandBy at night)
+                var cut = context
+                cut.blendMode = .destinationOut
                 if showsTicks && ring.factor > 1 {
-                    // one tick per child cycle, across the track
+                    // one gap per child cycle, across the band
                     var ticks = Path()
                     for k in 0..<ring.factor {
                         let a = Double(k) / Double(ring.factor) * 2 * .pi - .pi / 2
@@ -120,16 +128,13 @@ struct RingDial: View {
                         ticks.move(to: CGPoint(x: center.x + d.x * (r - width / 2), y: center.y + d.y * (r - width / 2)))
                         ticks.addLine(to: CGPoint(x: center.x + d.x * (r + width / 2), y: center.y + d.y * (r + width / 2)))
                     }
-                    context.stroke(ticks, with: .color(Theme.background.opacity(0.9)), lineWidth: max(0.75, width * 0.18))
+                    cut.stroke(ticks, with: .color(.black.opacity(0.85)), lineWidth: max(0.75, width * 0.18))
                 }
-                let end = Angle.degrees(-90 + 360 * ring.phase)
-                var arc = Path()
-                arc.addArc(center: center, radius: r, startAngle: .degrees(-90), endAngle: end, clockwise: false)
-                context.stroke(arc, with: .color(color), style: StrokeStyle(lineWidth: width, lineCap: .butt))
                 let head = CGPoint(x: center.x + r * cos(end.radians), y: center.y + r * sin(end.radians))
                 let knob = width * 0.78
+                cut.fill(Path(ellipseIn: CGRect(x: head.x - knob - 1, y: head.y - knob - 1, width: 2 * knob + 2, height: 2 * knob + 2)), with: .color(.black))
                 context.fill(Path(ellipseIn: CGRect(x: head.x - knob, y: head.y - knob, width: 2 * knob, height: 2 * knob)), with: .color(color))
-                context.fill(Path(ellipseIn: CGRect(x: head.x - knob * 0.42, y: head.y - knob * 0.42, width: knob * 0.84, height: knob * 0.84)), with: .color(Theme.background))
+                cut.fill(Path(ellipseIn: CGRect(x: head.x - knob * 0.42, y: head.y - knob * 0.42, width: knob * 0.84, height: knob * 0.84)), with: .color(.black))
             }
         }
         .aspectRatio(1, contentMode: .fit)
