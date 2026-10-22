@@ -10,6 +10,8 @@ struct SoundTempoView: View {
     @Environment(ClockStore.self) private var store
     @Environment(AppSettings.self) private var settings
     @Environment(ToastCenter.self) private var toasts
+    /// Speed chips tapped here (their haptic; a speed changed elsewhere stays silent).
+    @State private var speedTaps = 0
 
     private var engine: SoundEngine { .shared }
 
@@ -37,6 +39,12 @@ struct SoundTempoView: View {
                     .foregroundStyle(Theme.ink2)
                     .fixedSize(horizontal: false, vertical: true)
                 rhythm(prefs)
+                if store.rate != 0 {
+                    Text(words.rhythmLegend)
+                        .font(.caption)
+                        .foregroundStyle(Theme.ink3)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
                 speeds
             }
         }
@@ -230,8 +238,11 @@ struct SoundTempoView: View {
                 }
             }
         }
+        // the chips scroll out to the card's edges instead of being cut at its padding
+        .contentMargins(.horizontal, 16, for: .scrollContent)
+        .padding(.horizontal, -16)
         .scrollIndicators(.hidden)
-        .sensoryFeedback(.selection, trigger: store.revision) { _, _ in settings.haptics }
+        .sensoryFeedback(.selection, trigger: speedTaps) { _, _ in settings.haptics }
     }
 
     private func isActive(_ action: SoundWords.SpeedChip.Action) -> Bool {
@@ -244,6 +255,7 @@ struct SoundTempoView: View {
     }
 
     private func perform(_ action: SoundWords.SpeedChip.Action) {
+        speedTaps &+= 1
         switch action {
         case .live: store.goLive()
         case .pause: store.pause()

@@ -117,9 +117,11 @@ final class SoundEngine {
         if tempoChanged, lock != nil { _ = lockTempo(words: nil) }
     }
 
-    /// Sends the current preferences to the renderer.
+    /// Sends the current preferences to the renderer. Only while the hardware runs: nothing drains the command ring
+    /// of a stopped engine, and a ring filled by slider moves made while the sound is off would drop the very
+    /// commands that start it again (`ensureRunning` sends the preferences whenever it starts the engine).
     private func apply() {
-        guard let renderer else { return }
+        guard isRunning, let renderer else { return }
         for voice in SoundPlanner.voices(preferences) { renderer.commands.push(.voice(voice)) }
         renderer.commands.push(.mix(SoundMixConfig(
             volume: Float(preferences.volumeGain),
@@ -136,7 +138,16 @@ final class SoundEngine {
     // MARK: On and off
 
     func toggle() {
-        if isOn { stop() } else { start() }
+        if interrupted {
+            // the system took the audio and never gave it back (another app kept playing): a tap takes it back
+            isOn = false
+            interrupted = false
+            start()
+        } else if isOn {
+            stop()
+        } else {
+            start()
+        }
     }
 
     /// Starts the continuous sound (a user action: a button, the lock screen, a resumed interruption).
@@ -191,7 +202,8 @@ final class SoundEngine {
         stopTask = nil
         idleTask?.cancel()
         idleTask = nil
-        guard ensureRunning(), let renderer else { return false }
+        // a moment while the sound is off plays over whatever else is playing instead of stopping it
+        guard ensureRunning(exclusive: isOn), let renderer else { return false }
         if !isOn {
             // the fader may sit at 0 after a stop: bring it up before the first note
             renderer.commands.push(.flush)
@@ -386,15 +398,21 @@ final class SoundEngine {
     // MARK: The audio hardware
 
     /// Builds the graph if needed, activates the session and runs the engine. False (with `failure`) when it cannot.
-    private func ensureRunning() -> Bool {
+    /// `exclusive`: the continuous sound takes the audio over (other apps pause, the lock screen shows it); a moment
+    /// heard while the sound is off mixes with them.
+    private func ensureRunning(exclusive: Bool = true) -> Bool {
         do {
             #if os(iOS)
             let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.playback, mode: .default, options: [])
+            let options: AVAudioSession.CategoryOptions = exclusive ? [] : [.mixWithOthers]
+            if session.category != .playback || session.categoryOptions != options {
+                try session.setCategory(.playback, mode: .default, options: options)
+            }
             try session.setActive(true)
             #endif
             if engine == nil { try buildGraph() }
             guard let engine else { return false }
+            let starting = !engine.isRunning || !isRunning
             if !engine.isRunning {
                 engine.prepare()
                 try engine.start()
@@ -402,6 +420,7 @@ final class SoundEngine {
             observe()
             isRunning = true
             failure = nil
+            if starting { apply() }
             return true
         } catch {
             failure = error.localizedDescription
@@ -509,6 +528,8 @@ final class SoundEngine {
         case .began:
             guard isOn else { return }
             interrupted = true
+            // the system stopped the engine: nothing renders (or drains commands) until it is started again
+            isRunning = false
             scheduler?.cancel()
             scheduler = nil
         case .ended:

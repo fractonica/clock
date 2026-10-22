@@ -36,6 +36,46 @@ struct SoundLive: Sendable {
     }
 }
 
+/// `ClockTimeline` for the Sound screen's canvases, with two things the shared one does not do: a frame-rate cap (the
+/// pitch ring and the meters move no faster than ν's 3.2 Hz pulse, the spectrum is measured 30 times a second; none
+/// needs a 120 Hz display's every frame) and no redraws at all while the view is scrolled out of sight (the spectrum
+/// and the meters sit below the fold of the iPhone sheet) or its screen is hidden. Like `ClockTimeline` it stops in the
+/// background; `.animation` idles while the displayed time stands still, `.continuous` keeps going (the spectrum of a
+/// sound that plays while the clock is paused).
+struct SoundTimeline<Content: View>: View {
+    enum Cadence: Equatable {
+        case animation(fps: Double)
+        case continuous(fps: Double)
+    }
+
+    private let cadence: Cadence
+    private let content: (Double) -> Content
+
+    @Environment(ClockStore.self) private var store
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var onScreen = true
+    @State private var inView = true
+
+    init(_ cadence: Cadence, @ViewBuilder content: @escaping (Double) -> Content) {
+        self.cadence = cadence
+        self.content = content
+    }
+
+    var body: some View {
+        let (fps, idles): (Double, Bool) = switch cadence {
+        case .animation(let fps): (fps, true)
+        case .continuous(let fps): (fps, false)
+        }
+        let paused = scenePhase == .background || !onScreen || !inView || (idles && store.isPaused)
+        TimelineView(.animation(minimumInterval: 1 / fps, paused: paused)) { context in
+            content(store.time(at: context.date))
+        }
+        .onScrollVisibilityChange(threshold: 0.01) { inView = $0 }
+        .onAppear { onScreen = true }
+        .onDisappear { onScreen = false }
+    }
+}
+
 /// A rounded panel with an optional header: the cards of the Sound screen.
 struct SoundCard<Content: View, Accessory: View>: View {
     let title: String?
@@ -125,22 +165,44 @@ struct SoundSliderRow<Readout: View>: View {
     var accessibilityValue: String
     @ViewBuilder var readout: Readout
 
+    @Environment(\.dynamicTypeSize) private var typeSize
+
     var body: some View {
-        HStack(spacing: 12) {
-            Label(title, systemImage: systemImage)
-                .labelStyle(SoundRowLabelStyle())
-                .frame(width: 92, alignment: .leading)
-            Group {
-                if let step {
-                    Slider(value: $value, in: range, step: step)
-                } else {
-                    Slider(value: $value, in: range)
+        if typeSize.isAccessibilitySize {
+            // large text: the caption and its value on one line, the slider below at full width
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    label
+                    Spacer(minLength: 8)
+                    readout
                 }
+                slider
             }
-            .accessibilityLabel(title)
-            .accessibilityValue(accessibilityValue)
-            readout
+        } else {
+            HStack(spacing: 12) {
+                label
+                    .frame(width: 92, alignment: .leading)
+                slider
+                readout
+            }
         }
+    }
+
+    private var label: some View {
+        Label(title, systemImage: systemImage)
+            .labelStyle(SoundRowLabelStyle())
+    }
+
+    private var slider: some View {
+        Group {
+            if let step {
+                Slider(value: $value, in: range, step: step)
+            } else {
+                Slider(value: $value, in: range)
+            }
+        }
+        .accessibilityLabel(title)
+        .accessibilityValue(accessibilityValue)
     }
 }
 

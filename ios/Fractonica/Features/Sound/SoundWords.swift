@@ -31,7 +31,20 @@ struct SoundWords: Sendable {
         return t
     }
 
-    static func fixed(_ v: Double, _ digits: Int) -> String { String(format: "%.\(digits)f", v) }
+    /// `v` with `digits` decimals, rounded like JavaScript's `toFixed`: an exact tie goes away from zero ("0.13" for
+    /// 0.125, "63" for 62.5), where printf would round it to even.
+    static func fixed(_ v: Double, _ digits: Int) -> String {
+        let text = String(format: "%.\(digits)f", v)
+        guard v.isFinite else { return text }
+        // printf writes the exact binary value: a tie is a 5 followed only by zeros after the kept digits
+        let exact = String(format: "%.\(digits + 40)f", abs(v))
+        guard let point = exact.firstIndex(of: ".") else { return text }
+        let rest = exact[exact.index(point, offsetBy: digits + 1)...]
+        guard rest.first == "5", rest.dropFirst().allSatisfy({ $0 == "0" }) else { return text }
+        let scale = pow(10, Double(digits))
+        let away = (abs(v) * scale).rounded(.up) / scale
+        return (v < 0 ? "-" : "") + String(format: "%.\(digits)f", away)
+    }
 
     /// `v` rounded to `digits` significant digits (JavaScript's `toPrecision` as a number).
     static func precision(_ v: Double, _ digits: Int) -> Double {
@@ -512,7 +525,7 @@ struct SoundWords: Sendable {
     /// Four lines on how to listen.
     var how: [(head: String, body: String)] {
         let speed = pure
-            ? "Real time is counted in Blinks: one Blink is one ν cycle at real time. Tempo lock sets how many Blinks one cycle lasts; its quarters become the pulses and the subdivisions 5 : 13 : 5 : 5 : 7 : 11 : 9 : 4 … the rhythm."
+            ? "Real time is counted in Blinks: one Blink is one ν cycle at real time. Tempo lock sets how many Blinks one cycle lasts; its quarters become the pulses and the subdivisions 5 : 13 : 5 : 5 : 7 : 11 : 9 : 4 … (the series repeats) the rhythm."
             : "Tempo lock turns quarters into beats and the subdivisions 5 : 13 : 5 : 5 : 7 : 11 : 9 : 4 … (the series repeats) into the rhythm."
         return [
             ("Cycles are notes.", "The ratios 1 : 5 : 65 : 325 … folded into one octave are the chord; a voice is loud at its cycle’s peak and silent at its valley."),
@@ -520,6 +533,11 @@ struct SoundWords: Sendable {
             ("Speed makes rhythm.", speed),
             ("Any moment sounds.", "“Hear this moment” plays the chord of the displayed instant, also while you travel through time."),
         ]
+    }
+
+    /// What the marks of the rhythm chips mean (the web panel's rhythm legend).
+    var rhythmLegend: String {
+        "♪ rings a bell on every quarter · ♪ end rings once per cycle, on its end · no mark: too fast to ring at this chime floor. Up to about \(pure ? "9 pB" : "30 Hz") such a cycle is still heard as the drone’s modulation; faster ones rest at their mean loudness. Dashed: switched off in the mixer."
     }
 
     /// The mixer's one-line legend.

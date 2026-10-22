@@ -11,10 +11,16 @@ struct SoundRingGeometry: Sendable {
     let inner: CGFloat
     let levels: Int
 
-    /// `labelRoom`: space kept outside α's ring for the spoke labels.
+    /// How much larger than on a phone the dots, letters and the label room are drawn: 1 up to α's ring at 128 points,
+    /// at most 1.5 (the iPad's ring).
+    let scale: CGFloat
+
+    /// `labelRoom`: space kept outside α's ring for the spoke labels (at scale 1).
     init(size: CGSize, labelRoom: CGFloat, levels: Int = SoundTuning.levelCount) {
         center = CGPoint(x: size.width / 2, y: size.height / 2)
-        outer = max(10, min(size.width, size.height) / 2 - labelRoom)
+        let half = min(size.width, size.height) / 2
+        scale = min(1.5, max(1, (half - labelRoom) / 128))
+        outer = max(10, half - labelRoom * scale)
         inner = outer * 0.5
         self.levels = levels
     }

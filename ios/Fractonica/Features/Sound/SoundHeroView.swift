@@ -36,7 +36,8 @@ struct SoundHeroView: View {
 
     private var ring: some View {
         ZStack {
-            ClockTimeline(engine.isRunning && !reduceMotion ? .continuous : .animation) { t in
+            // the dots move with the clock; while it stands still only the notes of a ringing moment light up
+            SoundTimeline(momentRinging && !reduceMotion ? .continuous(fps: 60) : .animation(fps: 60)) { t in
                 let live = SoundLive.at(t, rate: store.rate, prefs: engine.preferences)
                 SoundRingView(live: live, words: words, selected: settings.selectedLevel, running: engine.isOn,
                               reduceMotion: reduceMotion, now: .now)
@@ -46,11 +47,25 @@ struct SoundHeroView: View {
             PowerButton(words: words, diameter: SoundRingGeometry(size: CGSize(width: side, height: side), labelRoom: SoundRingView.labelRoom(pure: words.pure)).buttonDiameter)
         }
         .frame(width: side, height: side)
+        .task(id: engine.moment?.end) {
+            // back to the clock's own cadence once the moment has rung out
+            guard let end = engine.moment?.end, end > .now else { return }
+            try? await Task.sleep(for: .seconds(end.timeIntervalSinceNow + 0.05))
+            momentEnded &+= 1
+        }
+    }
+
+    @State private var momentEnded = 0
+
+    /// "Hear this moment" is lighting up its notes.
+    private var momentRinging: Bool {
+        _ = momentEnded
+        return engine.moment.map { $0.end > .now } ?? false
     }
 
     @ViewBuilder
     private var details: some View {
-        ClockTimeline(engine.isRunning ? .continuous : .periodic(1)) { t in
+        ClockTimeline(.periodic(1)) { t in
             statusLine(t)
         }
         chips
@@ -66,17 +81,19 @@ struct SoundHeroView: View {
 
     private func statusLine(_ t: Double) -> some View {
         let inRange = store.clock.inRange(t)
-        let bells = engine.isRunning ? engine.soundingBells : 0
         return HStack(spacing: 8) {
             Circle()
                 .fill(!inRange ? Theme.danger : engine.isOn ? Theme.teal : Theme.ink3)
                 .frame(width: 7, height: 7)
             Text(words.status(on: engine.isOn, inRange: inRange, sampleRate: engine.sampleRate, voices: engine.voiceCount, interrupted: engine.interrupted))
                 .foregroundStyle(inRange ? Theme.ink2 : Theme.danger)
-            if engine.isOn && inRange {
-                Text("· \(bells) bell\(bells == 1 ? "" : "s")")
-                    .foregroundStyle(Theme.ink3)
-                    .contentTransition(.numericText())
+            if engine.isOn && inRange && !engine.interrupted {
+                // the bells ringing now, counted in real time (they ring while the clock runs, not with it)
+                TimelineView(.periodic(from: .now, by: 0.25)) { _ in
+                    let bells = engine.isRunning ? engine.soundingBells : 0
+                    Text("· \(bells) bell\(bells == 1 ? "" : "s")")
+                        .foregroundStyle(Theme.ink3)
+                }
             }
         }
         .font(.subheadline.monospacedDigit())
@@ -212,6 +229,8 @@ struct SoundRingView: View {
         let rows = SoundTuning.standard
         let g = SoundRingGeometry(size: size, labelRoom: Self.labelRoom(pure: words.pure))
         let chord = prefs.chord
+        // dots and letters grow with the ring (the iPhone ring is about 290 points, the iPad's 440)
+        let k = g.scale
 
         // a soft halo of the ground behind everything while the sound plays
         if running {
@@ -240,8 +259,8 @@ struct SoundRingView: View {
                 label = names[(((base.midi + k) % 12) + 12) % 12]
             }
             guard !label.isEmpty else { continue }
-            let text = Text(label).font(.system(size: 10, weight: k == 0 ? .semibold : .regular)).foregroundStyle(k == 0 ? Theme.ink : Theme.ink3)
-            context.draw(text, at: g.point(radius: g.outer + (words.pure ? 17 : 13), cents: Double(k) * 100))
+            let text = Text(label).font(.system(size: 10 * g.scale, weight: k == 0 ? .semibold : .regular)).foregroundStyle(k == 0 ? Theme.ink : Theme.ink3)
+            context.draw(text, at: g.point(radius: g.outer + (words.pure ? 17 : 13) * g.scale, cents: Double(k) * 100))
         }
 
         // bells ringing now: ripples out of their dots
@@ -251,7 +270,7 @@ struct SoundRingView: View {
                 guard age >= 0, age < 0.9, flash.level < rows.count else { continue }
                 let u = age / 0.9
                 let p = g.point(level: flash.level, cents: rows[flash.level].pcCents)
-                let r = 6 + 26 * CGFloat(u)
+                let r = (6 + 26 * CGFloat(u)) * k
                 let ripple = Path(ellipseIn: CGRect(x: p.x - r, y: p.y - r, width: 2 * r, height: 2 * r))
                 context.stroke(ripple, with: .color(Theme.levelColor(flash.level, opacity: (1 - u) * (0.35 + 0.6 * flash.strength), lightness: 0.72)), lineWidth: 1.4)
             }
@@ -270,34 +289,35 @@ struct SoundRingView: View {
             let p = g.point(level: level, cents: row.pcCents)
             let on = prefs.levels[level]
             guard on else {
-                let dot = Path(ellipseIn: CGRect(x: p.x - 3, y: p.y - 3, width: 6, height: 6))
+                let dot = Path(ellipseIn: CGRect(x: p.x - 3 * k, y: p.y - 3 * k, width: 6 * k, height: 6 * k))
                 context.stroke(dot, with: .color(Theme.ink3.opacity(0.5)), lineWidth: 1)
                 continue
             }
             let loud = live.inRange && chord ? live.shown[level] : 0
-            let size = 3 + 5.5 * CGFloat(loud)
-            if running && loud > 0.18 && !reduceMotion {
-                var glow = context
-                glow.addFilter(.blur(radius: 4 + 8 * loud))
-                let r = size * 1.9
-                glow.fill(Path(ellipseIn: CGRect(x: p.x - r, y: p.y - r, width: 2 * r, height: 2 * r)),
-                          with: .color(Theme.levelColor(level, opacity: 0.55 * loud, lightness: 0.62)))
+            let size = (3 + 5.5 * CGFloat(loud)) * k
+            if running && loud > 0.18 {
+                // a soft glow: a radial gradient, not a blur (no offscreen pass per voice and frame)
+                let r = size * 2.6
+                let color = Theme.levelColor(level, opacity: 0.5 * loud, lightness: 0.62)
+                context.fill(Path(ellipseIn: CGRect(x: p.x - r, y: p.y - r, width: 2 * r, height: 2 * r)),
+                             with: .radialGradient(Gradient(colors: [color, color.opacity(0)]), center: p, startRadius: size * 0.6, endRadius: r))
             }
             let dot = Path(ellipseIn: CGRect(x: p.x - size, y: p.y - size, width: 2 * size, height: 2 * size))
             context.fill(dot, with: .color(Theme.levelColor(level, opacity: (running ? 0.45 : 0.32) + 0.55 * loud, lightness: 0.64)))
             if level == selected {
-                let r = size + 3.5
+                let r = size + 3.5 * k
                 context.stroke(Path(ellipseIn: CGRect(x: p.x - r, y: p.y - r, width: 2 * r, height: 2 * r)), with: .color(Theme.cursor), lineWidth: 1.4)
             }
             if momentLevels.contains(level) {
-                let r = size + 6.5
+                let r = size + 6.5 * k
                 context.stroke(Path(ellipseIn: CGRect(x: p.x - r, y: p.y - r, width: 2 * r, height: 2 * r)), with: .color(Theme.levelColor(level, lightness: 0.8)), lineWidth: 1.6)
             }
-            // the letter beside the dot, clockwise along its ring (clear of the spoke names and of a voice that shares
-            // the spoke at the next depth)
-            let a = g.angle(cents: row.pcCents) + .pi / 2
-            let lp = CGPoint(x: p.x + CGFloat(cos(a)) * (size + 7), y: p.y + CGFloat(sin(a)) * (size + 7))
-            context.draw(Text(row.letter).font(.system(size: 9, weight: .semibold)).foregroundStyle(Theme.levelColor(level, lightness: 0.78)), at: lp)
+            // the letter beside the dot, clockwise along its ring (clear of the spoke names); a voice on the same spoke
+            // as the depth before it (ι under θ) writes its letter on the other side, so the two never overlap
+            let shared = level > 0 && abs(rows[level - 1].pcCents - row.pcCents) < 1
+            let a = g.angle(cents: row.pcCents) + (shared ? -.pi / 2 : .pi / 2)
+            let lp = CGPoint(x: p.x + CGFloat(cos(a)) * (size + 7 * k), y: p.y + CGFloat(sin(a)) * (size + 7 * k))
+            context.draw(Text(row.letter).font(.system(size: 9 * k, weight: .semibold)).foregroundStyle(Theme.levelColor(level, lightness: 0.78)), at: lp)
         }
     }
 

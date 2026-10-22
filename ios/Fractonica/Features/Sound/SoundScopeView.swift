@@ -17,7 +17,8 @@ struct SoundScopeView: View {
     private var engine: SoundEngine { .shared }
 
     var body: some View {
-        ClockTimeline(engine.isRunning ? .continuous : .animation) { t in
+        // the spectrum is measured 30 times a second, also while the clock stands still (the drone keeps sounding)
+        SoundTimeline(engine.isRunning ? .continuous(fps: reduceMotion ? 4 : 30) : .animation(fps: 30)) { t in
             let live = SoundLive.at(t, rate: store.rate, prefs: engine.preferences)
             let fresh = engine.isRunning ? analyser.update(engine: engine, now: .now, interval: reduceMotion ? 0.25 : 1.0 / 30) : analyser.clear()
             Canvas { context, size in

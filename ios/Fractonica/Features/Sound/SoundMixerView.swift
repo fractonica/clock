@@ -10,8 +10,9 @@ struct SoundMixerView: View {
 
     @Environment(ClockStore.self) private var store
     @Environment(AppSettings.self) private var settings
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var explained: Int?
+    /// The voices that sounded before Solo, to go back to.
+    @State private var beforeSolo: [Bool]?
 
     private var engine: SoundEngine { .shared }
 
@@ -62,7 +63,8 @@ struct SoundMixerView: View {
         let prefs = engine.preferences
         return VStack(spacing: 8) {
             ZStack {
-                ClockTimeline(engine.isRunning && !reduceMotion ? .continuous : .animation) { t in
+                // the meters follow the displayed time (they stand still with it)
+                SoundTimeline(.animation(fps: 60)) { t in
                     let live = SoundLive.at(t, rate: store.rate, prefs: prefs)
                     Canvas { context, size in
                         drawMeters(&context, size: size, live: live, prefs: prefs)
@@ -191,13 +193,21 @@ struct SoundMixerView: View {
                     .foregroundStyle(Theme.ink)
                 Spacer(minLength: 4)
                 Button(isSolo(row.level) ? "All" : "Solo") {
-                    let solo = isSolo(row.level)
-                    engine.update { $0.levels = solo ? SoundPreset.standard.levels : (0..<SoundTuning.levelCount).map { $0 == row.level } }
+                    if isSolo(row.level) {
+                        // back to the voices that sounded before (the default set when there is nothing to go back to)
+                        engine.update { $0.levels = beforeSolo ?? SoundPreset.standard.levels }
+                        beforeSolo = nil
+                    } else {
+                        // soloing one voice after another keeps the set from before the first solo
+                        let current = engine.preferences.levels
+                        if beforeSolo == nil || current.filter({ $0 }).count != 1 { beforeSolo = current }
+                        engine.update { $0.levels = (0..<SoundTuning.levelCount).map { $0 == row.level } }
+                    }
                 }
                 .font(.caption.weight(.semibold))
                 .buttonStyle(.bordered)
                 .controlSize(.small)
-                .help(isSolo(row.level) ? "Back to the default voices" : "Hear only this voice")
+                .help(isSolo(row.level) ? "Back to the voices that sounded before" : "Hear only this voice")
                 Button {
                     explained = row.level
                 } label: {
