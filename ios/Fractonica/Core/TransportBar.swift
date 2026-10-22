@@ -109,25 +109,18 @@ struct MomentLabel: View {
     }
 }
 
-/// Green and pulsing while live; the cursor blue while the displayed time is elsewhere.
+/// Green with a still halo while live; the cursor blue while the displayed time is elsewhere. Deliberately not animated:
+/// a repeating ripple redraws the window every frame (SPEC §10: no blinking), and the ticking time already shows life.
 struct StatusDot: View {
     var live: Bool
-
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         Circle()
             .fill(live ? Theme.live : Theme.cursor)
             .frame(width: 8, height: 8)
             .background {
-                if live, !reduceMotion {
-                    Circle()
-                        .fill(Theme.live)
-                        .keyframeAnimator(initialValue: 0.0, repeating: true) { ripple, progress in
-                            ripple.scaleEffect(1 + 1.6 * progress).opacity(0.5 * (1 - progress))
-                        } keyframes: { _ in
-                            LinearKeyframe(1.0, duration: 2)
-                        }
+                if live {
+                    Circle().fill(Theme.live.opacity(0.22)).frame(width: 16, height: 16)
                 }
             }
             .frame(width: 20, height: 20)
