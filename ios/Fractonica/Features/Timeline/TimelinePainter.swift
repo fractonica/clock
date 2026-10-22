@@ -419,7 +419,11 @@ struct TimelinePainter {
             }
             let msg = f.words.denseMessage(level)
             let mw = text.width(msg, small)
-            let mx = min(ca + 8, px1 - mw - 20)
+            var mx = min(ca + 8, px1 - mw - 20)
+            // keep the note clear of the cursor and now lines: past them where it fits, else before them
+            for lx in markerXs.sorted() where lx > mx - 4 && lx < mx + mw + 16 {
+                if lx + 8 + mw + 12 <= min(cb, px1) - 6 { mx = lx + 8 } else if lx - 8 - mw - 12 >= ca { mx = lx - 8 - mw - 12 }
+            }
             if mx >= ca, cb - mx > mw + 14, h >= 16 {
                 let pill = CGRect(x: mx, y: y + h / 2 - 8, width: mw + 12, height: 16)
                 cg.addPath(roundRect(pill, 8))
@@ -923,21 +927,23 @@ struct TimelinePainter {
         return r
     }
 
+    /// The x of the now line and the cursor line where they are drawn (`markerLines`).
+    private var markerXs: [CGFloat] {
+        let cx = X(f.cursor), nx = X(f.now)
+        var xs: [CGFloat] = []
+        if f.nowShow, nx >= L.px0, nx <= L.px1 { xs.append(nx) }
+        if f.cursorIn, cx >= L.px0, cx <= L.px1, !f.live { xs.append(cx) }
+        return xs
+    }
+
     /// The now line (rose; solid while live) and the cursor line; returns the x of each line drawn.
     private func markerLines(_ cg: CGContext) -> [CGFloat] {
         let cx = X(f.cursor), nx = X(f.now)
         let cVis = f.cursorIn && cx >= L.px0 && cx <= L.px1
         let nVis = f.nowShow && nx >= L.px0 && nx <= L.px1
-        var xs: [CGFloat] = []
-        if nVis {
-            vline(cg, nx, L.markY, L.bottom, f.live ? P.now : P.nowDim, width: f.live ? 2 : 1.25, dash: f.live ? nil : [5, 3])
-            xs.append(nx)
-        }
-        if cVis, !f.live {
-            vline(cg, cx, L.markY, L.bottom, P.cursor, width: 1.75)
-            xs.append(cx)
-        }
-        return xs
+        if nVis { vline(cg, nx, L.markY, L.bottom, f.live ? P.now : P.nowDim, width: f.live ? 2 : 1.25, dash: f.live ? nil : [5, 3]) }
+        if cVis, !f.live { vline(cg, cx, L.markY, L.bottom, P.cursor, width: 1.75) }
+        return markerXs
     }
 
     private func markers(_ cg: CGContext, _ td: TimelineTextDrawing) {
