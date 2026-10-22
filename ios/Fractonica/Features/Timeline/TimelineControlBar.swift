@@ -11,6 +11,7 @@ struct TimelineControlBar: View {
 
     @Environment(AppSettings.self) private var settings
     @Environment(\.dynamicTypeSize) private var typeSize
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Namespace private var glass
     /// The bar's width, which picks its arrangement (measured once per size, not on every frame as ViewThatFits would).
     @State private var width: CGFloat = 0
@@ -179,7 +180,7 @@ struct TimelineControlBar: View {
         .padding(2)
         .glassEffect(.regular.interactive(), in: .capsule)
         .glassEffectID("presets", in: glass)
-        .animation(.snappy(duration: 0.22), value: active)
+        .animation(reduceMotion ? nil : .snappy(duration: 0.22), value: active)
     }
 
     private func fitButton(labelled: Bool) -> some View {

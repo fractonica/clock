@@ -356,6 +356,14 @@ private func wordingChecks() {
     let earth = TimelineWords(pure: false, earth: EarthFormatter(zone: "UTC"))
     check(TimelineWords.cycleLength(clock.levelInfo(6).meanSeconds) == "5.05 h" && earth.laneLength(4, compact: false) == "≈ 16.2 d",
           "Earth lane heads give the mean length")
+
+    // the zoom control's width drops trailing zeros; a narrow shaded side splits the edge label in two
+    check([86_400, 5400, 1.68 * 86_400, 60, 2].map(TimelineWords.widthText) == ["1 d", "1.5 h", "1.68 d", "1 min", "2 s"],
+          "the width reads 1 d, 1.5 h, 1.68 d, 1 min, 2 s: \([86_400, 5400, 1.68 * 86_400, 60, 2].map(TimelineWords.widthText))")
+    let lines = [earth.edgeLabelLines(start: true), earth.edgeLabelLines(start: false), words.edgeLabelLines(start: true), words.edgeLabelLines(start: false)]
+    check(lines[0].map { [$0.0, $0.1] } == ["catalogue starts", "1613-05-19"] && lines[1].map { [$0.0, $0.1] } == ["catalogue ends", "2857-06-13"]
+          && lines[2].map { [$0.0, $0.1] } == ["catalogue starts", "pos 0"] && lines[3].map { [$0.0, $0.1] } == ["catalogue ends", "pos 69"],
+          "edge labels split into the words and the date (pure: the position): \(lines)")
 }
 
 // MARK: - Wording against the web
