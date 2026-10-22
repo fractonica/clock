@@ -110,6 +110,9 @@ itself with `-FXLadderHitches`):
 - A list keeps its rows out of sight in the view graph, and their timelines keep ticking (each tick updating the whole
   list): `.clockHeldOutOfSight()` holds the `ClockTimeline`s inside a row from `onDisappear` to `onAppear`
   (`\.clockHeld` holds them by hand).
+- Nothing that ticks goes in a `safeAreaInset`: each change hands the screen its safe area anew, and with a list under
+  it iOS 18 lays the window out again and again for about ¾ s (the Ladder was busy for most of every second). Inset a
+  still copy (`\.clockHeld`, `.hidden()`) and lay the live view over it, as RootView's `transportInset` does.
 
 **Nothing ticks inside a macOS toolbar item through SwiftUI.** Any update of a toolbar item's SwiftUI content makes
 SwiftUI rebuild the toolbar's platform items and AppKit re-lay out the toolbar and update the window's constraints:
@@ -241,7 +244,8 @@ API it names on iOS 26 and the Mac:
 
 Guarded in place: the transport (RootView's `transportAccessory` on iOS 26; `transportInset` and `TransportInsetBar`
 on iOS 18, applied by `ScreenChrome` inside each screen's navigation stack — a safe area inset outside the stack does
-not reach the screen there — so pushed views go without it; it steps aside while the keyboard is up), the iPhone Jump
+not reach the screen there — so pushed views go without it; it steps aside while the keyboard is up; the inset is a
+still copy of the bar and the live bar lies over it, see "ClockTimeline"), the iPhone Jump
 field's placement (`TabSearchField`), and the open intents (`supportedModes` on iOS 26, `openAppWhenRun` on iOS 18;
 their App Intents metadata is the same either way). There is no tab bar minimise on iOS 18.
 
