@@ -6,20 +6,27 @@ import SwiftUI
 ///
 /// - Tap a ring to select its level; tap a sector of the selected ring to go to the start of that child cycle.
 /// - Drag around a ring to wind its hand: the time follows, through the cycle and on into the next.
-/// - Touch and hold (iOS) for a preview of the ring or sector; on the Mac, hover highlights what a click would do
-///   and the context menu holds the same facts and actions.
+/// - Touch and hold (iOS) for a preview of the ring or sector. With a pointer (Mac, iPad), hovering highlights what a
+///   click would do and a tooltip says what is under the pointer; on the Mac the context menu holds the same facts
+///   and actions, and once clicked the dial takes the arrow keys.
 struct RingsDial: View {
     let size: CGFloat
     let model: RingsScreenModel
+    /// The dial sits in a page that scrolls vertically (iPhone): a steeply vertical drag scrolls it.
+    var inVerticalScroll = false
 
     @Environment(ClockStore.self) private var store
     @Environment(AppSettings.self) private var settings
     @Environment(ToastCenter.self) private var toasts
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var frozen = FrozenPhases()
-    @State private var hover: CGPoint?
+    /// What the pointer is over (Mac, iPad with a pointer): changes only when the ring or sector under it does.
+    @State private var pointer: RingsPointerTarget?
+    @FocusState private var focused: Bool
     @State private var scrub: Scrub?
     @State private var lastLongPress = Date.distantPast
+    /// A launch argument's virtual pointer (screenshots of the tooltip).
+    @State private var virtualPointer: RingsVirtualPointer?
 
     private let clock = FractonicaClock.shared
     private let cycles = RingsCycles()
@@ -63,10 +70,16 @@ struct RingsDial: View {
             longPress: { longPress(at: $0, layout: layout, range: range) },
             canScrub: { start, translation in
                 guard case .ring? = layout.hit(start) else { return false }
-                return RingsMath.isTangentialDrag(start: start, translation: translation, center: layout.center)
+                return RingsMath.beginsWinding(start: start, translation: translation, center: layout.center, inVerticalScroll: inVerticalScroll)
             },
             scrub: { step, point in scrub(step, at: point, layout: layout, range: range, selected: selected) },
-            hover: { hover = $0 }
+            target: { pointerTarget(at: $0, layout: layout, range: range) },
+            onTarget: { pointer = $0 },
+            showsTip: scrub == nil && model.preview == nil && !model.outOfRange,
+            tip: { RingsHoverTip(target: $0, selected: $0.level == selected) },
+            virtualPointer: virtualPointer.flatMap { v in
+                v.ring < layout.count ? layout.point(radius: layout.track(v.ring).mid, phase: v.phase) : nil
+            }
         ))
         #if os(macOS)
         .contextMenu { contextMenu(layout: layout, range: range, selected: selected) }
@@ -87,13 +100,27 @@ struct RingsDial: View {
             // after the first layout pass, when the dial has its real size
             try? await Task.sleep(for: .milliseconds(600))
             model.takePendingPreview(range: model.range(settings), at: store.time())
+            virtualPointer = model.takePendingHover(range: model.range(settings))
         }
         .onChange(of: store.revision) { frozen.reset() }
         .focusable()
+        .focused($focused)
         .focusEffectDisabled()
-        .onKeyPress(keys: [.leftArrow, .rightArrow, .upArrow, .downArrow]) { press in
-            let d = press.key == .leftArrow || press.key == .upArrow ? -1 : 1
-            selectRelative(d, range: range, selected: selected)
+        .onKeyPress(keys: [.leftArrow, .rightArrow, .upArrow, .downArrow, .home, .end, .pageUp, .pageDown, .return]) { press in
+            // arrow keys carry the numeric-pad and function flags on the Mac: only real modifiers make it someone else's
+            guard press.modifiers.isDisjoint(with: [.command, .option, .control, .shift]) else { return .ignored }
+            switch press.key {
+            case .home: selectAbsolute(range.minLevel, selected: selected)
+            case .end: selectAbsolute(range.maxLevel, selected: selected)
+            // the keyboard's way to the sectors (rings.js `jumpChild`): Return restarts the running child cycle, Page
+            // Up / Page Down step through the children
+            case .return: goToRunningChild(selected: selected)
+            case .pageUp: stepChild(1, selected: selected)
+            case .pageDown: stepChild(-1, selected: selected)
+            default:
+                let d = press.key == .leftArrow || press.key == .upArrow ? -1 : 1
+                selectRelative(d, range: range, selected: selected)
+            }
             return .handled
         }
         .accessibilityElement()
@@ -117,10 +144,15 @@ struct RingsDial: View {
 
     private func highlight(layout: RingLayout, range: DepthRange, selected: Int) -> DialHighlight? {
         if let preview = model.preview { return DialHighlight(ring: preview.ring, sector: preview.sector) }
-        guard scrub == nil, let p = hover, case .ring(let i, let phase, _)? = layout.hit(p) else { return nil }
+        guard scrub == nil, let p = pointer, p.ring < range.count else { return nil }
+        return DialHighlight(ring: p.ring, sector: p.level == selected ? p.sector : nil)
+    }
+
+    private func pointerTarget(at p: CGPoint, layout: RingLayout, range: DepthRange) -> RingsPointerTarget? {
+        guard !model.outOfRange, case .ring(let i, let phase, _)? = layout.hit(p), i < range.count else { return nil }
         let level = range.levels[i]
-        guard level == selected, level < Fractonica.maxLevel else { return DialHighlight(ring: i, sector: nil) }
-        return DialHighlight(ring: i, sector: RingsMath.sector(of: phase, factor: clock.levelInfo(level).factor))
+        let sector = level < Fractonica.maxLevel ? RingsMath.sector(of: phase, factor: clock.levelInfo(level).factor) : nil
+        return RingsPointerTarget(ring: i, level: level, sector: sector)
     }
 
     // MARK: Actions
@@ -128,7 +160,11 @@ struct RingsDial: View {
     private var readTime: Double { min(store.time(), clock.tMax - 0.001) }
 
     private func tap(at p: CGPoint, layout: RingLayout, range: DepthRange, selected: Int) {
-        guard Date.now.timeIntervalSince(lastLongPress) > 0.6 else { return }
+        #if os(macOS)
+        focused = true // the arrow keys follow the dial once it has been clicked
+        #endif
+        // the lift that ends a touch-and-hold is not a tap
+        guard model.preview == nil, Date.now.timeIntervalSince(lastLongPress) > 0.6 else { return }
         guard !model.outOfRange, case .ring(let i, let phase, _)? = layout.hit(p) else { return }
         let level = range.levels[i]
         if level != selected {
@@ -161,7 +197,9 @@ struct RingsDial: View {
         case .began:
             guard !model.outOfRange, case .ring(let i, let phase, _)? = layout.hit(p) else { return }
             let level = range.levels[i]
-            guard let reading = clock.level(at: readTime, level) else { return }
+            // a ring drawn as a glow has no hand to wind
+            guard !RingsMath.isBlur(meanSeconds: clock.levelInfo(level).meanSeconds, speed: RingsScreenModel.speed(of: store)),
+                  let reading = clock.level(at: readTime, level) else { return }
             if level != selected { model.select(level, settings: settings, reduceMotion: reduceMotion) }
             scrub = Scrub(ring: i, level: level, position: Double(reading.cycle) + phase, lastPhase: phase, lastIndex: reading.index)
             model.scrubbingRing = i
@@ -200,10 +238,27 @@ struct RingsDial: View {
         Haptics.play(.selection)
     }
 
+    private func selectAbsolute(_ level: Int, selected: Int) {
+        guard level != selected else { return }
+        model.select(level, settings: settings, reduceMotion: reduceMotion)
+        Haptics.play(.selection)
+    }
+
     private func goToRunningChild(selected: Int) {
-        guard selected < Fractonica.maxLevel, let r = clock.level(at: readTime, selected),
+        guard !model.outOfRange, selected < Fractonica.maxLevel, let r = clock.level(at: readTime, selected),
               let child = cycles.child(level: selected, cycle: r.cycle, sector: RingsMath.sector(of: r.phase, factor: r.factor)) else { return }
         store.travel(to: child.start + 0.001)
+        Haptics.play(.step)
+    }
+
+    /// The previous or next child cycle of the selected ring (one sector on).
+    private func stepChild(_ direction: Int, selected: Int) {
+        guard !model.outOfRange, selected < Fractonica.maxLevel else { return }
+        if let edge = store.step(level: selected + 1, direction: direction) {
+            toasts.show(edge)
+        } else {
+            Haptics.play(.step)
+        }
     }
 
     private func accessibilityValue(selected: Int) -> String {
@@ -221,16 +276,15 @@ struct RingsDial: View {
     #if os(macOS)
     @ViewBuilder
     private func contextMenu(layout: RingLayout, range: DepthRange, selected: Int) -> some View {
-        if let p = hover, case .ring(let i, let phase, _)? = layout.hit(p), let r = clock.level(at: readTime, range.levels[i]) {
-            let level = range.levels[i]
+        if let p = pointer, p.ring < range.count, let r = clock.level(at: readTime, p.level) {
+            let level = p.level
             let words = RingsPreviewWords(pure: settings.pure, earth: settings.wording.earth)
             let facts = words.ring(r, now: store.time())
             Section(facts.title) {
                 Text(facts.detail)
                 Text(facts.ends)
             }
-            if level < Fractonica.maxLevel {
-                let sector = RingsMath.sector(of: phase, factor: r.factor)
+            if let sector = p.sector {
                 if let child = cycles.child(level: level, cycle: r.cycle, sector: sector) {
                     let c = words.child(child, parent: r, now: store.time())
                     Section(c.title) {
@@ -339,26 +393,66 @@ private struct DialGestures: ViewModifier {
     let longPress: (CGPoint) -> Void
     let canScrub: (CGPoint, CGSize) -> Bool
     let scrub: (DragStep, CGPoint) -> Void
-    let hover: (CGPoint?) -> Void
+    /// What lies under a pointer.
+    let target: (CGPoint) -> RingsPointerTarget?
+    /// Told only when the target under the pointer changes (not on every pointer move).
+    let onTarget: (RingsPointerTarget?) -> Void
+    let showsTip: Bool
+    let tip: (RingsPointerTarget) -> RingsHoverTip
+    var virtualPointer: CGPoint?
 
+    /// The pointer and its target live here, so a moving pointer redraws only the tip, not the dial.
+    @State private var point: CGPoint?
+    @State private var current: RingsPointerTarget?
     #if os(macOS)
     @State private var dragging: Bool?
     #endif
 
     func body(content: Content) -> some View {
+        gestures(content)
+            .onContinuousHover { phase in
+                if case .active(let p) = phase { track(p) } else { track(nil) }
+            }
+            .onChange(of: virtualPointer) { _, p in if let p { track(p) } }
+            .overlay(alignment: .topLeading) {
+                if showsTip, let p = point, let c = current {
+                    // hung from a point-sized anchor at the pointer, on whichever side keeps it over the dial
+                    let left = p.x > layout.size * 0.55
+                    let up = p.y > layout.size * 0.6
+                    Color.clear
+                        .frame(width: 0, height: 0)
+                        .overlay(alignment: Alignment(horizontal: left ? .trailing : .leading, vertical: up ? .bottom : .top)) {
+                            tip(c)
+                                .fixedSize()
+                                .padding(.leading, left ? 0 : 16)
+                                .padding(.trailing, left ? 12 : 0)
+                                .padding(.top, up ? 0 : 18)
+                                .padding(.bottom, up ? 12 : 0)
+                        }
+                        .offset(x: p.x, y: p.y)
+                        .allowsHitTesting(false)
+                }
+            }
+    }
+
+    private func track(_ p: CGPoint?) {
+        point = p
+        let t = p.flatMap(target)
+        if t != current {
+            current = t
+            onTarget(t)
+        }
+    }
+
+    @ViewBuilder
+    private func gestures(_ content: Content) -> some View {
         #if os(iOS)
         content
             .gesture(LocatedTapGesture(action: tap))
             .gesture(LocatedLongPressGesture(action: longPress))
             .gesture(DirectionalPanGesture(shouldBegin: canScrub, onChange: scrub))
-            .onContinuousHover { phase in
-                if case .active(let p) = phase { hover(p) } else { hover(nil) }
-            }
         #else
         content
-            .onContinuousHover { phase in
-                if case .active(let p) = phase { hover(p) } else { hover(nil) }
-            }
             .gesture(
                 DragGesture(minimumDistance: 3)
                     .onChanged { value in

@@ -191,9 +191,11 @@ struct RingsPreviewCard: View {
             } label: {
                 Label(running ? "Back to Its Start" : "Go to Its Start", systemImage: "arrow.right.to.line")
                     .frame(maxWidth: .infinity)
+                    // dark on the bright level colour: white on a light green or cyan would barely read
+                    .foregroundStyle(Theme.background)
             }
             .buttonStyle(.borderedProminent)
-            .tint(Theme.levelColor(child.level, lightness: 0.5))
+            .tint(Theme.levelColor(child.level, lightness: 0.66))
         } else {
             Text(target.level >= Fractonica.maxLevel ? "Finer than the dial shows" : "Beyond the end of the catalogue")
                 .font(.subheadline)

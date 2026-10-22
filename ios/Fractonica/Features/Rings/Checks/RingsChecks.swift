@@ -286,6 +286,21 @@ private func nativeChecks() {
     check(r.widened(to: 12) == DepthRange(minLevel: 0, maxLevel: 12) && DepthRange(minLevel: 4, maxLevel: 6).widened(to: 1) == DepthRange(minLevel: 1, maxLevel: 6), "widening takes the level in")
     check(r.clamp(12) == 9 && r.clamp(3) == 3, "the selection follows the range")
 
+    // screen layout: the dial (and the strip under it) always fits the window
+    for size in [CGSize(width: 750, height: 204), CGSize(width: 750, height: 330), CGSize(width: 1336, height: 900),
+                 CGSize(width: 960, height: 700), CGSize(width: 620, height: 520), CGSize(width: 1180, height: 480)] {
+        let wide = RingsScreenLayout.isWide(size)
+        check(wide, "\(size) is laid out side by side")
+        let l = RingsScreenLayout.wide(size)
+        let column = l.dial + (l.stripWithCard ? 0 : 56)
+        check(column <= size.height + 0.5 || l.dial == 120, "the dial column fits \(size): \(column)")
+        check(l.dial + l.card + l.spacing <= size.width, "dial and card fit side by side in \(size)")
+        check(l.stripWithCard == (size.height < RingsScreenLayout.shortHeight), "the strip joins the card only in a short window (\(size))")
+    }
+    check(!RingsScreenLayout.isWide(CGSize(width: 402, height: 700)) && !RingsScreenLayout.isWide(CGSize(width: 1032, height: 1300)), "portrait windows scroll")
+    check(RingsScreenLayout.wide(CGSize(width: 750, height: 204)).dial == 196, "iPhone landscape: the dial takes the whole height")
+    check(RingsScreenLayout.tallDial(CGSize(width: 402, height: 700)) == 378, "iPhone portrait: the dial takes the width")
+
     // phases and points
     let c = CGPoint(x: 100, y: 100)
     for phase in stride(from: 0.0, to: 1.0, by: 0.0625) {
@@ -304,6 +319,13 @@ private func nativeChecks() {
     check(!RingsMath.isTangentialDrag(start: CGPoint(x: 100, y: 10), translation: CGSize(width: 1, height: 12), center: c), "down at 12 o'clock crosses the rings")
     check(RingsMath.isTangentialDrag(start: CGPoint(x: 190, y: 100), translation: CGSize(width: 0, height: -12), center: c), "up at 3 o'clock runs along the ring")
     check(!RingsMath.isTangentialDrag(start: c, translation: CGSize(width: 10, height: 0), center: c), "no direction at the centre")
+    // winding inside a vertically scrolling page: a steep vertical start is the page's scroll, even along a ring
+    check(RingsMath.beginsWinding(start: CGPoint(x: 190, y: 100), translation: CGSize(width: 0, height: -12), center: c, inVerticalScroll: false), "up at 3 o'clock winds where nothing scrolls")
+    check(!RingsMath.beginsWinding(start: CGPoint(x: 190, y: 100), translation: CGSize(width: 1, height: -12), center: c, inVerticalScroll: true), "up at 3 o'clock scrolls the page")
+    check(!RingsMath.beginsWinding(start: CGPoint(x: 10, y: 100), translation: CGSize(width: -2, height: 14), center: c, inVerticalScroll: true), "down at 9 o'clock scrolls the page")
+    check(RingsMath.beginsWinding(start: CGPoint(x: 100, y: 10), translation: CGSize(width: 12, height: 1), center: c, inVerticalScroll: true), "sideways at 12 o'clock winds in a page")
+    check(RingsMath.beginsWinding(start: CGPoint(x: 170, y: 30), translation: CGSize(width: 9, height: 9), center: c, inVerticalScroll: true), "diagonally at half past one winds in a page")
+    check(!RingsMath.beginsWinding(start: CGPoint(x: 100, y: 10), translation: CGSize(width: 1, height: 12), center: c, inVerticalScroll: false), "across the rings never winds")
     check(RingsMath.isHorizontalDrag(CGSize(width: 9, height: 3)) && !RingsMath.isHorizontalDrag(CGSize(width: 9, height: 12)) && !RingsMath.isHorizontalDrag(CGSize(width: 4, height: 0)), "horizontal drags")
 
     // blur and freeze

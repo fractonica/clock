@@ -35,7 +35,13 @@ struct RingsCentre: View {
         return mean < 6 * 3600 ? 0.1 : 1
     }
 
-    private var compact: Bool { radius < 118 }
+    /// How much the hole holds: everything from a radius of 118 points, the essentials in a phone's hole, only the glyph
+    /// and the countdown in a very small one (iPhone in landscape). Text never shrinks below legibility: what does not
+    /// fit is left to the cycle card.
+    private enum Tier { case full, compact, minimal }
+
+    private var tier: Tier { radius >= 118 ? .full : radius >= 66 ? .compact : .minimal }
+    private var compact: Bool { tier != .full }
     private var color: Color { Theme.levelColor(selected, lightness: 0.74) }
 
     @ViewBuilder
@@ -46,28 +52,31 @@ struct RingsCentre: View {
         let name = pure ? words.displayName(r) : RingsText.cycleTag(r)
         let countdown = pure ? words.centreSpan(from: t, to: r.end, compact: compact) : RingsText.countdownBody(r.remaining)
         let toNext = r.next.time != nil ? " · to \(r.next.name)" : ""
-        VStack(spacing: radius * 0.035) {
+        let tier = self.tier
+        VStack(spacing: tier == .full ? radius * 0.035 : 3) {
             GlyphView(index: r.index, strokes: 2, color: color)
-                .frame(height: radius * (compact ? 0.3 : 0.22))
-                .padding(.bottom, radius * 0.02)
-            Text(name)
-                .font(.code(radius * (compact ? 0.105 : 0.085), weight: .medium))
-                .foregroundStyle(color)
-                .lineLimit(2)
-                .multilineTextAlignment(.center)
-                .minimumScaleFactor(0.6)
-            Text(r.clipped ? "catalogue ends in" : "ends in")
-                .font(.system(size: radius * (compact ? 0.075 : 0.06), weight: .semibold))
-                .textCase(.uppercase)
-                .tracking(1.2)
-                .foregroundStyle(Theme.ink3)
+                .frame(height: radius * (tier == .full ? 0.27 : tier == .compact ? 0.3 : 0.4))
+                .padding(.bottom, tier == .full ? radius * 0.03 : 2)
+            if tier != .minimal {
+                Text(name)
+                    .font(.code(tier == .full ? radius * 0.085 : max(11, radius * 0.12), weight: .medium))
+                    .foregroundStyle(color)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.center)
+                    .minimumScaleFactor(0.75)
+                Text(r.clipped ? "catalogue ends in" : "ends in")
+                    .font(.system(size: tier == .full ? radius * 0.06 : max(8.5, radius * 0.08), weight: .semibold))
+                    .textCase(.uppercase)
+                    .tracking(tier == .full ? 1.2 : 0.8)
+                    .foregroundStyle(Theme.ink3)
+            }
             Text(countdown)
-                .font(.reading(radius * (compact ? 0.215 : 0.17), weight: .light))
+                .font(.reading(tier == .full ? radius * 0.17 : max(12, radius * 0.22), weight: .light))
                 .foregroundStyle(Theme.ink)
                 .opacity(blurred ? 0.5 : 1)
                 .lineLimit(1)
                 .minimumScaleFactor(0.5)
-            if !compact {
+            if tier == .full {
                 Text(endLine(r, pure: pure))
                     .font(.system(size: radius * 0.065).monospacedDigit())
                     .foregroundStyle(Theme.ink2)
@@ -75,17 +84,19 @@ struct RingsCentre: View {
                     .multilineTextAlignment(.center)
                     .minimumScaleFactor(0.7)
             }
-            HStack(spacing: radius * 0.03) {
-                Image(systemName: RingsText.phaseSymbol(word))
-                    .imageScale(.small)
-                Text("\(word)\(compact ? "" : toNext)")
+            if tier != .minimal {
+                HStack(spacing: tier == .full ? radius * 0.03 : 3) {
+                    Image(systemName: RingsText.phaseSymbol(word))
+                        .imageScale(.small)
+                    Text("\(word)\(tier == .full ? toNext : "")")
+                }
+                .font(.system(size: tier == .full ? radius * 0.062 : max(9.5, radius * 0.09), weight: .medium))
+                .foregroundStyle(color)
+                .padding(.horizontal, tier == .full ? radius * 0.07 : 7)
+                .padding(.vertical, tier == .full ? radius * 0.025 : 2)
+                .background(Theme.levelColor(selected, opacity: 0.14), in: .capsule)
+                .padding(.top, tier == .full ? radius * 0.02 : 1)
             }
-            .font(.system(size: radius * (compact ? 0.08 : 0.062), weight: .medium))
-            .foregroundStyle(color)
-            .padding(.horizontal, radius * 0.07)
-            .padding(.vertical, radius * 0.025)
-            .background(Theme.levelColor(selected, opacity: 0.14), in: .capsule)
-            .padding(.top, radius * 0.02)
         }
         .frame(maxWidth: radius * 1.5)
         .accessibilityElement(children: .ignore)
@@ -108,20 +119,24 @@ struct RingsCentre: View {
                 .font(.system(size: radius * 0.2, weight: .light))
                 .foregroundStyle(Theme.ink3)
             Text("Outside the catalogue")
-                .font(.system(size: radius * 0.095, weight: .semibold))
+                .font(.system(size: max(11, radius * 0.095), weight: .semibold))
                 .foregroundStyle(Theme.ink2)
             Text(pure ? RingsPureText().notation.catalogueText() : "\(earth.parts(clock.tMin).year)–\(earth.parts(clock.tMax).year)")
-                .font(.reading(radius * 0.13, weight: .light))
+                .font(.reading(max(13, radius * 0.13), weight: .light))
                 .foregroundStyle(Theme.ink)
             Text(pure ? "pos 0 → \(clock.extent)" : "\(earth.date(clock.tMin)) → \(earth.date(clock.tMax))")
-                .font(.system(size: radius * 0.065).monospacedDigit())
+                .font(.system(size: max(9, radius * 0.065)).monospacedDigit())
                 .foregroundStyle(Theme.ink3)
-            HStack(spacing: radius * 0.06) {
+            HStack(spacing: 8) {
                 Button("Start", systemImage: "backward.end") { go(to: clock.tMin + 0.001) }
                 Button("End", systemImage: "forward.end") { go(to: clock.tMax - 0.001) }
             }
-            .font(.system(size: max(12, radius * 0.085), weight: .medium))
+            .font(.footnote.weight(.medium))
+            .labelStyle(.titleAndIcon)
             .buttonStyle(.bordered)
+            .buttonBorderShape(.capsule)
+            .controlSize(.small)
+            .tint(Theme.ink2)
             .padding(.top, radius * 0.04)
         }
         .lineLimit(1)

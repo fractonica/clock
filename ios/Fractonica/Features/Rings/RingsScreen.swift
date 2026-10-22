@@ -30,6 +30,8 @@ struct RingsScreen: View {
                 .popover(isPresented: Bindable(model).showsOptions) {
                     RingsOptions(model: model)
                         .presentationCompactAdaptation(.popover)
+                        // a reading surface: the vivid dial behind clear glass would muddy the help text
+                        .presentationBackground(.regularMaterial)
                 }
             }
         }
@@ -37,24 +39,29 @@ struct RingsScreen: View {
             model.readLaunchArguments()
             model.startPendingRate(store)
             model.isVisible = true
+            #if os(iOS)
+            if model.turnsLandscape {
+                model.turnsLandscape = false
+                let scene = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first
+                scene?.requestGeometryUpdate(.iOS(interfaceOrientations: .landscapeRight)) { _ in }
+            }
+            #endif
         }
         .onDisappear { model.isVisible = false }
         .task { await model.openPendingOptions() }
     }
 
     /// Side by side when there is width to spare and the window is not tall.
-    static func isWide(_ size: CGSize) -> Bool {
-        size.width >= 600 && size.width > size.height * 1.05
-    }
+    static func isWide(_ size: CGSize) -> Bool { RingsScreenLayout.isWide(size) }
 
     // MARK: Layouts
 
     private func tall(_ size: CGSize) -> some View {
-        let dial = max(200, min(size.width - 24, 720, size.height * 0.92))
+        let dial = RingsScreenLayout.tallDial(size)
         return ScrollViewReader { proxy in
             ScrollView {
                 VStack(spacing: 18) {
-                    dialColumn(size: dial)
+                    dialColumn(size: dial, inVerticalScroll: true)
                     RingsCard(model: model)
                         .frame(maxWidth: 720)
                         .id("card")
@@ -76,26 +83,37 @@ struct RingsScreen: View {
     }
 
     private func wide(_ size: CGSize) -> some View {
-        let card = min(440, max(320, size.width * 0.36))
-        let dial = max(200, min(size.height - 80, size.width - card - 56))
-        return HStack(alignment: .center, spacing: 24) {
-            dialColumn(size: dial)
-                .frame(maxWidth: .infinity)
+        let layout = RingsScreenLayout.wide(size)
+        return HStack(alignment: .center, spacing: layout.spacing) {
+            Group {
+                if layout.stripWithCard {
+                    // a short window (iPhone in landscape): the dial takes the whole height, the strip goes with the card
+                    RingsDial(size: layout.dial, model: model)
+                } else {
+                    dialColumn(size: layout.dial)
+                }
+            }
+            .frame(maxWidth: .infinity)
             ScrollView {
-                RingsCard(model: model)
-                    .padding(.vertical, 16)
-                    .frame(minHeight: size.height, alignment: .center)
+                VStack(spacing: 14) {
+                    if layout.stripWithCard {
+                        RingsLevelStrip(model: model)
+                    }
+                    RingsCard(model: model)
+                }
+                .padding(.vertical, layout.stripWithCard ? 8 : 16)
+                .frame(minHeight: size.height, alignment: .center)
             }
             .scrollBounceBehavior(.basedOnSize)
             .scrollIndicators(.hidden)
-            .frame(width: card)
+            .frame(width: layout.card)
         }
-        .padding(.horizontal, 20)
+        .padding(.horizontal, layout.stripWithCard ? 8 : 20)
     }
 
-    private func dialColumn(size: CGFloat) -> some View {
+    private func dialColumn(size: CGFloat, inVerticalScroll: Bool = false) -> some View {
         VStack(spacing: 12) {
-            RingsDial(size: size, model: model)
+            RingsDial(size: size, model: model, inVerticalScroll: inVerticalScroll)
             RingsLevelStrip(model: model)
                 .frame(maxWidth: size)
         }

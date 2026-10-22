@@ -330,8 +330,9 @@ struct DialLabelLayer: View, Equatable {
                 let kr = max(2.6, lay.thick * (0.46 + 0.16 * e))
                 arcText(&layer, segments, center: lay.center, radius: lay.track(i).mid, gap: kr + 3)
             }
-            // quarter names on the selected ring
-            if s.quarters && s.inRange, let i = s.rings.firstIndex(where: { $0.level == s.emphasis.selected }) {
+            // quarter names on the selected ring (a small dial keeps only its beads: the pills would cover the rings,
+            // and the wave beside it names the quarters)
+            if s.quarters && s.inRange && lay.size >= 240, let i = s.rings.firstIndex(where: { $0.level == s.emphasis.selected }) {
                 let p = LevelPalette(level: s.emphasis.selected)
                 let mid = lay.track(i).mid
                 let qf = min(11, max(8, lay.thick * 0.75))

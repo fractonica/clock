@@ -16,6 +16,8 @@ import SwiftUI
 ///     -FXRingsScroll 1          scroll the iPhone page down to the bottom of the cycle card
 ///     -FXRingsRate <rate>       start a time-lapse at this many displayed seconds per real second (blurred rings)
 ///     -FXRingsWide 1            lay the screen out side by side whatever the window's shape (landscape checks)
+///     -FXRingsLandscape 1       turn an iPhone to landscape when the screen appears (iOS)
+///     -FXRingsHover <level>[:<sector>]     put a virtual pointer over a ring (or sector): its highlight and tooltip
 @MainActor @Observable
 final class RingsScreenModel {
     var selectionOverride: Int?
@@ -28,6 +30,8 @@ final class RingsScreenModel {
     var scrollsToCard = false
     /// Launch: the side-by-side layout whatever the window's shape.
     var forcesWide = false
+    /// Launch: turn the device to landscape.
+    @ObservationIgnored var turnsLandscape = false
     /// The ring index a drag is winding.
     var scrubbingRing: Int?
     /// The wave's cursor is being dragged.
@@ -40,6 +44,7 @@ final class RingsScreenModel {
     var selectionStep = 0.0
 
     @ObservationIgnored private var pendingPreview: (level: Int, sector: Int?)?
+    @ObservationIgnored private var pendingHover: (level: Int, sector: Int?)?
     @ObservationIgnored private var launchRead = false
     @ObservationIgnored private var pendingOptions = false
     @ObservationIgnored private var pendingRate: Double?
@@ -102,9 +107,14 @@ final class RingsScreenModel {
             let parts = text.split(separator: ":").compactMap { Int($0) }
             if let level = parts.first, AppSettings.levels.contains(level) { pendingPreview = (level, parts.count > 1 ? parts[1] : nil) }
         }
+        if let text = string("FXRingsHover") {
+            let parts = text.split(separator: ":").compactMap { Int($0) }
+            if let level = parts.first, AppSettings.levels.contains(level) { pendingHover = (level, parts.count > 1 ? parts[1] : nil) }
+        }
         if let options = string("FXRingsOptions"), options == "1" { pendingOptions = true }
         if string("FXRingsScroll") == "1" { scrollsToCard = true }
         if string("FXRingsWide") == "1" { forcesWide = true }
+        if string("FXRingsLandscape") == "1" { turnsLandscape = true }
         if let rate = string("FXRingsRate").flatMap(Double.init), rate.isFinite, rate != 0 { pendingRate = rate }
         if let help = string("FXRingsHelp"), help == "1" {
             pendingOptions = true
@@ -136,6 +146,25 @@ final class RingsScreenModel {
         let phase = sector.map { (Double($0) + 0.5) / Double(reading.factor) } ?? 0.125
         preview = RingsPreviewTarget(level: pending.level, ring: pending.level - range.minLevel, sector: sector, phase: phase)
     }
+}
+
+extension RingsScreenModel {
+    /// The virtual pointer a launch argument asked for: the ring it rests on and the dial phase (placed on the dial at
+    /// its size of the moment, which the first layout pass does not know yet).
+    func takePendingHover(range: DepthRange, clock: FractonicaClock = .shared) -> RingsVirtualPointer? {
+        guard let pending = pendingHover else { return nil }
+        pendingHover = nil
+        guard range.contains(pending.level) else { return nil }
+        let factor = clock.levelInfo(pending.level).factor
+        let phase = pending.sector.map { (Double(min(max($0, 0), factor - 1)) + 0.5) / Double(factor) } ?? 0.125
+        return RingsVirtualPointer(ring: pending.level - range.minLevel, phase: phase)
+    }
+}
+
+/// Where a launch argument's virtual pointer rests: a ring index and a dial phase.
+struct RingsVirtualPointer: Equatable {
+    let ring: Int
+    let phase: Double
 }
 
 /// What a touch-and-hold on the dial asks about: a ring, or one of its sectors (a child cycle).

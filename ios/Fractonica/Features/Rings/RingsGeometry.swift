@@ -89,6 +89,47 @@ struct RingLayout: Equatable, Sendable {
     }
 }
 
+// MARK: - Screen layout
+
+/// How the Rings screen shares its window between the dial and the cycle card.
+struct RingsScreenLayout: Equatable, Sendable {
+    /// Side of the dial.
+    let dial: CGFloat
+    /// Width of the card column (wide layouts).
+    let card: CGFloat
+    let spacing: CGFloat
+    /// The window is too short for the ring strip under the dial (iPhone in landscape): the dial takes the whole
+    /// height and the strip heads the card column.
+    let stripWithCard: Bool
+
+    /// Below this height a wide window keeps the strip with the card.
+    static let shortHeight: CGFloat = 480
+
+    /// Side by side when there is width to spare and the window is not tall.
+    static func isWide(_ size: CGSize) -> Bool {
+        size.width >= 600 && size.width > size.height * 1.05
+    }
+
+    /// The dial of the scrolling (tall) layout: the full width, but never taller than the window.
+    static func tallDial(_ size: CGSize) -> CGFloat {
+        max(200, min(size.width - 24, 720, size.height * 0.92))
+    }
+
+    /// The side-by-side layout: the dial never taller than the window (with its strip under it when there is room).
+    static func wide(_ size: CGSize) -> RingsScreenLayout {
+        if size.height < shortHeight {
+            let spacing: CGFloat = 16
+            let dial = max(120, min(size.height - 8, size.width * 0.5))
+            let card = max(260, min(520, size.width - dial - spacing - 16))
+            return RingsScreenLayout(dial: dial, card: card, spacing: spacing, stripWithCard: true)
+        }
+        let spacing: CGFloat = 24
+        let card = min(440, max(320, size.width * 0.36))
+        let dial = max(160, min(size.height - 64, size.width - card - spacing - 40))
+        return RingsScreenLayout(dial: dial, card: card, spacing: spacing, stripWithCard: false)
+    }
+}
+
 // MARK: - Plain maths
 
 enum RingsMath {
@@ -192,6 +233,16 @@ enum RingsMath {
         let radial = abs(dx * ux + dy * uy)
         let tangential = abs(dx * uy - dy * ux)
         return tangential > radial * 0.9
+    }
+
+    /// Whether a drag that starts on a ring winds its hand. It must run along the ring; in a page that scrolls
+    /// vertically it must also not start steeply upwards or downwards, so that a thumb scrolling over the dial's 3 and
+    /// 9 o'clock sides (where a ring runs vertically) still scrolls the page instead of moving the time. Once a winding
+    /// has begun it may go any way round.
+    static func beginsWinding(start: CGPoint, translation: CGSize, center: CGPoint, inVerticalScroll: Bool) -> Bool {
+        guard isTangentialDrag(start: start, translation: translation, center: center) else { return false }
+        guard inVerticalScroll else { return true }
+        return abs(translation.height) < abs(translation.width) * 1.5
     }
 
     /// A drag that moves sideways by more than `slop` and more than it moves vertically (a scrub, not a scroll).

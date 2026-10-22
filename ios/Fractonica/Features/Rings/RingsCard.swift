@@ -53,7 +53,10 @@ struct RingsCard: View {
     @ViewBuilder
     private func header(_ t: Double, level: Int) -> some View {
         let color = Theme.levelColor(level, lightness: 0.74)
-        HStack(alignment: .center, spacing: 14) {
+        // large type: the reading goes under the name instead of squeezing it
+        let stacked = typeSize.isAccessibilitySize
+        let layout = stacked ? AnyLayout(VStackLayout(alignment: .leading, spacing: 10)) : AnyLayout(HStackLayout(alignment: .center, spacing: 14))
+        layout {
             VStack(alignment: .leading, spacing: 5) {
                 Text("\(settings.wording.levelName(level)) · \(settings.wording.levelLength(level))")
                     .font(.caption.weight(.semibold).monospacedDigit())
@@ -78,9 +81,9 @@ struct RingsCard: View {
                         .foregroundStyle(Theme.ink2)
                 }
             }
-            Spacer(minLength: 8)
+            if !stacked { Spacer(minLength: 8) }
             if let r = reading(t, level) {
-                phase(r, color: color)
+                phase(r, color: color, alignment: stacked ? .leading : .trailing)
             }
         }
         .accessibilityElement(children: .combine)
@@ -89,8 +92,8 @@ struct RingsCard: View {
     /// How far through the cycle: a percentage, or in pure mode two glyphs (256 states) for a minor cycle and the
     /// quarter word for a major one.
     @ViewBuilder
-    private func phase(_ r: LevelReading, color: Color) -> some View {
-        VStack(alignment: .trailing, spacing: 3) {
+    private func phase(_ r: LevelReading, color: Color, alignment: HorizontalAlignment) -> some View {
+        VStack(alignment: alignment, spacing: 3) {
             if !settings.pure {
                 Text(RingsText.percent(r.phase))
                     .font(.reading(readingSize, weight: .light))
@@ -200,7 +203,8 @@ struct RingsCard: View {
             }
             .lineLimit(1)
             .minimumScaleFactor(0.7)
-            .frame(maxWidth: .infinity, alignment: .leading)
+            // every chip of a row as tall as the tallest (the next one carries a countdown line)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .padding(.horizontal, 10)
             .padding(.vertical, 8)
             .background {
