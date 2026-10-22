@@ -144,9 +144,12 @@ struct UnitRail: View {
     let items: [RailItem]
     /// What VoiceOver calls the rail ("Journal unit", "Watch depth").
     let title: String
+    /// Larger beside a tall face.
+    var scale: CGFloat = 1
     let onSelect: (Int) -> Void
 
-    @ScaledMetric(relativeTo: .footnote) private var row: CGFloat = 21
+    @ScaledMetric(relativeTo: .footnote) private var baseRow: CGFloat = 21
+    private var row: CGFloat { baseRow * scale }
     @State private var scrubbing: Int?
 
     var body: some View {
@@ -163,7 +166,7 @@ struct UnitRail: View {
             VStack(spacing: 0) {
                 ForEach(items) { item in
                     Text(verbatim: item.letter)
-                        .font(.footnote.weight(item.state == .lead ? .bold : .medium))
+                        .font((scale > 1.15 ? Font.body : .footnote).weight(item.state == .lead ? .bold : .medium))
                         .foregroundStyle(color(item))
                         .frame(width: row * 1.25, height: row)
                 }

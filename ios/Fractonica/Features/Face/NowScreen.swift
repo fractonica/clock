@@ -121,7 +121,7 @@ struct NowScreen: View {
                     .frame(width: layout.faceAreaWidth, height: layout.wideFaceHeight)
                 dots
             }
-            ReadingsPanel(leadLevel: leadLevel, fixed: launch.time, showsPeriods: layout.size.height >= 460)
+            ReadingsPanel(leadLevel: leadLevel, fixed: launch.time, showsPeriods: layout.size.height >= 460, roomy: layout.roomy)
                 .frame(width: layout.panelWidth, alignment: .leading)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -136,13 +136,13 @@ struct NowScreen: View {
             FacePage(layout: layout) {
                 journalFace
             } rail: {
-                UnitRail(items: UnitRail.journal(unit: unit), title: "Journal unit") { selectUnit($0) }
+                UnitRail(items: UnitRail.journal(unit: unit), title: "Journal unit", scale: layout.railScale) { selectUnit($0) }
             }
         } second: {
             FacePage(layout: layout) {
                 watchFace
             } rail: {
-                UnitRail(items: UnitRail.watch(topDepth: depth), title: "Watch depth") { selectDepth($0 + 2) }
+                UnitRail(items: UnitRail.watch(topDepth: depth), title: "Watch depth", scale: layout.railScale) { selectDepth($0 + 2) }
             }
         }
     }
@@ -477,8 +477,11 @@ struct NowLayout: Equatable {
     let size: CGSize
 
     /// Room for the rail of letters on each side of the face.
-    let railWidth: CGFloat = 28
-    let railGap: CGFloat = 14
+    var railWidth: CGFloat { 28 * railScale }
+    var railGap: CGFloat { 14 * railScale }
+    /// A tall face (a big iPad) gets a larger rail and readings, so neither looks lost beside it.
+    var roomy: Bool { size.height >= 900 && size.width >= 700 }
+    var railScale: CGFloat { roomy ? 1.3 : 1 }
     /// The face never grows past this height (a 13-inch iPad would make it a wall).
     let maxFaceHeight: CGFloat = 860
     /// Below the face on wide layouts: the page dots.
@@ -506,5 +509,5 @@ struct NowLayout: Equatable {
     var faceAreaWidth: CGFloat { wideFaceHeight * FaceSpace.aspectRatio + 2 * (railWidth + railGap) }
 
     /// Wide layouts: the readings column, as wide as its longest line wants and the space allows.
-    var panelWidth: CGFloat { max(200, min(360, size.width - faceAreaWidth - 2 * gap)) }
+    var panelWidth: CGFloat { max(200, min(roomy ? 460 : 360, size.width - faceAreaWidth - 2 * gap)) }
 }
