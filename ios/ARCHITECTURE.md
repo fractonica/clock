@@ -238,7 +238,7 @@ a new one, look it up in the iOS 18.6 simulator runtime's
 `/System/Library/CoreServices/CoreGlyphs.bundle/Contents/Resources/name_availability.plist`, whose `year_to_release`
 maps 2024 to iOS 18 and 2025 to iOS 26); pick its name with `#available` where it is newer. Every
 symbol the app and widgets use today is available on iOS 18.6. iOS 18's `.bordered` menus measure a label with a custom
-font short (Focus's session menu gives its label `.fixedSize()`). Look at a change on both systems:
+font short (Focus's session menu gives its label `.fixedSize()`). iOS 18 keeps a scroll view's content offset, not its `scrollPosition` id, when the scroll view changes size (a first layout narrower than the screen, a rotation): scroll to the id again in `onScrollGeometryChange` of the container size, as the Timer's `UnitWheel` does. Look at a change on both systems:
 `shoot.sh --runtime iOS-18-6 --type "iPhone 16 Pro"` (or `--type "iPad Pro 11-inch (M4)"`) beside the default iOS 27
 device.
 
