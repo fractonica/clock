@@ -108,6 +108,11 @@ struct UnitWheel: View {
             proxy.scrollTo(value, anchor: .center)
             position = value
         }
+        .onScrollGeometryChange(for: CGFloat.self, of: \.containerSize.height) { _, _ in
+            // iOS 18 keeps the content offset, not the centred row, when the wheel changes size (its first layout is
+            // narrower than the screen; a rotation lays it out anew) and ends at the top: centre the value again.
+            proxy.scrollTo(value, anchor: .center)
+        }
         .onChange(of: position) { _, new in
             if let new, new != value, range.contains(new) { value = new }
         }
