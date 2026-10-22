@@ -600,14 +600,18 @@ struct AlertLaunchOptions: Sendable {
     /// A hook that shows without scheduling is set.
     var isPreview: Bool { (demo && !live) || now != nil || authorization != nil }
 
-    static func current(_ defaults: UserDefaults = .standard) -> AlertLaunchOptions {
+    static func current(_ defaults: UserDefaults = .standard,
+                        arguments: [String] = CommandLine.arguments) -> AlertLaunchOptions {
         let args = defaults.volatileDomain(forName: UserDefaults.argumentDomain)
         func string(_ key: String) -> String? { (args[key] as? String) ?? (args[key] as? NSNumber)?.stringValue }
         func flag(_ key: String) -> Bool { string(key).map { ["1", "yes", "true"].contains($0.lowercased()) } ?? false }
+        // The argument domain reads "-FXAlertsNow -11253790000" as two flags: a moment before 1970 comes from the raw
+        // arguments, the token after the flag whatever its sign (as the shell's -FXTime).
+        let rawNow = arguments.firstIndex(of: "-FXAlertsNow").flatMap { i in i + 1 < arguments.count ? arguments[i + 1] : nil }
         return AlertLaunchOptions(
             demo: flag("FXAlertsDemo"),
             live: flag("FXAlertsLive"),
-            now: string("FXAlertsNow").flatMap(Double.init).flatMap { $0.isFinite ? $0 : nil },
+            now: (rawNow ?? string("FXAlertsNow")).flatMap(Double.init).flatMap { $0.isFinite ? $0 : nil },
             authorization: string("FXAlertsAuth").flatMap { AlertStore.Authorization(rawValue: $0) },
             edit: string("FXAlertsEdit"),
             quiet: flag("FXAlertsQuiet"),
