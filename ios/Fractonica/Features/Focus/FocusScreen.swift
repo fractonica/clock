@@ -147,7 +147,8 @@ struct FocusScreen: View {
             breathing: model.breathing,
             calm: reduceMotion || launch.calm,
             dimmed: overlayShown,
-            active: scenePhase != .background,
+            // The sidebar's Focus rests while the full-screen one covers it (both would draw every frame).
+            active: scenePhase != .background && (isImmersive || !router.isFocusPresented),
             timeOverride: launch.time,
             logStats: launch.stats
         )

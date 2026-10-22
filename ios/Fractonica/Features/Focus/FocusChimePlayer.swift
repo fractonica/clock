@@ -6,27 +6,49 @@ import Foundation
 @MainActor
 enum FocusChimePlayer {
     private static var soundID: SystemSoundID?
+    private static var preparing = false
+    /// A session ended before the chime was ready: play it as soon as it is.
+    private static var playWhenReady = false
 
-    /// Synthesises the chime into the caches folder once and registers it; cheap afterwards.
+    /// Synthesises the chime into the caches folder once (off the main thread: it is a few million samples' worth
+    /// of maths) and registers it; cheap afterwards.
     static func prepare() {
-        guard soundID == nil else { return }
-        let folder = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first ?? FileManager.default.temporaryDirectory
-        let url = folder.appendingPathComponent("focus-chime-v1.wav")
-        if !FileManager.default.fileExists(atPath: url.path) {
-            do {
-                try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-                try FocusChimeSynth.wav().write(to: url, options: .atomic)
-            } catch {
-                return
+        guard soundID == nil, !preparing else { return }
+        preparing = true
+        Task {
+            let url = await Task.detached(priority: .utility) { writtenChime() }.value
+            preparing = false
+            var id: SystemSoundID = 0
+            guard let url, AudioServicesCreateSystemSoundID(url as CFURL, &id) == kAudioServicesNoError else { return }
+            soundID = id
+            if playWhenReady {
+                playWhenReady = false
+                AudioServicesPlaySystemSound(id)
             }
         }
-        var id: SystemSoundID = 0
-        guard AudioServicesCreateSystemSoundID(url as CFURL, &id) == kAudioServicesNoError else { return }
-        soundID = id
     }
 
     static func play() {
-        prepare()
-        if let soundID { AudioServicesPlaySystemSound(soundID) }
+        if let soundID {
+            AudioServicesPlaySystemSound(soundID)
+        } else {
+            playWhenReady = true
+            prepare()
+        }
+    }
+
+    /// The chime's file, written on first use; nil when it cannot be written.
+    private nonisolated static func writtenChime() -> URL? {
+        let files = FileManager.default
+        let folder = files.urls(for: .cachesDirectory, in: .userDomainMask).first ?? files.temporaryDirectory
+        let url = folder.appendingPathComponent("focus-chime-v1.wav")
+        if files.fileExists(atPath: url.path) { return url }
+        do {
+            try files.createDirectory(at: folder, withIntermediateDirectories: true)
+            try FocusChimeSynth.wav().write(to: url, options: .atomic)
+            return url
+        } catch {
+            return nil
+        }
     }
 }
