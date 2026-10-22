@@ -492,6 +492,10 @@ private struct OptionsPresentation: ViewModifier {
         } else {
             content.inspector(isPresented: $isPresented) {
                 DiaryOptionsView(model: .shared)
+                    #if os(iOS)
+                    // the transport floats over the bottom of the inspector on iPad: the last rows scroll clear of it
+                    .contentMargins(.bottom, 72, for: .scrollContent)
+                    #endif
                     .inspectorColumnWidth(min: 300, ideal: 340, max: 420)
             }
         }
