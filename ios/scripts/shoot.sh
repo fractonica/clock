@@ -14,9 +14,9 @@
 #   ios/scripts/shoot.sh --no-build --device "fx-rings" /tmp/rings.png -FXTab rings -FXPure 1
 #   ios/scripts/shoot.sh --no-build --device "fx-rings-ipad" --type "iPad Pro 13-inch (M5)" /tmp/ipad.png -FXTab rings
 #
-# Launch arguments are the app's test hooks (ios/ARCHITECTURE.md): -FXTab, -FXTime, -FXPure, -FXZone, -FXLink. (Links
-# go through -FXLink: `simctl openurl` stops at a system "Open in …?" prompt.) New devices use the iOS 27.0 runtime.
-# The status bar shows 9:41 for clean shots. DerivedData: $DERIVED_DATA as build.sh.
+# Launch arguments are the app's test hooks (ios/ARCHITECTURE.md): -FXTab, -FXTime, -FXPure, -FXZone, -FXLink,
+# -FXRate. (Links go through -FXLink: `simctl openurl` stops at a system "Open in …?" prompt.) New devices use the
+# iOS 27.0 runtime. The status bar shows 9:41 for clean shots. DerivedData: $DERIVED_DATA as build.sh.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
