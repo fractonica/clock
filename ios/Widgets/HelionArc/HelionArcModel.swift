@@ -64,11 +64,16 @@ struct HelionArcSnapshot: Hashable, Sendable {
 /// Preon (only the dot moves, along the wave) and moves on by exactly one Preon, 1/36, at each Preon start (where it
 /// is not resting against an end).
 ///
-/// The dot stands at `position`: the Preon's phase laid along its stretch, not quite the moment's true place
-/// (n + phase)/36 (`truth`). Where the stretch is centred (n = 3 … 32) it is off by (phase − ½)(window − 1/36):
-/// exactly on it at mid-Preon, never more than ±(window − 1/36)/2 = ±1/12 of the arc away. In the first three and the
-/// last three Preons, where the stretch rests against an end, the offset runs from −n/36 to (6 − n)/36 (mirrored at
-/// the far end): at most window − 1/36 = 1/6, reached only at the Helion's very start and very end.
+/// The dot rides the wave angle-linearly on its half-arcs (like the journal's tick), so its foot on the Helion's arc,
+/// `position`, is the stretch's start plus x(phase)·window, x the wave's own double arc's progress across (½ at
+/// mid-Preon, within 0.053 of the phase elsewhere): not quite the true place of its phase, (n + phase)/36 (`truth`).
+/// Where the stretch is centred (n = 3 … 32) it is off by (phase − ½)(window − 1/36) + (x(phase) − phase)·window:
+/// exactly on it at mid-Preon; at the dot's sixteen places (the middles of the Preon's sixteenths) never more than
+/// 0.0833 of the arc away, just under (window − 1/36)/2 = 1/12, at the first and the last sixteenth. In the first
+/// three and the last three Preons, where the stretch rests against an end, the offset at those places lies within
+/// −n/36 … (6 − n)/36 (mirrored at the far end): at most 0.1666, just under window − 1/36 = 1/6, at the Helion's very
+/// start and very end. The dot stands for its whole sixteenth, so from the moment itself it is off by up to half a
+/// sixteenth of a Preon, 1/1152 of the arc, more: within 1/12 + 1/1152 where centred.
 struct HelionArcGeometry: Sendable {
     /// Preons in a Helion (9 θ × 4 ι).
     static let preons = 36
@@ -113,11 +118,13 @@ struct HelionArcGeometry: Sendable {
         return start...(start + window)
     }
 
-    /// Where the dot of Preon `preon` at its phase `phase` stands along the double arc (0 … 1): the phase laid along
-    /// the Preon's stretch. Not quite the moment's true place (`truth`): see the type's notes for how far off.
+    /// Where the dot of Preon `preon` at its phase `phase` stands along the double arc (0 … 1): the foot on the
+    /// Helion's arc of its place on the wave (`wave(preon:phase:)` lifts it off the arc square to it there). Not quite
+    /// the moment's true place (`truth`): see the type's notes for how far off.
     static func position(preon: Int, phase: Double) -> Double {
-        let w = window(preon: preon)
-        return w.lowerBound + min(1, max(0, phase)) * window
+        // the wave's own double arc, 4 radii across: how far across it the phase has come
+        let across = Journal.arcPoint(phase, cl: 1, cr: 3, cy: 0, r: 1).x / 4
+        return window(preon: preon).lowerBound + across * window
     }
 
     /// The moment's true place along the double arc: the Helion's progress, where the journal face's tick stands.
@@ -145,8 +152,7 @@ struct HelionArcGeometry: Sendable {
     func wave(preon: Int, phase: Double) -> CGPoint {
         // the wave's own double arc, 4 radii across, its first half below the axis (y > 0)
         let local = Journal.arcPoint(phase, cl: 1, cr: 3, cy: 0, r: 1)
-        let w = Self.window(preon: preon)
-        let carrier = arc(w.lowerBound + local.x / 4 * Self.window)
+        let carrier = arc(Self.position(preon: preon, phase: phase))
         let lift = local.y * Self.amplitude * r
         return CGPoint(x: carrier.point.x + carrier.side.dx * lift, y: carrier.point.y + carrier.side.dy * lift)
     }

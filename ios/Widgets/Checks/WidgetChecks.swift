@@ -357,16 +357,13 @@ enum WidgetChecks {
                 // the stretch holds the moment's true place; the dot moves forward through it
                 if truth < w.lowerBound - 1e-12 || truth > w.upperBound + 1e-12 { magnifier.append("\(preon) \(p): true place \(truth) off \(w)") }
                 if k > 0 && at <= G.position(preon: preon, phase: Double(k - 1) / 64) { magnifier.append("\(preon) \(p): not forward") }
-                // the dot's offset from the true place: (phase − ½)(window − 1/36) where centred, exact at mid-Preon
-                let off = at - truth
-                if centred.contains(preon) {
-                    offCentred = max(offCentred, abs(off))
-                    if abs(off - (p - 0.5) * (G.window - preonShare)) > 1e-12 { magnifier.append("\(preon) \(p): offset \(off)") }
-                } else {
-                    offEnds = max(offEnds, abs(off))
-                    let n = Double(preon < centred.lowerBound ? preon : G.preons - 1 - preon)
-                    let range = preon < centred.lowerBound ? (-n * preonShare)...((6 - n) * preonShare) : (-(6 - n) * preonShare)...(n * preonShare)
-                    if off < range.lowerBound - 1e-12 || off > range.upperBound + 1e-12 { magnifier.append("\(preon) \(p): offset \(off) off \(range)") }
+                // the dot's foot: the stretch's start plus how far across the wave's own double arc it has come
+                // (angle-linear on its half-arcs, so within 0.053 of the phase)
+                let across = Journal.arcPoint(p, cl: 1, cr: 3, cy: 0, r: 1).x / 4
+                if abs(at - (w.lowerBound + across * G.window)) > 1e-15 || abs(across - p) > 0.053 { magnifier.append("\(preon) \(p): foot \(at)") }
+                // where centred, off its phase's true place by (phase − ½)(window − 1/36) + (across − phase)·window
+                if centred.contains(preon) && abs(at - truth - ((p - 0.5) * (G.window - preonShare) + (across - p) * G.window)) > 1e-12 {
+                    magnifier.append("\(preon) \(p): offset \(at - truth)")
                 }
                 // the Helion's arc outside the stretch: bright exactly before the moment; the bright line never
                 // passes the moment, the wave carries it on
@@ -383,11 +380,31 @@ enum WidgetChecks {
             if abs(G.position(preon: preon, phase: 0.5) - G.truth(preon: preon, phase: 0.5)) > 1e-12 && centred.contains(preon) {
                 magnifier.append("\(preon): the dot on the true place at mid-Preon")
             }
+            // the dot at its sixteen places (the middles of the Preon's sixteenths): off its phase's true place by no
+            // more than 1/12 where centred and −n/36 … (6 − n)/36 at the ends (mirrored at the far end); off the moment
+            // itself, anywhere in its sixteenth, by at most half a sixteenth of a Preon (1/1152 of the arc) more
+            let n = Double(preon < centred.lowerBound ? preon : G.preons - 1 - preon)
+            let range = centred.contains(preon) ? (-(G.window - preonShare) / 2)...((G.window - preonShare) / 2)
+                : preon < centred.lowerBound ? (-n * preonShare)...((6 - n) * preonShare) : (-(6 - n) * preonShare)...(n * preonShare)
+            let halfStep = 0.5 / Double(HelionArcSnapshot.steps) * preonShare
+            for step in 0..<HelionArcSnapshot.steps {
+                let p = (Double(step) + 0.5) / Double(HelionArcSnapshot.steps), at = G.position(preon: preon, phase: p)
+                let off = at - G.truth(preon: preon, phase: p)
+                if centred.contains(preon) { offCentred = max(offCentred, abs(off)) } else { offEnds = max(offEnds, abs(off)) }
+                if !range.contains(off) { magnifier.append("\(preon) step \(step): offset \(off) off \(range)") }
+                for j in 0...8 {
+                    let moment = G.truth(preon: preon, phase: (Double(step) + Double(j) / 8) / Double(HelionArcSnapshot.steps))
+                    if at - moment < range.lowerBound - halfStep - 1e-12 || at - moment > range.upperBound + halfStep + 1e-12 {
+                        magnifier.append("\(preon) step \(step): \(at - moment) from the moment")
+                    }
+                }
+            }
         }
         check(G.window(preon: 0).lowerBound == 0 && abs(G.window(preon: G.preons - 1).upperBound - 1) < 1e-12, "the stretch rests at the arc's ends")
-        // the bounds the geometry's notes state, and that they are reached
-        check(abs(offCentred - (G.window - preonShare) / 2) < 1e-12, "the dot within ±(window − 1/36)/2 = ±1/12 where centred: \(offCentred)")
-        check(abs(offEnds - (G.window - preonShare)) < 1e-12, "the dot within ±(window − 1/36) = ±1/6 at the ends: \(offEnds)")
+        // the bounds the geometry's notes state (0.0833, just under 1/12, where centred; 0.1666, just under 1/6, at the
+        // ends), and that they are reached
+        check(offCentred > 0.08326 && offCentred < (G.window - preonShare) / 2, "the dot within 0.0833 < 1/12 of its true place where centred: \(offCentred)")
+        check(offEnds > 0.16659 && offEnds < G.window - preonShare, "the dot within 0.1666 < 1/6 of its true place at the ends: \(offEnds)")
         check(magnifier.isEmpty, "the magnifier: \(magnifier.prefix(4))")
 
         // against the journal face (the Journal widget's arc) at the moments the render harness draws and at random:
@@ -458,6 +475,17 @@ enum WidgetChecks {
                 for step in [0, 7, 15] {
                     let p = (Double(step) + 0.5) / 16
                     if !near(g.wave(preon: preon, from: 0, to: p).last!, g.wave(preon: preon, phase: p)) { waves.append("\(preon) \(step): dot") }
+                }
+                // the dot stands square off the arc at its foot, `position`, the arc's nearest point to it: where the
+                // bounds above measure it
+                for step in 0..<HelionArcSnapshot.steps {
+                    let p = (Double(step) + 0.5) / Double(HelionArcSnapshot.steps)
+                    let foot = g.arc(G.position(preon: preon, phase: p)), d = g.wave(preon: preon, phase: p)
+                    let off = CGVector(dx: d.x - foot.point.x, dy: d.y - foot.point.y), distance = hypot(off.dx, off.dy)
+                    if abs(off.dx * foot.side.dy - off.dy * foot.side.dx) > 1e-9 { waves.append("\(preon) \(step): the dot not square off its foot") }
+                    if (0...1000).contains(where: { let q = g.arc(Double($0) / 1000).point; return hypot(q.x - d.x, q.y - d.y) < distance - 1e-9 }) {
+                        waves.append("\(preon) \(step): the dot nearer another point of the arc than its foot")
+                    }
                 }
                 // nothing leaves the frame, and the counts stay clear of the arc and of the wave wherever it rides
                 let points = g.arc(from: 0, to: 1) + g.wave(preon: preon, from: 0, to: 1)
