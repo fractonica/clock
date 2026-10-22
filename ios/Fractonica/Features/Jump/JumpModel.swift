@@ -5,8 +5,11 @@ import Observation
 /// The jump screen's state: the text in the field, what it reads as right now, and the recent jumps of the mode.
 @MainActor @Observable
 final class JumpModel {
-    /// The text in the search field.
-    var query = ""
+    /// The text in the search field (`JumpSearch`, shared with the field the iPhone tab bar shows).
+    var query: String {
+        get { search.query }
+        set { search.query = newValue }
+    }
     /// The readings of `query`, best first (errors only when nothing reads).
     private(set) var results: [JumpCandidate] = []
     /// The recent jumps of the current mode.
@@ -21,10 +24,17 @@ final class JumpModel {
     /// Demo history for screenshots: shown, never saved.
     @ObservationIgnored private var historyIsDemo = false
     @ObservationIgnored private let defaults: UserDefaults
+    @ObservationIgnored private let search: JumpSearch
+    /// `-FXJumpQuery` fills the field once per launch, not each time a screen makes its model.
+    private static var launchQueryApplied = false
 
-    init(defaults: UserDefaults = .standard) {
+    init(defaults: UserDefaults = .standard, search: JumpSearch = .shared) {
         self.defaults = defaults
-        query = Self.launchQuery ?? ""
+        self.search = search
+        if !Self.launchQueryApplied, let text = Self.launchQuery {
+            Self.launchQueryApplied = true
+            search.query = text
+        }
     }
 
     /// The best reading, if any can be travelled to.

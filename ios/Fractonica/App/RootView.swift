@@ -72,6 +72,7 @@ struct RootView: View {
 
 #if os(iOS)
 /// Now | Cycles | Calendar | Clock, and Jump as the search tab; the transport rides in the tab bar's bottom accessory.
+/// The Jump field is the search tab's own (`TabSearchField`), shared with JumpScreen through `JumpSearch`.
 private struct CompactRoot: View {
     @Environment(AppRouter.self) private var router
 
@@ -91,6 +92,7 @@ private struct CompactRoot: View {
             }
             Tab(Screen.jump.title, systemImage: Screen.jump.systemImage, value: CompactTab.jump, role: .search) {
                 ScreenStack(screen: .jump)
+                    .modifier(TabSearchField())
             }
         }
         .tabBarMinimizeBehavior(.onScrollDown)
@@ -109,6 +111,30 @@ private struct CompactRoot: View {
                 }
             }
         )
+    }
+}
+
+/// The Jump field of the iPhone layout, bound to `JumpSearch`: applied to the search tab's navigation stack (from
+/// outside it), so the system presents it as the search tab's field — over the tab's content with a close button while
+/// it has focus. (Applied to the whole `TabView`, the field would also show in every other tab's navigation bar.)
+private struct TabSearchField: ViewModifier {
+    @Environment(AppSettings.self) private var settings
+    @FocusState private var searchFocused: Bool
+
+    func body(content: Content) -> some View {
+        @Bindable var search = JumpSearch.shared
+        content
+            .searchable(text: $search.query, prompt: Text(JumpSearch.prompt(pure: settings.pure)))
+            .searchFocused($searchFocused)
+            .autocorrectionDisabled()
+            .textInputAutocapitalization(.never)
+            .onSubmit(of: .search) { search.submit() }
+            .onChange(of: searchFocused) { _, focused in
+                if search.isFocused != focused { search.isFocused = focused }
+            }
+            .onChange(of: search.isFocused, initial: true) { _, focused in
+                if searchFocused != focused { searchFocused = focused }
+            }
     }
 }
 
@@ -273,8 +299,8 @@ private struct ScreenStack: View {
 }
 
 extension View {
-    /// The backdrop and the toolbar items every screen shares: on iOS, Sound (iPhone), Focus and Settings on Now; on
-    /// macOS, the transport, Focus and Settings in every window toolbar.
+    /// The backdrop and the toolbar items every screen shares: on iOS, Sound (iPhone; iPad while it plays), Focus and
+    /// Settings on Now; on macOS, the transport, Sound (while it plays), Focus and Settings in every window toolbar.
     fileprivate func screenChrome(_ screen: Screen) -> some View {
         modifier(ScreenChrome(screen: screen))
     }
@@ -293,9 +319,10 @@ private struct ScreenChrome: ViewModifier {
                 #if os(iOS)
                 if screen == .now {
                     ToolbarItemGroup(placement: .topBarTrailing) {
-                        if router.isCompact {
+                        // iPhone: the way to Sound (a sheet). iPad lists Sound in the sidebar and shows the button only
+                        // while the sound plays, as its indicator.
+                        if router.isCompact || SoundIndicator.isOn {
                             Button(Screen.sound.title, systemImage: SoundIndicator.systemImage) { router.show(.sound) }
-                                .foregroundStyle(SoundIndicator.isOn ? Theme.teal : Theme.ink)
                                 .accessibilityValue(SoundIndicator.isOn ? "On" : "Off")
                         }
                         Button(Screen.focus.title, systemImage: Screen.focus.systemImage) { router.show(.focus) }
@@ -307,6 +334,10 @@ private struct ScreenChrome: ViewModifier {
                     TransportControls()
                 }
                 ToolbarItemGroup(placement: .primaryAction) {
+                    if SoundIndicator.isOn {
+                        Button(Screen.sound.title, systemImage: SoundIndicator.systemImage) { router.show(.sound) }
+                            .help("The sound plays: show Sound (M turns it off)")
+                    }
                     Button(Screen.focus.title, systemImage: Screen.focus.systemImage) { router.show(.focus) }
                         .help("Focus mode, full screen (⇧⌘F)")
                     SettingsLink {

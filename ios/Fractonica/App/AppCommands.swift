@@ -48,8 +48,12 @@ struct ClockCommands: Commands {
                 .keyboardShortcut("p", modifiers: [])
             Toggle("Sound", isOn: Binding(get: { SoundEngine.shared.isOn }, set: { _ in SoundEngine.shared.toggle() }))
                 .keyboardShortcut("m", modifiers: Self.soundModifiers)
-            Button("Jump…", systemImage: Screen.jump.systemImage) { show(.jump) }
-                .keyboardShortcut("k")
+            Button("Jump…", systemImage: Screen.jump.systemImage) {
+                show(.jump)
+                // also when Jump already shows: the field takes the focus
+                JumpSearch.shared.isFocused = true
+            }
+            .keyboardShortcut("k")
             Button("Focus", systemImage: Screen.focus.systemImage) { show(.focus) }
                 .keyboardShortcut("f", modifiers: [.command, .shift])
         }
