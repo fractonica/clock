@@ -23,6 +23,14 @@ struct Wording: Sendable {
         self.notation = notation
     }
 
+    /// Bound to an IANA identifier (nil = the device zone). Prefer this to `init(timeZone:)` for a chosen zone: Foundation
+    /// reports "UTC" as "GMT", and only the identifier keeps the web app's "UTC" tag.
+    init(pure: Bool, zone: String?, notation: Notation = .standard) {
+        self.pure = pure
+        earth = EarthFormatter(zone: zone)
+        self.notation = notation
+    }
+
     // MARK: Moments
 
     /// "2026-10-08" · pure "Delta Trifracton End ε#5 34η 29ι".
@@ -138,5 +146,5 @@ struct Wording: Sendable {
 
 extension AppSettings {
     /// The wording for the current mode and zone. Reading it makes a view follow both.
-    var wording: Wording { Wording(pure: pure, timeZone: timeZone) }
+    var wording: Wording { Wording(pure: pure, zone: zone) }
 }

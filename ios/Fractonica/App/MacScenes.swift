@@ -40,12 +40,26 @@ private struct FullScreenRequest: NSViewRepresentable {
 
 /// The menu bar item: the live minor clock, "34η 29ι" (the Helion in its Nuclide and the Preons completed).
 struct MenuBarLabel: View {
+    @State private var text = MenuBarLabel.reading(at: .now)
+
     var body: some View {
-        TimelineView(.periodic(from: .now, by: 1)) { context in
-            Text(Notation.standard.clockText(at: context.date.timeIntervalSince1970, upTo: "iota"))
-                .monospacedDigit()
-        }
-        .accessibilityLabel("Fractonica clock")
+        // A TimelineView in a MenuBarExtra label makes AppKit re-request the status item forever (100 % CPU at launch,
+        // no window); a plain Text refreshed by a task on each whole second does not.
+        Text(text)
+            .monospacedDigit()
+            .accessibilityLabel("Fractonica clock")
+            .task {
+                while !Task.isCancelled {
+                    let t = Date.now.timeIntervalSince1970
+                    try? await Task.sleep(for: .seconds(t.rounded(.down) + 1 - t + 0.005))
+                    let next = MenuBarLabel.reading(at: .now)
+                    if next != text { text = next }
+                }
+            }
+    }
+
+    private static func reading(at date: Date) -> String {
+        Notation.standard.clockText(at: date.timeIntervalSince1970, upTo: "iota")
     }
 }
 
