@@ -77,7 +77,7 @@ struct OverviewWidgetView: View {
                     HStack(spacing: 4) {
                         Text(Fractonica.periodName(ring.level).text)
                             .foregroundStyle(Theme.levelColor(ring.level))
-                        Text("\(ring.local + 1)/\(ring.siblings)")
+                        Text(verbatim: "\(ring.local + 1)/\(ring.siblings)")
                             .ink(.secondary)
                     }
                     .font(.reading(side * 0.05, weight: .medium))

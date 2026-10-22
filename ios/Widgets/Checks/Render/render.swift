@@ -189,8 +189,14 @@ enum Render {
                             }
                         }
                     }
-                    HomeCell(title: "large", size: Size.large[0]) {
-                        UpNextWidgetView(snapshot: snapshot, size: .large)
+                    VStack(alignment: .leading, spacing: 18) {
+                        HomeCell(title: "large", size: Size.large[0]) {
+                            UpNextWidgetView(snapshot: snapshot, size: .large)
+                        }
+                        // the shortest unit listed: from the Nuclide up
+                        HomeCell(title: "medium · from the Nuclide", size: Size.medium[0]) {
+                            UpNextWidgetView(snapshot: UpNextSnapshot(at: t, words: words, finest: 4), size: .medium)
+                        }
                     }
                 }
             }

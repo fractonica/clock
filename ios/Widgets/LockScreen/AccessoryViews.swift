@@ -17,7 +17,7 @@ struct HelionGaugeView: View {
                     .padding(3.5)
                     .widgetAccentable()
                 VStack(spacing: -3) {
-                    Text("\(s.helion)")
+                    Text(verbatim: String(s.helion))
                         .font(.system(size: 23, weight: .semibold, design: .rounded).monospacedDigit())
                         .minimumScaleFactor(0.6)
                     Text("η")

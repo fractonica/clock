@@ -96,7 +96,7 @@ struct RingsWidgetView: View {
                     Text(Fractonica.periodName(ring.level).text)
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(Theme.levelColor(ring.level))
-                    Text("\(ring.local + 1)/\(ring.siblings)")
+                    Text(verbatim: "\(ring.local + 1)/\(ring.siblings)")
                         .font(.reading(10))
                         .ink(.tertiary)
                 }

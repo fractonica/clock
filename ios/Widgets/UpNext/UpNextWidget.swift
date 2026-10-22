@@ -38,15 +38,15 @@ struct UpNextProvider: AppIntentTimelineProvider {
     }
 
     func snapshot(for configuration: UpNextWidgetIntent, in context: Context) async -> SnapshotEntry<UpNextSnapshot> {
-        let words = configuration.words
-        return SnapshotTimeline.entry { UpNextSnapshot(at: $0, words: words) }
+        let words = configuration.words, finest = configuration.from.level
+        return SnapshotTimeline.entry { UpNextSnapshot(at: $0, words: words, finest: finest) }
     }
 
     func timeline(for configuration: UpNextWidgetIntent, in context: Context) async -> Timeline<SnapshotEntry<UpNextSnapshot>> {
-        let words = configuration.words
+        let words = configuration.words, finest = configuration.from.level
         return SnapshotTimeline.timeline(
-            changes: { UpNextSnapshot.changes(at: $0, words: words) },
-            snapshot: { UpNextSnapshot(at: $0, words: words) },
+            changes: { UpNextSnapshot.changes(at: $0, words: words, finest: finest) },
+            snapshot: { UpNextSnapshot(at: $0, words: words, finest: finest) },
             relevance: Self.relevance
         )
     }
@@ -55,6 +55,8 @@ struct UpNextProvider: AppIntentTimelineProvider {
     static func relevance(_ snapshot: UpNextSnapshot, at t: Double) -> TimelineEntryRelevance? {
         guard let major = snapshot.turnovers.first(where: { $0.level <= 4 }) else { return nil }
         let lead = major.time - t
-        return lead < 900 ? TimelineEntryRelevance(score: 50, duration: max(1, lead + 60)) : TimelineEntryRelevance(score: 1)
+        return lead <= UpNextSnapshot.relevanceLead + 1
+            ? TimelineEntryRelevance(score: 50, duration: max(1, lead + 60))
+            : TimelineEntryRelevance(score: 1)
     }
 }
