@@ -8,21 +8,22 @@ struct WaveDepthBar: View {
     let model: WaveModel
     let control: WaveController
 
-    @Environment(\.dynamicTypeSize) private var typeSize
-
     var body: some View {
+        let rate = control.store.isLive ? 1 : abs(control.store.rate)
+        let halves = (0...Fractonica.maxLevel).map { control.engine.clock.levelInfo($0).meanSeconds / 2 }
+        let pace = WaveChipPace(halfSeconds: halves, rate: rate)
         GlassEffectContainer {
             HStack(spacing: 2) {
                 stepButton(-1)
                 ScrollViewReader { proxy in
                     ScrollView(.horizontal) {
-                        ClockTimeline(.periodic(0.2)) { t in
+                        ClockTimeline(.periodic(pace.displayedInterval)) { t in
                             let states = WaveChipState.all(t: control.shown(t), engine: control.engine)
                             HStack(spacing: 3) {
                                 chip(nil, state: nil, enabled: states != nil)
                                 Rectangle().fill(Theme.line2).frame(width: 1, height: 26).padding(.horizontal, 2)
                                 ForEach(0...Fractonica.maxLevel, id: \.self) { l in
-                                    chip(l, state: states?[l], enabled: states != nil)
+                                    chip(l, state: pace.followable(l) ? states?[l] : nil, enabled: states != nil)
                                 }
                             }
                             .padding(.horizontal, 4)
@@ -59,12 +60,6 @@ struct WaveDepthBar: View {
         }
     }
 
-    /// The selected chip also says where its level is now (a screen reader cannot see the bar under it).
-    private func liveValue(_ level: Int?, _ state: WaveChipState?) -> String {
-        guard let level, let state else { return "" }
-        return control.words.chipLive(control.engine.describe(level, state.idx), local: state.local)
-    }
-
     private func stepButton(_ dir: Int) -> some View {
         Button { control.step(dir) } label: {
             Image(systemName: dir < 0 ? "chevron.left" : "chevron.right")
@@ -78,11 +73,38 @@ struct WaveDepthBar: View {
         .help(dir < 0 ? "Previous half-arc (←)" : "Next half-arc (→)")
     }
 
-    @ViewBuilder
     private func chip(_ level: Int?, state: WaveChipState?, enabled: Bool) -> some View {
-        let selected = selection == level
+        WaveDepthChip(
+            level: level, state: state, enabled: enabled, selected: selection == level,
+            fastSelected: level != nil && level == control.level && control.eff < control.level && !model.overview,
+            shownInstead: level != nil && level == control.eff && control.eff < control.level && !model.overview,
+            pure: control.words.pure, control: control
+        )
+        .equatable()
+    }
+}
+
+/// One chip of the depth bar. Equatable on what it shows, so a refresh only redraws the chips whose bar moved.
+private struct WaveDepthChip: View, Equatable {
+    let level: Int?
+    /// nil: no live state (the catalogue, outside the catalogue, or too fast to follow).
+    let state: WaveChipState?
+    let enabled: Bool
+    let selected: Bool
+    /// The selection, while a time-lapse is too fast for it (a red dot).
+    let fastSelected: Bool
+    /// The depth shown instead (a dashed frame).
+    let shownInstead: Bool
+    let pure: Bool
+    let control: WaveController
+
+    nonisolated static func == (a: Self, b: Self) -> Bool {
+        a.level == b.level && a.state == b.state && a.enabled == b.enabled && a.selected == b.selected
+            && a.fastSelected == b.fastSelected && a.shownInstead == b.shownInstead && a.pure == b.pure
+    }
+
+    var body: some View {
         let tint = level.map { Theme.levelColor($0) } ?? Theme.ink
-        let showsFast = level != nil && level == control.level && control.eff < control.level && !model.overview
         Button { control.select(level) } label: {
             VStack(spacing: 1) {
                 ZStack(alignment: .topTrailing) {
@@ -92,18 +114,21 @@ struct WaveDepthBar: View {
                         .frame(maxWidth: .infinity)
                     if let state {
                         Text(state.crest ? "+" : "−")
-                            .font(.system(size: 8, weight: .bold).monospacedDigit())
+                            .font(.system(size: 9, weight: .bold).monospacedDigit())
                             .foregroundStyle(Theme.ink3.opacity(0.8))
                             .offset(x: 1, y: -2)
                     }
                 }
                 Text(level.map { "\($0 + 1)" } ?? "all")
-                    .font(.system(size: 9, weight: .medium).monospacedDigit())
+                    .font(.system(size: 10, weight: .medium).monospacedDigit())
                     .foregroundStyle(selected ? Theme.ink : Theme.ink3)
                 ZStack(alignment: .leading) {
                     Capsule().fill(Theme.line2)
-                    Capsule().fill(level.map { Theme.levelColor($0, opacity: 0.95) } ?? Theme.ink2)
-                        .frame(width: max(0, 18 * (state?.progress ?? (level == nil ? 0 : 0))))
+                    if let level {
+                        // a level too fast to follow shows a still, faint bar
+                        Capsule().fill(Theme.levelColor(level, opacity: state == nil ? 0.3 : 0.95))
+                            .frame(width: state.map { max(0, 18 * $0.progress) } ?? (enabled ? 18 : 0))
+                    }
                 }
                 .frame(width: 18, height: 2)
                 .opacity(level == nil ? 0 : 1)
@@ -111,7 +136,7 @@ struct WaveDepthBar: View {
             .frame(width: 34, height: 44)
             .background {
                 // the depth actually shown while a time-lapse is too fast for the selection
-                if level != nil, level == control.eff, control.eff < control.level, !model.overview {
+                if shownInstead {
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
                         .strokeBorder(tint.opacity(0.6), style: StrokeStyle(lineWidth: 1, dash: [3, 3]))
                 }
@@ -122,7 +147,7 @@ struct WaveDepthBar: View {
                 }
             }
             .overlay(alignment: .top) {
-                if showsFast {
+                if fastSelected {
                     Circle().fill(Theme.now).frame(width: 5, height: 5).offset(y: 2)
                 }
             }
@@ -133,7 +158,13 @@ struct WaveDepthBar: View {
         .disabled(!enabled)
         .accessibilityLabel(level.map { control.words.chipAccessibility($0) } ?? control.words.catalogueTitle())
         .accessibilityAddTraits(selected ? .isSelected : [])
-        .accessibilityValue(Text(selected ? liveValue(level, state) : ""))
+        .accessibilityValue(Text(selected ? liveValue : ""))
         .help(level.map { control.words.chipTitle($0) } ?? control.words.catalogueTitle())
+    }
+
+    /// The selected chip also says where its level is now (a screen reader cannot see the bar under it).
+    private var liveValue: String {
+        guard let level, let state else { return "" }
+        return control.words.chipLive(control.engine.describe(level, state.idx), local: state.local)
     }
 }

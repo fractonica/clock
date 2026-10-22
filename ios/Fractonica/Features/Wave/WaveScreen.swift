@@ -1,5 +1,8 @@
 import FractonicaKit
 import SwiftUI
+#if os(iOS)
+import UIKit
+#endif
 
 /// Wave: the library's circular harmonic geometry as a you-are-here map (src/ui/wave.js, docs/design/50-wave.md).
 ///
@@ -33,11 +36,14 @@ struct WaveScreen: View {
         let control = controller
         GeometryReader { geo in
             if model.forceWide ?? Self.isWide(geo.size) {
+                // a short screen (an iPhone in landscape) gives the stage its whole height: the depth bar moves to the
+                // foot of the panel
+                let short = geo.size.height < 440
                 HStack(spacing: 0) {
-                    WaveStageView(model: model, control: control, infoOnStage: compact)
+                    WaveStageView(model: model, control: control, infoOnStage: compact, depthBarOnStage: !short)
                     Rectangle().fill(Theme.line).frame(width: 1).ignoresSafeArea(edges: .bottom)
-                    WaveSidePanel(model: model, control: control)
-                        .frame(width: min(380, max(280, geo.size.width * 0.32)))
+                    WaveSidePanel(model: model, control: control, depthBar: short)
+                        .frame(width: short ? min(360, max(290, geo.size.width * 0.38)) : min(380, max(280, geo.size.width * 0.32)))
                 }
             } else {
                 VStack(spacing: 0) {
@@ -80,6 +86,12 @@ struct WaveScreen: View {
                     model.overview = false
                 }
                 if let rate = hooks.rate { store.setRate(rate) }
+                #if os(iOS)
+                if model.landscape {
+                    let scene = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first
+                    scene?.requestGeometryUpdate(.iOS(interfaceOrientations: .landscapeRight)) { _ in }
+                }
+                #endif
             }
             let demo = model.takeDemo()
             if !demo.isEmpty {
@@ -167,10 +179,12 @@ struct WaveController {
     func shown(_ t: Double) -> Double { t + model.offset }
     var overview: Bool { model.overview }
 
-    /// The readings refresh at the pace their finest number changes (at most 10 Hz, at least once a second).
+    /// The readings refresh at the pace their finest number changes (at most 10 Hz, at least once a second), in
+    /// displayed seconds; a time-lapse never refreshes them more than ten times a real second.
     var readoutInterval: Double {
         let half = store.clock.levelInfo(eff).meanSeconds / 2
-        return min(1, max(0.1, half / 200))
+        let rate = store.isLive ? 1 : abs(store.rate)
+        return max(min(1, max(0.1, half / 200)), 0.1 * rate)
     }
 
     /// One depth deeper (dir > 0) or out; out of α leads to the catalogue. `quiet` (a pinch) never toasts a limit.
@@ -255,7 +269,8 @@ struct WaveController {
     }
 
     /// What one frame of the stage needs.
-    func frameInput(size: CGSize, avoid: [WaveRect], bottomInset: Double, topInset: Double, trailingInset: Double) -> WaveFrameInput {
+    func frameInput(size: CGSize, avoid: [WaveRect], bottomInset: Double, topInset: Double, trailingInset: Double,
+                    leadingControl: Bool = false) -> WaveFrameInput {
         #if os(iOS)
         let touch = true
         #else
@@ -270,7 +285,7 @@ struct WaveController {
             // the focused figure is centred and only its edges meet the floating controls; the catalogue fills the stage
             focusPad: WavePad(l: side, r: side + trailingInset * 0.5, t: short ? 16 : 24 + topInset * 0.5, b: (short ? 10 : 34) + bottomInset),
             // the catalogue keeps clear of the zoom controls: below them, or beside them on a short stage
-            overviewPad: short ? WavePad(l: 28, r: 84, t: 12, b: 10 + bottomInset)
+            overviewPad: short ? WavePad(l: leadingControl ? 66 : 28, r: 84, t: 12, b: 10 + bottomInset)
                 : WavePad(l: 28, r: 28 + trailingInset, t: 8 + topInset, b: 14 + bottomInset),
             avoid: avoid, touch: touch
         )

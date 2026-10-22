@@ -28,6 +28,9 @@ struct WaveChecks {
         wordChecks(root, engine)
         readoutChecks(root, engine)
         labelChecks()
+        wheelChecks()
+        chipPaceChecks(engine)
+        fitChecks()
         if let dir = ProcessInfo.processInfo.environment["WAVE_FRAMES"] { WaveFrames.run(into: dir) }
         Checks.finish()
     }
@@ -507,4 +510,107 @@ private func labelChecks() {
     check(moved.slot != first.slot, "a blocked label moves to another side")
     check(hypot(moved.center.x - first.center.x, moved.center.y - first.center.y) <= WaveLabelPlacer.maxStep + 0.01, "it glides there instead of jumping")
     check(placer.settling, "a gliding label asks for the next frame")
+    // it arrives and stops asking
+    var f = 1.032
+    for _ in 0..<60 {
+        placer.begin(stage: stage, now: f)
+        placer.occupy(first.rect.inset(by: -4), weight: 1)
+        _ = placer.place(key: "g", text: "peak", width: 30, at: WavePoint(x: 100, y: 100), normal: WavePoint(x: 0, y: -1), clearance: 8, weight: 1)
+        f += 0.016
+    }
+    check(!placer.settling, "a glide ends")
+    // the letter of a dot orbiting a small arc follows it (its normal turning every frame) without asking for frames
+    var asked = 0
+    for k in 0..<120 {
+        let a = Double(k) * 0.05
+        placer.begin(stage: stage, now: 3 + Double(k) * 0.008)
+        _ = placer.place(key: "lv10", text: "λ", width: 9, at: WavePoint(x: 150 + 6 * cos(a), y: 120 + 6 * sin(a)),
+                         normal: WavePoint(x: cos(a), y: sin(a)), clearance: 8, weight: WaveLabelPlacer.soft)
+        if placer.settling { asked += 1 }
+    }
+    check(asked == 0, "an orbiting dot's letter never keeps the stage drawing (\(asked) frames asked)")
+}
+
+// MARK: - The Mac wheel and the fit around floating controls
+
+/// The wheel adds small deltas up (src/ui/wave.js): 48 points make a step, a pause or a turn starts over, steps at most
+/// every 230 ms; negative (wheel up) zooms in.
+private func wheelChecks() {
+    var acc = 0.0, last = -Double.infinity, stepped = -Double.infinity
+    var steps: [Int] = []
+    func feed(_ d: Double, at t: Double) {
+        let r = WaveWheelSteps.next(acc: acc, last: last, stepped: stepped, delta: d, now: t)
+        acc = r.acc
+        last = t
+        if let z = r.zoom { steps.append(z); stepped = t }
+    }
+    // a trackpad: ten small deltas of −6 in 100 ms add up to one step in
+    for i in 0..<10 { feed(-6, at: 1 + Double(i) * 0.01) }
+    check(steps == [1], "wheel: small deltas add up to one step in (\(steps))")
+    // a mouse notch (48) the other way, at once: a turn starts over, and the 230 ms gap holds it back
+    feed(48, at: 1.15)
+    check(steps == [1], "wheel: a step waits 230 ms after the last one (\(steps))")
+    feed(48, at: 1.4)
+    check(steps == [1, -1], "wheel: down zooms out once the gap has passed (\(steps))")
+    // a pause of more than 260 ms forgets what was gathered
+    steps = []
+    feed(-30, at: 3)
+    feed(-30, at: 3.5)
+    check(steps.isEmpty, "wheel: a pause starts the sum over (\(steps))")
+    feed(-30, at: 3.6)
+    check(steps == [1], "wheel: deltas gathered without a pause step (\(steps))")
+    // a change of direction starts over
+    steps = []
+    feed(40, at: 5)
+    feed(-40, at: 5.05)
+    check(steps.isEmpty && acc == -40, "wheel: a turn starts the sum over (\(acc))")
+}
+
+/// A focused figure fitted around floating controls never reaches under them, and keeps the plain fit when it is clear.
+private func fitChecks() {
+    // a half-arc's worth of points: a semicircle of radius 1
+    var pts: [Double] = []
+    for i in 0...64 {
+        let a = Double.pi * Double(i) / 64
+        pts += [cos(a), -sin(a)]
+    }
+    let pad = WavePad(l: 28, r: 28, t: 40, b: 100)
+    for (w, h) in [(402.0, 460.0), (402.0, 300.0), (874.0, 250.0), (1032.0, 1000.0)] {
+        let zoom = WaveRect(x0: w - 60, y0: 6, x1: w - 4, y1: 110)
+        let plain = WaveCamera.fit(pts, rot: 0, width: w, height: h, pad: pad)
+        let kept = WaveCamera.fit(pts, rot: 0, width: w, height: h, pad: pad, avoiding: [zoom])
+        let view = WaveProjection(kept, width: w, height: h)
+        var under = false
+        var i = 0
+        while i + 1 < pts.count {
+            let p = view.point(pts[i], pts[i + 1])
+            if zoom.contains(p.x, p.y) { under = true }
+            i += 2
+        }
+        check(!under, "fit: the figure stays clear of the zoom buttons on a \(Int(w))×\(Int(h)) stage")
+        check(kept.scale <= plain.scale + 1e-9 && kept.scale > plain.scale * 0.4,
+              "fit: clearing the controls costs some size, never more than it needs (\(kept.scale / plain.scale))")
+    }
+    let far = WaveRect(x0: -100, y0: -100, x1: -50, y1: -50)
+    let a = WaveCamera.fit(pts, rot: 0, width: 400, height: 400, pad: pad)
+    let b = WaveCamera.fit(pts, rot: 0, width: 400, height: 400, pad: pad, avoiding: [far])
+    check(a == b, "fit: a control away from the figure changes nothing")
+}
+
+/// The depth chips refresh at the pace of the quickest bar that can be followed, and leave the faster ones still.
+private func chipPaceChecks(_ engine: WaveEngine) {
+    let halves = (0...Fractonica.maxLevel).map { engine.clock.levelInfo($0).meanSeconds / 2 }
+    let live = WaveChipPace(halfSeconds: halves, rate: 1)
+    // live: κ (half-arc ≈ 50 s) is the quickest followed, its bar moves a 48th about every second; λ (≈ 3.9 s) and finer are still
+    check(live.followable(9) && !live.followable(10), "chips live: κ is followed, λ is too fast")
+    check(abs(live.interval - min(1, halves[9] / 48)) < 1e-9, "chips live: refresh at κ's pace (\(live.interval))")
+    let paused = WaveChipPace(halfSeconds: halves, rate: 0)
+    check((0...Fractonica.maxLevel).allSatisfy { paused.followable($0) }, "chips paused: every chip shows its state")
+    let lapse = WaveChipPace(halfSeconds: halves, rate: -3600)
+    check(lapse.followable(5) && !lapse.followable(6), "chips at an hour a second (backwards): ζ is followed, η is too fast")
+    check(lapse.interval >= 0.25 && lapse.interval <= 1, "chips at an hour a second: the pace stays within 0.25–1 s (\(lapse.interval))")
+    check(abs(lapse.displayedInterval - lapse.interval * 3600) < 1e-6, "chips at an hour a second: the timeline counts displayed seconds (\(lapse.displayedInterval))")
+    check(live.displayedInterval == live.interval, "chips live: displayed and real seconds agree")
+    let fast = WaveChipPace(halfSeconds: halves, rate: 1e12)
+    check(!fast.followable(0) && fast.interval == 1, "chips at a huge rate: nothing is followed, a slow refresh")
 }

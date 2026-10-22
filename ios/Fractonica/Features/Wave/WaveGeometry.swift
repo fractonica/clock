@@ -185,6 +185,38 @@ struct WaveCamera: Equatable, Sendable {
         return WaveCamera(cx: c * rx + s * ry, cy: -s * rx + c * ry, scale: scale, rot: rot)
     }
 
+    /// `fit`, kept clear of floating controls: when the fitted figure reaches under one of `avoid` (a figure filling a
+    /// short stage puts its corners exactly where the zoom buttons float), it is fitted again with the pad grown past
+    /// that control, vertically or sideways, whichever leaves the figure larger.
+    static func fit(_ points: [Double], rot: Double, width W: Double, height H: Double, pad: WavePad,
+                    avoiding avoid: [WaveRect]) -> WaveCamera {
+        var pad = pad
+        var cam = fit(points, rot: rot, width: W, height: H, pad: pad)
+        for _ in 0..<4 {
+            let view = WaveProjection(cam, width: W, height: H)
+            guard let r = avoid.first(where: { covers($0, points, view) }) else { break }
+            var vertical = pad
+            if r.y0 + r.y1 < H { vertical.t = max(pad.t, r.y1 + 6) } else { vertical.b = max(pad.b, H - r.y0 + 6) }
+            var sideways = pad
+            if r.x0 + r.x1 > W { sideways.r = max(pad.r, W - r.x0 + 6) } else { sideways.l = max(pad.l, r.x1 + 6) }
+            let a = fit(points, rot: rot, width: W, height: H, pad: vertical)
+            let b = fit(points, rot: rot, width: W, height: H, pad: sideways)
+            (cam, pad) = a.scale >= b.scale ? (a, vertical) : (b, sideways)
+        }
+        return cam
+    }
+
+    /// Whether a projected point cloud has a point inside a rectangle.
+    private static func covers(_ r: WaveRect, _ points: [Double], _ view: WaveProjection) -> Bool {
+        var i = 0
+        while i + 1 < points.count {
+            let p = view.point(points[i], points[i + 1])
+            if r.contains(p.x, p.y) { return true }
+            i += 2
+        }
+        return false
+    }
+
     /// The camera between a and b (e in 0…1): the scale moves geometrically and the centre follows the exact "zoom
     /// towards a point" path, so whatever stays still between the two cameras stays still all along; the rotation
     /// takes the short way round.
