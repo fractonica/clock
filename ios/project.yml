@@ -62,6 +62,8 @@ targets:
             CFBundleURLSchemes: [fractonica]
         ITSAppUsesNonExemptEncryption: false
         NSSupportsLiveActivities: true
+        # ProMotion iPhones run CADisplayLink / TimelineView(.animation) above 60 Hz only with this key (Focus)
+        CADisableMinimumFrameDurationOnPhone: true
         UIBackgroundModes: [audio, fetch]
         BGTaskSchedulerPermittedIdentifiers: [app.fractonica.clock.refresh]
         UILaunchScreen:
@@ -126,6 +128,8 @@ targets:
       properties:
         com.apple.security.app-sandbox: true
         com.apple.security.files.user-selected.read-write: true
+        # the Diary's WKWebView: its sandboxed web-content process dies at launch without it, even for a custom scheme
+        com.apple.security.network.client: true
         com.apple.security.print: true
     settings:
       base:
