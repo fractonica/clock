@@ -387,9 +387,7 @@ struct AlertEditor: View {
         if rule.title.trimmingCharacters(in: .whitespaces).isEmpty { rule.title = AlertRule.defaultTitle }
         if target.isNew {
             alerts.add(rule)
-            if alerts.authorization == .notDetermined {
-                Task { await alerts.requestAuthorization() }
-            }
+            if alerts.shouldPrime { alerts.primerAfterEditor = rule }
         } else {
             alerts.update(rule)
         }

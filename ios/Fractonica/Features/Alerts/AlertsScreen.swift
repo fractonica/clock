@@ -11,6 +11,8 @@ struct AlertsScreen: View {
     @Environment(ClockStore.self) private var clockStore
     @State private var alerts = AlertStore.shared
     @State private var editor: AlertEditorTarget?
+    /// The rule just made while the permission is undecided: explain, then ask.
+    @State private var primer: AlertRule?
     @State private var width: CGFloat = 0
 
     var body: some View {
@@ -38,11 +40,14 @@ struct AlertsScreen: View {
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
         .navigationTitle(Screen.alerts.title)
         .toolbar { addMenu }
-        .sheet(item: $editor) { target in
+        .sheet(item: $editor, onDismiss: primeAfterEditor) { target in
             NavigationStack { AlertEditor(target: target) }
                 #if os(macOS)
                 .frame(minWidth: 480, idealWidth: 520, minHeight: 620, idealHeight: 720)
                 #endif
+        }
+        .sheet(item: $primer, onDismiss: { alerts.primerDeclined = true }) { rule in
+            PermissionPrimer(rule: rule, text: text, allow: request)
         }
         .task { openLaunchEditor() }
     }
@@ -251,8 +256,10 @@ struct AlertsScreen: View {
                 if !clockStore.isLive {
                     Label("Alerts follow the real clock, not the moment you are viewing.", systemImage: "clock.arrow.circlepath")
                 }
-                TimelineView(.periodic(from: .now, by: 30)) { _ in
-                    Text(statusLine(text))
+                if !alerts.rules.isEmpty {
+                    TimelineView(.periodic(from: .now, by: 30)) { _ in
+                        Text(statusLine(text))
+                    }
                 }
             }
         }
@@ -260,6 +267,7 @@ struct AlertsScreen: View {
 
     private func statusLine(_ text: AlertText) -> String {
         let held = alerts.pending.count
+        if !alerts.rules.contains(where: \.enabled) { return "Every alert is switched off: nothing is queued." }
         var line = alerts.authorization.canPost
             ? "\(held) of \(AlertPlanner.budget) alerts queued with the system, shared fairly between your alerts."
             : "Alerts are planned but not queued."
@@ -314,9 +322,17 @@ struct AlertsScreen: View {
     }
 
     private func add(_ preset: AlertPreset) {
-        withAnimation(.snappy) { alerts.add(preset.rule(pure: settings.pure)) }
+        let rule = preset.rule(pure: settings.pure)
+        withAnimation(.snappy) { alerts.add(rule) }
         Haptics.play(.success)
-        if alerts.authorization == .notDetermined { request() }
+        if alerts.shouldPrime { primer = rule }
+    }
+
+    /// The editor made a rule while the permission is undecided: now that it has closed, explain and ask.
+    private func primeAfterEditor() {
+        guard let rule = alerts.primerAfterEditor else { return }
+        alerts.primerAfterEditor = nil
+        primer = rule
     }
 
     private func request() {
@@ -332,6 +348,10 @@ struct AlertsScreen: View {
 
     /// `-FXAlertsEdit`: a preset's id, "new", or "rule" (the first rule).
     private func openLaunchEditor() {
+        if alerts.launch.primer, let rule = alerts.rules.first {
+            primer = rule
+            return
+        }
         guard let what = alerts.launchEditor else { return }
         alerts.launchEditor = nil
         if what == "new" {

@@ -42,6 +42,11 @@ final class AlertStore {
     let launch: AlertLaunchOptions
     /// The editor to open on launch (`-FXAlertsEdit`), consumed by the screen.
     var launchEditor: String?
+    /// A rule the editor just made while the permission is undecided: the screen explains, then asks, once the editor
+    /// has closed (`PermissionPrimer`).
+    var primerAfterEditor: AlertRule?
+    /// The user put the explanation off ("Not Now"): this session does not bring it up again; the card stays.
+    @ObservationIgnored var primerDeclined = false
 
     @ObservationIgnored private let defaults: UserDefaults
     @ObservationIgnored private var refillTask: Task<Void, Never>?
@@ -77,6 +82,10 @@ final class AlertStore {
     }
 
     var canAddRule: Bool { config.rules.count < AlertsConfig.maxRules }
+
+    /// Whether making a rule now should explain notifications and ask for them: the permission is undecided and the
+    /// explanation was not put off.
+    var shouldPrime: Bool { authorization == .notDetermined && !primerDeclined }
 
     func rule(_ id: UUID) -> AlertRule? { config.rules.first { $0.id == id } }
 
@@ -539,6 +548,7 @@ enum AlertScheduling {
 ///     -FXAlertsAuth notDetermined|denied|authorized|provisional   show this permission state
 ///     -FXAlertsEdit <preset>|new|rule       open the editor: a preset's new rule, a blank one, or the first rule
 ///     -FXAlertsQuiet 1                      quiet hours on (with -FXAlertsDemo)
+///     -FXAlertsPrimer 1                     show the permission explanation for the first rule
 ///     -FXAlertsLive 1                       the demo rules really queued, with provisional (quiet, promptless)
 ///                                           permission: checks the system queue end to end; nothing is saved
 ///     -FXAlertsScroll quiet                 scroll to a section (hero rules presets quiet upcoming recent)
@@ -549,6 +559,7 @@ struct AlertLaunchOptions: Sendable {
     var authorization: AlertStore.Authorization?
     var edit: String?
     var quiet = false
+    var primer = false
     var pure = false
     /// `-FXAlertsScroll hero|rules|presets|quiet|upcoming|recent` (with -FXAlertsEdit: `only|when|message|delivery|coming`):
     /// scroll there on launch.
@@ -568,6 +579,7 @@ struct AlertLaunchOptions: Sendable {
             authorization: string("FXAlertsAuth").flatMap { AlertStore.Authorization(rawValue: $0) },
             edit: string("FXAlertsEdit"),
             quiet: flag("FXAlertsQuiet"),
+            primer: flag("FXAlertsPrimer"),
             pure: flag("FXPure"),
             scroll: string("FXAlertsScroll")
         )
