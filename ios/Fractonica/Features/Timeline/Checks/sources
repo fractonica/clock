@@ -1,0 +1,9 @@
+# The app files TimelineChecks.swift compiles against (relative to ios/).
+Fractonica/Features/Timeline/TimelineGeometry.swift
+Fractonica/Features/Timeline/TimelineAxis.swift
+Fractonica/Features/Timeline/TimelineRuler.swift
+Fractonica/Features/Timeline/TimelineWords.swift
+Fractonica/Features/Timeline/TimelineData.swift
+Fractonica/Features/Timeline/TimelineViewport.swift
+Fractonica/Core/ClockStore.swift
+Shared/Notation+Standard.swift
