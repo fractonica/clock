@@ -327,29 +327,96 @@ enum WidgetChecks {
         }
         check(wrong.isEmpty, "Helion Arc readings: \(wrong.prefix(4))")
 
-        // the lens: 36 Preons a Helion, the running one drawn 7 times as long; its stretch always holds the moment's
-        // true place on the Helion
+        // the magnifier: 36 Preons a Helion, the running one drawn 7 times its length, its stretch centred on its true
+        // middle (shifted inward at the ends), fixed for the whole Preon; the arc around it unstretched
         check(clock.levelInfo(6).factor * clock.levelInfo(7).factor == G.preons, "36 Preons a Helion")
-        check(G.window(preon: 0).lowerBound == 0 && abs(G.window(preon: G.preons - 1).upperBound - 1) < 1e-12, "the lens spans the arc's ends")
-        check(abs(G.window - 1.0 / 6) < 1e-12 && abs(G.amplitude - .pi / 12) < 1e-12, "the wave takes a sixth of the arc: \(G.window)")
+        check(abs(G.window - 7.0 / 36) < 1e-12 && abs(G.amplitude - 7 * .pi / 72) < 1e-12, "the wave takes seven Preons' worth of the arc: \(G.window)")
+        let preonShare = 1.0 / Double(G.preons)
+        let centred = 3...(G.preons - 4) // where the stretch fits around the Preon's middle
         var lens: [String] = []
+        var offCentred = 0.0, offEnds = 0.0
         for preon in 0..<G.preons {
             let w = G.window(preon: preon)
+            let middle = (Double(preon) + 0.5) * preonShare
             if abs(w.upperBound - w.lowerBound - G.window) > 1e-12 { lens.append("\(preon): width") }
-            if preon > 0 && abs(w.lowerBound - G.window(preon: preon - 1).lowerBound - (1 - G.window) / Double(G.preons - 1)) > 1e-12 {
-                lens.append("\(preon): the lens moves on by one Preon's share of the rest")
+            if w.lowerBound < 0 || w.upperBound > 1 + 1e-12 { lens.append("\(preon): leaves the arc \(w)") }
+            // centred on the Preon's middle, shifted only as far as the arc's ends demand
+            let centre = (w.lowerBound + w.upperBound) / 2
+            if abs(centre - min(1 - G.window / 2, max(G.window / 2, middle))) > 1e-12 { lens.append("\(preon): not centred \(centre) vs \(middle)") }
+            if centred.contains(preon) != (abs(centre - middle) < 1e-12) { lens.append("\(preon): centred only where it fits") }
+            if preon > 0 {
+                let move = w.lowerBound - G.window(preon: preon - 1).lowerBound
+                // by exactly one Preon at each start, resting where it lies against an end
+                let expected = centred.contains(preon) && centred.contains(preon - 1) ? preonShare : 0
+                if abs(move - expected) > 1e-12 { lens.append("\(preon): moves on by \(move), not \(expected)") }
             }
-            for k in 0...16 {
-                let p = Double(k) / 16
-                let truth = (Double(preon) + p) / Double(G.preons)
+            for k in 0...64 {
+                let p = Double(k) / 64
+                let truth = G.truth(preon: preon, phase: p), at = G.position(preon: preon, phase: p)
+                if abs(truth - (Double(preon) + p) * preonShare) > 1e-15 { lens.append("\(preon) \(p): truth") }
+                // the stretch holds the moment's true place; the dot moves forward through it
                 if truth < w.lowerBound - 1e-12 || truth > w.upperBound + 1e-12 { lens.append("\(preon) \(p): true place \(truth) off \(w)") }
-                if k > 0 && G.position(preon: preon, phase: p) <= G.position(preon: preon, phase: Double(k - 1) / 16) { lens.append("\(preon) \(p): not forward") }
+                if k > 0 && at <= G.position(preon: preon, phase: Double(k - 1) / 64) { lens.append("\(preon) \(p): not forward") }
+                // the dot's offset from the true place: (phase − ½)(window − 1/36) where centred, exact at mid-Preon
+                let off = at - truth
+                if centred.contains(preon) {
+                    offCentred = max(offCentred, abs(off))
+                    if abs(off - (p - 0.5) * (G.window - preonShare)) > 1e-12 { lens.append("\(preon) \(p): offset \(off)") }
+                } else {
+                    offEnds = max(offEnds, abs(off))
+                    let n = Double(preon < centred.lowerBound ? preon : G.preons - 1 - preon)
+                    let range = preon < centred.lowerBound ? (-n * preonShare)...((6 - n) * preonShare) : (-(6 - n) * preonShare)...(n * preonShare)
+                    if off < range.lowerBound - 1e-12 || off > range.upperBound + 1e-12 { lens.append("\(preon) \(p): offset \(off) off \(range)") }
+                }
+                // the Helion's arc outside the stretch: bright exactly before the moment; the bright line never
+                // passes the moment, the wave carries it on
+                if G.brightEnd(preon: preon) > truth + 1e-12 { lens.append("\(preon) \(p): bright past the moment") }
+                for i in 0...720 {
+                    let f = Double(i) / 720
+                    if w.contains(f) { continue }
+                    if (f < G.brightEnd(preon: preon)) != (f < truth) { lens.append("\(preon) \(p): \(f) bright \(f < G.brightEnd(preon: preon))") }
+                }
             }
             if G.position(preon: preon, phase: 0) != w.lowerBound || abs(G.position(preon: preon, phase: 1) - w.upperBound) > 1e-12 {
-                lens.append("\(preon): the Preon's ends are the lens's")
+                lens.append("\(preon): the Preon's ends are the stretch's")
+            }
+            if abs(G.position(preon: preon, phase: 0.5) - G.truth(preon: preon, phase: 0.5)) > 1e-12 && centred.contains(preon) {
+                lens.append("\(preon): the dot on the true place at mid-Preon")
             }
         }
-        check(lens.isEmpty, "the lens: \(lens.prefix(4))")
+        check(G.window(preon: 0).lowerBound == 0 && abs(G.window(preon: G.preons - 1).upperBound - 1) < 1e-12, "the stretch rests at the arc's ends")
+        // the bounds the geometry's notes state, and that they are reached
+        check(abs(offCentred - (G.window - preonShare) / 2) < 1e-12, "the dot within ±(window − 1/36)/2 = ±1/12 where centred: \(offCentred)")
+        check(abs(offEnds - (G.window - preonShare)) < 1e-12, "the dot within ±(window − 1/36) = ±1/6 at the ends: \(offEnds)")
+        check(lens.isEmpty, "the magnifier: \(lens.prefix(4))")
+
+        // against the journal face (the Journal widget's arc) at the moments the render harness draws and at random:
+        // the wave's stretch holds the journal's tick, so the two agree everywhere outside it; one stretch a Preon
+        var journalWrong: [String] = []
+        var marks = instants
+        let helionA = clock.level(at: a, 6)!, preonA = clock.level(at: a, 8)!
+        marks += [helionA.start + WidgetChange.settle, helionA.start + 17.5 / 36 * helionA.duration, preonA.end + WidgetChange.settle,
+                  preonA.end - WidgetChange.settle, helionA.end - 1]
+        for t in marks {
+            guard let s = HelionArcSnapshot(at: t), let reading = Journal.reading(at: t, unit: 5), let preon = clock.level(at: t, 8) else { continue }
+            let w = G.window(preon: s.preon)
+            if reading.leadLevel != 6 { journalWrong.append("\(t): the journal's lead \(reading.leadLevel)") }
+            if !w.contains(reading.leadPhase) { journalWrong.append("\(t): the journal's tick \(reading.leadPhase) off the stretch \(w)") }
+            if abs(G.truth(preon: s.preon, phase: s.phase) - reading.leadPhase) > 0.5 / 16 * preonShare + 1e-6 {
+                journalWrong.append("\(t): progress \(G.truth(preon: s.preon, phase: s.phase)) vs the journal's \(reading.leadPhase)")
+            }
+            // the same stretch from the Preon's first instant to its last
+            for u in [preon.start + WidgetChange.settle, preon.end - WidgetChange.settle] {
+                if let other = HelionArcSnapshot(at: u), other.preon != s.preon || G.window(preon: other.preon) != w { journalWrong.append("\(t): the stretch moves within the Preon") }
+            }
+        }
+        check(journalWrong.isEmpty, "the Helion Arc against the journal: \(journalWrong.prefix(4))")
+        if let s = HelionArcSnapshot(at: a), let reading = Journal.reading(at: a, unit: 5) {
+            let w = G.window(preon: s.preon)
+            check(abs(reading.leadPhase - 0.81) < 0.01 && w.contains(reading.leadPhase) && G.brightEnd(preon: s.preon) < reading.leadPhase
+                  && w.upperBound > reading.leadPhase,
+                  "at A the journal's tick (\(reading.leadPhase)) lies in the stretch \(w): bright before it, dim after")
+        }
 
         // the drawing in each family's frame
         func near(_ p: CGPoint, _ q: CGPoint, _ eps: Double = 1e-9) -> Bool { hypot(p.x - q.x, p.y - q.y) < eps }

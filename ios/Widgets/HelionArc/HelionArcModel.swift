@@ -56,17 +56,26 @@ struct HelionArcSnapshot: Hashable, Sendable {
 /// bent along the Helion's, its first half on the right of the way the Helion runs (below, where the Helion runs
 /// left to right), its second on the left.
 ///
-/// A Preon is a 36th of the Helion: far too short to see a wave in at widget size. So the arc is a lens: the running
-/// Preon is drawn `magnification` times as long as the others, the Preons before it share the arc before its wave
-/// and those after it the rest. Within a Preon every instant has its place (the wave's ends are the Preon's start and
-/// end); at each Preon start the lens moves on by one Preon.
+/// A Preon is a 36th of the Helion: far too short to see a wave in at widget size. So the running Preon is drawn
+/// through a magnifier: its wave spans `window` of the arc, seven Preons' worth, centred on the Preon's true middle
+/// (n + ½)/36 and shifted inward only as far as it must be to stay on the arc in the first three and the last three
+/// Preons. The arc itself is not stretched: outside the wave's stretch every point stands where the journal face has
+/// it, and the stretch holds the whole running Preon, so the moment's true place. The stretch stays put for the whole
+/// Preon (only the dot moves, along the wave) and moves on by exactly one Preon, 1/36, at each Preon start (where it
+/// is not resting against an end).
+///
+/// The dot stands at `position`: the Preon's phase laid along its stretch, not quite the moment's true place
+/// (n + phase)/36 (`truth`). Where the stretch is centred (n = 3 … 32) it is off by (phase − ½)(window − 1/36):
+/// exactly on it at mid-Preon, never more than ±(window − 1/36)/2 = ±1/12 of the arc away. In the first three and the
+/// last three Preons, where the stretch rests against an end, the offset runs from −n/36 to (6 − n)/36 (mirrored at
+/// the far end): at most window − 1/36 = 1/6, reached only at the Helion's very start and very end.
 struct HelionArcGeometry: Sendable {
     /// Preons in a Helion (9 θ × 4 ι).
     static let preons = 36
-    /// How many times as long as the others the running Preon is drawn.
+    /// How many times its true length the running Preon is drawn.
     static let magnification = 7.0
-    /// The share of the double arc the running Preon's wave takes: 7/42, a sixth.
-    static let window = magnification / (Double(preons - 1) + magnification)
+    /// The share of the double arc the running Preon's wave takes: seven Preons' worth, 7/36.
+    static let window = magnification / Double(preons)
     /// The wave's half-arcs in radii of the Helion's: a double arc as long as its stretch of the Helion's (4 of its own
     /// radii across) — how far it reaches off the Helion's arc.
     static let amplitude = window * 2 * .pi / 4
@@ -94,19 +103,32 @@ struct HelionArcGeometry: Sendable {
         self.init(r: r, cx: width / 2, cy: height / 2)
     }
 
-    // MARK: The lens
+    // MARK: The magnifier
 
-    /// The running Preon's stretch of the double arc, as fractions of its length (0 at its left end, 1 at its right).
+    /// The running Preon's stretch of the double arc, as fractions of its length (0 at its left end, 1 at its right):
+    /// `window` long, centred on the Preon's true middle (n + ½)/36, shifted inward just enough to stay within 0 … 1.
     static func window(preon: Int) -> ClosedRange<Double> {
-        let start = Double(min(preons - 1, max(0, preon))) / (Double(preons - 1) + magnification)
+        let middle = (Double(min(preons - 1, max(0, preon))) + 0.5) / Double(preons)
+        let start = min(1 - window, max(0, middle - window / 2))
         return start...(start + window)
     }
 
-    /// Where an instant at phase `phase` of Preon `preon` stands along the double arc (0 … 1).
+    /// Where the dot of Preon `preon` at its phase `phase` stands along the double arc (0 … 1): the phase laid along
+    /// the Preon's stretch. Not quite the moment's true place (`truth`): see the type's notes for how far off.
     static func position(preon: Int, phase: Double) -> Double {
         let w = window(preon: preon)
         return w.lowerBound + min(1, max(0, phase)) * window
     }
+
+    /// The moment's true place along the double arc: the Helion's progress, where the journal face's tick stands.
+    static func truth(preon: Int, phase: Double) -> Double {
+        (Double(min(preons - 1, max(0, preon))) + min(1, max(0, phase))) / Double(preons)
+    }
+
+    /// The Helion's arc is drawn bright from 0 to here, the start of the running Preon's stretch; the wave carries the
+    /// brightness on to the dot. As the stretch holds the moment's true place, every point of the arc outside it is
+    /// bright exactly when it lies before the moment, as on the journal face.
+    static func brightEnd(preon: Int) -> Double { window(preon: preon).lowerBound }
 
     // MARK: Points
 

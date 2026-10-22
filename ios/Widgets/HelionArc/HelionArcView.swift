@@ -119,18 +119,20 @@ struct HelionArcDrawing: View {
         cut.fill(circle(geometry.wave(preon: preon, phase: phase), s.dot + max(1.3, 0.45 * s.dot)), with: .color(.black))
     }
 
-    /// The Helion: bright up to the Preon's wave, faint under it (the wave's own axis), dim after it.
+    /// The Helion: bright up to the Preon's wave, faint under it (the wave's own axis), dim after it. The wave's stretch
+    /// holds the moment's true place, so outside it the arc is bright exactly up to the Helion's progress.
     private func helion(_ context: inout GraphicsContext, _ s: Style) {
         let g = geometry
         let w = HelionArcGeometry.window(preon: preon)
+        let bright = HelionArcGeometry.brightEnd(preon: preon)
         var axis = Path()
         axis.move(to: CGPoint(x: g.cx - (2 + HelionArcGeometry.amplitude) * g.r, y: g.cy))
         axis.addLine(to: CGPoint(x: g.cx + (2 + HelionArcGeometry.amplitude) * g.r, y: g.cy))
         context.stroke(axis, with: .color(s.helion.opacity(s.full ? 0.16 : 0.22)), lineWidth: 1)
         stroke(&context, path(g.arc(from: w.upperBound, to: 1)), s.helion.opacity(s.full ? 0.34 : 0.38), s.line * 0.8)
         stroke(&context, path(g.arc(from: w.lowerBound, to: w.upperBound)), s.helion.opacity(s.full ? 0.18 : 0.25), s.line * 0.6)
-        if w.lowerBound > 0 {
-            let done = path(g.arc(from: 0, to: w.lowerBound))
+        if bright > 0 {
+            let done = path(g.arc(from: 0, to: bright))
             if s.full {
                 // the Wave screen's travelled arc: a soft glow under the line
                 stroke(&context, done, s.helion.opacity(0.12), s.line * 3.2)
