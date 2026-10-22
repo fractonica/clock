@@ -91,24 +91,32 @@ extension WaveStage {
                anchor: UnitPoint = .center, weight: Double = WaveLabelPlacer.soft) {
         let w = textWidth(g, text, font)
         let x0 = anchor == .leading ? x : anchor == .trailing ? x - w : x - w / 2
-        labels.occupy(WaveRect(x0: x0 - 3, y0: y - 8 * fontScale, x1: x0 + w + 3, y1: y + 8 * fontScale), weight: weight)
-        queue.append(QueuedLabel(text: text, at: CGPoint(x: x, y: y), color: color, font: font.font(fontScale), opacity: opacity * labelFade, anchor: anchor))
+        let rect = WaveRect(x0: x0 - 3, y0: y - 8 * fontScale, x1: x0 + w + 3, y1: y + 8 * fontScale)
+        labels.occupy(rect, weight: weight)
+        queue.append(QueuedLabel(text: text, at: CGPoint(x: x, y: y), color: color, font: font.font(fontScale), opacity: opacity * labelFade,
+                                 anchor: anchor, rect: WaveRect(x0: x0, y0: y - 5 * fontScale, x1: x0 + w, y1: y + 5 * fontScale),
+                                 yields: weight < 1))
     }
 
     /// A label beside a point, on the side with room (`WaveLabelPlacer`).
     @discardableResult
     func placedLabel(_ g: GraphicsContext, key: String, _ text: String, at x: Double, _ y: Double, normal: WavePoint, color: Color,
                      font: WaveFont, opacity: Double, clearance: Double = 12, weight: Double = 1) -> WaveLabelPlacer.Spot {
-        let spot = labels.place(key: key, text: text, width: textWidth(g, text, font), at: WavePoint(x: x, y: y), normal: normal,
+        let w = textWidth(g, text, font)
+        let spot = labels.place(key: key, text: text, width: w, at: WavePoint(x: x, y: y), normal: normal,
                                 clearance: clearance, weight: weight)
-        queue.append(QueuedLabel(text: text, at: CGPoint(x: spot.center.x, y: spot.center.y), color: color, font: font.font(fontScale), opacity: opacity * labelFade))
+        let c = spot.center
+        queue.append(QueuedLabel(text: text, at: CGPoint(x: c.x, y: c.y), color: color, font: font.font(fontScale), opacity: opacity * labelFade,
+                                 rect: WaveRect(x0: c.x - w / 2 - 2, y0: c.y - 7 * fontScale, x1: c.x + w / 2 + 2, y1: c.y + 7 * fontScale)))
         return spot
     }
 
     /// Draws the queued labels on top, each with a dark halo so it reads over any arc.
     func flushLabels(_ g: inout GraphicsContext) {
         guard !queue.isEmpty else { return }
-        let items = queue
+        // a fixed label that a placed one (the time, a level letter) ended up on gives way, so no two labels ever overlap
+        let placed = queue.filter { !$0.yields && $0.rect.width > 0 }.map(\.rect)
+        let items = placed.isEmpty ? queue : queue.filter { q in !q.yields || !placed.contains { $0.overlap(q.rect) > 0 } }
         g.drawLayer { layer in
             layer.addFilter(.shadow(color: Theme.background.opacity(0.95), radius: 1.2))
             layer.addFilter(.shadow(color: Theme.background.opacity(0.7), radius: 2.6))

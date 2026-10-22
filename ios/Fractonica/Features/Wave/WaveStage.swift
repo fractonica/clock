@@ -156,6 +156,10 @@ final class WaveStage {
         var opacity: Double
         var anchor: UnitPoint = .center
         var panel: Bool = false
+        /// Where it is drawn, and whether it gives way: a fixed label (a loop number, an event word) is dropped where a
+        /// placed label (the time, a level letter) ended up on top of it.
+        var rect = WaveRect(x0: 0, y0: 0, x1: 0, y1: 0)
+        var yields = false
     }
 
     init() {

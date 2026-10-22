@@ -114,7 +114,9 @@ struct WaveStageView: View {
         }
         .overlay(alignment: .topLeading) {
             if let tip = model.tip {
-                WaveTipView(pick: tip.pick, location: tip.location, stageSize: stageSize, control: control, above: drag?.inspecting ?? false)
+                // the card keeps clear of the depth bar floating at the foot of the stage
+                let room = CGSize(width: stageSize.width, height: barFrame.height > 0 ? min(stageSize.height, barFrame.minY - 4) : stageSize.height)
+                WaveTipView(pick: tip.pick, location: tip.location, stageSize: room, control: control, above: drag?.inspecting ?? false)
                     .allowsHitTesting(false)
                     .transition(.opacity)
             }

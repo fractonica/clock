@@ -102,9 +102,9 @@ struct WaveReadoutCard: View {
 
     private var badge: some View {
         Text(readout.badge)
-            .font(.system(size: wide ? 24 : 20, weight: .semibold))
+            .font(.system(size: wide || row ? 24 : 20, weight: .semibold))
             .foregroundStyle(tint)
-            .frame(width: wide ? 46 : 40, height: wide ? 46 : 40)
+            .frame(width: wide || row ? 46 : 40, height: wide || row ? 46 : 40)
             .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(tint.opacity(0.12)))
             .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(tint.opacity(0.45), lineWidth: 1))
             .accessibilityHidden(true)
@@ -112,7 +112,7 @@ struct WaveReadoutCard: View {
 
     private var titleRow: some View {
         HStack(spacing: 6) {
-            Text(readout.title).font(.headline).foregroundStyle(Theme.ink)
+            Text(readout.title).font(wide || row ? .title3.weight(.semibold) : .headline).foregroundStyle(Theme.ink)
             if !readout.note.isEmpty {
                 Text(readout.note)
                     .font(.caption2.weight(.medium))
@@ -158,7 +158,7 @@ struct WaveReadoutCard: View {
     private func nextLine(_ line: WaveNextLine) -> some View {
         let gap = line.dim.isEmpty || line.text.isEmpty ? "" : " "
         return Text("\(Text(line.dim).foregroundStyle(Theme.ink3))\(gap)\(Text(line.text).foregroundStyle(Theme.ink))")
-            .font(.footnote.monospacedDigit())
+            .font((row ? Font.subheadline : .footnote).monospacedDigit())
             .lineLimit(1)
             .minimumScaleFactor(0.8)
     }
@@ -225,27 +225,27 @@ struct WaveReadoutCard: View {
             VStack(alignment: .leading, spacing: 3) {
                 titleRow
                 fastLine
-                Text(WaveReadoutCard.glue(readout.span)).font(.footnote.monospaced()).foregroundStyle(Theme.ink2).lineLimit(1).minimumScaleFactor(0.8)
+                Text(WaveReadoutCard.glue(readout.span)).font(.subheadline.monospaced()).foregroundStyle(Theme.ink2).lineLimit(1).minimumScaleFactor(0.8)
                 Text([readout.loop, readout.cycle].compactMap { $0 }.joined(separator: " · "))
-                    .font(.footnote).foregroundStyle(Theme.ink3).lineLimit(2).fixedSize(horizontal: false, vertical: true)
+                    .font(.subheadline).foregroundStyle(Theme.ink3).lineLimit(2).fixedSize(horizontal: false, vertical: true)
             }
-            .frame(maxWidth: 460, alignment: .leading)
+            .frame(maxWidth: 480, alignment: .leading)
             Spacer(minLength: 12)
             VStack(alignment: .leading, spacing: 4) {
                 ForEach(Array(readout.next.enumerated()), id: \.offset) { nextLine($0.element) }
                 if let s = readout.secondary {
                     HStack(spacing: 5) {
-                        WaveShareView(share: s, size: 14, color: Theme.ink2, label: "cycle phase")
-                        Text(readout.secondaryWhat).font(.caption).foregroundStyle(Theme.ink3).lineLimit(1)
+                        WaveShareView(share: s, size: 16, color: Theme.ink2, label: "cycle phase")
+                        Text(readout.secondaryWhat).font(.footnote).foregroundStyle(Theme.ink3).lineLimit(1)
                     }
                 }
             }
             .fixedSize()
             Spacer(minLength: 12)
             VStack(alignment: .trailing, spacing: 4) {
-                WaveShareView(share: readout.primary, size: 28, label: "half-arc phase")
-                Text(readout.primaryWhat).font(.caption).foregroundStyle(Theme.ink3).lineLimit(1)
-                bar.frame(width: 110)
+                WaveShareView(share: readout.primary, size: 34, label: "half-arc phase")
+                Text(readout.primaryWhat).font(.footnote).foregroundStyle(Theme.ink3).lineLimit(1)
+                bar.frame(width: 120)
             }
             .fixedSize()
             glyph
@@ -337,7 +337,8 @@ struct WaveSolarStrip: View {
     let wide: Bool
 
     var body: some View {
-        ClockTimeline(.periodic(0.5)) { t in
+        // its finest figure is a countdown in seconds (the pin moves a point every forty minutes)
+        ClockTimeline(.periodic(1)) { t in
             if let s = WaveSolarReadout.make(t: control.shown(t), words: control.words) {
                 content(s)
             }
@@ -528,10 +529,18 @@ struct WaveInfoView: View {
                     WaveLegend(words: words, overview: false, solar: true)
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Gestures").font(.headline).foregroundStyle(Theme.ink)
+                        #if os(macOS)
+                        gesture("hand.draw", "Click or drag along the bright arc to travel in time")
+                        gesture("cursorarrow.click", "Click a loop to jump to its start, a dot to focus its depth")
+                        gesture("hand.pinch", "Pinch, turn the mouse wheel or ⌘-scroll to change the depth")
+                        gesture("hand.draw", "Scroll with two fingers or drag elsewhere to look around")
+                        gesture("cursorarrow.rays", "Point at anything to see what it is")
+                        #else
                         gesture("hand.draw", "Drag along the bright arc to travel in time")
                         gesture("hand.tap", "Tap a loop to jump to its start, a dot to focus its depth")
                         gesture("hand.pinch", "Pinch to change the depth; drag elsewhere to look around")
                         gesture("hand.point.up.left", "Hold still on anything to see what it is")
+                        #endif
                         gesture("keyboard", "← → step by half-arc, ↑ ↓ change the depth, Home shows the catalogue")
                     }
                     VStack(alignment: .leading, spacing: 6) {
