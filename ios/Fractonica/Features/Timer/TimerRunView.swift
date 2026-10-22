@@ -110,7 +110,9 @@ struct TimerRunView: View {
                 }
                 Group {
                     if let end = run.end {
-                        Label(words.ringTime(end), systemImage: "bell.fill")
+                        // a small dial (iPhone landscape) has room for the ring time only without its clock reading
+                        let text = words.ringTime(end, withReading: innerDiameter >= 180)
+                        Label(text, systemImage: "bell.fill")
                             .accessibilityLabel("Rings at \(words.ringTime(end))")
                     } else {
                         Label("Paused", systemImage: "pause.fill")

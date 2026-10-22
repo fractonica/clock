@@ -46,10 +46,11 @@ struct TimerWords {
     }
 
     /// When a running timer rings: "14:23:07 · 34η 30ι" (`short`: "14:23 · 34η 30ι") · pure "34η 30ι 12λ".
-    func ringTime(_ end: Date, short: Bool = false) -> String {
+    func ringTime(_ end: Date, short: Bool = false, withReading: Bool = true) -> String {
         if pure { return moment(end) }
         let t = clock.t(end)
         let earth = short && words.earth.label(t, ref: clock.t(now)).count <= 8 ? words.earth.time(t, seconds: false) : moment(end)
+        guard withReading else { return earth }
         let fractonica = clockReading(end, upTo: "iota")
         return fractonica == "—" ? earth : "\(earth) · \(fractonica)"
     }
