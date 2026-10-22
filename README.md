@@ -13,6 +13,9 @@ library [`fractonica.js`](fractonica.js) and adds three things the spec does not
 
 No build step and no dependencies: static files and vanilla ES modules.
 
+Native apps for iPhone, iPad and Mac (SwiftUI, with widgets, Live Activities, alerts, a timer, a stopwatch and a Focus
+mode) live in [`ios/`](ios/README.md); their engine is checked against this app's own modules.
+
 ![Rings view](docs/img/rings.jpg)
 
 <p>
