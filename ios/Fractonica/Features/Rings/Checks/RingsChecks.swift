@@ -319,6 +319,13 @@ private func nativeChecks() {
     check(!RingsMath.isTangentialDrag(start: CGPoint(x: 100, y: 10), translation: CGSize(width: 1, height: 12), center: c), "down at 12 o'clock crosses the rings")
     check(RingsMath.isTangentialDrag(start: CGPoint(x: 190, y: 100), translation: CGSize(width: 0, height: -12), center: c), "up at 3 o'clock runs along the ring")
     check(!RingsMath.isTangentialDrag(start: c, translation: CGSize(width: 10, height: 0), center: c), "no direction at the centre")
+    // winding inside a vertically scrolling page: a steep vertical start is the page's scroll, even along a ring
+    check(RingsMath.beginsWinding(start: CGPoint(x: 190, y: 100), translation: CGSize(width: 0, height: -12), center: c, inVerticalScroll: false), "up at 3 o'clock winds where nothing scrolls")
+    check(!RingsMath.beginsWinding(start: CGPoint(x: 190, y: 100), translation: CGSize(width: 1, height: -12), center: c, inVerticalScroll: true), "up at 3 o'clock scrolls the page")
+    check(!RingsMath.beginsWinding(start: CGPoint(x: 10, y: 100), translation: CGSize(width: -2, height: 14), center: c, inVerticalScroll: true), "down at 9 o'clock scrolls the page")
+    check(RingsMath.beginsWinding(start: CGPoint(x: 100, y: 10), translation: CGSize(width: 12, height: 1), center: c, inVerticalScroll: true), "sideways at 12 o'clock winds in a page")
+    check(RingsMath.beginsWinding(start: CGPoint(x: 170, y: 30), translation: CGSize(width: 9, height: 9), center: c, inVerticalScroll: true), "diagonally at half past one winds in a page")
+    check(!RingsMath.beginsWinding(start: CGPoint(x: 100, y: 10), translation: CGSize(width: 1, height: 12), center: c, inVerticalScroll: false), "across the rings never winds")
     check(RingsMath.isHorizontalDrag(CGSize(width: 9, height: 3)) && !RingsMath.isHorizontalDrag(CGSize(width: 9, height: 12)) && !RingsMath.isHorizontalDrag(CGSize(width: 4, height: 0)), "horizontal drags")
 
     // blur and freeze

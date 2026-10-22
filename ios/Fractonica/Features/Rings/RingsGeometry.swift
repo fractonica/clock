@@ -235,6 +235,16 @@ enum RingsMath {
         return tangential > radial * 0.9
     }
 
+    /// Whether a drag that starts on a ring winds its hand. It must run along the ring; in a page that scrolls
+    /// vertically it must also not start steeply upwards or downwards, so that a thumb scrolling over the dial's 3 and
+    /// 9 o'clock sides (where a ring runs vertically) still scrolls the page instead of moving the time. Once a winding
+    /// has begun it may go any way round.
+    static func beginsWinding(start: CGPoint, translation: CGSize, center: CGPoint, inVerticalScroll: Bool) -> Bool {
+        guard isTangentialDrag(start: start, translation: translation, center: center) else { return false }
+        guard inVerticalScroll else { return true }
+        return abs(translation.height) < abs(translation.width) * 1.5
+    }
+
     /// A drag that moves sideways by more than `slop` and more than it moves vertically (a scrub, not a scroll).
     static func isHorizontalDrag(_ translation: CGSize, slop: CGFloat = 6) -> Bool {
         abs(translation.width) > slop && abs(translation.width) > abs(translation.height)

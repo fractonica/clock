@@ -48,7 +48,7 @@ struct RingsWave: View {
     /// quarter, Home / End the cycle's two ends.
     private func key(_ press: KeyPress) -> Bool {
         let t = store.time()
-        guard !model.outOfRange, clock.inRange(t), !press.modifiers.contains(.command), !press.modifiers.contains(.option),
+        guard !model.outOfRange, clock.inRange(t), press.modifiers.isDisjoint(with: [.command, .option, .control]),
               !RingsMath.isBlur(meanSeconds: clock.levelInfo(level).meanSeconds, speed: RingsScreenModel.speed(of: store)),
               let r = clock.level(at: min(t, clock.tMax - 0.001), level) else { return false }
         let states = Double(r.states)
@@ -135,6 +135,9 @@ struct RingsWave: View {
         switch step {
         case .began:
             guard let r = clock.level(at: min(t, clock.tMax - 0.001), level) else { return }
+            #if os(macOS)
+            focused = true // then the arrow keys move inside the cycle, as on the web
+            #endif
             scrubCycle = r.cycle
             lastIndex = r.index
             model.scrubbingWave = true

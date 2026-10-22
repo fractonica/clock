@@ -55,7 +55,7 @@ struct RingsCentre: View {
         let tier = self.tier
         VStack(spacing: tier == .full ? radius * 0.035 : 3) {
             GlyphView(index: r.index, strokes: 2, color: color)
-                .frame(height: tier == .full ? radius * 0.27 : radius * 0.3)
+                .frame(height: radius * (tier == .full ? 0.27 : tier == .compact ? 0.3 : 0.4))
                 .padding(.bottom, tier == .full ? radius * 0.03 : 2)
             if tier != .minimal {
                 Text(name)
@@ -127,12 +127,16 @@ struct RingsCentre: View {
             Text(pure ? "pos 0 → \(clock.extent)" : "\(earth.date(clock.tMin)) → \(earth.date(clock.tMax))")
                 .font(.system(size: max(9, radius * 0.065)).monospacedDigit())
                 .foregroundStyle(Theme.ink3)
-            HStack(spacing: radius * 0.06) {
+            HStack(spacing: 8) {
                 Button("Start", systemImage: "backward.end") { go(to: clock.tMin + 0.001) }
                 Button("End", systemImage: "forward.end") { go(to: clock.tMax - 0.001) }
             }
-            .font(.system(size: max(12, radius * 0.085), weight: .medium))
+            .font(.footnote.weight(.medium))
+            .labelStyle(.titleAndIcon)
             .buttonStyle(.bordered)
+            .buttonBorderShape(.capsule)
+            .controlSize(.small)
+            .tint(Theme.ink2)
             .padding(.top, radius * 0.04)
         }
         .lineLimit(1)

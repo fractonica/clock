@@ -30,6 +30,8 @@ struct RingsScreen: View {
                 .popover(isPresented: Bindable(model).showsOptions) {
                     RingsOptions(model: model)
                         .presentationCompactAdaptation(.popover)
+                        // a reading surface: the vivid dial behind clear glass would muddy the help text
+                        .presentationBackground(.regularMaterial)
                 }
             }
         }
@@ -59,7 +61,7 @@ struct RingsScreen: View {
         return ScrollViewReader { proxy in
             ScrollView {
                 VStack(spacing: 18) {
-                    dialColumn(size: dial)
+                    dialColumn(size: dial, inVerticalScroll: true)
                     RingsCard(model: model)
                         .frame(maxWidth: 720)
                         .id("card")
@@ -109,9 +111,9 @@ struct RingsScreen: View {
         .padding(.horizontal, layout.stripWithCard ? 8 : 20)
     }
 
-    private func dialColumn(size: CGFloat) -> some View {
+    private func dialColumn(size: CGFloat, inVerticalScroll: Bool = false) -> some View {
         VStack(spacing: 12) {
-            RingsDial(size: size, model: model)
+            RingsDial(size: size, model: model, inVerticalScroll: inVerticalScroll)
             RingsLevelStrip(model: model)
                 .frame(maxWidth: size)
         }
