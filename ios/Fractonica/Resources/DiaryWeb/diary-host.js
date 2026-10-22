@@ -301,7 +301,10 @@ function reportPage(force = false) {
   send(msg);
 }
 
+const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)');
+
 function scrollToSlot(i, smooth) {
+  if (reduceMotion.matches) smooth = false;
   const w = track.clientWidth;
   const left = Math.max(0, i) * w;
   if (smooth && Math.abs(track.scrollLeft - left) <= 3 * w) track.scrollTo({ left, behavior: 'smooth' });

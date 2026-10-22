@@ -44,7 +44,6 @@ struct DiaryPagesView: View {
                                 ForEach(group.pages) { page in
                                     Button {
                                         model.go(to: page.no, smooth: false)
-                                        Haptics.play(.selection)
                                         dismiss()
                                     } label: {
                                         DiaryThumbnail(model: model, page: page, aspect: plan.size.width / plan.size.height,

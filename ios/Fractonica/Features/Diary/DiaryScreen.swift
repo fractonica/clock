@@ -40,6 +40,7 @@ struct DiaryScreen: View {
                 Color.clear.onChange(of: t, initial: true) { _, t in sync(t) }
             }
         }
+        .sensoryFeedback(.selection, trigger: model.page) { _, _ in settings.haptics }
         .onChange(of: settings.pure) { sync(store.time()) }
         .onChange(of: settings.zone) { sync(store.time()) }
         .onChange(of: model.tapped) { _, no in
@@ -283,7 +284,6 @@ private struct DiaryHeader: View {
             if let shown = model.shownPage {
                 Button {
                     model.go(to: shown)
-                    Haptics.play(.selection)
                 } label: {
                     HStack(spacing: 5) {
                         Circle().fill(Theme.cursor).frame(width: 7, height: 7)
