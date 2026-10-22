@@ -88,7 +88,7 @@ struct HelionArcDrawing: View {
 
         init(r: Double, full: Bool) {
             let u = r / 38
-            line = max(1.7, 2.6 * u)
+            line = max(2.1, 2.6 * u)
             dot = max(2.4, 3.4 * u)
             self.full = full
             helion = full ? Theme.levelColor(6) : .white
@@ -144,7 +144,7 @@ struct HelionArcDrawing: View {
     /// The running Preon: its wave bright up to the dot and dim after it, and the dot (the Wave screen's marker).
     private func wave(_ context: inout GraphicsContext, _ s: Style) {
         let g = geometry
-        stroke(&context, path(g.wave(preon: preon, from: phase, to: 1)), s.preon.opacity(s.full ? 0.45 : 0.42), s.line * 0.8)
+        stroke(&context, path(g.wave(preon: preon, from: phase, to: 1)), s.preon.opacity(0.44), s.line * 0.8)
         stroke(&context, path(g.wave(preon: preon, from: 0, to: phase)), s.preonBright, s.line)
         let p = g.wave(preon: preon, phase: phase)
         if s.full {

@@ -20,7 +20,7 @@ next cycle, play a time-lapse at any speed) is always at hand.
 | **iPhone** | Tabs Now · Cycles · Calendar · Clock, and Jump as the search tab. The transport rides above the tab bar; Sound, Focus and Settings sit in Now's toolbar |
 | **iPad** | Every screen in a sidebar (or a top tab bar), the transport at the bottom; full keyboard shortcuts and pointer support |
 | **Mac** | The same sidebar in a window, the transport in the toolbar, menu commands with the web app's keys (Space, N, [ ], P, M, ⌘K, ⌘1…9), a Settings window, Focus in a full-screen window of its own, and the live clock in the menu bar ("34η 29ι") with quick actions |
-| **Widgets** | Home Screen, desktop and StandBy: the journal face, the clock, Up next, the rings, an extra-large overview on iPad and Mac; Lock Screen accessories on iPhone and iPad; Focus and Timer controls in Control Center |
+| **Widgets** | Home Screen, desktop and StandBy: the journal face, the clock, Up next, the rings, an extra-large overview on iPad and Mac; the Helion Arc (the Helion's double arc with the running Preon riding it as a wave) there and on the Lock Screen; Lock Screen accessories on iPhone and iPad; Focus and Timer controls in Control Center |
 | **Live Activities** | A running timer or stopwatch on the Lock Screen and in the Dynamic Island (iPhone) |
 | **Notifications** | Alerts: choose the moments you want to hear about — turnovers and quarters of any level, the solar sync, eclipses — with lead times, sounds and quiet hours. Timers ring through Focus modes (time-sensitive) |
 | **Focus** | The clock as a vivid full-screen animation of many combined harmonics in four styles, with a breathing cue and an optional session; it follows Reduce Motion |
