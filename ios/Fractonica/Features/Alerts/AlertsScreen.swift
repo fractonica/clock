@@ -15,10 +15,14 @@ struct AlertsScreen: View {
     @State private var primer: AlertRule?
     @State private var width: CGFloat = 0
 
+    /// From this width (iPad, Mac, iPhone in landscape) the rules sit beside the queue, each column about an iPhone
+    /// wide; below it everything is one list.
+    static let wideWidth: CGFloat = 700
+
     var body: some View {
         let text = AlertText(words: settings.wording)
         Group {
-            if width >= 760 {
+            if width >= Self.wideWidth {
                 HStack(alignment: .top, spacing: 0) {
                     Form { primarySections(text, compact: false) }
                         .alertsForm()
@@ -346,8 +350,14 @@ struct AlertsScreen: View {
         proxy.scrollTo(target, anchor: .top)
     }
 
-    /// `-FXAlertsEdit`: a preset's id, "new", or "rule" (the first rule).
+    /// `-FXAlertsEdit`: a preset's id, "new", or "rule" (the first rule); `-FXAlertsLandscape`: turn to landscape.
     private func openLaunchEditor() {
+        #if os(iOS)
+        if alerts.launch.landscape {
+            let scene = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first
+            scene?.requestGeometryUpdate(.iOS(interfaceOrientations: .landscapeRight)) { _ in }
+        }
+        #endif
         if alerts.launch.primer, let rule = alerts.rules.first {
             primer = rule
             return

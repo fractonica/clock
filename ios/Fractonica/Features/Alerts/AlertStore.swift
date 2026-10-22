@@ -582,6 +582,7 @@ enum AlertScheduling {
 ///     -FXAlertsLive 1                       the demo rules really queued, with provisional (quiet, promptless)
 ///                                           permission: checks the system queue end to end; nothing is saved
 ///     -FXAlertsScroll quiet                 scroll to a section (hero rules presets quiet upcoming recent)
+///     -FXAlertsLandscape 1                  turn an iPhone to landscape when the screen appears (iOS screenshots)
 struct AlertLaunchOptions: Sendable {
     var demo = false
     var live = false
@@ -590,6 +591,7 @@ struct AlertLaunchOptions: Sendable {
     var edit: String?
     var quiet = false
     var primer = false
+    var landscape = false
     var pure = false
     /// `-FXAlertsScroll hero|rules|presets|quiet|upcoming|recent` (with -FXAlertsEdit: `only|when|message|delivery|coming`):
     /// scroll there on launch.
@@ -610,6 +612,7 @@ struct AlertLaunchOptions: Sendable {
             edit: string("FXAlertsEdit"),
             quiet: flag("FXAlertsQuiet"),
             primer: flag("FXAlertsPrimer"),
+            landscape: flag("FXAlertsLandscape"),
             pure: flag("FXPure"),
             scroll: string("FXAlertsScroll")
         )
