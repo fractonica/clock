@@ -301,6 +301,12 @@ private struct LadderFooter: View {
     @Environment(AppSettings.self) private var settings
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
+    #if os(macOS)
+    private static let how = "Click a depth for its quarters; right-click it, or press ↩ or ⇧↩, to travel."
+    #else
+    private static let how = "Tap a depth for its quarters, swipe it to travel."
+    #endif
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             if settings.maxDepth < 14 {
@@ -321,9 +327,7 @@ private struct LadderFooter: View {
                     Label("Fewer depths (hide λ μ ν ξ)", systemImage: "minus")
                 }
             }
-            Text(settings.pure
-                ? "Each bar is split into its sub-cycles; the glyphs show the phase. Tap a depth for its quarters, swipe it to travel."
-                : "Each bar is split into its sub-cycles; the glyph shows the phase. Tap a depth for its quarters, swipe it to travel.")
+            Text(verbatim: "Each bar is split into its sub-cycles; the \(settings.pure ? "glyphs show" : "glyph shows") the phase. \(Self.how)")
                 .foregroundStyle(Theme.ink3)
         }
         .font(.footnote)

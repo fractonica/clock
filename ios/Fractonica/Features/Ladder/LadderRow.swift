@@ -3,8 +3,8 @@ import SwiftUI
 
 /// One depth of the ladder (src/ui/ladder.js): chip, place in the parent, time left, the segmented bar and the phase;
 /// the selected row opens its details. Each row redraws on its own, at the cadence its bar and its countdown need
-/// (`LadderCadence.row`: once a minute for α … ε, once a second for a countdown in seconds, one bar pixel for ι κ, every
-/// frame for the fast ones; an open row at least 4 times a second), and reads its level once per redraw.
+/// (`LadderCadence.row`: once a minute for α … ε, once a second for a countdown in seconds, one pixel of its measured
+/// bar for ι κ, every frame for the fast ones; an open row at least once a second), and reads its level once per redraw.
 struct LadderRow: View {
     let level: Int
     let isSelected: Bool
@@ -16,25 +16,33 @@ struct LadderRow: View {
     @Environment(ClockStore.self) private var store
     @ScaledMetric(relativeTo: .subheadline) private var readingSize = 15.0
     @Environment(\.dynamicTypeSize) private var typeSize
+    @Environment(\.displayScale) private var displayScale
 
     private var info: LevelInfo { FractonicaClock.shared.levelInfo(level) }
     /// Too fast to count down or to follow (ν, ξ).
     private var still: Bool { info.meanSeconds < LadderCadence.stillBelow }
 
-    /// The cadence the row asked for at its last redraw (`cadence(for:)`); it changes with the countdown's resolution.
+    /// The cadence the row asked for at its last redraw (`cadence(_:t:)`); it changes with the countdown's resolution.
     @State private var asked: Double?? = .none
+    /// The bar's width in device pixels, once measured: its row redraws about once a pixel (a phone's bar is a third
+    /// of the 2000 px assumed before, so ι redraws below 2 Hz there instead of 4).
+    @State private var barPixels = LadderCadence.assumedPixels
 
-    /// Displayed seconds between redraws for the reading `remaining` seconds before its end; nil every frame.
-    private func cadence(remaining: Double?) -> Double? {
+    /// Displayed seconds between redraws for a reading at t (nil: outside the catalogue); nil every frame.
+    private func cadence(_ lv: LevelReading?, t: Double) -> Double? {
         if still { return isExpanded ? LadderCadence.readout : 60 }
-        guard !isExpanded, let remaining else { return LadderCadence.row(meanSeconds: info.meanSeconds) }
-        return LadderCadence.row(meanSeconds: info.meanSeconds, remaining: remaining, pure: settings.pure)
+        guard let lv else { return LadderCadence.row(meanSeconds: info.meanSeconds, pixels: barPixels) }
+        if isExpanded {
+            return LadderCadence.openRow(meanSeconds: info.meanSeconds, untilNext: (lv.next.time ?? lv.end) - t,
+                                         elapsed: t - lv.start, pure: settings.pure, pixels: barPixels)
+        }
+        return LadderCadence.row(meanSeconds: info.meanSeconds, remaining: lv.end - t, pure: settings.pure, pixels: barPixels)
     }
 
     var body: some View {
         let words = settings.wording
-        // until the first redraw has asked for its own, the open-row cadence (never too slow)
-        let cadence = asked ?? cadence(remaining: nil)
+        // until the first redraw has asked for its own, the cadence of a row not yet read (never too slow)
+        let cadence = asked ?? LadderCadence.row(meanSeconds: info.meanSeconds)
         ClockTimeline(cadence.map { .periodic($0) } ?? .animation) { raw in
             let t = LadderLaunch.shown(raw)
             let lv = store.clock.level(at: t, level)
@@ -45,7 +53,7 @@ struct LadderRow: View {
                         .transition(.opacity.combined(with: .move(edge: .top)))
                 }
             }
-            .onChange(of: self.cadence(remaining: lv.map { $0.end - t }), initial: true) { _, wanted in asked = .some(wanted) }
+            .onChange(of: self.cadence(lv, t: t), initial: true) { _, wanted in asked = .some(wanted) }
         }
     }
 
@@ -74,6 +82,10 @@ struct LadderRow: View {
                             .layoutPriority(1)
                     }
                     SegmentBar(level: level, factor: info.factor, phase: lv?.phase, still: still, emphasized: isSelected, clip: clip(lv))
+                        .onGeometryChange(for: Double.self) { Double($0.size.width) } action: { width in
+                            let pixels = max(1, (width * displayScale).rounded())
+                            if pixels != barPixels { barPixels = pixels }
+                        }
                 }
                 PhaseMark(reading: still ? nil : lv, pure: words.pure)
             }

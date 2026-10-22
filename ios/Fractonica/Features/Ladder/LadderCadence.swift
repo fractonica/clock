@@ -17,20 +17,32 @@ enum LadderCadence {
         return untilNext < 10 + upNextCalm ? readout : upNextCalm
     }
 
-    /// Displayed seconds between redraws of an open ladder row (its details tick too): about one device pixel of its
-    /// bar (a bar ~ 2000 px wide at most), never slower than `readout` and every frame (nil) when that is under 1/60 s,
-    /// i.e. for cycles shorter than ~33 s (κ, λ, μ, ν, ξ).
-    static func row(meanSeconds: Double) -> Double? {
-        guard let pixel = pixel(meanSeconds: meanSeconds) else { return nil }
+    /// The width of a bar in device pixels until its row has measured its own (a wide Mac or iPad bar).
+    static let assumedPixels = 2000.0
+
+    /// The cadence of a row before it has read its level: about one device pixel of its bar, never slower than
+    /// `readout`, every frame (nil) when a pixel passes in under a display frame.
+    static func row(meanSeconds: Double, pixels: Double = assumedPixels) -> Double? {
+        guard let pixel = pixel(meanSeconds: meanSeconds, pixels: pixels) else { return nil }
         return min(readout, pixel)
     }
 
-    /// Displayed seconds between redraws of a closed ladder row: the faster of what its bar needs (one device pixel)
-    /// and what its countdown needs (`textStep`); every frame (nil) for cycles shorter than ~33 s. Slow rows then redraw
-    /// once a minute or once a second, on the clock's own second, instead of four times a second for nothing.
-    static func row(meanSeconds: Double, remaining: Double, pure: Bool) -> Double? {
-        guard let pixel = pixel(meanSeconds: meanSeconds) else { return nil }
+    /// Displayed seconds between redraws of a closed ladder row: the faster of what its bar needs (one device pixel of
+    /// its measured width) and what its countdown needs (`textStep`); every frame (nil) when a pixel passes in under a
+    /// display frame (λ and finer). Slow rows then redraw once a minute or once a second, on the clock's own second,
+    /// instead of four times a second for nothing.
+    static func row(meanSeconds: Double, remaining: Double, pure: Bool, pixels: Double = assumedPixels) -> Double? {
+        guard let pixel = pixel(meanSeconds: meanSeconds, pixels: pixels) else { return nil }
         return min(pixel, textStep(remaining: remaining, pure: pure))
+    }
+
+    /// Displayed seconds between redraws of an open row, whose details tick too: its bar's pixel, at least once a
+    /// second (the thresholds count down in seconds), as often as the nearest threshold's pure span changes
+    /// (`untilNext`, displayed seconds to it) and `readout` while a pure "started … ago" counts ν (`elapsed` under two λ).
+    static func openRow(meanSeconds: Double, untilNext: Double, elapsed: Double, pure: Bool, pixels: Double = assumedPixels) -> Double? {
+        guard let pixel = pixel(meanSeconds: meanSeconds, pixels: pixels) else { return nil }
+        let step = min(pixel, 1, textStep(remaining: untilNext, pure: pure))
+        return pure && elapsed < pureSecond ? min(step, readout) : step
     }
 
     /// How often a ladder countdown of `remaining` displayed seconds changes, rounded down to the cadences used: once a
@@ -51,9 +63,9 @@ enum LadderCadence {
     /// Two λ: below it a pure countdown counts ν (a third of a second each).
     static let pureSecond = 2 * 7.773
 
-    /// One device pixel of a bar (~ 2000 px at most), nil when that is under a display frame.
-    private static func pixel(meanSeconds: Double) -> Double? {
-        let pixel = meanSeconds / 2000
+    /// The time one device pixel of a bar `pixels` wide stands for, nil when that is under a display frame.
+    private static func pixel(meanSeconds: Double, pixels: Double) -> Double? {
+        let pixel = meanSeconds / max(1, pixels)
         return pixel < 1.0 / 60 ? nil : pixel
     }
 

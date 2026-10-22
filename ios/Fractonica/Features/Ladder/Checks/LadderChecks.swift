@@ -323,7 +323,7 @@ private func cadenceChecks() {
     check(LadderCadence.countdown(remaining: 60, pure: true, blinkSeconds: blink, container: 0.25) == nil, "whole Blinks do not")
     check(LadderCadence.countdown(remaining: -1, pure: false, blinkSeconds: blink, container: 0.25) == nil, "nothing after the end")
 
-    // closed rows redraw as often as their bar or their countdown needs, open ones at least 4 times a second
+    // closed rows redraw as often as their bar or their countdown needs
     check(LadderCadence.row(meanSeconds: means[0], remaining: 6e8, pure: false) == 60, "an α row redraws once a minute")
     check(LadderCadence.row(meanSeconds: means[5], remaining: 3 * 86_400, pure: false) == 60, "a ζ row days from its end: once a minute")
     check(LadderCadence.row(meanSeconds: means[5], remaining: 5 * 3600, pure: false) == 1, "… hours from it: once a second")
@@ -333,7 +333,21 @@ private func cadenceChecks() {
     check(LadderCadence.row(meanSeconds: means[4], remaining: 2e6, pure: true) == 60, "pure: a span of ε and coarser changes slowly")
     check(LadderCadence.row(meanSeconds: means[6], remaining: 3000, pure: true) == 1, "pure: an ι λ span ticks every second")
     check(LadderCadence.row(meanSeconds: means[7], remaining: 10, pure: true) == LadderCadence.readout, "pure: a λ ν span ticks 4 times a second")
-    check(LadderCadence.row(meanSeconds: means[0]) == LadderCadence.readout, "an open α row ticks 4 times a second")
+    check(LadderCadence.row(meanSeconds: means[0]) == LadderCadence.readout, "a row not yet read ticks 4 times a second")
+    // measured bars: a phone's ~700 px bar slows ι and κ down to what a pixel needs
+    check(LadderCadence.row(meanSeconds: means[8], remaining: 300, pure: false, pixels: 700) == means[8] / 700, "ι on a phone: its own pixel")
+    check(LadderCadence.row(meanSeconds: means[8], remaining: 300, pure: false, pixels: 700)! > 0.5, "ι on a phone: under 2 Hz")
+    check(LadderCadence.row(meanSeconds: means[9], remaining: 30, pure: false, pixels: 700) == means[9] / 700, "κ on a phone: its own pixel")
+    check(LadderCadence.row(meanSeconds: means[10], remaining: 3, pure: false, pixels: 700) == nil, "λ on a phone: every frame")
+    check(LadderCadence.row(meanSeconds: means[8], remaining: 300, pure: false, pixels: 0) != nil, "an unmeasured (zero) bar never divides by zero")
+    // open rows: the bar's pixel, at least once a second, ν-fast while a pure threshold or start is under two λ away
+    check(LadderCadence.openRow(meanSeconds: means[0], untilNext: 1e8, elapsed: 1e8, pure: false) == 1, "an open α row: once a second")
+    check(LadderCadence.openRow(meanSeconds: means[0], untilNext: 1e8, elapsed: 1e8, pure: true) == 1, "pure too")
+    check(LadderCadence.openRow(meanSeconds: means[8], untilNext: 100, elapsed: 100, pure: false, pixels: 2000) == means[8] / 2000, "an open ι row: its pixel")
+    check(LadderCadence.openRow(meanSeconds: means[6], untilNext: 10, elapsed: 3000, pure: true) == LadderCadence.readout, "pure: a threshold in λ ν")
+    check(LadderCadence.openRow(meanSeconds: means[6], untilNext: 3000, elapsed: 5, pure: true) == LadderCadence.readout, "pure: started ν ago")
+    check(LadderCadence.openRow(meanSeconds: means[6], untilNext: 3000, elapsed: 5, pure: false) == 1, "Earth: the start is a date")
+    check(LadderCadence.openRow(meanSeconds: means[11], untilNext: 1, elapsed: 1, pure: false) == nil, "an open μ row: every frame")
     for level in 0...9 {
         for remaining in [0.5, 9, 59, 3599, 86_399, 86_401, 1e7] where remaining < means[level] {
             for pure in [false, true] {
