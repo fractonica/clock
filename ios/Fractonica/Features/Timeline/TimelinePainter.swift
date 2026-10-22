@@ -693,6 +693,13 @@ struct TimelinePainter {
                 let style = alpha ? bold : regular
                 let lw = text.width(lab, style)
                 if x - lw / 2 > px0 + 2, x + lw / 2 < px1 - 2 {
+                    if i == 0 || i == clock.extent {
+                        // the first and last eclipse sit on the catalogue's dashed edge: back the label so the line
+                        // does not strike it through
+                        cg.addPath(roundRect(CGRect(x: x - lw / 2 - 3, y: labelY - 7, width: lw + 6, height: 14), 4))
+                        cg.setFillColor(P.background(0.9))
+                        cg.fillPath()
+                    }
                     td.draw(lab, x: x, y: labelY, style, alpha ? P.ink(0.9) : P.ink2(0.85), align: .center)
                 }
             }
