@@ -57,6 +57,7 @@ struct TimerSetupView: View {
         let earth = !pure && store.draft.input == .earth
         let spec = store.draft.spec(pure: pure)
         let empty = earth ? store.draft.earthSeconds == 0 : store.draft.ladder.isZero
+        let unmeasurable = spec.measure == .ladder && !store.clock.inRange(.now)
         return VStack(spacing: 18) {
             if !pure {
                 Picker("Units", selection: $store.draft.input) {
@@ -97,7 +98,7 @@ struct TimerSetupView: View {
                 RoundControl("Start", tint: Theme.teal) {
                     withAnimation(.smooth) { _ = store.start(spec) }
                 }
-                .disabled(empty)
+                .disabled(empty || unmeasurable)
                 .keyboardShortcut(.defaultAction)
             }
             .padding(.horizontal, 12)
@@ -236,6 +237,8 @@ struct TimerSetupView: View {
                         .contentShape(.rect(cornerRadius: 16))
                     }
                     .buttonStyle(CardButtonStyle())
+                    .disabled(!store.clock.inRange(.now))
+                    .opacity(store.clock.inRange(.now) ? 1 : 0.4)
                     .accessibilityLabel("Start \(span.spoken)")
                     .accessibilityHint(presetSubtitle(span))
                 }

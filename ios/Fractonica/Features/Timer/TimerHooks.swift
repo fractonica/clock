@@ -9,6 +9,16 @@ enum TimerHooks: FeatureHooks {
         let demo = TimerDemo.current()
         if !demo.apply(timer: .shared) { TimerStore.shared.restore() }
         if !demo.apply(stopwatch: .shared) { StopwatchStore.shared.restore() }
+        #if DEBUG
+        // debug builds: start a real timer (-FXTimerStart <Blinks>) or the stopwatch (-FXStopwatchStart 1) at launch,
+        // to exercise notifications, the Live Activity and the ring end to end
+        let blinks = UserDefaults.standard.integer(forKey: "FXTimerStart")
+        if blinks > 0, demo.timer == nil, demo.now == nil { TimerStore.shared.start(.ladder(LadderSpan(blinks: blinks))) }
+        if UserDefaults.standard.bool(forKey: "FXStopwatchStart"), demo.stopwatch == nil, demo.now == nil {
+            StopwatchStore.shared.reset()
+            StopwatchStore.shared.start()
+        }
+        #endif
         #if os(iOS) && canImport(ActivityKit)
         TimerActivityAction.handler = perform
         #endif

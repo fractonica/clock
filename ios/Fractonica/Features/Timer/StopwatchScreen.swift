@@ -14,6 +14,11 @@ struct StopwatchScreen: View {
         case digits, dial
     }
 
+    /// The face asked for by the `-FXStopwatchFace digits|dial` launch argument (screenshots).
+    private static var forcedFace: String? {
+        UserDefaults.standard.string(forKey: "FXStopwatchFace").flatMap { Face(rawValue: $0)?.rawValue }
+    }
+
     var body: some View {
         GeometryReader { geo in
             let w = geo.size.width, h = geo.size.height
@@ -32,7 +37,7 @@ struct StopwatchScreen: View {
             #if DEBUG && os(iOS)
             TimerDemo.rotateIfAsked()
             #endif
-            if let forced = UserDefaults.standard.string(forKey: "FXStopwatchFace"), Face(rawValue: forced) != nil { face = forced }
+            if let forced = Self.forcedFace { face = forced }
         }
     }
 
@@ -42,6 +47,7 @@ struct StopwatchScreen: View {
     private func compact(width: CGFloat, height: CGFloat) -> some View {
         let faceHeight = min(width - 32, height * 0.46)
         return VStack(spacing: 0) {
+            ScrollViewReader { proxy in
             ScrollView(.horizontal) {
                 HStack(spacing: 0) {
                     digitsFace(size: 60)
@@ -59,6 +65,8 @@ struct StopwatchScreen: View {
             .scrollPosition(id: Binding(get: { face }, set: { if let new = $0 { face = new } }))
             .scrollIndicators(.hidden)
             .frame(height: faceHeight)
+            .onAppear { proxy.scrollTo(Self.forcedFace ?? face) }
+            }
             pageDots
                 .padding(.top, 6)
             controls
