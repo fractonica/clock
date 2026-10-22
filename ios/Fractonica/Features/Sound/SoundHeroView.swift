@@ -167,7 +167,7 @@ private struct PowerButton: View {
                 .contentShape(.circle)
         }
         .buttonStyle(.plain)
-        .glassEffect(.regular.tint(on ? Theme.teal.opacity(0.2) : .clear).interactive(), in: .circle)
+        .glassSurface(.regular.tint(on ? Theme.teal.opacity(0.2) : .clear).interactive(), in: .circle)
         .shadow(color: on ? Theme.teal.opacity(0.35) : .clear, radius: 18)
         .sensoryFeedback(.impact(weight: .medium), trigger: on) { _, _ in settings.haptics }
         .accessibilityLabel("Sound")
@@ -225,7 +225,7 @@ private struct MomentButton: View {
             .padding(.horizontal, 6)
             .padding(.vertical, 2)
         }
-        .buttonStyle(.glass)
+        .glassButtonStyle()
         .sensoryFeedback(.impact(weight: .light), trigger: plays) { _, _ in settings.haptics }
         .accessibilityValue(ringing ? "Playing" : "")
         .accessibilityHint("Plays the chord of the displayed moment as a short arpeggio")

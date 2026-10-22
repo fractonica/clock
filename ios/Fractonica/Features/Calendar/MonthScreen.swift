@@ -161,7 +161,7 @@ private struct EarthMonthView: View {
                 } label: {
                     Image(systemName: "scope")
                 }
-                .buttonStyle(.glass)
+                .glassButtonStyle()
                 .buttonBorderShape(.circle)
                 .help("Show the month of the displayed time")
                 .accessibilityLabel(Text("Show the displayed day"))
@@ -205,7 +205,7 @@ struct CalStepPair: View {
             button(1, "chevron.right", next)
                 .keyboardShortcut(shortcuts ? KeyboardShortcut(.rightArrow, modifiers: .command) : nil)
         }
-        .glassEffect(.regular.interactive(), in: .capsule)
+        .glassSurface(.regular.interactive(), in: .capsule)
         // the arrows sit in a fixed 44 × 38 frame: past xxxLarge they would outgrow it
         .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
     }
@@ -643,7 +643,7 @@ private struct CalMonthPicker: View {
                     Haptics.play(.selection)
                     dismiss()
                 }
-                .buttonStyle(.glassProminent)
+                .glassProminentButtonStyle()
                 .tint(Theme.teal)
             }
         }

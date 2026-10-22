@@ -3,24 +3,68 @@ import AppKit
 #endif
 import FractonicaKit
 import SwiftUI
+#if os(iOS)
+import UIKit
+#endif
 
 // The global time-travel control (the header transport of src/main.js): what moment the app shows, back to live,
 // previous / next cycle of the selected level, play / pause and the time-lapse speed. Tapping the moment opens
 // `TransportPanel` (a sheet on iOS, a popover on macOS) to go to a date, step by any cycle or pick a speed.
 //
 //   iOS    `TransportBar` in the tab bar's bottom accessory (Liquid Glass); minimised with the tab bar, it keeps
-//          only the moment and Play.
+//          only the moment and Play. iOS 18, which has no accessory: `TransportInsetBar`, a bar of its own just above
+//          the tab bar.
 //   macOS  `TransportControls` in the window toolbar; its moment ticks through an AppKit view (`ToolbarTicker`).
 
 #if os(iOS)
-/// The transport in the tab bar's bottom accessory.
+/// The transport in the tab bar's bottom accessory (iOS 26).
+@available(iOS 26.0, *)
 struct TransportBar: View {
-    @Environment(ClockStore.self) private var store
-    @Environment(AppRouter.self) private var router
     @Environment(\.tabViewBottomAccessoryPlacement) private var placement
 
     var body: some View {
-        let inline = placement == .inline
+        TransportRow(inline: placement == .inline)
+    }
+}
+
+/// The transport above the tab bar on iOS 18, at the foot of each tab's content (`safeAreaInset`, so the content
+/// scrolls under it and ends above it): the accessory's row on a capsule of material, on a band of the bars' material
+/// that runs on to the foot of the screen, under the tab bar (which then draws no background of its own), as the
+/// system's mini players do: one bar, with no content showing through between the two. It steps aside while the
+/// keyboard is up, as the tab bar does.
+struct TransportInsetBar: View {
+    @State private var keyboardShown = false
+
+    var body: some View {
+        VStack(spacing: 0) {
+            if !keyboardShown {
+                TransportRow(inline: false)
+                    .padding(.vertical, 4)
+                    .glassSurface(in: .capsule)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(.bar)
+                    .overlay(alignment: .top) { Divider() }
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
+            keyboardShown = true
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
+            keyboardShown = false
+        }
+    }
+}
+
+/// The moment, Back to live, the steps and Play in one row; `inline` (the accessory minimised with the tab bar) keeps
+/// only the moment and Play.
+private struct TransportRow: View {
+    var inline: Bool
+
+    @Environment(ClockStore.self) private var store
+    @Environment(AppRouter.self) private var router
+
+    var body: some View {
         HStack(spacing: inline ? 4 : 0) {
             Button {
                 router.isTransportPresented = true

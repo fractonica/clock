@@ -77,7 +77,7 @@ struct DiaryScreen: View {
         .modifier(OptionsPresentation(isPresented: $showOptions, compact: isCompact))
         .sheet(isPresented: $showPicker) {
             DiaryDeltaPicker(model: model)
-                .presentationDetents([.medium, .large])
+                .sheetDetents([.medium, .large])
         }
         .sheet(isPresented: $showPages) {
             DiaryPagesView(model: model)
@@ -206,7 +206,7 @@ struct DiaryScreen: View {
                     .foregroundStyle(Theme.ink2)
                     .padding(.horizontal, 10)
                     .padding(.vertical, 5)
-                    .glassEffect(.regular, in: .capsule)
+                    .glassSurface(.regular, in: .capsule)
                     .frame(maxHeight: .infinity, alignment: .top)
                     .padding(.top, 12)
                     .transition(.opacity)
@@ -512,7 +512,7 @@ private struct DiaryPageBar: View {
                 }
                 .padding(.horizontal, 6)
                 .padding(.vertical, 4)
-                .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 26))
+                .glassSurface(.regular.interactive(), in: .rect(cornerRadius: 26))
             } else {
                 HStack(spacing: 2) {
                     allPagesButton
@@ -524,7 +524,7 @@ private struct DiaryPageBar: View {
                 }
                 .padding(.horizontal, 6)
                 .padding(.vertical, 4)
-                .glassEffect(.regular.interactive(), in: .capsule)
+                .glassSurface(.regular.interactive(), in: .capsule)
             }
         }
         .buttonStyle(.plain)

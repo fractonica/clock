@@ -28,8 +28,9 @@ next cycle, play a time-lapse at any speed) is always at hand.
 
 ## Build and run
 
-Requirements: Xcode 27, [XcodeGen](https://github.com/yonaskolb/XcodeGen); the apps target iOS 26 and macOS 26.
-There are no third-party dependencies.
+Requirements: Xcode 27, [XcodeGen](https://github.com/yonaskolb/XcodeGen). The iPhone and iPad app (with its widgets)
+runs from iOS 18.6: Liquid Glass and the tab bar's accessory on iOS 26 and later, that system's own equivalents on iOS
+18. The Mac app needs macOS 26. There are no third-party dependencies.
 
 ```sh
 cd ios
@@ -46,6 +47,7 @@ From the command line, without signing (simulator) or signed ad hoc (Mac):
 ```sh
 ios/scripts/build.sh ios      # or mac, kit, all; DERIVED_DATA=… to choose where products go
 ios/scripts/shoot.sh /tmp/now.png -FXTab now -FXTime 1791460800 -FXZone UTC   # simulator screenshot
+ios/scripts/shoot.sh --runtime iOS-18-6 --type "iPhone 16 Pro" --device "Fractonica 18" /tmp/now18.png -FXTab now
 ```
 
 Launch arguments (`-FXTab`, `-FXTime`, `-FXPure`, `-FXZone`, `-FXLink`, `-FXRate`, and each feature's own) put the

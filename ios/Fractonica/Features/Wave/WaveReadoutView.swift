@@ -629,7 +629,7 @@ struct WaveInfoView: View {
                 ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
             }
         }
-        .presentationDetents([.medium, .large])
+        .sheetDetents([.medium, .large])
         #if os(macOS)
         .frame(minWidth: 460, minHeight: 520)
         #endif

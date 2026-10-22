@@ -25,7 +25,7 @@ struct TimelineControlBar: View {
         let strip = presets.filter(\.strip)
         // the inline presets need about this much room beside the zoom, fit and follow controls
         let stripWidth = strip.reduce(0) { $0 + max(34, CGFloat($1.label.count) * 9 + 20) + 2 }
-        GlassEffectContainer(spacing: 10) {
+        GlassContainer(spacing: 10) {
             if vertical {
                 VStack(spacing: 10) {
                     zoomCluster(w, presets: presets, active: active)
@@ -106,8 +106,8 @@ struct TimelineControlBar: View {
         .buttonStyle(.plain)
         .font(.body.weight(.semibold))
         .foregroundStyle(Theme.ink)
-        .glassEffect(.regular.interactive(), in: vertical ? AnyShape(.rect(cornerRadius: 22)) : AnyShape(.capsule))
-        .glassEffectID("zoom", in: glass)
+        .glassSurface(.regular.interactive(), in: vertical ? AnyShape(.rect(cornerRadius: 22)) : AnyShape(.capsule))
+        .glassID("zoom", in: glass)
     }
 
     private func presetItem(_ p: TimelineController.Preset, active: String?) -> some View {
@@ -178,8 +178,8 @@ struct TimelineControlBar: View {
             }
         }
         .padding(2)
-        .glassEffect(.regular.interactive(), in: .capsule)
-        .glassEffectID("presets", in: glass)
+        .glassSurface(.regular.interactive(), in: .capsule)
+        .glassID("presets", in: glass)
         .animation(reduceMotion ? nil : .snappy(duration: 0.22), value: active)
     }
 
@@ -201,8 +201,8 @@ struct TimelineControlBar: View {
             .contentShape(.capsule)
         }
         .buttonStyle(.plain)
-        .glassEffect(.regular.interactive(), in: .capsule)
-        .glassEffectID("fit", in: glass)
+        .glassSurface(.regular.interactive(), in: .capsule)
+        .glassID("fit", in: glass)
         .accessibilityLabel("Fit the \(info.letter) cycle at the cursor")
         .help("Zoom to the cycle of the selected depth (\(info.letter)) at the cursor (F)")
     }
@@ -220,8 +220,8 @@ struct TimelineControlBar: View {
                 .contentTransition(.symbolEffect(.replace))
         }
         .buttonStyle(.plain)
-        .glassEffect(on ? .regular.tint(Theme.teal.opacity(0.25)).interactive() : .regular.interactive(), in: .capsule)
-        .glassEffectID("follow", in: glass)
+        .glassSurface(on ? .regular.tint(Theme.teal.opacity(0.25)).interactive() : .regular.interactive(), in: .capsule)
+        .glassID("follow", in: glass)
         .accessibilityLabel("Follow the cursor")
         .accessibilityValue(on ? "On" : "Off")
         .accessibilityAddTraits(on ? .isSelected : [])

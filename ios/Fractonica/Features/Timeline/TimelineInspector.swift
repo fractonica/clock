@@ -29,7 +29,7 @@ struct TimelineInspector: View {
         content
             .padding(12)
             .frame(width: cardWidth, alignment: .leading)
-            .glassEffect(.regular, in: .rect(cornerRadius: 16))
+            .glassSurface(.regular, in: .rect(cornerRadius: 16))
             .onGeometryChange(for: CGSize.self) { $0.size } action: { size = $0 }
             .offset(offset)
             .allowsHitTesting(false)

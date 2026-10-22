@@ -6,6 +6,8 @@
 #   --no-build        use the app from the last ios/scripts/build.sh ios
 #   --device NAME     simulator to use (default "Fractonica iPhone"); created on first use, booted if needed
 #   --type TYPE       device type for a new device (default "iPhone 18 Pro"; e.g. "iPad Pro 13-inch (M5)")
+#   --runtime NAME    simulator runtime of the device (default iOS-27-0; e.g. iOS-18-6 with --type "iPhone 16 Pro"),
+#                     short or as com.apple.CoreSimulator.SimRuntime.iOS-18-6; --uninstall and --delete need it too
 #   --wait SECONDS    time between launch and screenshot (default 4)
 #   --uninstall       remove the app (and its data) from the device and exit
 #   --delete          shut the device down, delete it and exit (do this when you are done with a device)
@@ -13,10 +15,12 @@
 #   ios/scripts/shoot.sh /tmp/now.png -FXTab now -FXTime 1791460800 -FXZone UTC
 #   ios/scripts/shoot.sh --no-build --device "fx-rings" /tmp/rings.png -FXTab rings -FXPure 1
 #   ios/scripts/shoot.sh --no-build --device "fx-rings-ipad" --type "iPad Pro 13-inch (M5)" /tmp/ipad.png -FXTab rings
+#   ios/scripts/shoot.sh --no-build --device "fx-rings-18" --runtime iOS-18-6 --type "iPhone 16 Pro" /tmp/18.png
 #
 # Launch arguments are the app's test hooks (ios/ARCHITECTURE.md): -FXTab, -FXTime, -FXPure, -FXZone, -FXLink,
 # -FXRate. (Links go through -FXLink: `simctl openurl` stops at a system "Open in …?" prompt.) New devices use the
-# iOS 27.0 runtime. The status bar shows 9:41 for clean shots. DerivedData: $DERIVED_DATA as build.sh.
+# iOS 27.0 runtime unless --runtime says otherwise (the app runs from iOS 18.6). The status bar shows 9:41 for clean
+# shots. DerivedData: $DERIVED_DATA as build.sh.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -36,10 +40,11 @@ while [ $# -gt 0 ]; do
     --no-build) BUILD=0; shift ;;
     --device) DEVICE="$2"; shift 2 ;;
     --type) TYPE="$2"; shift 2 ;;
+    --runtime) RUNTIME="com.apple.CoreSimulator.SimRuntime.${2#com.apple.CoreSimulator.SimRuntime.}"; shift 2 ;;
     --wait) WAIT="$2"; shift 2 ;;
     --uninstall) UNINSTALL=1; shift ;;
     --delete) DELETE=1; shift ;;
-    -h|--help) sed -n '2,22p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,26p' "$0"; exit 0 ;;
     *) break ;;
   esac
 done
@@ -87,7 +92,7 @@ if [ $UNINSTALL -eq 1 ]; then
 fi
 
 if [ $# -lt 1 ]; then
-  echo "usage: $(basename "$0") [--no-build] [--device NAME] [--type TYPE] [--wait SECONDS] OUT.png [launch arguments…]" >&2
+  echo "usage: $(basename "$0") [--no-build] [--device NAME] [--type TYPE] [--runtime NAME] [--wait SECONDS] OUT.png [launch arguments…]" >&2
   exit 2
 fi
 OUT="$1"

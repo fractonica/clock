@@ -171,7 +171,7 @@ struct FocusScreen: View {
                     if isImmersive {
                         Button("Close", systemImage: "xmark") { close() }
                             .labelStyle(.iconOnly)
-                            .buttonStyle(.glass)
+                            .glassButtonStyle()
                             .buttonBorderShape(.circle)
                             .controlSize(.large)
                             .keyboardShortcut(.cancelAction)
@@ -233,7 +233,7 @@ struct FocusScreen: View {
     }
 
     private var controls: some View {
-        GlassEffectContainer(spacing: 12) {
+        GlassContainer(spacing: 12) {
             HStack(spacing: 12) {
                 sessionMenu
                 Button {
@@ -251,7 +251,7 @@ struct FocusScreen: View {
                         .help("Focus full screen")
                 }
             }
-            .buttonStyle(.glass)
+            .glassButtonStyle()
             .controlSize(.large)
         }
     }
@@ -274,8 +274,14 @@ struct FocusScreen: View {
                 touched()
             }
         } label: {
-            Label(model.length.title, systemImage: "timer")
+            let label = Label(model.length.title, systemImage: "timer")
                 .font(.body.monospacedDigit())
+            if #available(iOS 26.0, macOS 26.0, *) {
+                label
+            } else {
+                // iOS 18's bordered menu measures this font short and cuts the title to "…"
+                label.fixedSize()
+            }
         }
         .menuIndicator(.hidden)
         .help("Session length")

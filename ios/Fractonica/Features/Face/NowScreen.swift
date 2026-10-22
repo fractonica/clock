@@ -87,7 +87,7 @@ struct NowScreen: View {
         .sheet(isPresented: $guideShown) {
             NavigationStack { FaceGuide() }
                 #if os(iOS)
-                .presentationDetents([.medium, .large])
+                .sheetDetents([.medium, .large])
                 #else
                 .frame(minWidth: 480, minHeight: 560)
                 #endif

@@ -4,9 +4,10 @@ Native SwiftUI apps for the Fractonica clock, with widgets on both platforms. Th
 (index.html, src/**, fractonica.js) is the functional reference and stays untouched; README.md, SPEC.md (§15 is pure
 mode) and docs/design/*.md describe what each screen does. Everything native lives in this folder.
 
-Toolchain: Xcode 27, Swift 6 language mode with complete strict concurrency, iOS 26.0 / macOS 26.0 deployment
-(Liquid Glass, the `Tab` API, `tabViewBottomAccessory`). No third-party dependencies. There is no default actor
-isolation: annotate stores `@MainActor`; every FractonicaKit type is `Sendable`.
+Toolchain: Xcode 27, Swift 6 language mode with complete strict concurrency, iOS 18.6 / macOS 26.0 deployment (the
+`Tab` API; Liquid Glass and `tabViewBottomAccessory` on iOS 26 and the Mac, through Core/Compat.swift — see "iOS 18").
+No third-party dependencies. There is no default actor isolation: annotate stores `@MainActor`; every FractonicaKit
+type is `Sendable`.
 
 ## Layout
 
@@ -14,7 +15,7 @@ isolation: annotate stores `@MainActor`; every FractonicaKit type is `Sendable`.
 |---|---|---|
 | `FractonicaKit/` | The clock engine, a Swift package with golden tests against the JavaScript (its README) | everything |
 | `Fractonica/App/` | Entry point, root layouts, scenes, menu commands, launch hooks, links, notifications | iOS + macOS app |
-| `Fractonica/Core/` | Shared app state and UI parts: the clock, settings, router, wording, transport, toasts, haptics | iOS + macOS app |
+| `Fractonica/Core/` | Shared app state and UI parts: the clock, settings, router, wording, transport, toasts, haptics, the iOS 18 compatibility wrappers | iOS + macOS app |
 | `Fractonica/Features/<Feature>/` | One folder per feature, with its screen(s); `Features/Intents` holds the App Shortcuts | iOS + macOS app |
 | `Fractonica/Resources/` | App asset catalog (icon, accent, launch colour) | iOS + macOS app |
 | `Shared/` | Theme, backdrop, glyph views, `Screen`, `AppLink`, the timer's `ActivityAttributes` | apps + widget extensions |
@@ -178,7 +179,7 @@ stopwatch alerts).
 | | iPhone (compact width) | iPad, Mac |
 |---|---|---|
 | Layout | Tabs Now · Cycles · Calendar · Clock · Jump (search role). A group's tab shows its screens behind a segmented control in the navigation bar's centre | `TabView(.sidebarAdaptable)`: every screen in the sidebar under its group; Sound and Focus are screens of their own; Jump is the search item. iPad can collapse the sidebar into a top tab bar |
-| Transport | The tab bar's bottom accessory (Liquid Glass); minimised with the tab bar on scroll | iPad: bottom accessory. Mac: the window toolbar's centre |
+| Transport | The tab bar's bottom accessory (Liquid Glass); minimised with the tab bar on scroll. iOS 18: a capsule on a band of bar material that joins the tab bar | iPad: bottom accessory (iOS 18: a capsule on a bar at the foot of the screen). Mac: the window toolbar's centre |
 | Now's toolbar | Sound, Focus, Settings | iPad: Sound (while it plays), Focus, Settings. Mac: Sound (while it plays), Focus, Settings in every screen's toolbar |
 | Sound | A sheet over Now (medium / large) | A screen |
 | Settings | A sheet | iPad: a sheet. Mac: the Settings window (⌘,) |
@@ -189,7 +190,8 @@ window); `router.selection` is the screen in the content area; `router.isCompact
 `router.open(AppLink)` travels to a link's moment and shows its screen. Jump is the `Tab(role: .search)` in both
 layouts. Its field's text, focus and Return live in `JumpSearch.shared` (Core/JumpSearch.swift): on iPhone the compact
 root applies `.searchable` to the search tab's navigation stack (from outside it, so iOS presents it as the search
-tab's field; on the whole `TabView` it would also show in every other tab), and JumpScreen only reads the query; on
+tab's field; on the whole `TabView` it would also show in every other tab; iOS 18, which has no such field, keeps it in
+the tab's navigation bar drawer), and JumpScreen only reads the query; on
 iPad (under the title) and Mac (window toolbar) JumpScreen draws its own field bound to the same query. ⌘K sets
 `JumpSearch.shared.isFocused`, which focuses the field even while Jump already shows.
 
@@ -204,8 +206,45 @@ size and the shared toolbar items. A screen therefore:
   iPhone segmented control and the Mac transport;
 - may push detail views (`NavigationLink`, `.navigationDestination`) and present its own sheets, popovers,
   inspectors and confirmation dialogs;
-- lays content out inside the safe area (the navigation bar, the tab bar and the transport accessory on iPhone);
-  scroll views run under the bars by themselves; only backgrounds go edge to edge.
+- lays content out inside the safe area (the navigation bar, the tab bar and the transport accessory on iPhone; on
+  iOS 18 the transport's inset); scroll views run under the bars by themselves; only backgrounds go edge to edge.
+
+### iOS 18
+
+The iOS app and its widget extension deploy to iOS 18.6 (the Mac app and its widgets to macOS 26). On iOS 26 and later
+the app is exactly its Liquid Glass self; on iOS 18 the same screens run with that system's own equivalents.
+**Never call an iOS 26-only API directly: use the wrappers in Core/Compat.swift** (add one there for a new API), or
+guard a one-off use with `if #available(iOS 26.0, macOS 26.0, *)` and give it an iOS 18 branch. Each wrapper is the
+API it names on iOS 26 and the Mac:
+
+| iOS 26 | Wrapper | iOS 18 |
+|---|---|---|
+| `.glassEffect(.regular.tint(c).interactive(), in: shape)` | `.glassSurface(.regular.tint(c).interactive(), in: shape)` (`GlassStyle`) | `.ultraThinMaterial` in the shape, the tint over it, a `Theme.line` hairline |
+| `.buttonStyle(.glass)` / `.buttonStyle(.glassProminent)` | `.glassButtonStyle()` / `.glassProminentButtonStyle()` | `.bordered` / `.borderedProminent` (same `tint`, `buttonBorderShape`, `controlSize`) |
+| `GlassEffectContainer(spacing:)` | `GlassContainer(spacing:)` | the content |
+| `.glassEffectID(id, in: namespace)` | `.glassID(id, in: namespace)` | nothing (no morph) |
+| `Button(…, role: .confirm)` | `role: .confirmIfAvailable` | no role (a confirmation action is bold already) |
+| `.presentationDetents([.medium, .large])` on a sheet iPad shows | `.sheetDetents([.medium, .large])` | iPad: `.large` (its medium is half the form sheet, a few rows); iPhone: as given |
+
+Guarded in place: the transport (RootView's `transportAccessory` on iOS 26; `transportInset` and `TransportInsetBar`
+on iOS 18, applied by `ScreenChrome` inside each screen's navigation stack — a safe area inset outside the stack does
+not reach the screen there — so pushed views go without it; it steps aside while the keyboard is up), the iPhone Jump
+field's placement (`TabSearchField`), and the open intents (`supportedModes` on iOS 26, `openAppWhenRun` on iOS 18;
+their App Intents metadata is the same either way). There is no tab bar minimise on iOS 18.
+
+The compiler catches every unguarded API but not SF Symbols: a symbol newer than the system draws nothing. Before using
+a new one, look it up in the iOS 18.6 simulator runtime's
+`…/SFSymbols.framework/CoreGlyphs.bundle/name_availability.plist` (or the Mac's
+`/System/Library/CoreServices/CoreGlyphs.bundle/Contents/Resources/name_availability.plist`, whose `year_to_release`
+maps 2024 to iOS 18 and 2025 to iOS 26); pick its name with `#available` where it is newer. Every
+symbol the app and widgets use today is available on iOS 18.6. iOS 18's `.bordered` menus measure a label with a custom
+font short (Focus's session menu gives its label `.fixedSize()` there). iOS 18 keeps a scroll view's content offset, not
+its `scrollPosition` id, when the scroll view changes size (a first layout narrower than the screen, a rotation): scroll
+to the id again in `onScrollGeometryChange` of the container size, as the Timer's `UnitWheel` does there. Such fixes go
+under `#unavailable(iOS 26.0)` (or the `else` of an `#available`), so iOS 26 and the Mac run as they did. Look at a
+change on both systems:
+`shoot.sh --runtime iOS-18-6 --type "iPhone 16 Pro"` (or `--type "iPad Pro 11-inch (M4)"`) beside the default iOS 27
+device.
 
 `@Environment(\.isImmersive)` is true where a screen fills the display (Focus in its cover or window), false where it
 is one screen in the window. Immersive screens offer their own way out with `@Environment(\.dismiss)` (it closes the
@@ -378,6 +417,7 @@ cycle stepping, edge stops, tick scheduling, links). Engine changes are tested w
    ios/scripts/shoot.sh --no-build --device "fx-<agent>" /path/shot.png -FXTab <screen> -FXTime 1791460800 -FXZone UTC
    ios/scripts/shoot.sh --no-build --device "fx-<agent>" /path/pure.png -FXTab <screen> -FXTime 1791460800 -FXPure 1
    ios/scripts/shoot.sh --no-build --device "fx-<agent>-ipad" --type "iPad Pro 13-inch (M5)" /path/ipad.png -FXTab <screen>
+   ios/scripts/shoot.sh --no-build --device "fx-<agent>-18" --runtime iOS-18-6 --type "iPhone 16 Pro" /path/18.png -FXTab <screen>
    ```
    Also try other instants (946684800, 2886085800, near `tMin` / `tMax`), live (no `-FXTime`), a time-lapse
    (`-FXRate 3600`) and `-FXLink`. `--wait N` gives slow screens time to settle. After an Xcode update Xcode's `simctl`
@@ -395,5 +435,5 @@ cycle stepping, edge stops, tick scheduling, links). Engine changes are tested w
    lines (`info.properties` or `entitlements.properties` of the target; never edit Support/*, which xcodegen
    rewrites). You may add it to project.yml locally to try it out, but revert it before committing
    (`git checkout -- ios/project.yml ios/Support`).
-8. **Clean up.** Commit only your files; delete your simulators (`ios/scripts/shoot.sh --device "fx-<agent>" --delete`)
-   and your DerivedData.
+8. **Clean up.** Commit only your files; delete your simulators (`ios/scripts/shoot.sh --device "fx-<agent>" --delete`,
+   with the same `--runtime` for an iOS 18.6 device) and your DerivedData.

@@ -49,7 +49,7 @@ struct PermissionPrimer: View {
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 4)
                 }
-                .buttonStyle(.glassProminent)
+                .glassProminentButtonStyle()
                 .controlSize(.large)
                 .keyboardShortcut(.defaultAction)
                 Button("Not Now") { dismiss() }

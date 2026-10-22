@@ -9,7 +9,7 @@ import PackageDescription
 let package = Package(
     name: "FractonicaKit",
     // String versions: the `.v26` constants need tools version 6.2.
-    platforms: [.iOS("26.0"), .macOS("26.0")],
+    platforms: [.iOS("18.6"), .macOS("26.0")],
     products: [
         .library(name: "FractonicaKit", targets: ["FractonicaKit"]),
     ],

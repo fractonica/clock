@@ -282,7 +282,7 @@ struct ConverterAddressCard: View {
                             Haptics.play(.selection)
                         }
                         .labelStyle(.iconOnly)
-                        .buttonStyle(.glass)
+                        .glassButtonStyle()
                         .buttonBorderShape(.circle)
                         .help("Pin the converter on this point")
                     }
@@ -293,7 +293,7 @@ struct ConverterAddressCard: View {
                         toasts.show(pure ? "Showing \(n.stamp(at: t, upTo: "eta"))" : "Showing \(earth.long(t))")
                     }
                     .labelStyle(.iconOnly)
-                    .buttonStyle(.glass)
+                    .glassButtonStyle()
                     .buttonBorderShape(.circle)
                     .help("Travel there")
                 }
@@ -470,7 +470,7 @@ struct ConverterStatePicker: View {
                     Spacer()
                     Button("Close", systemImage: "xmark") { dismiss() }
                         .labelStyle(.iconOnly)
-                        .buttonStyle(.glass)
+                        .glassButtonStyle()
                         .buttonBorderShape(.circle)
                 }
                 Text(verbatim: stateLine(chosen))
@@ -579,7 +579,7 @@ struct ConverterStatePicker: View {
                 dismiss()
             }
             .labelStyle(.iconOnly)
-            .buttonStyle(.glass)
+            .glassButtonStyle()
             .buttonBorderShape(.circle)
             .help("Pin the converter there")
             Button("Go there", systemImage: "location.fill") {
@@ -589,7 +589,7 @@ struct ConverterStatePicker: View {
                 dismiss()
             }
             .labelStyle(.iconOnly)
-            .buttonStyle(.glass)
+            .glassButtonStyle()
             .buttonBorderShape(.circle)
             .help("Travel there")
         }

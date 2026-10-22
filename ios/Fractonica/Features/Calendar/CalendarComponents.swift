@@ -365,7 +365,7 @@ struct CalActionButton: View {
                 .lineLimit(1)
                 .padding(.horizontal, 4)
         }
-        .buttonStyle(.glass)
+        .glassButtonStyle()
         .tint(prominent ? Theme.teal : nil)
         .buttonBorderShape(.capsule)
     }

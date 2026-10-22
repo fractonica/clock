@@ -156,7 +156,7 @@ struct NotificationPreview: View {
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .glassEffect(.regular, in: .rect(cornerRadius: 22))
+        .glassSurface(.regular, in: .rect(cornerRadius: 22))
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Notification preview: \(title). \(message)")
     }
@@ -188,14 +188,14 @@ struct AuthorizationCard: View {
                 .fixedSize(horizontal: false, vertical: true)
             if state == .denied {
                 Button("Open Settings", systemImage: "gearshape") { openSettings() }
-                    .buttonStyle(.glass)
+                    .glassButtonStyle()
             } else {
                 Button { request() } label: {
                     Label("Allow Notifications", systemImage: "bell.fill")
                         .font(.body.weight(.semibold))
                         .foregroundStyle(Theme.background)
                 }
-                .buttonStyle(.glassProminent)
+                .glassProminentButtonStyle()
             }
         }
         .padding(.vertical, 6)

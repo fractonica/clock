@@ -2,9 +2,10 @@ import Observation
 
 /// The Jump search field's state, shared by whoever draws the field and the Jump screen that reads it.
 ///
-/// On iPhone the field lives in the tab bar (iOS 26 turns the search tab into it): the compact root applies
-/// `.searchable` to its `TabView`, so the root owns the field and Jump only reads `query`. On iPad and Mac the Jump
-/// screen draws its own field (under its title, in the window toolbar) bound to the same `query`.
+/// On iPhone the field lives in the tab bar (iOS 26 turns the search tab into it; iOS 18 keeps it in the search
+/// tab's navigation bar): the compact root applies `.searchable` to the search tab's navigation stack, so the root owns
+/// the field and Jump only reads `query`. On iPad and Mac the Jump screen draws its own field (under its title, in the
+/// window toolbar) bound to the same `query`.
 ///
 ///     JumpSearch.shared.isFocused = true     // ⌘K: put the cursor in the field, wherever it is
 @MainActor @Observable
