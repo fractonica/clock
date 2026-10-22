@@ -198,8 +198,8 @@ extension View {
         }
     }
 
-    /// iOS 18: the transport at the foot of a screen, just above the tab bar; the content keeps clear of it and scrolls
-    /// under it. Applied inside the screen's navigation stack (a safe area inset outside it does not reach the
+    /// iOS 18: the transport at the foot of a screen, just above the tab bar, which draws no background of its own
+    /// there (the transport's band runs on under it); the content keeps clear of it and scrolls under it. Applied inside the screen's navigation stack (a safe area inset outside it does not reach the
     /// screen), so views pushed onto the stack go without it. Nothing on iOS 26, where it rides in the tab bar's
     /// accessory (`transportAccessory`).
     @ViewBuilder
@@ -208,6 +208,7 @@ extension View {
             self
         } else {
             safeAreaInset(edge: .bottom, spacing: 0) { TransportInsetBar() }
+                .toolbarBackground(.hidden, for: .tabBar)
         }
     }
 }

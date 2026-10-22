@@ -28,8 +28,10 @@ struct TransportBar: View {
 }
 
 /// The transport above the tab bar on iOS 18, at the foot of each tab's content (`safeAreaInset`, so the content
-/// scrolls under it and ends above it): the accessory's row on a capsule of material. It steps aside while the keyboard
-/// is up, as the tab bar does.
+/// scrolls under it and ends above it): the accessory's row on a capsule of material, on a band of the bars' material
+/// that runs on to the foot of the screen, under the tab bar (which then draws no background of its own), as the
+/// system's mini players do: one bar, with no content showing through between the two. It steps aside while the
+/// keyboard is up, as the tab bar does.
 struct TransportInsetBar: View {
     @State private var keyboardShown = false
 
@@ -40,7 +42,9 @@ struct TransportInsetBar: View {
                     .padding(.vertical, 4)
                     .glassSurface(in: .capsule)
                     .padding(.horizontal, 12)
-                    .padding(.bottom, 8)
+                    .padding(.vertical, 8)
+                    .background(.bar)
+                    .overlay(alignment: .top) { Divider() }
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
