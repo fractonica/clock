@@ -155,9 +155,9 @@ struct LadderScreen: View {
         started = true
         LadderLaunch.rotateIfAsked()
         #if DEBUG
-        if let depths = LadderLaunch.depths { setRange(depths.lowerBound, depths.upperBound) }
+        if let depths = LadderLaunch.depths { settings.override(minDepth: depths.lowerBound, maxDepth: depths.upperBound) }
         if let level = LadderLaunch.expand {
-            if level >= 0 { settings.selectedLevel = level }
+            if level >= 0 { settings.override(selectedLevel: level) }
             expanded = level >= 0 ? level : nil
             return
         }

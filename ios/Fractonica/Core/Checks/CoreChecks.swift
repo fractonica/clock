@@ -69,6 +69,19 @@ private func settingsChecks() {
     check(!reloaded.pure && reloaded.zone == nil && reloaded.topDepth == 4, "overrides are never saved: \(reloaded.values)")
     check(a.pure && a.zone == "UTC", "overrides stay shown after other changes are saved")
 
+    let before = AppSettings(defaults: defaults).values
+    a.override(selectedLevel: 3, minDepth: 12, maxDepth: 14)
+    check(a.selectedLevel == 3 && a.minDepth == 12 && a.maxDepth == 14, "level and depth overrides are shown: \(a.values)")
+    check(AppSettings(defaults: defaults).values == before, "level and depth overrides are never saved")
+    a.override(selectedLevel: 99, minDepth: 0)
+    check(a.selectedLevel == 3 && a.minDepth == 12, "invalid overrides are ignored: \(a.values)")
+    a.override(minDepth: 2, maxDepth: 5)
+    check(a.minDepth == 2 && a.maxDepth == 5, "a depth range moves as a pair: \(a.values)")
+    a.topDepth = 9
+    let saved = AppSettings(defaults: defaults).values
+    check(saved.topDepth == 9 && saved.selectedLevel == before.selectedLevel && saved.minDepth == before.minDepth
+          && saved.maxDepth == before.maxDepth, "a later change is saved without the overrides: \(saved)")
+
     defaults.set(Data(#"{"pure":"yes","zone":"Nowhere/Land","topDepth":3.5,"selectedLevel":2,"minDepth":9,"maxDepth":4,"faceMode":"analog","haptics":false}"#.utf8), forKey: "settings.v1")
     let g = AppSettings(defaults: defaults)
     check(!g.pure && g.zone == nil && g.topDepth == 7 && g.selectedLevel == 2 && g.minDepth == 1 && g.maxDepth == 4
