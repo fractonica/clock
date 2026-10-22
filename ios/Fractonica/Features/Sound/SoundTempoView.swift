@@ -183,7 +183,7 @@ struct SoundTempoView: View {
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 4)
         }
-        .buttonStyle(.glassProminent)
+        .glassProminentButtonStyle()
         .tint(locked ? Theme.panel3 : Theme.teal)
         .help(locked
             ? "Release the lock; the speed stays as it is until you change it."

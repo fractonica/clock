@@ -78,7 +78,7 @@ struct AlertEditor: View {
                 Button("Cancel", systemImage: "xmark", role: .cancel) { dismiss() }
             }
             ToolbarItem(placement: .confirmationAction) {
-                Button(target.isNew ? "Add" : "Save", systemImage: "checkmark", role: .confirm) { save(text) }
+                Button(target.isNew ? "Add" : "Save", systemImage: "checkmark", role: .confirmIfAvailable) { save(text) }
                     .disabled(!draft.filtersCanMeet())
             }
         }

@@ -170,7 +170,7 @@ struct TimerRunView: View {
             if earth { store.addMinute() } else { store.add(unit) }
         }
         .menuIndicator(.hidden)
-        .buttonStyle(.glass)
+        .glassButtonStyle()
         .controlSize(large ? .extraLarge : .large)
         .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
         .fixedSize()

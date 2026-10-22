@@ -393,7 +393,7 @@ struct TimerSetupView: View {
                     .frame(width: 40, height: 40)
             }
             .buttonStyle(.plain)
-            .glassEffect(.regular.tint(Theme.teal.opacity(0.18)).interactive(), in: .circle)
+            .glassSurface(.regular.tint(Theme.teal.opacity(0.18)).interactive(), in: .circle)
             .accessibilityLabel("Start \(words.spokenTitle(spec))")
         }
         .padding(.horizontal, 16)

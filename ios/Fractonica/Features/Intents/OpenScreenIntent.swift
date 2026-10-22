@@ -18,7 +18,12 @@ enum ScreenIntentHandler {
 struct OpenScreenIntent: AppIntent {
     static let title: LocalizedStringResource = "Open Screen"
     static let description = IntentDescription("Opens Fractonica on a screen: Now, Rings, the Timeline, the Timer …")
+    @available(iOS 26.0, macOS 26.0, *)
     static let supportedModes: IntentModes = .foreground(.immediate)
+    #if os(iOS)
+    /// The same for iOS 18; iOS 26 reads `supportedModes`.
+    static let openAppWhenRun = true
+    #endif
 
     @Parameter(title: "Screen", default: .now)
     var screen: OpenScreenOption

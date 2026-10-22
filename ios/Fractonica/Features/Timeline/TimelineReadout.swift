@@ -151,7 +151,7 @@ struct TimelineReadout: View {
                 .font(.body.weight(.semibold))
                 .frame(width: 34, height: 34)
         }
-        .buttonStyle(.glass)
+        .glassButtonStyle()
         .buttonBorderShape(.circle)
         .disabled(!exists)
         .accessibilityLabel(delta < 0 ? "Previous cycle" : "Next cycle")
@@ -287,7 +287,7 @@ struct TimelineReadout: View {
                     Label("Select depth \(level + 1) (\(clock.levelInfo(level).letter)) everywhere", systemImage: "scope")
                         .frame(maxWidth: .infinity)
                 }
-                .buttonStyle(.glass)
+                .glassButtonStyle()
                 .tint(color)
             }
         }
@@ -304,7 +304,7 @@ struct TimelineReadout: View {
                 .lineLimit(1)
                 .frame(maxWidth: .infinity)
         }
-        .buttonStyle(.glassProminent)
+        .glassProminentButtonStyle()
         .tint(Theme.cursor.opacity(0.85))
         Button {
             controller.fit(level: level, idx: idx)
@@ -314,7 +314,7 @@ struct TimelineReadout: View {
                 .lineLimit(1)
                 .frame(maxWidth: .infinity)
         }
-        .buttonStyle(.glass)
+        .glassButtonStyle()
     }
 
     // MARK: Eclipse
@@ -380,7 +380,7 @@ struct TimelineReadout: View {
                 .lineLimit(1)
                 .frame(maxWidth: .infinity)
         }
-        .buttonStyle(.glassProminent)
+        .glassProminentButtonStyle()
         .tint(Theme.cursor.opacity(0.85))
         if k < clock.extent {
             Button {
@@ -391,7 +391,7 @@ struct TimelineReadout: View {
                     .lineLimit(1)
                     .frame(maxWidth: .infinity)
             }
-            .buttonStyle(.glass)
+            .glassButtonStyle()
         }
     }
 }

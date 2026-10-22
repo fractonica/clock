@@ -52,7 +52,7 @@ struct CalDayDetailView: View {
                 Spacer()
                 Button("Close", systemImage: "xmark") { model.showsDetail = false }
                     .labelStyle(.iconOnly)
-                    .buttonStyle(.glass)
+                    .glassButtonStyle()
                     .buttonBorderShape(.circle)
                     .keyboardShortcut(.cancelAction)
             }

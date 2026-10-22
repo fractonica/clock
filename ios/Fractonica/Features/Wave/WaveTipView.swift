@@ -48,7 +48,7 @@ struct WaveTipView: View {
         }
         .padding(12)
         .frame(maxWidth: 300, alignment: .leading)
-        .glassEffect(.regular.tint(Theme.panel.opacity(0.55)), in: .rect(cornerRadius: 16))
+        .glassSurface(.regular.tint(Theme.panel.opacity(0.55)), in: .rect(cornerRadius: 16))
     }
 
     private func arcCard(_ t: Double) -> some View {

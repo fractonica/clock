@@ -70,7 +70,7 @@ struct RoundControl: View {
                 .contentShape(.circle)
         }
         .buttonStyle(.plain)
-        .glassEffect(.regular.tint((tint ?? Theme.ink2).opacity(tint == nil ? 0.08 : 0.22)).interactive(), in: .circle)
+        .glassSurface(.regular.tint((tint ?? Theme.ink2).opacity(tint == nil ? 0.08 : 0.22)).interactive(), in: .circle)
         .overlay {
             Circle().strokeBorder((tint ?? Theme.ink3).opacity(0.35), lineWidth: 1)
         }

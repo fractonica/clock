@@ -171,7 +171,7 @@ struct FocusScreen: View {
                     if isImmersive {
                         Button("Close", systemImage: "xmark") { close() }
                             .labelStyle(.iconOnly)
-                            .buttonStyle(.glass)
+                            .glassButtonStyle()
                             .buttonBorderShape(.circle)
                             .controlSize(.large)
                             .keyboardShortcut(.cancelAction)
@@ -233,7 +233,7 @@ struct FocusScreen: View {
     }
 
     private var controls: some View {
-        GlassEffectContainer(spacing: 12) {
+        GlassContainer(spacing: 12) {
             HStack(spacing: 12) {
                 sessionMenu
                 Button {
@@ -251,7 +251,7 @@ struct FocusScreen: View {
                         .help("Focus full screen")
                 }
             }
-            .buttonStyle(.glass)
+            .glassButtonStyle()
             .controlSize(.large)
         }
     }

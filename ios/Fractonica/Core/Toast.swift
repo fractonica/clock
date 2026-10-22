@@ -49,7 +49,7 @@ private struct ToastOverlay: ViewModifier {
                     .foregroundStyle(Theme.ink)
                     .padding(.horizontal, 16)
                     .padding(.vertical, 10)
-                    .glassEffect(.regular, in: .capsule)
+                    .glassSurface(.regular, in: .capsule)
                     .padding(.top, 8)
                     .transition(.move(edge: .top).combined(with: .opacity))
                     .accessibilityAddTraits(.updatesFrequently)

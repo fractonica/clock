@@ -251,7 +251,7 @@ private struct DeltaHeader: View {
                 } label: {
                     Image(systemName: "scope")
                 }
-                .buttonStyle(.glass)
+                .glassButtonStyle()
                 .buttonBorderShape(.circle)
                 .accessibilityLabel(Text("Show the shown moment's Delta"))
             }
@@ -587,7 +587,7 @@ private struct DeltaPagePicker: View {
                     Haptics.play(.selection)
                     dismiss()
                 }
-                .buttonStyle(.glassProminent)
+                .glassProminentButtonStyle()
                 .tint(Theme.teal)
                 .keyboardShortcut(.defaultAction)
             }
@@ -847,7 +847,7 @@ private struct CellDetailView: View {
                 Spacer()
                 Button("Close", systemImage: "xmark") { model.selectedCell = nil }
                     .labelStyle(.iconOnly)
-                    .buttonStyle(.glass)
+                    .glassButtonStyle()
                     .buttonBorderShape(.circle)
                     .keyboardShortcut(.cancelAction)
             }

@@ -117,7 +117,7 @@ struct WaveStageView: View {
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(Theme.ink2)
-                .glassEffect(.regular.interactive(), in: .circle)
+                .glassSurface(.regular.interactive(), in: .circle)
                 .dynamicTypeSize(...DynamicTypeSize.xLarge)
                 .padding(.top, 12)
                 .padding(.leading, 10)
@@ -166,7 +166,7 @@ struct WaveStageView: View {
 
     private var zoomControls: some View {
         VStack(spacing: 10) {
-            GlassEffectContainer {
+            GlassContainer {
                 VStack(spacing: 0) {
                     Button { control.zoom(1) } label: {
                         Image(systemName: "plus").frame(width: 40, height: 40)
@@ -185,7 +185,7 @@ struct WaveStageView: View {
                 .font(.body.weight(.semibold))
                 .buttonStyle(.plain)
                 .foregroundStyle(Theme.ink)
-                .glassEffect(.regular.interactive(), in: .capsule)
+                .glassSurface(.regular.interactive(), in: .capsule)
             }
             if model.adjusted {
                 Button {
@@ -196,7 +196,7 @@ struct WaveStageView: View {
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(Theme.ink)
-                .glassEffect(.regular.interactive(), in: .circle)
+                .glassSurface(.regular.interactive(), in: .circle)
                 .accessibilityLabel("Recenter")
                 .help("Back to the fitted view")
                 .transition(.scale.combined(with: .opacity))

@@ -71,8 +71,9 @@ struct RootView: View {
 // MARK: - iPhone
 
 #if os(iOS)
-/// Now | Cycles | Calendar | Clock, and Jump as the search tab; the transport rides in the tab bar's bottom accessory.
-/// The Jump field is the search tab's own (`TabSearchField`), shared with JumpScreen through `JumpSearch`.
+/// Now | Cycles | Calendar | Clock, and Jump as the search tab; the transport rides in the tab bar's bottom accessory
+/// (iOS 18: just above the tab bar, `transportInset()`). The Jump field is the search tab's own (`TabSearchField`),
+/// shared with JumpScreen through `JumpSearch`.
 private struct CompactRoot: View {
     @Environment(AppRouter.self) private var router
 
@@ -95,8 +96,7 @@ private struct CompactRoot: View {
                     .modifier(TabSearchField())
             }
         }
-        .tabBarMinimizeBehavior(.onScrollDown)
-        .tabViewBottomAccessory { TransportBar() }
+        .transportAccessory(minimizesTabBar: true)
     }
 
     /// The tab of the selected screen; choosing a group's tab shows the segment it showed last.
@@ -116,7 +116,8 @@ private struct CompactRoot: View {
 
 /// The Jump field of the iPhone layout, bound to `JumpSearch`: applied to the search tab's navigation stack (from
 /// outside it), so the system presents it as the search tab's field — over the tab's content with a close button while
-/// it has focus. (Applied to the whole `TabView`, the field would also show in every other tab's navigation bar.)
+/// it has focus. (Applied to the whole `TabView`, the field would also show in every other tab's navigation bar.) iOS 18
+/// has no such field: there it stays in the tab's navigation bar, always in view under the title.
 private struct TabSearchField: ViewModifier {
     @Environment(AppSettings.self) private var settings
     @FocusState private var searchFocused: Bool
@@ -124,7 +125,7 @@ private struct TabSearchField: ViewModifier {
     func body(content: Content) -> some View {
         @Bindable var search = JumpSearch.shared
         content
-            .searchable(text: $search.query, prompt: Text(JumpSearch.prompt(pure: settings.pure)))
+            .searchable(text: $search.query, placement: placement, prompt: Text(JumpSearch.prompt(pure: settings.pure)))
             .searchFocused($searchFocused)
             .autocorrectionDisabled()
             .textInputAutocapitalization(.never)
@@ -135,6 +136,10 @@ private struct TabSearchField: ViewModifier {
             .onChange(of: search.isFocused, initial: true) { _, focused in
                 if searchFocused != focused { searchFocused = focused }
             }
+    }
+
+    private var placement: SearchFieldPlacement {
+        if #available(iOS 26.0, *) { .automatic } else { .navigationBarDrawer(displayMode: .always) }
     }
 }
 
@@ -172,6 +177,36 @@ private struct GroupStack: View {
                         .fixedSize()
                     }
                 }
+        }
+        .transportInset()
+    }
+}
+
+extension View {
+    /// The transport in the tab bar's bottom accessory, and on iPhone the tab bar minimised on scroll (iOS 26). On
+    /// iOS 18, which has neither, each tab carries the transport instead (`transportInset()`).
+    @ViewBuilder
+    fileprivate func transportAccessory(minimizesTabBar: Bool) -> some View {
+        if #available(iOS 26.0, *) {
+            if minimizesTabBar {
+                tabBarMinimizeBehavior(.onScrollDown)
+                    .tabViewBottomAccessory { TransportBar() }
+            } else {
+                tabViewBottomAccessory { TransportBar() }
+            }
+        } else {
+            self
+        }
+    }
+
+    /// iOS 18: the transport at the foot of a tab's content, just above the tab bar; the content keeps clear of it and
+    /// scrolls under it. Nothing on iOS 26, where it rides in the tab bar's accessory (`transportAccessory`).
+    @ViewBuilder
+    fileprivate func transportInset() -> some View {
+        if #available(iOS 26.0, *) {
+            self
+        } else {
+            safeAreaInset(edge: .bottom, spacing: 0) { TransportInsetBar() }
         }
     }
 }
@@ -214,7 +249,7 @@ private struct SidebarRoot: View {
         .tabViewStyle(.sidebarAdaptable)
         .tabViewSidebarBottomBar { SidebarFooter() }
         #if os(iOS)
-        .tabViewBottomAccessory { TransportBar() }
+        .transportAccessory(minimizesTabBar: false)
         #endif
     }
 
@@ -286,7 +321,8 @@ struct ScreenContent: View {
     }
 }
 
-/// One screen in its own navigation stack, on the app's backdrop, with the shared toolbar.
+/// One screen in its own navigation stack, on the app's backdrop, with the shared toolbar (and on iOS 18 the transport
+/// under it).
 private struct ScreenStack: View {
     let screen: Screen
 
@@ -295,6 +331,9 @@ private struct ScreenStack: View {
             ScreenContent(screen: screen)
                 .screenChrome(screen)
         }
+        #if os(iOS)
+        .transportInset()
+        #endif
     }
 }
 

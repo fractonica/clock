@@ -12,7 +12,7 @@ struct WaveDepthBar: View {
         let rate = control.store.isLive ? 1 : abs(control.store.rate)
         let halves = (0...Fractonica.maxLevel).map { control.engine.clock.levelInfo($0).meanSeconds / 2 }
         let pace = WaveChipPace(halfSeconds: halves, rate: rate)
-        GlassEffectContainer {
+        GlassContainer {
             HStack(spacing: 2) {
                 stepButton(-1)
                 ScrollViewReader { proxy in
@@ -43,7 +43,7 @@ struct WaveDepthBar: View {
                 stepButton(1)
             }
             .padding(4)
-            .glassEffect(.regular, in: .capsule)
+            .glassSurface(.regular, in: .capsule)
         }
         .dynamicTypeSize(...DynamicTypeSize.xLarge)
     }

@@ -117,7 +117,7 @@ struct JumpResultCard: View {
                             .font(.body.weight(.semibold))
                             .padding(.horizontal, 6)
                     }
-                    .buttonStyle(.glassProminent)
+                    .glassProminentButtonStyle()
                     .tint(Theme.teal)
                     .fixedSize()
                     .accessibilityHint(candidate.live ? "Returns to the live clock" : "Travels to this moment and shows Now")
@@ -554,7 +554,7 @@ struct JumpLetterKeys: View {
                 .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
         }
         .fixedSize(horizontal: false, vertical: true)
-        .glassEffect(.regular, in: .capsule)
+        .glassSurface(.regular, in: .capsule)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Greek letters")
     }

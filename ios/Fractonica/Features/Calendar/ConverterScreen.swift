@@ -325,7 +325,7 @@ struct ConverterActions: View {
                     .frame(width: 22, height: 22)
             }
             .menuStyle(.button)
-            .buttonStyle(.glass)
+            .glassButtonStyle()
             .buttonBorderShape(.circle)
             .help("Copy the moment")
         }
