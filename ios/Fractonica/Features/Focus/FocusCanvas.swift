@@ -219,6 +219,7 @@ final class FocusDriver: NSObject {
     private var nativeScale: CGFloat = 2
     private var renderScale: CGFloat = 2
     private var lastScaleChange = 0.0
+    private var lastScaleCheck = 0.0
     private var lastLog = 0.0
     private var lastPowerCheck = 0.0
     private var lowPower = false
@@ -395,7 +396,8 @@ final class FocusDriver: NSObject {
             }
         }
         // Keep the GPU under about 60 % of the frame: step the scale down when it is busier, back up when idle.
-        if now - lastScaleChange > 2, now - (readyAt ?? now) > 1.5 {
+        if now - lastScaleChange > 2, now - lastScaleCheck > 0.5, now - (readyAt ?? now) > 1.5 {
+            lastScaleCheck = now
             let summary = stats.summary
             let budget = max(1.0 / 120, frameInterval)
             let ceiling = Self.scale(points: points, nativeScale: nativeScale, budget: Self.pixelBudget)

@@ -314,11 +314,13 @@ struct FocusChecks {
             }
             let mean = gpu.reduce(0, +) / Double(max(1, gpu.count))
             let cpuMean = cpu.reduce(0, +) / Double(max(1, cpu.count))
-            print(String(format: "  %@: GPU %.2f ms/frame (max %.2f) at %dx%d · CPU %.3f ms/frame (harmonics + encode)",
-                         style.rawValue, mean * 1000, (gpu.max() ?? 0) * 1000, width, height, cpuMean * 1000))
-            // A sanity bound only: the build machine's GPU is shared with simulators and other builds (uncontended, every
-            // style takes well under 2 ms here at this size).
-            check(mean < 0.012, "\(style.rawValue) renders in under 12 ms on this Mac: \(mean * 1000) ms")
+            let best = gpu.min() ?? 0
+            print(String(format: "  %@: GPU %.2f ms/frame (best %.2f, max %.2f) at %dx%d · CPU %.3f ms/frame (harmonics + encode)",
+                         style.rawValue, mean * 1000, best * 1000, (gpu.max() ?? 0) * 1000, width, height, cpuMean * 1000))
+            // A sanity bound on the best run only: the build machine's GPU is shared with simulators and other builds.
+            // Uncontended, every style takes under 2 ms here at this size; the old single pipeline that switched styles
+            // at run time took 9 … 14.
+            check(best < 0.008, "\(style.rawValue) renders in under 8 ms on this Mac: \(best * 1000) ms")
         }
         // A cross-fade draws both styles: halfway, the picture holds some of each.
         for (from, to) in [(FocusStyle.rings, FocusStyle.aurora), (.harmonograph, .interference)] {

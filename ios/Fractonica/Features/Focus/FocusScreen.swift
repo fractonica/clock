@@ -106,9 +106,7 @@ struct FocusScreen: View {
             FocusChimePlayer.prepare()
             focused = true
             #if os(iOS)
-            if launch.landscape, let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
-                scene.requestGeometryUpdate(.iOS(interfaceOrientations: .landscapeRight))
-            }
+            if launch.landscape { Self.turnToLandscape() }
             #endif
         }
         .onDisappear {
@@ -320,6 +318,27 @@ struct FocusScreen: View {
     private func close() {
         dismiss()
     }
+
+    #if os(iOS)
+    /// The -FXFocusLandscape test hook: turns every window scene to landscape once the cover has settled.
+    private static func turnToLandscape() {
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(1))
+            for case let scene as UIWindowScene in UIApplication.shared.connectedScenes {
+                for window in scene.windows {
+                    var controller = window.rootViewController
+                    while let current = controller {
+                        current.setNeedsUpdateOfSupportedInterfaceOrientations()
+                        controller = current.presentedViewController
+                    }
+                }
+                scene.requestGeometryUpdate(.iOS(interfaceOrientations: .landscapeRight)) { error in
+                    FocusLaunch.log("landscape: \(error.localizedDescription)")
+                }
+            }
+        }
+    }
+    #endif
 }
 
 /// Keeps the display awake while any Focus view is on screen: the idle timer on iOS, a display-sleep assertion on

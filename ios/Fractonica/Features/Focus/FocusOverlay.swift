@@ -41,7 +41,7 @@ struct FocusClockReading: View {
                 Text("Outside the catalogue")
                     .font(.title3.weight(.light))
                     .foregroundStyle(Theme.ink)
-                Text(settings.pure ? "Readings exist from \(Notation.standard.catalogueText())" : "Readings exist from 1613 to 2857")
+                Text(settings.pure ? "Readings exist for \(Notation.standard.catalogueText())" : "Readings exist from 1613 to 2857")
                     .font(.footnote)
                     .foregroundStyle(Theme.ink2)
             }
