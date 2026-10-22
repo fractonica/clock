@@ -11,6 +11,7 @@ struct SoundHeroView: View {
     @Environment(AppSettings.self) private var settings
     @Environment(ToastCenter.self) private var toasts
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     private var engine: SoundEngine { .shared }
 
@@ -81,35 +82,61 @@ struct SoundHeroView: View {
 
     private func statusLine(_ t: Double) -> some View {
         let inRange = store.clock.inRange(t)
-        return HStack(spacing: 8) {
-            Circle()
-                .fill(!inRange ? Theme.danger : engine.isOn ? Theme.teal : Theme.ink3)
-                .frame(width: 7, height: 7)
-            Text(words.status(on: engine.isOn, inRange: inRange, sampleRate: engine.sampleRate, voices: engine.voiceCount, interrupted: engine.interrupted))
-                .foregroundStyle(inRange ? Theme.ink2 : Theme.danger)
-            if engine.isOn && inRange && !engine.interrupted {
-                // the bells ringing now, counted in real time (they ring while the clock runs, not with it)
-                TimelineView(.periodic(from: .now, by: 0.25)) { _ in
-                    let bells = engine.isRunning ? engine.soundingBells : 0
-                    Text("· \(bells) bell\(bells == 1 ? "" : "s")")
-                        .foregroundStyle(Theme.ink3)
+        let status = Text(words.status(on: engine.isOn, inRange: inRange, sampleRate: engine.sampleRate, voices: engine.voiceCount, interrupted: engine.interrupted))
+            .foregroundStyle(inRange ? Theme.ink2 : Theme.danger)
+        let dot = Circle()
+            .fill(!inRange ? Theme.danger : engine.isOn ? Theme.teal : Theme.ink3)
+            .frame(width: 7, height: 7)
+        let bells = engine.isOn && inRange && !engine.interrupted
+        return Group {
+            if typeSize.isAccessibilitySize {
+                // large text: the status wraps, the bell count goes under it
+                VStack(spacing: 4) {
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        dot
+                        status
+                    }
+                    if bells { bellCount }
                 }
+                .multilineTextAlignment(.center)
+            } else {
+                HStack(spacing: 8) {
+                    dot
+                    status
+                    if bells { bellCount }
+                }
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
             }
         }
         .font(.subheadline.monospacedDigit())
-        .lineLimit(1)
-        .minimumScaleFactor(0.8)
         .accessibilityElement(children: .combine)
+    }
+
+    /// The bells ringing now, counted in real time (they ring while the clock runs, not with it).
+    private var bellCount: some View {
+        TimelineView(.periodic(from: .now, by: 0.25)) { _ in
+            let bells = engine.isRunning ? engine.soundingBells : 0
+            Text("· \(bells) bell\(bells == 1 ? "" : "s")")
+                .foregroundStyle(Theme.ink3)
+        }
     }
 
     private var chips: some View {
         let prefs = engine.preferences
-        return HStack(spacing: 6) {
-            SoundChip(text: words.clockChip(live: store.isLive, rate: store.rate),
-                      color: store.isLive ? Theme.live : store.isPaused ? Theme.ink2 : Theme.cursor,
-                      systemImage: store.isPaused ? "pause.fill" : store.isLive ? nil : "forward.fill")
-            SoundChip(text: words.depths(prefs.levels))
-            SoundChip(text: words.layers(prefs))
+        let clock = SoundChip(text: words.clockChip(live: store.isLive, rate: store.rate),
+                              color: store.isLive ? Theme.live : store.isPaused ? Theme.ink2 : Theme.cursor,
+                              systemImage: store.isPaused ? "pause.fill" : store.isLive ? nil : "forward.fill")
+        let depths = SoundChip(text: words.depths(prefs.levels))
+        let layers = SoundChip(text: words.layers(prefs))
+        // one row while it fits, else stacked (large text, a narrow window): a chip is never cut short
+        return ViewThatFits(in: .horizontal) {
+            HStack(spacing: 6) { clock; depths; layers }
+            VStack(spacing: 6) {
+                HStack(spacing: 6) { clock; depths }
+                layers
+            }
+            VStack(spacing: 6) { clock; depths; layers }
         }
         .frame(maxWidth: .infinity)
         .accessibilityElement(children: .combine)

@@ -89,11 +89,12 @@ struct SoundScreen: View {
         SoundCard {
             SoundScopeView(words: words, height: wide ? 190 : 150)
         }
+        .id(Section.spectrum)
     }
 
     /// The sections `-FXSoundScroll <name>` scrolls to (screenshots of the lower cards).
     private enum Section: String {
-        case voices, mix, tempo, how
+        case spectrum, voices, mix, tempo, how
     }
 
     private func scrollToLaunchSection(_ proxy: ScrollViewProxy) {

@@ -289,6 +289,35 @@ struct SoundWords: Sendable {
         pure ? Self.blinks(value) : Self.secondsShort(value)
     }
 
+    /// The lengths that can be typed, in the stepper's unit: 0.25 … 600 s, pure 0.8 … 1930 Blinks (the same span).
+    var tempoLimits: ClosedRange<Double> {
+        let seconds = SoundPreferences.tempoSecondsRange
+        guard pure else { return seconds }
+        return Self.precision(notation.secondsToBlinks(seconds.lowerBound), 2)...Self.precision(notation.secondsToBlinks(seconds.upperBound), 3)
+    }
+
+    /// A typed length ("12", "1.5", "1,5", "4 s", "12 Blinks") in the stepper's unit, held to `tempoLimits`; nil when
+    /// it is not a positive number.
+    func parseTempo(_ text: String) -> Double? {
+        var t = text.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        for unit in ["blinks", "blink", "sec", "s"] where t.hasSuffix(unit) {
+            t = String(t.dropLast(unit.count)).trimmingCharacters(in: .whitespaces)
+            break
+        }
+        t = t.replacingOccurrences(of: ",", with: ".").replacingOccurrences(of: "\u{202F}", with: "").replacingOccurrences(of: " ", with: "")
+        guard let v = Double(t), v.isFinite, v > 0 else { return nil }
+        return min(tempoLimits.upperBound, max(tempoLimits.lowerBound, v))
+    }
+
+    /// The message of the field that types a length.
+    func tempoPrompt(depth: Int) -> String {
+        let letter = SoundTuning.standard[min(max(0, depth - 1), SoundTuning.levelCount - 1)].letter
+        let limits = tempoLimits
+        return pure
+            ? "How many Blinks one \(letter) cycle lasts, \(Self.plain(limits.lowerBound)) to \(Self.groupNarrow(limits.upperBound))."
+            : "How many seconds of real time one \(letter) cycle lasts, \(Self.plain(limits.lowerBound)) to \(Self.int(limits.upperBound))."
+    }
+
     /// The stepper's ladder: whole, musical lengths (pure: the clean locks of the design — 7, 9, 11, 12, 36 Blinks).
     var tempoLadder: [Double] {
         pure
@@ -525,7 +554,7 @@ struct SoundWords: Sendable {
     /// Four lines on how to listen.
     var how: [(head: String, body: String)] {
         let speed = pure
-            ? "Real time is counted in Blinks: one Blink is one ν cycle at real time. Tempo lock sets how many Blinks one cycle lasts; its quarters become the pulses and the subdivisions 5 : 13 : 5 : 5 : 7 : 11 : 9 : 4 … (the series repeats) the rhythm."
+            ? "Real time is counted in Blinks: one Blink is one ν cycle at real time. Tempo lock sets how many Blinks one cycle lasts; its quarters become the pulses and the subdivisions 5 : 13 : 5 : 5 : 7 : 11 : 9 : 4 … (the series repeats) become the rhythm."
             : "Tempo lock turns quarters into beats and the subdivisions 5 : 13 : 5 : 5 : 7 : 11 : 9 : 4 … (the series repeats) into the rhythm."
         return [
             ("Cycles are notes.", "The ratios 1 : 5 : 65 : 325 … folded into one octave are the chord; a voice is loud at its cycle’s peak and silent at its valley."),

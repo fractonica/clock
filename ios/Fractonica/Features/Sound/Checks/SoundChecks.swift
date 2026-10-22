@@ -313,6 +313,9 @@ func wordChecks() {
     check(w.floorOption(0.5, name: "default") == "0.5 s · default" && w.floorOption(1, name: "sparse") == "1 s · sparse", "floors")
     check(w.tempoReadout(depth: 7, rate: SoundSchedule.tempoRate(depth: 7, seconds: 4)) == "×4,547: one η cycle lasts 4.00 s; a quarter (the beat) 1.00 s = 60.0 BPM.", "tempo readout")
     check(w.depths([true, true, true, false, false, false, true] + Array(repeating: false, count: 7)) == "depth 1–3, 7", "depth ranges")
+    check(w.parseTempo("4") == 4 && w.parseTempo(" 1,5 s ") == 1.5 && w.parseTempo("0.1") == 0.25 && w.parseTempo("9000") == 600, "typed lengths are held to 0.25 … 600 s")
+    check(w.parseTempo("") == nil && w.parseTempo("abc") == nil && w.parseTempo("-3") == nil && w.parseTempo("0") == nil, "a typed length must be a positive number")
+    check(w.tempoPrompt(depth: 7) == "How many seconds of real time one η cycle lasts, 0.25 to 600.", "tempo prompt: \(w.tempoPrompt(depth: 7))")
     let chips = w.rhythm(depth: 7, rate: SoundSchedule.tempoRate(depth: 7, seconds: 4), prefs: SoundPreferences())
     check(chips.map(\.letter) == ["η", "θ", "ι", "κ"] && chips.first?.mark == .quarters && chips.first?.factor == 9 && chips.last?.factor == nil, "rhythm chips")
 }
@@ -349,6 +352,12 @@ func pureWordChecks() {
     check(w.floorOption(0.05, name: "dense") == "0.161 Blinks · dense" && w.floorOption(0.5, name: "default") == "1.61 Blinks · default", "floors in Blinks: \(w.floorOption(0.05, name: "dense"))")
     check(w.tempoValue(4) == 12 && w.tempoText(12) == "12 Blinks", "the untouched default is 12 Blinks")
     near(w.tempoValue(w.tempoSeconds(36)), 36, 1e-9, "Blinks round trip")
+    check(w.tempoLimits == 0.8...1930, "Blinks that can be typed: \(w.tempoLimits)")
+    check(w.parseTempo("36 Blinks") == 36 && w.parseTempo("0.2") == 0.8 && w.parseTempo("5000") == 1930, "typed Blinks are held to 0.8 … 1930")
+    var longest = SoundPreferences()
+    longest.tempoSeconds = w.tempoSeconds(1930)
+    check(longest.sanitized().tempoSeconds <= 600 && longest.sanitized().tempoSeconds > 599, "the longest typed length stays within 600 s")
+    check(w.tempoPrompt(depth: 7) == "How many Blinks one η cycle lasts, 0.8 to 1\(nn)930.", "pure tempo prompt: \(w.tempoPrompt(depth: 7))")
     check(w.voiceLine(table[4], baseHz: 110) == "108.5 pB · octave +1 · 799¢ · 1ε", "a pure mixer line: \(w.voiceLine(table[4], baseHz: 110))")
     check(table.map { w.cycleLength($0.level) } == ["1α", "1β", "1γ", "1δ", "1ε", "11η", "1η", "4ι", "1ι", "13λ", "1λ", "5ν", "1ν", "0.14ν"], "cycle lengths on the ladder")
     check((1..<14).map { w.depthOption($0) } == ["β 2 · Beta", "γ 3 · Gamma", "δ 4 · Delta", "ε 5 · Nuclide", "ζ 6 · 11η", "η 7 · Helion", "θ 8 · 4ι", "ι 9 · Preon", "κ 10 · 13λ", "λ 11 · Flavon", "μ 12 · 5ν", "ν 13 · Blink", "ξ 14 · 0.14ν"], "the tempo lock's depth list: \((1..<14).map { w.depthOption($0) })")
@@ -367,6 +376,7 @@ func pureWordChecks() {
     texts += SoundPreferences.floors.map { w.floorOption($0.seconds, name: $0.name) }
     texts += (-3...3).map { w.octaveShift($0) } + (-3...3).map { w.physicalList($0) }
     texts += w.tempoLadder.map { w.tempoText($0) } + (1..<14).map { w.depthOption($0) }
+    texts += [w.tempoPrompt(depth: 6), w.tempoPrompt(depth: 14)]
     for rate in [1.0, 60, 3600, 86400, 2_629_800, -4000, lockRate] {
         texts += [w.tempoReadout(depth: 7, rate: rate), w.clockChip(live: false, rate: rate)]
         texts += w.rhythm(depth: 6, rate: rate, prefs: SoundPreferences()).flatMap { [$0.length, $0.help] }

@@ -526,7 +526,16 @@ final class SoundEngine {
     private func interruption(_ type: AVAudioSession.InterruptionType?, options: AVAudioSession.InterruptionOptions) {
         switch type {
         case .began:
-            guard isOn else { return }
+            guard isOn else {
+                // only a moment was ringing: the system cut it short, let the hardware go
+                idleTask?.cancel()
+                idleTask = nil
+                if isRunning {
+                    renderer?.commands.push(.flush)
+                    shutDown()
+                }
+                return
+            }
             interrupted = true
             // the system stopped the engine: nothing renders (or drains commands) until it is started again
             isRunning = false

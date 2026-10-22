@@ -12,7 +12,10 @@ struct SoundScopeView: View {
 
     @Environment(ClockStore.self) private var store
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var analyser = SoundSpectrum()
+    /// The analyser, made on first use: a `@State` initial value is built again every time the parent's body runs
+    /// (each slider move), and an FFT setup with its buffers is too much to throw away that often.
+    @State private var box = SoundSpectrum.Box()
+    private var analyser: SoundSpectrum { box.spectrum }
 
     private var engine: SoundEngine { .shared }
 
@@ -157,6 +160,18 @@ struct SoundScopeView: View {
 /// analyser node, at most `interval` apart.
 @MainActor
 final class SoundSpectrum {
+    /// A cheap holder that makes its analyser lazily (see `SoundScopeView.box`).
+    @MainActor final class Box {
+        private var made: SoundSpectrum?
+
+        var spectrum: SoundSpectrum {
+            if let made { return made }
+            let spectrum = SoundSpectrum()
+            made = spectrum
+            return spectrum
+        }
+    }
+
     private static let log2n = 13
     private static let size = 1 << log2n
     private var samples = [Float](repeating: 0, count: size)

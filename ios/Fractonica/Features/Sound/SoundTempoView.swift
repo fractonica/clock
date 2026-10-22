@@ -12,6 +12,9 @@ struct SoundTempoView: View {
     @Environment(ToastCenter.self) private var toasts
     /// Speed chips tapped here (their haptic; a speed changed elsewhere stays silent).
     @State private var speedTaps = 0
+    /// Typing an exact length (the stepper's value opens the field).
+    @State private var typing = false
+    @State private var draft = ""
 
     private var engine: SoundEngine { .shared }
 
@@ -55,10 +58,19 @@ struct SoundTempoView: View {
     // MARK: "One η lasts 4 s"
 
     private func sentenceStart(_ prefs: SoundPreferences) -> some View {
-        HStack(spacing: 8) {
-            Text("One cycle of")
-                .foregroundStyle(Theme.ink2)
-            depthPicker(prefs)
+        // the words above the picker when they do not fit beside it (large text): never broken letter by letter
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 8) {
+                Text("One cycle of")
+                    .foregroundStyle(Theme.ink2)
+                    .fixedSize()
+                depthPicker(prefs)
+            }
+            VStack(alignment: .leading, spacing: 4) {
+                Text("One cycle of")
+                    .foregroundStyle(Theme.ink2)
+                depthPicker(prefs)
+            }
         }
     }
 
@@ -66,6 +78,7 @@ struct SoundTempoView: View {
         HStack(spacing: 8) {
             Text("lasts")
                 .foregroundStyle(Theme.ink2)
+                .fixedSize()
             lengthStepper(prefs)
         }
     }
@@ -90,12 +103,35 @@ struct SoundTempoView: View {
         return HStack(spacing: 2) {
             stepButton("minus", enabled: lower != nil) { if let lower { set(lower) } }
                 .accessibilityLabel("Shorter")
-            Text(words.tempoText(value))
-                .font(.reading(15, weight: .semibold))
-                .foregroundStyle(Theme.ink)
-                .frame(minWidth: words.pure ? 92 : 56)
-                .contentTransition(.numericText(value: value))
-                .animation(.snappy, value: value)
+            Button {
+                draft = SoundWords.plain(value, 6)
+                typing = true
+            } label: {
+                Text(words.tempoText(value))
+                    .font(.reading(15, weight: .semibold))
+                    .foregroundStyle(Theme.ink)
+                    .frame(minWidth: words.pure ? 92 : 56, minHeight: 30)
+                    .contentTransition(.numericText(value: value))
+                    .animation(.snappy, value: value)
+                    .contentShape(.rect)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Length of one cycle")
+            .accessibilityValue(words.tempoText(value))
+            .accessibilityHint("Type an exact length")
+            .help("Type an exact length")
+            .alert(words.pure ? "Blinks per cycle" : "Seconds per cycle", isPresented: $typing) {
+                TextField(words.pure ? "Blinks" : "Seconds", text: $draft)
+                    #if os(iOS)
+                    .keyboardType(.decimalPad)
+                    #endif
+                Button("Set") {
+                    if let typed = words.parseTempo(draft) { set(typed) }
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text(words.tempoPrompt(depth: prefs.tempoDepth))
+            }
             stepButton("plus", enabled: higher != nil) { if let higher { set(higher) } }
                 .accessibilityLabel("Longer")
         }
