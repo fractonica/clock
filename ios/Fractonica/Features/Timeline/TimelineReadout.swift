@@ -12,6 +12,7 @@ struct TimelineReadout: View {
     @Environment(ClockStore.self) private var store
     @Environment(AppSettings.self) private var settings
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     private var data: TimelineData { controller.data }
     private var clock: FractonicaClock { data.clock }
@@ -121,11 +122,21 @@ struct TimelineReadout: View {
                     .foregroundStyle(Theme.ink3)
                     .textSelection(.enabled)
                     .lineLimit(2)
+                if typeSize.isAccessibilitySize {
+                    // no room beside a large title: the steps go under it
+                    HStack(spacing: 4) {
+                        stepButton(level: level, idx: idx, by: -1)
+                        stepButton(level: level, idx: idx, by: 1)
+                    }
+                    .padding(.top, 6)
+                }
             }
             Spacer(minLength: 0)
-            HStack(spacing: 4) {
-                stepButton(level: level, idx: idx, by: -1)
-                stepButton(level: level, idx: idx, by: 1)
+            if !typeSize.isAccessibilitySize {
+                HStack(spacing: 4) {
+                    stepButton(level: level, idx: idx, by: -1)
+                    stepButton(level: level, idx: idx, by: 1)
+                }
             }
         }
     }
@@ -185,20 +196,32 @@ struct TimelineReadout: View {
         return words.notation.dateText(at: t, letters: true, upTo: res)
     }
 
+    /// A value in the tables: Dynamic Type, digits of equal width.
+    private static let value = Font.subheadline.monospacedDigit()
+
+    /// Name and value side by side; at the accessibility sizes the value goes under its name.
+    private var rowLayout: AnyLayout {
+        typeSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: 2))
+                                     : AnyLayout(HStackLayout(alignment: .firstTextBaseline))
+    }
+
     private func row(_ name: String, _ value: String, marked: Bool) -> some View {
-        HStack(alignment: .firstTextBaseline) {
+        let stacked = typeSize.isAccessibilitySize
+        return rowLayout {
             Text(name)
                 .font(.subheadline)
                 .foregroundStyle(Theme.ink2)
-            Spacer(minLength: 12)
+            if !stacked { Spacer(minLength: 12) }
             Text(value)
-                .font(.reading(14))
+                .font(Self.value)
                 .foregroundStyle(marked ? Theme.cursor : Theme.ink)
-                .multilineTextAlignment(.trailing)
-                .lineLimit(2)
-                .minimumScaleFactor(0.85)
+                .multilineTextAlignment(stacked ? .leading : .trailing)
+                .lineLimit(stacked ? nil : 2)
+                .minimumScaleFactor(stacked ? 1 : 0.85)
+                .fixedSize(horizontal: false, vertical: stacked)
                 .textSelection(.enabled)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.vertical, 9)
         .accessibilityElement(children: .combine)
     }
@@ -222,14 +245,14 @@ struct TimelineReadout: View {
                         Spacer()
                         if pure {
                             Text(Notation.isMajor(level) ? Notation.quarterWords[reading.quarter] : data.names(level, reading.cycle).short)
-                                .font(.reading(14))
+                                .font(Self.value)
                                 .foregroundStyle(Theme.ink)
                             if !Notation.isMajor(level) {
                                 PairView(fraction: reading.phase, color: Theme.levelColor(level, lightness: 0.72), height: 14)
                             }
                         } else {
                             Text("\(Fractonica.quarterNames[reading.quarter]) quarter · \(TimelineInspector.percent(reading.progress))%")
-                                .font(.reading(14))
+                                .font(Self.value)
                                 .foregroundStyle(Theme.ink)
                         }
                     }
@@ -250,28 +273,10 @@ struct TimelineReadout: View {
 
     private func actions(level: Int, idx: Int64, start: Double, end: Double, color: Color) -> some View {
         VStack(spacing: 10) {
-            HStack(spacing: 10) {
-                Button {
-                    controller.travel(to: start + 0.001, reveal: true)
-                    dismiss()
-                } label: {
-                    Label("Travel here", systemImage: "clock.arrow.trianglehead.counterclockwise.rotate.90")
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.8)
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.glassProminent)
-                .tint(Theme.cursor.opacity(0.85))
-                Button {
-                    controller.fit(level: level, idx: idx)
-                    dismiss()
-                } label: {
-                    Label("Fit this cycle", systemImage: "arrow.left.and.line.vertical.and.arrow.right")
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.8)
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.glass)
+            // side by side where both labels fit, else one above the other (large text)
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 10) { travelAndFit(level: level, idx: idx, start: start) }
+                VStack(spacing: 10) { travelAndFit(level: level, idx: idx, start: start) }
             }
             .controlSize(.large)
             if settings.selectedLevel != level {
@@ -287,6 +292,29 @@ struct TimelineReadout: View {
             }
         }
         .labelStyle(.titleAndIcon)
+    }
+
+    @ViewBuilder
+    private func travelAndFit(level: Int, idx: Int64, start: Double) -> some View {
+        Button {
+            controller.travel(to: start + 0.001, reveal: true)
+            dismiss()
+        } label: {
+            Label("Travel here", systemImage: "clock.arrow.trianglehead.counterclockwise.rotate.90")
+                .lineLimit(1)
+                .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.glassProminent)
+        .tint(Theme.cursor.opacity(0.85))
+        Button {
+            controller.fit(level: level, idx: idx)
+            dismiss()
+        } label: {
+            Label("Fit this cycle", systemImage: "arrow.left.and.line.vertical.and.arrow.right")
+                .lineLimit(1)
+                .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.glass)
     }
 
     // MARK: Eclipse
@@ -334,28 +362,37 @@ struct TimelineReadout: View {
         Text("The 70 greatest-eclipse instants are the time base of the clock; every fourth one starts an α cycle.")
             .font(.footnote)
             .foregroundStyle(Theme.ink3)
-        HStack(spacing: 10) {
-            Button {
-                controller.travel(to: e, reveal: true)
-                dismiss()
-            } label: {
-                Label("Travel here", systemImage: "clock.arrow.trianglehead.counterclockwise.rotate.90")
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.glassProminent)
-            .tint(Theme.cursor.opacity(0.85))
-            if k < clock.extent {
-                Button {
-                    controller.viewport.fit(e, clock.catalogue[k + 1], cursor: store.time(), cursorIn: true, reduceMotion: controller.reduceMotion)
-                    dismiss()
-                } label: {
-                    Label("Fit its Saros", systemImage: "arrow.left.and.line.vertical.and.arrow.right")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.glass)
-            }
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 10) { eclipseActions(k) }
+            VStack(spacing: 10) { eclipseActions(k) }
         }
         .controlSize(.large)
+    }
+
+    @ViewBuilder
+    private func eclipseActions(_ k: Int) -> some View {
+        let e = clock.catalogue[k]
+        Button {
+            controller.travel(to: e, reveal: true)
+            dismiss()
+        } label: {
+            Label("Travel here", systemImage: "clock.arrow.trianglehead.counterclockwise.rotate.90")
+                .lineLimit(1)
+                .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.glassProminent)
+        .tint(Theme.cursor.opacity(0.85))
+        if k < clock.extent {
+            Button {
+                controller.viewport.fit(e, clock.catalogue[k + 1], cursor: store.time(), cursorIn: true, reduceMotion: controller.reduceMotion)
+                dismiss()
+            } label: {
+                Label("Fit its Saros", systemImage: "arrow.left.and.line.vertical.and.arrow.right")
+                    .lineLimit(1)
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.glass)
+        }
     }
 }
 
@@ -395,7 +432,7 @@ struct TimelineCycleWave: View {
                 let label = pure ? (i == 0 ? "" : labels[i]) : labels[i]
                 guard !label.isEmpty else { continue }
                 // pure: a quarter is named by the threshold that ends it, so its word sits under that stretch's end
-                context.draw(Text(label).font(.caption2).foregroundStyle(Theme.ink3),
+                context.draw(Text(label).font(.system(size: 11)).foregroundStyle(Theme.ink3),
                              at: CGPoint(x: min(pad + w - 14, max(pad + 14, x(t))), y: size.height - 7))
             }
             if let cursor, cursor >= start, cursor <= end {

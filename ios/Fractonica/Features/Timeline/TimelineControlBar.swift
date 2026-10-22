@@ -10,6 +10,7 @@ struct TimelineControlBar: View {
     var vertical = false
 
     @Environment(AppSettings.self) private var settings
+    @Environment(\.dynamicTypeSize) private var typeSize
     @Namespace private var glass
     /// The bar's width, which picks its arrangement (measured once per size, not on every frame as ViewThatFits would).
     @State private var width: CGFloat = 0
@@ -34,9 +35,10 @@ struct TimelineControlBar: View {
             } else {
                 HStack(spacing: 10) {
                     zoomCluster(w, presets: presets, active: active)
-                    if width >= stripWidth + 330 { presetStrip(strip, active: active) }
+                    // large text: the presets stay in the width's menu and Fit keeps to its icon
+                    if width >= stripWidth + 330, !typeSize.isAccessibilitySize { presetStrip(strip, active: active) }
                     Spacer(minLength: 4)
-                    fitButton(labelled: width >= 330)
+                    fitButton(labelled: width >= 330 && !typeSize.isAccessibilitySize)
                     followButton
                 }
             }
@@ -44,6 +46,8 @@ struct TimelineControlBar: View {
         .frame(maxWidth: vertical ? nil : .infinity, maxHeight: vertical ? .infinity : nil)
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
         .controlSize(.regular)
+        // one row of glass under the canvas: it grows with Dynamic Type up to the first accessibility size
+        .dynamicTypeSize(...DynamicTypeSize.accessibility1)
     }
 
     /// − · width · + (+ · width · − in a column), one glass capsule; the width opens every preset under the window's
@@ -129,7 +133,7 @@ struct TimelineControlBar: View {
             : TimelineWords.widthText(w.span)
         return HStack(spacing: 4) {
             Text(text)
-                .font(.reading(15, weight: .semibold))
+                .font(.subheadline.weight(.semibold).monospacedDigit())
                 .contentTransition(.numericText())
                 .lineLimit(1)
                 .fixedSize()

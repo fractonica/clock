@@ -741,11 +741,16 @@ struct TimelinePainter {
         let style = font(.ui(10, 600))
         for (x, start) in [(a, true), (b, false)] where x >= px0 && x <= px1 {
             vline(cg, x, top, bottom, P.ink2(0.6), dash: [3, 3])
-            let lab = f.words.edgeLabel(start: start)
-            let lw = text.width(lab, style)
+            // on one line where the shaded side has room, else on two ("catalogue starts" over the date)
             let room = start ? x - px0 : px1 - x
-            if room > lw + 14 {
-                td.draw(lab, x: start ? x - 6 : x + 6, y: L.lanesY + 11, style, P.ink2(0.95), align: start ? .right : .left)
+            let tx = start ? x - 6 : x + 6, align: TimelineTextDrawing.Align = start ? .right : .left
+            let lab = f.words.edgeLabel(start: start)
+            if room > text.width(lab, style) + 14 {
+                td.draw(lab, x: tx, y: L.lanesY + 11, style, P.ink2(0.95), align: align)
+            } else if let split = f.words.edgeLabelLines(start: start),
+                      room > max(text.width(split.0, style), text.width(split.1, style)) + 14 {
+                td.draw(split.0, x: tx, y: L.lanesY + 11, style, P.ink2(0.95), align: align)
+                td.draw(split.1, x: tx, y: L.lanesY + 25, style, P.ink2(0.95), align: align)
             }
         }
         if b <= px0 || a >= px1 {
@@ -882,7 +887,8 @@ struct TimelinePainter {
             let lab = v.tk.labels[min(variant, v.tk.labels.count - 1)]
             let st = style(v.tk, lab)
             let lw = text.width(lab, st)
-            guard lw <= v.room + 4, v.x + 4 + lw <= px1 + 40 else { continue }
+            // a label the plot's right edge would cut ("280" of 2800) is left out until its tick moves in
+            guard lw <= v.room + 4, v.x + 4 + lw <= px1 - 1 else { continue }
             countText(td, lab, x: v.x + 4, y: yTick + rowH / 2 - 1, st, v.tk.major ? P.ink(0.95) : P.ink2(0.95), symbol: symbol)
         }
         fill(cg, CGRect(x: px0, y: yTick + rowH - f.pixel * 2, width: L.plotWidth, height: f.pixel * 2), P.axisBase)

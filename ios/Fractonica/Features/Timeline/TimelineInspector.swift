@@ -40,8 +40,14 @@ struct TimelineInspector: View {
     private var cardWidth: CGFloat {
         let base: CGFloat = frame.layout.compact ? 214 : 240
         let gutter = hover.x < frame.layout.px0
-        return min(frame.layout.width - 12, (gutter ? base + 40 : base) * min(1.25, frame.textScale))
+        return min(frame.layout.width - 12, (gutter ? base + 40 : base) * frame.textScale)
     }
+
+    // The card's type follows the canvas's text scale (1 … 1.28 with Dynamic Type), not the full Dynamic Type range: it
+    // is a transient tooltip of fixed width beside the drawing it describes, and its rows must stay aligned.
+    private func ui(_ size: CGFloat, _ weight: Font.Weight = .regular) -> Font { .system(size: size * frame.textScale, weight: weight) }
+    private func num(_ size: CGFloat, _ weight: Font.Weight = .regular) -> Font { .reading(size * frame.textScale, weight: weight) }
+    private func code(_ size: CGFloat, _ weight: Font.Weight = .regular) -> Font { .code(size * frame.textScale, weight: weight) }
 
     private var offset: CGSize {
         let L = frame.layout
@@ -103,14 +109,14 @@ struct TimelineInspector: View {
 
     private func explanation(title: Text, body: String, hint: String?) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            title.font(.subheadline.weight(.semibold)).foregroundStyle(Theme.ink)
+            title.font(ui(15, .semibold)).foregroundStyle(Theme.ink)
             Text(body)
-                .font(.caption)
+                .font(ui(12))
                 .foregroundStyle(Theme.ink)
                 .fixedSize(horizontal: false, vertical: true)
             if let hint {
                 Text(hint)
-                    .font(.caption2)
+                    .font(ui(11))
                     .foregroundStyle(Theme.ink3)
             }
         }
@@ -135,14 +141,14 @@ struct TimelineInspector: View {
         }
         return VStack(alignment: .leading, spacing: 4) {
             Text(head)
-                .font(words.pure ? .subheadline.weight(.semibold) : .reading(13, weight: .semibold))
+                .font(words.pure ? ui(15, .semibold) : num(13, .semibold))
                 .foregroundStyle(Theme.ink)
                 .fixedSize(horizontal: false, vertical: true)
             if inside, let pos = clock.position(at: t) {
-                Text(String(format: "pos %.3f", pos)).font(.reading(11)).foregroundStyle(Theme.ink2)
+                Text(String(format: "pos %.3f", pos)).font(num(11)).foregroundStyle(Theme.ink2)
             }
             Text("Tap to centre the timeline here · drag the frame to scroll")
-                .font(.caption2)
+                .font(ui(11))
                 .foregroundStyle(Theme.ink3)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -155,27 +161,27 @@ struct TimelineInspector: View {
             let name = Text("Eclipse \(Notation.eclipseName(k))").foregroundStyle(Theme.teal)
             let of = Text("one of \(clock.catalogue.count)").foregroundStyle(Theme.ink2)
             Text("\(name)  \(of)")
-                .font(.subheadline.weight(.semibold))
+                .font(ui(15, .semibold))
             if words.pure {
                 Text("pos \(k) · in \(data.ruler.chain(at: e, from: 0, to: 1))")
-                    .font(.reading(11))
+                    .font(num(11))
                     .foregroundStyle(Theme.ink)
             } else {
                 Text("\(words.earth.long(e)) \(words.earth.tag(e))")
-                    .font(.reading(11))
+                    .font(num(11))
                     .foregroundStyle(Theme.ink)
                     .fixedSize(horizontal: false, vertical: true)
             }
             let starts = words.pure ? " · starts \(Notation.periodName(level: 0, ordinal: k / 4 + 1))" : " · starts α cycle \(k / 4 + 1)"
             Text("Greatest eclipse of Saros 141" + (words.pure ? "" : " · position \(k)") + (alpha ? starts : ""))
-                .font(.caption)
+                .font(ui(12))
                 .foregroundStyle(Theme.ink2)
                 .fixedSize(horizontal: false, vertical: true)
             Text("now · \(relative(e, frame.now))")
-                .font(.reading(11))
+                .font(num(11))
                 .foregroundStyle(Theme.ink2)
             Text("Tap for details")
-                .font(.caption2)
+                .font(ui(11))
                 .foregroundStyle(Theme.ink3)
         }
     }
@@ -186,13 +192,13 @@ struct TimelineInspector: View {
         let inRange = clock.inRange(t)
         return VStack(alignment: .leading, spacing: 6) {
             Text(head(t))
-                .font(.reading(13, weight: .semibold))
+                .font(num(13, .semibold))
                 .foregroundStyle(Theme.ink)
                 .fixedSize(horizontal: false, vertical: true)
             if !inRange {
                 Text(words.pure ? "The catalogue spans \(words.catalogueRange); the clock is not extrapolated."
                                 : "Outside the Saros 141 catalogue (\(words.catalogueRange)). The clock is not extrapolated.")
-                    .font(.caption)
+                    .font(ui(12))
                     .foregroundStyle(Theme.ink2)
                     .fixedSize(horizontal: false, vertical: true)
             } else {
@@ -201,7 +207,7 @@ struct TimelineInspector: View {
                     Text("now · \(relative(t, frame.now))")
                     if !frame.live, frame.cursorIn { Text("cursor · \(relative(t, frame.cursor))") }
                 }
-                .font(.reading(11))
+                .font(num(11))
                 .foregroundStyle(Theme.ink2)
                 if let lane, lane < frame.levels.count, let r = clock.level(at: t, frame.levels[lane]) {
                     focus(level: frame.levels[lane], reading: r, at: t)
@@ -273,9 +279,9 @@ struct TimelineInspector: View {
         return VStack(alignment: .leading, spacing: 2) {
             let head = Text("\(info.letter) \(info.depth)").foregroundStyle(color)
             Text("\(head)  \(Text(title).foregroundStyle(Theme.ink))")
-                .font(.reading(12, weight: .semibold))
+                .font(num(12, .semibold))
             Text(facts)
-                .font(.caption)
+                .font(ui(12))
                 .foregroundStyle(Theme.ink2)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -288,27 +294,27 @@ struct TimelineInspector: View {
         let color = Theme.levelColor(level, lightness: on ? 0.8 : 0.72)
         GridRow {
             Text("\(info.letter) \(info.depth)")
-                .font(.code(11, weight: on ? .bold : .medium))
+                .font(code(11, on ? .bold : .medium))
                 .foregroundStyle(color)
             if words.pure {
                 if Notation.isMajor(level) {
                     Text("\(r.local + 1)/\(r.siblings) \(Notation.quarterWords[r.quarter])")
-                        .font(.reading(11, weight: on ? .semibold : .regular))
+                        .font(num(11, on ? .semibold : .regular))
                         .foregroundStyle(Theme.ink)
                         .gridCellColumns(2)
                 } else {
                     Text(data.names(level, r.cycle).short)
-                        .font(.reading(11, weight: on ? .semibold : .regular))
+                        .font(num(11, on ? .semibold : .regular))
                         .foregroundStyle(Theme.ink)
                     PairView(fraction: r.phase, color: color, height: 10)
                         .gridColumnAlignment(.trailing)
                 }
             } else {
                 Text("\(r.local + 1)/\(r.siblings)")
-                    .font(.reading(11, weight: on ? .semibold : .regular))
+                    .font(num(11, on ? .semibold : .regular))
                     .foregroundStyle(Theme.ink)
                 Text("\(Self.percent(r.progress))%")
-                    .font(.reading(11))
+                    .font(num(11))
                     .foregroundStyle(Theme.ink2)
                     .gridColumnAlignment(.trailing)
             }

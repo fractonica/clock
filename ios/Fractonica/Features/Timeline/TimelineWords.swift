@@ -144,6 +144,15 @@ struct TimelineWords: Sendable {
         return start ? "catalogue starts \(earth.date(clock.tMin))" : "catalogue ends \(earth.date(clock.tMax))"
     }
 
+    /// `edgeLabel` on two lines, for a narrow shaded side: ("catalogue starts", "1613-05-19") · pure ("catalogue
+    /// starts", "pos 0").
+    func edgeLabelLines(start: Bool) -> (String, String)? {
+        let parts = edgeLabel(start: start).components(separatedBy: pure ? " · " : " ")
+        guard parts.count >= 2 else { return nil }
+        return pure ? (parts[0], parts.dropFirst().joined(separator: " · "))
+                    : (parts.prefix(2).joined(separator: " "), parts.dropFirst(2).joined(separator: " "))
+    }
+
     /// The catalogue's extent: "1613-05-19 – 2857-06-13" · pure "α#1 – α#18".
     var catalogueRange: String {
         pure ? notation.catalogueText() : "\(earth.date(clock.tMin)) – \(earth.date(clock.tMax))"
