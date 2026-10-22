@@ -154,28 +154,17 @@ struct DiaryScreen: View {
             }
         } else {
             ToolbarItemGroup(placement: .primaryAction) {
-                if model.wide { layoutPicker }
                 exportMenu
                 Button("Options", systemImage: "sidebar.trailing") { showOptions.toggle() }
             }
         }
         #else
         ToolbarItemGroup(placement: .primaryAction) {
-            if model.wide { layoutPicker }
             exportMenu
             Button("Options", systemImage: "sidebar.trailing") { showOptions.toggle() }
                 .help("Diary options")
         }
         #endif
-    }
-
-    private var layoutPicker: some View {
-        Picker("Layout", selection: Binding(get: { model.layout }, set: { model.setLayout($0) })) {
-            Label("Single page", systemImage: "doc").tag(DiaryModel.Layout.page)
-            Label("Spread", systemImage: "book.pages").tag(DiaryModel.Layout.spread)
-        }
-        .pickerStyle(.segmented)
-        .help("One page or the open book")
     }
 
     private var exportMenu: some View {
@@ -227,15 +216,24 @@ struct DiaryScreen: View {
     }
 
     /// `-FXDiaryExport 1`: make the PDF once the plan is in and leave it in the temporary folder, with a report next to
-    /// it (diary-export.json) for checking the result outside the app.
+    /// it (diary-export.json) for checking the result outside the app; `-FXDiaryExport share` also offers it as the
+    /// export button does.
     private func runLaunchExport() {
-        guard !launchExportDone, DiaryLaunch.flag("FXDiaryExport"), model.plan?.final == true else { return }
+        let mode = DiaryLaunch.string("FXDiaryExport")
+        guard !launchExportDone, DiaryLaunch.flag("FXDiaryExport") || mode == "share", model.plan?.final == true else { return }
         launchExportDone = true
         Task {
             let method = DiaryLaunch.string("FXDiaryPDFMethod").flatMap(DiaryPDFMaker.Method.init) ?? .automatic
             let started = Date.now
             let url = await model.makePDF(method: method)
             DiaryExportReport.write(url: url, model: model, seconds: Date.now.timeIntervalSince(started))
+            if mode == "share", let url {
+                #if os(iOS)
+                share = DiaryFileRef(url: url)
+                #else
+                saving = DiaryPDFFile(url: url)
+                #endif
+            }
         }
     }
 }
@@ -278,6 +276,27 @@ private struct DiaryHeader: View {
 
             Spacer(minLength: 4)
 
+            if let shown = model.shownPage {
+                Button {
+                    model.go(to: shown)
+                    Haptics.play(.selection)
+                } label: {
+                    HStack(spacing: 5) {
+                        Circle().fill(Theme.cursor).frame(width: 7, height: 7)
+                        Text("p. \(shown)").font(.reading(13, weight: .medium))
+                    }
+                    .foregroundStyle(Theme.ink2)
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 5)
+                    .background(Theme.panel2, in: .capsule)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Page \(shown) holds the shown moment")
+                .accessibilityHint("Turns to it")
+                .help("The page that holds the shown moment")
+                .transition(.opacity)
+            }
+
             Button {
                 model.setFollow(!model.follow, time: store.time())
                 Haptics.play(.selection)
@@ -315,7 +334,7 @@ private struct DiaryHeader: View {
 
     private func stamp(_ path: [Int]) -> some View {
         Text(DiaryDelta.stamp(path))
-            .font(.code(12))
+            .font(.footnote.weight(.medium).monospacedDigit())
             .foregroundStyle(Theme.teal)
             .fixedSize()
     }
@@ -381,7 +400,7 @@ private struct DiaryPageBar: View {
                     .lineLimit(1)
                     .truncationMode(.middle)
             }
-            .frame(minWidth: 150, maxWidth: 300)
+            .frame(minWidth: 150, maxWidth: model.spread ? 480 : 300)
             .accessibilityElement(children: .combine)
 
             Button { model.step(1) } label: {
@@ -390,6 +409,20 @@ private struct DiaryPageBar: View {
             .disabled(count == 0 || last >= count)
             .keyboardShortcut(.rightArrow, modifiers: [])
             .accessibilityLabel("Next page")
+
+            if model.wide {
+                Button {
+                    model.setLayout(model.layout == .spread ? .page : .spread)
+                    Haptics.play(.selection)
+                } label: {
+                    Image(systemName: model.layout == .spread ? "book.pages" : "doc")
+                        .contentTransition(.symbolEffect(.replace))
+                        .frame(width: 40, height: 40)
+                }
+                .accessibilityLabel(model.layout == .spread ? "Showing the open book" : "Showing one page")
+                .accessibilityHint("Switches between one page and the open book")
+                .help(model.layout == .spread ? "Show one page" : "Show the open book")
+            }
 
             exportButton
         }

@@ -338,3 +338,206 @@ private extension String {
         return self[..<end]
     }
 }
+
+// MARK: - Lenient decoding
+
+// Options come from storage, from older versions of the app and from the web app's JSON (a partial object is valid
+// there): every missing or unreadable key takes its default, like `sanitizeDiaryOptions`, instead of failing the whole.
+
+private extension KeyedDecodingContainer {
+    func value<T: Decodable>(_ key: Key, _ fallback: T) -> T {
+        ((try? decodeIfPresent(T.self, forKey: key)) ?? nil) ?? fallback
+    }
+
+    func optional<T: Decodable>(_ key: Key) -> T? {
+        (try? decodeIfPresent(T.self, forKey: key)) ?? nil
+    }
+}
+
+extension DiaryOptions {
+    init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let d = DiaryOptions()
+        page = c.value(.page, d.page)
+        nav = c.value(.nav, d.nav)
+        gregorian = c.value(.gregorian, d.gregorian)
+        front = c.value(.front, d.front)
+        lock = c.value(.lock, d.lock)
+        lined = c.value(.lined, d.lined)
+        canvases = c.value(.canvases, d.canvases)
+        semi = c.value(.semi, d.semi)
+        retro = c.value(.retro, d.retro)
+        inserts = c.value(.inserts, d.inserts)
+        events = c.value(.events, d.events)
+        sky = c.value(.sky, d.sky)
+        closing = c.value(.closing, d.closing)
+        style = c.value(.style, d.style)
+        print = c.value(.print, d.print)
+    }
+}
+
+extension DiaryOptions.Page {
+    init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let d = Self()
+        size = c.value(.size, d.size)
+        width = c.value(.width, d.width)
+        height = c.value(.height, d.height)
+        margins = c.value(.margins, d.margins)
+    }
+}
+
+extension DiaryOptions.Margins {
+    init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let d = Self()
+        top = c.value(.top, d.top)
+        bottom = c.value(.bottom, d.bottom)
+        inner = c.value(.inner, d.inner)
+        outer = c.value(.outer, d.outer)
+    }
+}
+
+extension DiaryOptions.Nav {
+    init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        on = c.value(.on, Self().on)
+    }
+}
+
+extension DiaryOptions.Gregorian {
+    init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let d = Self()
+        on = c.value(.on, d.on)
+        zone = c.optional(.zone)
+        weekdays = c.value(.weekdays, d.weekdays)
+    }
+}
+
+extension DiaryOptions.Front {
+    init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let d = Self()
+        cover = c.value(.cover, d.cover)
+        index = c.value(.index, d.index)
+        gregorianIndex = c.value(.gregorianIndex, d.gregorianIndex)
+        ephemeris = c.value(.ephemeris, d.ephemeris)
+        reference = c.value(.reference, d.reference)
+        planning = c.value(.planning, d.planning)
+        predictions = c.value(.predictions, d.predictions)
+    }
+}
+
+extension DiaryOptions.Lock {
+    init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        sheets = c.value(.sheets, Self().sheets)
+    }
+}
+
+extension DiaryOptions.Lined {
+    init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let d = Self()
+        linesPerHelion = c.value(.linesPerHelion, d.linesPerHelion)
+        labels = c.value(.labels, d.labels)
+        marginGlyphs = c.value(.marginGlyphs, d.marginGlyphs)
+        marginCurve = c.value(.marginCurve, d.marginCurve)
+    }
+}
+
+extension DiaryOptions.Canvas {
+    init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        type = c.value(.type, CanvasType.blank.rawValue)
+        cols = c.optional(.cols)
+        rows = c.optional(.rows)
+        count = c.optional(.count)
+        lines = c.optional(.lines)
+    }
+}
+
+extension DiaryOptions.Semi {
+    init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let d = Self()
+        allCanvas = c.value(.allCanvas, d.allCanvas)
+        canvases = c.value(.canvases, d.canvases)
+    }
+}
+
+extension DiaryOptions.Retro {
+    init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let d = Self()
+        lines = c.value(.lines, d.lines)
+        canvases = c.value(.canvases, d.canvases)
+    }
+}
+
+extension DiaryOptions.Inserts {
+    init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let d = Self()
+        deltaQuarters = c.value(.deltaQuarters, d.deltaQuarters)
+        eclipses = c.value(.eclipses, d.eclipses)
+    }
+}
+
+extension DiaryOptions.Events {
+    init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let d = Self()
+        synodic = c.value(.synodic, d.synodic)
+        anomalistic = c.value(.anomalistic, d.anomalistic)
+        draconic = c.value(.draconic, d.draconic)
+        sidereal = c.value(.sidereal, d.sidereal)
+        quarters = c.value(.quarters, d.quarters)
+        solar = c.value(.solar, d.solar)
+        solarSync = c.value(.solarSync, d.solarSync)
+        majors = c.value(.majors, d.majors)
+        lunistices = c.value(.lunistices, d.lunistices)
+        crossQuarters = c.value(.crossQuarters, d.crossQuarters)
+        eclipses = c.value(.eclipses, d.eclipses)
+        planets = c.value(.planets, d.planets)
+    }
+}
+
+extension DiaryOptions.Sky {
+    init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let d = Self()
+        on = c.value(.on, d.on)
+        lat = c.optional(.lat)
+        lon = c.optional(.lon)
+        place = c.optional(.place)
+        dot = c.value(.dot, d.dot)
+    }
+}
+
+extension DiaryOptions.Closing {
+    init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        summaryPages = c.value(.summaryPages, Self().summaryPages)
+    }
+}
+
+extension DiaryOptions.Style {
+    init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let d = Self()
+        ink = c.value(.ink, d.ink)
+        font = c.value(.font, d.font)
+    }
+}
+
+extension DiaryOptions.Print {
+    init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let d = Self()
+        twoUp = c.value(.twoUp, d.twoUp)
+        pairing = c.value(.pairing, d.pairing)
+        turn = c.value(.turn, d.turn)
+    }
+}

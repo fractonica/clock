@@ -38,7 +38,7 @@ struct DiaryPagesView: View {
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 92, maximum: 132), spacing: 14, alignment: .top)],
-                              alignment: .leading, spacing: 16, pinnedViews: [.sectionHeaders]) {
+                              alignment: .leading, spacing: 16) {
                         ForEach(groups(plan)) { group in
                             Section {
                                 ForEach(group.pages) { page in
@@ -58,9 +58,8 @@ struct DiaryPagesView: View {
                                     .font(.subheadline.weight(.semibold))
                                     .foregroundStyle(Theme.ink)
                                     .frame(maxWidth: .infinity, alignment: .leading)
-                                    .padding(.vertical, 8)
-                                    .padding(.horizontal, 4)
-                                    .background(Theme.background.opacity(0.92))
+                                    .padding(.top, 10)
+                                    .padding(.horizontal, 2)
                             }
                         }
                     }
@@ -125,8 +124,8 @@ struct DiaryThumbnail: View {
                 .font(.reading(11, weight: current ? .semibold : .regular))
                 .foregroundStyle(current ? Theme.teal : Theme.ink3)
         }
-        .task(id: page.no) {
-            guard image == nil else { return }
+        .task(id: "\(model.isCurrent ? model.plan?.token ?? 0 : -1)-\(page.no)") {
+            guard model.isCurrent else { return }
             let pixels = Int(132 * max(scale, 2))
             if let data = await model.thumbnail(page: page.no, pixels: pixels) {
                 image = DiaryImage.image(data)

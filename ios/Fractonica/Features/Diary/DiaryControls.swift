@@ -185,7 +185,7 @@ struct DiaryLockSheetRow: View {
     let change: ([Int]) -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 14) {
             HStack {
                 Text("Sheet \(index + 1)").font(.subheadline.weight(.semibold))
                 Spacer()
@@ -222,7 +222,7 @@ struct DiaryCanvasList: View {
 
     var body: some View {
         ForEach(Array(list.enumerated()), id: \.offset) { i, canvas in
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 12) {
                 Picker(selection: Binding(get: { canvas.kind }, set: { setType($0, at: i) })) {
                     ForEach(CanvasType.allCases) { type in
                         Label(type.label, systemImage: type.systemImage).tag(type)

@@ -237,7 +237,18 @@ final class DiaryModel {
 
     // MARK: Pages
 
-    func svg(page no: Int) async -> String? { await engine.svg(page: no) }
+    /// One page as SVG markup, once a plan is in (waits for the first one).
+    func svg(page no: Int) async -> String? {
+        await waitForPlan()
+        return await engine.svg(page: no)
+    }
+
+    private func waitForPlan() async {
+        let deadline = Date.now.addingTimeInterval(60)
+        while plan == nil, Date.now < deadline, !Task.isCancelled {
+            try? await Task.sleep(for: .milliseconds(100))
+        }
+    }
 
     /// A page as PNG, `pixels` wide; remembered per plan.
     func thumbnail(page no: Int, pixels: Int) async -> Data? {
