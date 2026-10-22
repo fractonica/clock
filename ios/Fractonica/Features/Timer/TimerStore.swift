@@ -58,7 +58,13 @@ final class TimerStore {
     @ObservationIgnored private(set) var clock = RealClock()
     /// Set by TimerScreen: the ring shows as an alert there, elsewhere as a toast and a banner.
     @ObservationIgnored var isScreenVisible = false
+    /// Whether the app is in front. iOS starts false: the app may be launched in the background (a Live Activity's
+    /// button, a notification action), where a timer that ended must not ring aloud; `becameActive` sets it.
+    #if os(iOS)
+    @ObservationIgnored private(set) var isAppActive = false
+    #else
     @ObservationIgnored private(set) var isAppActive = true
+    #endif
     @ObservationIgnored private var ringTask: Task<Void, Never>?
     @ObservationIgnored private let defaults: UserDefaults
     /// Screenshot states: nothing is saved, posted or shown outside the app.
@@ -86,6 +92,7 @@ final class TimerStore {
             recents = saved.recents
         }
         followWording()
+        TimerNotifications.removeLegacy()
         reconcile()
         changed(save: false)
         refreshAccess()
@@ -277,7 +284,6 @@ final class TimerStore {
     private func scheduleNotification() {
         guard let run, let end = run.end else { return TimerNotifications.replace(with: nil) }
         TimerNotifications.replace(with: TimerNotifications.Plan(
-            id: TimerNotifications.prefix + run.id.uuidString,
             after: end.timeIntervalSinceNow,
             title: "Timer done",
             body: words.notificationBody(run),

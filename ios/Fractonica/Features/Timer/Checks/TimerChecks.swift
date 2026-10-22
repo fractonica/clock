@@ -12,6 +12,7 @@ struct TimerChecks {
         clockChecks()
         timerChecks()
         alignedChecks()
+        alignedWebChecks()
         stopwatchChecks()
         scheduleChecks()
         earthChecks()
@@ -188,6 +189,39 @@ private func alignedChecks() {
     check(TimerRun.start(.aligned(iota), at: t0, clock: late).failure == .empty, "a passed boundary does not start")
 }
 
+/// The web app's own readings (node, fractonica.js + src/core/model.js + pure.js): at each instant, the next cycle of
+/// κ ι θ η ζ ε, `pure.cycleShort(level, cycle + 1)`, and the span to it, `pure.durationPos(Δposition)`.
+private func alignedWebChecks() {
+    let web: [(t: Double, names: [Int: String], spans: [Int: String])] = [
+        (1_791_460_800, [9: "26λ", 8: "30ι", 7: "32ι", 6: "35η", 5: "45η", 4: "ε#1"],
+         [9: "4λ 21ν", 8: "43λ 21ν", 7: "2ι 43λ", 6: "6ι 43λ", 5: "10η 6ι", 4: "43η 6ι"]),
+        (946_684_800, [9: "13λ", 8: "13ι", 7: "16ι", 6: "22η", 5: "23η", 4: "ε#3"],
+         [9: "6λ 19ν", 8: "58λ 19ν", 7: "3ι 58λ", 6: "23ι 58λ", 5: "1η 23ι", 4: "56η 23ι"]),
+        (2_886_085_800, [9: "13λ", 8: "24ι", 7: "24ι", 6: "2η", 5: "12η", 4: "ε#3"],
+         [9: "11λ 3ν", 8: "63λ 3ν", 7: "63λ 3ν", 6: "12ι 63λ", 5: "10η 12ι", 4: "76η 12ι"]),
+        (-11_000_000_000, [9: "26λ", 8: "15ι", 7: "16ι", 6: "18η", 5: "23η", 4: "ε#3"],
+         [8: "39λ 6ν", 7: "1ι 39λ", 6: "21ι 39λ", 5: "5η 21ι", 4: "60η 21ι"]),
+        // half a second before a Helion begins: every finer level begins with it, named from the new Helion
+        (1_791_464_171.928, [9: "0λ", 8: "0ι", 7: "0ι", 6: "35η", 5: "45η", 4: "ε#1"], [5: "10η 1ν", 4: "43η 1ν"]),
+    ]
+    let real = RealClock()
+    for row in web {
+        for level in AlignedTarget.levels {
+            guard let target = AlignedTarget.next(level: level, after: row.t) else {
+                check(false, "a next cycle of level \(level) at \(row.t)")
+                continue
+            }
+            check(target.name(notation) == row.names[level], "level \(level) at \(row.t): \(target.name(notation)) as the web's \(row.names[level] ?? "?")")
+            guard let span = row.spans[level] else { continue }
+            let from = Date(timeIntervalSince1970: row.t)
+            let blinks = real.blinks(from: from, to: real.date(target.time)) ?? -1
+            // the web floors a span; the timer's cards count down, rounding up: compare the floor
+            let floor = LadderSpan(blinks: Int((blinks + 1e-6).rounded(.down))).name(parts: 2)
+            check(floor == span, "span to level \(level) at \(row.t): \(floor) as the web's \(span)")
+        }
+    }
+}
+
 private func stopwatchChecks() {
     let t = { (s: Double) in Date(timeIntervalSince1970: 1_000_000 + s) }
     var w = StopwatchRun()
@@ -261,6 +295,38 @@ private func dialChecks() {
         check(g.ringRadius(0) + g.ringWidth / 2 < g.outerRadius - g.outerWidth / 2, "\(rings) rings stay inside the outer ring")
         if rings > 1 { check(g.ringRadius(0) - g.ringRadius(1) > g.ringWidth, "\(rings) rings do not touch") }
     }
+
+    // segments: one per unit in the parent, in order clockwise from the top, apart, wider apart at each group
+    let g = TimerDialGeometry(rings: 3, side: 320)
+    for (i, unit) in [LadderUnit.iota, .lambda, .nu].enumerated() {
+        let segments = TimerDialGeometry.segments(unit, radius: g.ringRadius(i), width: g.ringWidth)
+        check(segments.count == unit.perParent, "\(unit.symbol): a segment per unit in its parent")
+        check(segments.first!.lowerBound > -Double.pi / 2 && segments.last!.upperBound < 1.5 * Double.pi, "\(unit.symbol): within one turn from the top")
+        let gaps = zip(segments, segments.dropFirst()).map { $1.lowerBound - $0.upperBound }
+        check(gaps.allSatisfy { $0 > 0 }, "\(unit.symbol): segments apart")
+        check(gaps[unit.group - 1] > gaps[0] * 2, "\(unit.symbol): a wider gap after each group of \(unit.group)")
+        check(segments.allSatisfy { $0.upperBound > $0.lowerBound }, "\(unit.symbol): no empty segment")
+    }
+
+    // the steady segments (redrawn once per Blink) and the shrinking one (every frame) always fit together: the steady
+    // count is the whole part of the moving value through the whole Blink, so nothing is lit twice or left dark
+    check(TimerDialGeometry.steadySegments(blinks: left, unit: .nu) == 6, "ν: 6 stay lit while the 7th shrinks")
+    check(TimerDialGeometry.steadySegments(blinks: left, unit: .lambda) == 13, "λ: 13 stay lit")
+    check(TimerDialGeometry.steadySegments(blinks: left, unit: .iota) == 2, "ι: 2 stay lit")
+    var mismatches = 0
+    var x = 0.37
+    for _ in 0..<4000 {
+        x = (x * 9301 + 49297).truncatingRemainder(dividingBy: 233_280) // a deterministic spread
+        // spread over 0 … 860,000 Blinks (past a full ring of Helions), and at whole Blinks and just past them
+        let blinks = [x * 3.7 + 0.013, (x * 3.7).rounded(), (x * 3.7).rounded() + 0.0004][Int(x) % 3]
+        for unit in LadderUnit.allCases {
+            let moving = Int(TimerDialGeometry.movingValue(blinks: blinks, unit: unit).rounded(.down))
+            if TimerDialGeometry.steadySegments(blinks: blinks, unit: unit) != moving { mismatches += 1 }
+        }
+    }
+    check(mismatches == 0, "steady and moving segments agree over 4000 spans: \(mismatches) mismatches")
+    check(TimerDialGeometry.steadySegments(blinks: 0.4, unit: .nu) == 0, "the last Blink: none steady, one shrinking")
+    check(TimerDialGeometry.steadySegments(blinks: nil, unit: .nu) == 0, "outside the catalogue: none")
 }
 
 extension Result {

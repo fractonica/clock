@@ -85,7 +85,8 @@ enum TimerActivities {
         let zero = run.zero(at: now)
         let laps = run.marks.count
         let lapText = laps == 0 ? "" : " · \(laps) lap\(laps == 1 ? "" : "s")"
-        let blinks = words.clock.blinkSeconds(at: now).map { LadderReadout.floorBlinks(run.elapsed(at: now) / $0) }
+        let blink = words.clock.blinkSeconds(at: now) ?? words.clock.clock.levelInfo(LadderUnit.nu.level).meanSeconds
+        let blinks: Int? = LadderReadout.floorBlinks(run.elapsed(at: now) / blink)
         let reading = blinks.map { b in
             let span = LadderSpan(blinks: b)
             let lead = LadderReadout.stopwatchLead(elapsed: span)

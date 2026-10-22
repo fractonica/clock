@@ -5,6 +5,7 @@ import SwiftUI
 /// presets that start at a tap, timers that end where the clock's next cycle begins, and recent timers.
 struct TimerSetupView: View {
     @Environment(AppSettings.self) private var settings
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @ScaledMetric(relativeTo: .title) private var wheelRow: CGFloat = 40
 
     private var store: TimerStore { .shared }
@@ -14,18 +15,20 @@ struct TimerSetupView: View {
             let wide = geo.size.width >= 760
             ScrollView {
                 if wide {
-                    HStack(alignment: .top, spacing: 40) {
+                    let large = geo.size.width >= 1000
+                    let column: CGFloat = large ? 540 : 460
+                    HStack(alignment: .center, spacing: large ? 56 : 40) {
                         VStack(spacing: 24) {
                             notices
-                            setter(rowHeight: max(wheelRow, geo.size.width >= 1000 ? 54 : 46))
+                            setter(rowHeight: rowHeight(max(wheelRow, large ? 58 : 48), width: column), controls: large ? 92 : 82)
                         }
-                        .frame(maxWidth: geo.size.width >= 1000 ? 500 : 460)
+                        .frame(maxWidth: column)
                         VStack(spacing: 28) {
                             presets
                             aligned
                             recents
                         }
-                        .frame(maxWidth: 520)
+                        .frame(maxWidth: large ? 540 : 480)
                     }
                     .padding(.horizontal, 32)
                     .padding(.vertical, 28)
@@ -33,7 +36,7 @@ struct TimerSetupView: View {
                 } else {
                     VStack(spacing: 28) {
                         notices
-                        setter(rowHeight: wheelRow)
+                        setter(rowHeight: rowHeight(wheelRow, width: min(geo.size.width, 640) - 32), controls: 78)
                         presets
                         aligned
                         recents
@@ -49,9 +52,15 @@ struct TimerSetupView: View {
         }
     }
 
+    /// The wheels' row height: as asked (it grows with Dynamic Type), but never wider than the column. Four wheels take
+    /// 8.34 rows and 32 pt of width (each 1.45 rows, its letter half a row and 4 pt; the gaps; the band's inset).
+    private func rowHeight(_ wanted: CGFloat, width: CGFloat) -> CGFloat {
+        max(28, min(wanted, (width - 32) / 8.4))
+    }
+
     // MARK: The wheels
 
-    private func setter(rowHeight: CGFloat) -> some View {
+    private func setter(rowHeight: CGFloat, controls: CGFloat) -> some View {
         @Bindable var store = store
         let pure = settings.pure
         let earth = !pure && store.draft.input == .earth
@@ -88,14 +97,14 @@ struct TimerSetupView: View {
             .id(earth)
             equivalence(spec: spec)
             HStack {
-                RoundControl("Reset") {
+                RoundControl("Reset", size: RoundControl.size(controls, dynamicType: dynamicTypeSize)) {
                     withAnimation(.snappy) {
                         if earth { store.draft.earthSeconds = 0 } else { store.draft.ladder = LadderSpan() }
                     }
                 }
                 .disabled(empty)
                 Spacer()
-                RoundControl("Start", tint: Theme.teal) {
+                RoundControl("Start", tint: Theme.teal, size: RoundControl.size(controls, dynamicType: dynamicTypeSize)) {
                     withAnimation(.smooth) { _ = store.start(spec) }
                 }
                 .disabled(empty || unmeasurable)
@@ -225,7 +234,7 @@ struct TimerSetupView: View {
     private var presets: some View {
         VStack(spacing: 10) {
             TimerSectionHeader(title: "Presets")
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 96), spacing: 10)], spacing: 10) {
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: dynamicTypeSize.isAccessibilitySize ? 160 : 96), spacing: 10)], spacing: 10) {
                 ForEach(TimerPresets.spans, id: \.self) { span in
                     Button {
                         withAnimation(.smooth) { _ = store.start(.ladder(span)) }
@@ -272,7 +281,7 @@ struct TimerSetupView: View {
                 TimerSectionHeader(title: "Until the next")
                 TimelineView(TickSchedule(anchor: clock.date(nu.end), steps: [blink])) { context in
                     let t = clock.t(context.date)
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 10)], spacing: 10) {
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: dynamicTypeSize.isAccessibilitySize ? 300 : 150), spacing: 10)], spacing: 10) {
                         ForEach(AlignedTarget.levels, id: \.self) { level in
                             if let target = AlignedTarget.next(level: level, after: t) {
                                 alignedCard(target, now: context.date, blink: blink)

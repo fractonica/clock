@@ -4,12 +4,18 @@ import UserNotifications
 /// The timer's local notification: scheduled when a timer starts or resumes, so it rings with the app closed;
 /// removed when it is paused, cancelled or has rung. Identifiers start with "timer." (NotificationRouter hands them to
 /// `TimerHooks`); the timer keeps at most one pending, well inside the system's budget of 64 shared with Alerts.
+///
+/// The one pending request always has the identifier `pendingID`, so scheduling is a plain `add` (a request with the
+/// same identifier replaces the pending one) and cancelling a plain `remove`, both sent in order from the main actor.
+/// (Reading the pending list first and replacing in its completion raced: a cancel right after a start could read the
+/// list before the start's request was added and leave a notification for a timer that no longer runs.)
 enum TimerNotifications {
     static let prefix = "timer."
+    /// The identifier of the timer's one pending notification.
+    static let pendingID = prefix + "end"
 
-    /// What to post: everything Sendable, so the request is built where it is added.
-    struct Plan: Sendable {
-        var id: String
+    /// What to post.
+    struct Plan: Sendable, Equatable {
         var after: TimeInterval
         var title: String
         var body: String
@@ -21,23 +27,31 @@ enum TimerNotifications {
         case unknown, allowed, denied
     }
 
-    /// Replaces any pending timer notification with `plan` (or just removes them for nil).
+    /// Schedules `plan` in place of the pending timer notification, or removes it for nil (or a plan already due).
+    @MainActor
     static func replace(with plan: Plan?) {
         let center = UNUserNotificationCenter.current()
-        center.getPendingNotificationRequests { requests in
-            let stale = requests.map(\.identifier).filter { $0.hasPrefix(prefix) }
-            let center = UNUserNotificationCenter.current()
-            if !stale.isEmpty { center.removePendingNotificationRequests(withIdentifiers: stale) }
-            guard let plan, plan.after > 0 else { return }
-            let content = UNMutableNotificationContent()
-            content.title = plan.title
-            content.body = plan.body
-            content.sound = TimerChime.notificationSound
-            content.interruptionLevel = .timeSensitive
-            content.userInfo = plan.link
-            content.threadIdentifier = "timer"
-            let trigger = UNTimeIntervalNotificationTrigger(timeInterval: max(0.5, plan.after), repeats: false)
-            center.add(UNNotificationRequest(identifier: plan.id, content: content, trigger: trigger))
+        guard let plan, plan.after > 0 else {
+            center.removePendingNotificationRequests(withIdentifiers: [pendingID])
+            return
+        }
+        let content = UNMutableNotificationContent()
+        content.title = plan.title
+        content.body = plan.body
+        content.sound = TimerChime.notificationSound
+        content.interruptionLevel = .timeSensitive
+        content.userInfo = plan.link
+        content.threadIdentifier = "timer"
+        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: max(0.5, plan.after), repeats: false)
+        center.add(UNNotificationRequest(identifier: pendingID, content: content, trigger: trigger))
+    }
+
+    /// Removes pending timer notifications under other identifiers (earlier builds named them after the run), once at
+    /// launch.
+    static func removeLegacy() {
+        UNUserNotificationCenter.current().getPendingNotificationRequests { requests in
+            let stale = requests.map(\.identifier).filter { $0.hasPrefix(prefix) && $0 != pendingID }
+            if !stale.isEmpty { UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: stale) }
         }
     }
 

@@ -6,6 +6,7 @@ struct TimerRunView: View {
 
     @Environment(AppSettings.self) private var settings
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @ScaledMetric(relativeTo: .largeTitle) private var readoutScale: CGFloat = 1
 
     private var store: TimerStore { .shared }
@@ -24,12 +25,14 @@ struct TimerRunView: View {
                 .padding(.horizontal, 24)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
+                let large = min(w, h) >= 700
+                let control = RoundControl.size(large ? 96 : 78, dynamicType: dynamicTypeSize)
                 VStack(spacing: 0) {
                     Spacer(minLength: 12)
-                    dial(size: min(w - 40, h - 160, 700))
+                    dial(size: min(w - 40, h - control - 82, 700))
                     Spacer(minLength: 20)
-                    controls(vertical: false)
-                        .frame(maxWidth: 560)
+                    controls(vertical: false, size: control, large: large)
+                        .frame(maxWidth: large ? 620 : 560)
                         .padding(.horizontal, 28)
                     Spacer(minLength: 24)
                 }
@@ -42,26 +45,10 @@ struct TimerRunView: View {
     // MARK: Dial
 
     private func dial(size: CGFloat) -> some View {
-        let clock = store.clock
         let units = lead.downToBlink
         let inner = size / 2 * TimerDial.innerRadius(rings: units.count)
-        func face(_ now: Date) -> TimerDial {
-            TimerDial(
-                fraction: run.fraction(at: now, clock: clock),
-                blinks: run.remainingBlinks(at: now, clock: clock),
-                units: units,
-                paused: !run.isRunning,
-                reduceMotion: reduceMotion
-            )
-        }
         return ZStack {
-            if reduceMotion {
-                // whole segments only: redraw when a Blink is used up, not every frame
-                let blink = clock.blinkSeconds(at: .now) ?? 0.311
-                TimelineView(TickSchedule(anchor: run.end ?? .now, steps: [blink], paused: !run.isRunning)) { face($0.date) }
-            } else {
-                TimelineView(.animation(minimumInterval: 1.0 / 60, paused: !run.isRunning)) { face($0.date) }
-            }
+            TimerDial(run: run, clock: store.clock, units: units, reduceMotion: reduceMotion)
             center(innerDiameter: inner * 2, dial: size)
         }
         .frame(width: size, height: size)
@@ -139,7 +126,7 @@ struct TimerRunView: View {
 
     /// In a row under the dial; beside it (landscape), the two round controls side by side above +1.
     @ViewBuilder
-    private func controls(vertical: Bool, size: CGFloat = 78) -> some View {
+    private func controls(vertical: Bool, size: CGFloat = 78, large: Bool = false) -> some View {
         let cancel = RoundControl("Cancel", size: size) { withAnimation(.smooth) { store.cancel() } }
             .keyboardShortcut(.cancelAction)
         let toggle = RoundControl(run.isRunning ? "Pause" : "Resume", tint: Theme.teal, size: size) { store.togglePause() }
@@ -150,13 +137,13 @@ struct TimerRunView: View {
                     cancel
                     toggle
                 }
-                addMenu
+                addMenu(large: false)
             }
         } else {
             HStack(spacing: 0) {
                 cancel
                 Spacer(minLength: 12)
-                addMenu
+                addMenu(large: large)
                 Spacer(minLength: 12)
                 toggle
             }
@@ -164,7 +151,7 @@ struct TimerRunView: View {
     }
 
     /// +1 of the timer's natural unit; the menu offers the others.
-    private var addMenu: some View {
+    private func addMenu(large: Bool) -> some View {
         let earth = run.measure == .earth && !settings.pure
         let unit = addUnit
         return Menu {
@@ -183,7 +170,8 @@ struct TimerRunView: View {
         }
         .menuIndicator(.hidden)
         .buttonStyle(.glass)
-        .controlSize(.large)
+        .controlSize(large ? .extraLarge : .large)
+        .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
         .fixedSize()
         .accessibilityLabel(earth ? "Add one minute" : "Add one \(unit.name)")
         .accessibilityHint("Hold for other units")

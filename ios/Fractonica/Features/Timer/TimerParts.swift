@@ -40,7 +40,9 @@ struct LadderReadoutView: View {
     }
 }
 
-/// A large round control in Liquid Glass, as the system Clock's: a word in a circle, tinted for the main action.
+/// A large round control in Liquid Glass, as the system Clock's: a word in a circle, tinted for the main action. Its
+/// word is sized with the circle, as the system Clock's is (a word in larger text would no longer fit the circle);
+/// callers grow the circle with Dynamic Type through `RoundControl.size(_:)`.
 struct RoundControl: View {
     let title: String
     var tint: Color?
@@ -59,10 +61,10 @@ struct RoundControl: View {
     var body: some View {
         Button(action: action) {
             Text(title)
-                .font(.callout.weight(.semibold))
+                .font(.system(size: max(15, size * 0.21), weight: .semibold))
                 .lineLimit(1)
                 .minimumScaleFactor(0.6)
-                .padding(8)
+                .padding(size * 0.1)
                 .frame(width: size, height: size)
                 .foregroundStyle(tint ?? Theme.ink)
                 .contentShape(.circle)
@@ -73,6 +75,18 @@ struct RoundControl: View {
             Circle().strokeBorder((tint ?? Theme.ink3).opacity(0.35), lineWidth: 1)
         }
         .opacity(isEnabled ? 1 : 0.4)
+    }
+
+    /// The circle's side for a base side at the reference text size, grown a little with Dynamic Type (at most 1.3×).
+    static func size(_ base: CGFloat, dynamicType: DynamicTypeSize) -> CGFloat {
+        let grow: CGFloat = switch dynamicType {
+        case ...DynamicTypeSize.large: 1
+        case .xLarge: 1.06
+        case .xxLarge: 1.12
+        case .xxxLarge: 1.18
+        default: 1.3
+        }
+        return (base * grow).rounded()
     }
 }
 

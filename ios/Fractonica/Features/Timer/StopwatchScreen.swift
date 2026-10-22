@@ -9,6 +9,10 @@ struct StopwatchScreen: View {
     @AppStorage("timer.stopwatch.face") private var savedFace = Face.digits.rawValue
     /// The `-FXStopwatchFace` launch argument's face, shown without being saved until the user picks one.
     @State private var forced = StopwatchScreen.forcedFace
+    /// Which pages of the iPhone's face pager are on screen (a hidden face does not animate).
+    @State private var digitsShown = true
+    @State private var dialShown = true
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     private var store: StopwatchStore { .shared }
 
@@ -60,14 +64,16 @@ struct StopwatchScreen: View {
             ScrollViewReader { proxy in
             ScrollView(.horizontal) {
                 HStack(spacing: 0) {
-                    digitsFace(size: 60)
+                    digitsFace(size: 60, live: digitsShown)
                         .containerRelativeFrame(.horizontal)
                         .id(Face.digits.rawValue)
-                    dialFace
+                        .onScrollVisibilityChange(threshold: 0.01) { digitsShown = $0 }
+                    dialFace(live: dialShown)
                         .padding(.top, 14)
                         .padding(.bottom, 4)
                         .containerRelativeFrame(.horizontal)
                         .id(Face.dial.rawValue)
+                        .onScrollVisibilityChange(threshold: 0.01) { dialShown = $0 }
                 }
                 .scrollTargetLayout()
             }
@@ -75,11 +81,15 @@ struct StopwatchScreen: View {
             .scrollPosition(id: Binding(get: { face }, set: { if let new = $0, new != face { face = new } }))
             .scrollIndicators(.hidden)
             .frame(height: faceHeight)
-            .onAppear { proxy.scrollTo(face) }
+            .onAppear {
+                proxy.scrollTo(face)
+                digitsShown = face == Face.digits.rawValue
+                dialShown = face == Face.dial.rawValue
+            }
             }
             pageDots
                 .padding(.top, 6)
-            controls
+            controls(size: RoundControl.size(78, dynamicType: dynamicTypeSize))
                 .padding(.horizontal, 28)
                 .padding(.vertical, 14)
             laps
@@ -90,7 +100,7 @@ struct StopwatchScreen: View {
     private func landscape(width: CGFloat, height: CGFloat) -> some View {
         let dial = min(height - 12, width * 0.34)
         return HStack(spacing: 16) {
-            dialFace
+            dialFace(live: true)
                 .frame(width: dial, height: dial)
             VStack(spacing: 6) {
                 digitsFace(size: 30, bars: false)
@@ -110,10 +120,10 @@ struct StopwatchScreen: View {
         let dial = min(height - 170, width * 0.5, 620)
         return HStack(alignment: .center, spacing: 40) {
             VStack(spacing: 28) {
-                dialFace
+                dialFace(live: true)
                     .frame(width: dial, height: dial)
-                controls
-                    .frame(width: min(dial, 420))
+                controls(size: RoundControl.size(dial >= 520 ? 92 : 78, dynamicType: dynamicTypeSize))
+                    .frame(width: min(dial, 440))
             }
             VStack(spacing: 18) {
                 digitsFace(size: 64)
@@ -131,17 +141,15 @@ struct StopwatchScreen: View {
     // MARK: Faces
 
     /// The digits: the ladder readout, the Earth reading in Earth mode, and the phase of λ, ι and η.
-    private func digitsFace(size: CGFloat, bars: Bool = true) -> some View {
+    private func digitsFace(size: CGFloat, bars: Bool = true, live: Bool = true) -> some View {
         let run = store.run
-        let clock = store.clock
-        return TimelineView(.animation(minimumInterval: nil, paused: !run.isRunning)) { context in
+        return TimelineView(.animation(minimumInterval: 1.0 / 60, paused: !run.isRunning || !live)) { context in
             let now = context.date
             let seconds = run.elapsed(at: now)
-            let blink = clock.blinkSeconds(at: now)
-            let blinks = blink.map { seconds / $0 }
-            let span = blinks.map { LadderSpan(blinks: LadderReadout.floorBlinks($0)) }
+            let blinks = seconds / store.blinkSeconds(at: now)
+            let span = LadderSpan(blinks: LadderReadout.floorBlinks(blinks))
             VStack(spacing: size * 0.22) {
-                let lead = span.map(LadderReadout.stopwatchLead(elapsed:)) ?? .iota
+                let lead = LadderReadout.stopwatchLead(elapsed: span)
                 LadderReadoutView(
                     span: span,
                     lead: lead,
@@ -157,9 +165,15 @@ struct StopwatchScreen: View {
                         .foregroundStyle(Theme.ink3)
                         .accessibilityLabel("\(EarthClockText.stopwatch(seconds)) elapsed")
                 }
-                if bars, let blinks {
+                if bars {
                     PhaseBars(blinks: reduceMotion ? blinks.rounded(.down) : blinks)
                         .frame(maxWidth: size * 4.6)
+                }
+                if !store.clock.inRange(now) {
+                    // the device clock reads outside the catalogue: Blinks of their mean length, said so
+                    Label("Outside the catalogue · mean Blinks", systemImage: "circle.dashed")
+                        .font(.caption)
+                        .foregroundStyle(Theme.ink3)
                 }
             }
             .padding(.horizontal, 16)
@@ -167,12 +181,11 @@ struct StopwatchScreen: View {
         }
     }
 
-    private var dialFace: some View {
+    private func dialFace(live: Bool) -> some View {
         let run = store.run
-        let clock = store.clock
-        return TimelineView(.animation(minimumInterval: 1.0 / 60, paused: !run.isRunning)) { context in
+        return TimelineView(.animation(minimumInterval: 1.0 / 60, paused: !run.isRunning || !live)) { context in
             let now = context.date
-            let blink = clock.blinkSeconds(at: now) ?? clock.clock.levelInfo(LadderUnit.nu.level).meanSeconds
+            let blink = store.blinkSeconds(at: now)
             let elapsed = run.elapsed(at: now)
             StopwatchDial(
                 elapsed: elapsed / blink,
@@ -187,8 +200,7 @@ struct StopwatchScreen: View {
     }
 
     private var spokenElapsed: String {
-        guard let blink = store.clock.blinkSeconds(at: .now) else { return "" }
-        let span = LadderSpan(blinks: LadderReadout.floorBlinks(store.run.elapsed(at: .now) / blink))
+        let span = LadderSpan(blinks: LadderReadout.floorBlinks(store.run.elapsed(at: .now) / store.blinkSeconds(at: .now)))
         return span.spokenReadout(from: LadderReadout.stopwatchLead(elapsed: span))
     }
 
@@ -212,8 +224,6 @@ struct StopwatchScreen: View {
 
     // MARK: Controls
 
-    private var controls: some View { controls() }
-
     private func controls(size: CGFloat = 78) -> some View {
         let run = store.run
         return HStack {
@@ -235,7 +245,6 @@ struct StopwatchScreen: View {
     @ViewBuilder
     private var laps: some View {
         let run = store.run
-        let clock = store.clock
         if run.isClear {
             Text(settings.pure ? "Laps are counted on the ladder." : "Laps are counted on the ladder, in Preons, Flavons and Blinks.")
                 .font(.footnote)
@@ -244,7 +253,7 @@ struct StopwatchScreen: View {
                 .padding(24)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         } else {
-            let blink = clock.blinkSeconds(at: .now) ?? clock.clock.levelInfo(LadderUnit.nu.level).meanSeconds
+            let blink = store.blinkSeconds(at: .now)
             TimelineView(TickSchedule(anchor: run.zero(at: .now), steps: [blink], paused: !run.isRunning)) { context in
                 let rows = run.laps(at: context.date)
                 let extremes = run.extremes

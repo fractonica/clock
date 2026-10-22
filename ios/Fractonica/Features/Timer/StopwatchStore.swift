@@ -20,6 +20,12 @@ final class StopwatchStore {
         self.defaults = defaults
     }
 
+    /// Device seconds of one Blink at `now`: the Saros interval's own Blink, or the mean Blink while the device clock
+    /// reads outside the catalogue (the stopwatch counts a span, never a reading of the clock, so it can still count).
+    func blinkSeconds(at now: Date) -> Double {
+        clock.blinkSeconds(at: now) ?? clock.clock.levelInfo(LadderUnit.nu.level).meanSeconds
+    }
+
     var words: TimerWords {
         TimerWords(words: AppSettings.shared.wording, clock: clock, now: .now)
     }
