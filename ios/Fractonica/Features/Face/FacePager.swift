@@ -104,14 +104,16 @@ struct PageDots: View {
     let onSelect: (Int) -> Void
 
     var body: some View {
-        HStack(spacing: 7) {
+        HStack(spacing: 0) {
             ForEach(titles.indices, id: \.self) { i in
                 Capsule()
                     .fill(i == page ? Theme.ink2 : Theme.ink3.opacity(0.45))
                     .frame(width: i == page ? 18 : 6, height: 6)
-                    .padding(.vertical, 8)
+                    // a finger-sized target around a 6-point dot; the targets touch, never overlap
+                    .frame(width: (i == page ? 18 : 6) + 12, height: 30)
                     .contentShape(.rect)
                     .onTapGesture { onSelect(i) }
+                    .help(Text(verbatim: titles[i]))
             }
         }
         .animation(.smooth(duration: 0.3), value: page)

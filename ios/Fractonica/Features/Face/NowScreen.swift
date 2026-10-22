@@ -109,7 +109,6 @@ struct NowScreen: View {
             TurnoverLine(level: leadLevel, fixed: launch.time)
                 .padding(.horizontal, 20)
             dots
-                .padding(.bottom, 2)
         }
     }
 
@@ -496,7 +495,7 @@ struct NowLayout: Equatable {
     /// The face never grows past this height (a 13-inch iPad would make it a wall).
     let maxFaceHeight: CGFloat = 860
     /// Below the face on wide layouts: the page dots.
-    let dotsHeight: CGFloat = 24
+    let dotsHeight: CGFloat = 30
 
     /// Wide enough for a column of readings beside the face.
     var wide: Bool { size.width >= 640 && size.width >= size.height * 0.7 }
