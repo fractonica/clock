@@ -3,7 +3,8 @@ import Foundation
 import UIKit
 #endif
 
-/// The ladder's own test hooks for screenshots (debug builds only; read from the launch arguments, never persisted):
+/// The ladder's own test hooks for screenshots and profiling (debug builds only; read from the launch arguments, never
+/// persisted):
 ///
 ///     -FXLadderExpand <0…13|none>  the row whose details are open (and selected) at launch
 ///     -FXLadderDepths <min-max>     the depth range shown, e.g. 1-14
@@ -12,6 +13,8 @@ import UIKit
 ///                                   out-of-catalogue state, which travel never reaches: it clamps)
 ///     -ladder.importance <γ…η>      Up next's importance for this launch (the argument domain shadows the stored value)
 ///     -FXLadderLandscape 1          rotate the iPhone to landscape when the ladder appears (simctl cannot rotate)
+///     -FXLadderHitches 1|scroll     print frames missed and main-thread time once a second (`LadderHitches`); scroll
+///                                   also sweeps the list
 ///
 ///     ios/scripts/shoot.sh --device fx-ladder shot.png -FXTab ladder -FXTime 1791460800 -FXLadderExpand 3
 enum LadderLaunch {
