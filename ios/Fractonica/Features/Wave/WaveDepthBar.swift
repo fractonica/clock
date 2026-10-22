@@ -17,7 +17,7 @@ struct WaveDepthBar: View {
                 stepButton(-1)
                 ScrollViewReader { proxy in
                     ScrollView(.horizontal) {
-                        ClockTimeline(.periodic(pace.interval)) { t in
+                        ClockTimeline(.periodic(pace.displayedInterval)) { t in
                             let states = WaveChipState.all(t: control.shown(t), engine: control.engine)
                             HStack(spacing: 3) {
                                 chip(nil, state: nil, enabled: states != nil)

@@ -126,7 +126,10 @@ struct WaveChipState: Equatable, Sendable {
 /// speed is too fast to follow on a chip: it shows no sign and a still bar, and sets no pace. A paused clock shows them
 /// all.
 struct WaveChipPace: Equatable, Sendable {
+    /// Real seconds between refreshes.
     let interval: Double
+    /// The same in displayed seconds (what `ClockTimeline(.periodic)` counts): a time-lapse covers more of them.
+    let displayedInterval: Double
     /// The shortest half-arc (seconds) a chip follows.
     private let shortest: Double
     private let halves: [Double]
@@ -139,6 +142,7 @@ struct WaveChipPace: Equatable, Sendable {
         shortest = Self.minimumHalf * r
         let steps = halfSeconds.filter { $0 >= Self.minimumHalf * r }.map { $0 / max(r, 1e-9) / 48 }
         interval = max(0.25, min(1, steps.min() ?? 1))
+        displayedInterval = interval * max(r, 1e-9)
     }
 
     /// Whether a level's chip shows its sign and progress.

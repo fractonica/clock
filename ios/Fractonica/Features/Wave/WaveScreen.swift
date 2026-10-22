@@ -179,10 +179,12 @@ struct WaveController {
     func shown(_ t: Double) -> Double { t + model.offset }
     var overview: Bool { model.overview }
 
-    /// The readings refresh at the pace their finest number changes (at most 10 Hz, at least once a second).
+    /// The readings refresh at the pace their finest number changes (at most 10 Hz, at least once a second), in
+    /// displayed seconds; a time-lapse never refreshes them more than ten times a real second.
     var readoutInterval: Double {
         let half = store.clock.levelInfo(eff).meanSeconds / 2
-        return min(1, max(0.1, half / 200))
+        let rate = store.isLive ? 1 : abs(store.rate)
+        return max(min(1, max(0.1, half / 200)), 0.1 * rate)
     }
 
     /// One depth deeper (dir > 0) or out; out of α leads to the catalogue. `quiet` (a pinch) never toasts a limit.

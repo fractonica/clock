@@ -609,6 +609,8 @@ private func chipPaceChecks(_ engine: WaveEngine) {
     let lapse = WaveChipPace(halfSeconds: halves, rate: -3600)
     check(lapse.followable(5) && !lapse.followable(6), "chips at an hour a second (backwards): ζ is followed, η is too fast")
     check(lapse.interval >= 0.25 && lapse.interval <= 1, "chips at an hour a second: the pace stays within 0.25–1 s (\(lapse.interval))")
+    check(abs(lapse.displayedInterval - lapse.interval * 3600) < 1e-6, "chips at an hour a second: the timeline counts displayed seconds (\(lapse.displayedInterval))")
+    check(live.displayedInterval == live.interval, "chips live: displayed and real seconds agree")
     let fast = WaveChipPace(halfSeconds: halves, rate: 1e12)
     check(!fast.followable(0) && fast.interval == 1, "chips at a huge rate: nothing is followed, a slow refresh")
 }

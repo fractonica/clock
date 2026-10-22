@@ -103,7 +103,9 @@ struct WaveStageView: View {
             }
         }
         .overlay(alignment: .topTrailing) {
+            // fixed 40-point glass buttons: their symbols grow with the text only so far
             zoomControls
+                .dynamicTypeSize(...DynamicTypeSize.xLarge)
                 .padding(.top, 12)
                 .padding(.trailing, compact ? 10 : 16)
                 .onGeometryChange(for: CGRect.self) { $0.frame(in: .named("wave.stage")) } action: { zoomFrame = $0 }
@@ -116,6 +118,7 @@ struct WaveStageView: View {
                 .buttonStyle(.plain)
                 .foregroundStyle(Theme.ink2)
                 .glassEffect(.regular.interactive(), in: .circle)
+                .dynamicTypeSize(...DynamicTypeSize.xLarge)
                 .padding(.top, 12)
                 .padding(.leading, 10)
                 .accessibilityLabel("About the wave")
