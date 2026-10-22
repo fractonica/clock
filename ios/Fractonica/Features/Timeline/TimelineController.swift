@@ -41,6 +41,10 @@ final class TimelineController {
     @ObservationIgnored private var seenRevision = -1
     /// A pinch happened during the current pan: no coasting when the fingers lift.
     @ObservationIgnored private var pinched = false
+    /// Scrubbing: the selected depth's cycle under the cursor, for a tick each time the cursor crosses into another.
+    @ObservationIgnored private var scrubCycle: Int64?
+    /// Pinching: the zoom stands at its narrowest or widest (one tick when it gets there).
+    @ObservationIgnored private var atZoomLimit = false
 
     init(viewport: TimelineViewport = .shared, data: TimelineData = .shared) {
         self.viewport = viewport
@@ -195,6 +199,15 @@ final class TimelineController {
         clockChanged()
     }
 
+    /// The read-out of the selected depth's cycle at the cursor (VoiceOver's "Details" action), anchored on its lane.
+    func showSelectedReadout() {
+        guard let level = settings?.selectedLevel, let c = data.cycle(level, at: cursor), let layout else { return }
+        let i = levels.firstIndex(of: level)
+        let x = min(layout.px1 - 1, max(layout.px0, viewport.scale(windowNow).x(cursor)))
+        let y = i.map { layout.laneY($0) } ?? layout.lanesY
+        readout = TimelineReadoutItem(selection: .cycle(level: level, idx: c.idx), anchor: CGRect(x: x - 1, y: y, width: 2, height: layout.laneH))
+    }
+
     /// Return: the cursor to the middle of the view (web: Enter).
     func travelToCentre() {
         let w = viewport.goal(cursor: cursor, cursorIn: cursorIn)
@@ -242,6 +255,7 @@ final class TimelineController {
         if let flag = hits.cursorFlag, flag.insetBy(dx: -slop, dy: -slop).contains(start), cursorIn {
             viewport.setFollow(false, cursor: cursor, cursorIn: cursorIn)
             drag = .scrub(grab: cursor - viewport.scale(windowNow).t(start.x))
+            scrubCycle = settings.flatMap { data.cycle($0.selectedLevel, at: cursor)?.idx }
             return
         }
         if case (.overview, false)? = region(start), let layout {
@@ -271,12 +285,25 @@ final class TimelineController {
         case .scrub(let grab)?:
             guard let layout else { return }
             let x = min(layout.px1, max(layout.px0, location.x))
-            travel(to: viewport.scale(windowNow).t(x) + grab)
+            let scale = viewport.scale(windowNow)
+            travel(to: scale.t(x) + grab)
+            scrubTick(k: scale.k)
         case .overview(let grab)?:
             guard let layout else { return }
             viewport.set(TimelineWindow(c: overviewTime(location.x, layout) - grab, span: viewport.base.span))
         case nil:
             break
+        }
+    }
+
+    /// A tick as the scrubbed cursor enters another cycle of the selected depth, while those cycles are wide enough on
+    /// screen (12 points) for each tick to match a block passing under the finger.
+    private func scrubTick(k: Double) {
+        guard let level = settings?.selectedLevel, clock.levelInfo(level).meanSeconds * k >= 12 else { return }
+        let idx = data.cycle(level, at: cursor)?.idx
+        if idx != scrubCycle {
+            if scrubCycle != nil, idx != nil { Haptics.play(.selection) }
+            scrubCycle = idx
         }
     }
 
@@ -296,10 +323,20 @@ final class TimelineController {
         pinching = true
         pinched = true
         viewport.beginGesture(cursor: cursor, cursorIn: cursorIn, pinch: true)
+        atZoomLimit = isAtZoomLimit
     }
 
     func pinchChanged(scale: CGFloat, location: CGPoint, start: CGPoint) {
         viewport.pinch(scale: scale, x: location.x, startX: start.x, cursor: cursor, cursorIn: cursorIn)
+        // a tick when the pinch reaches the narrowest window (about two seconds) or the whole catalogue
+        let limit = isAtZoomLimit
+        if limit, !atZoomLimit { Haptics.play(.step) }
+        atZoomLimit = limit
+    }
+
+    private var isAtZoomLimit: Bool {
+        let span = viewport.base.span, lim = viewport.limits
+        return span <= lim.minSpan * 1.0001 || span >= lim.maxSpan * 0.9999
     }
 
     func pinchEnded() {

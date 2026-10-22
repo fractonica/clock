@@ -132,6 +132,7 @@ struct TimelineScreen: View {
         .accessibilityAction(named: "Pan later") { controller.pan(fraction: 0.5) }
         .accessibilityAction(named: "Fit the selected cycle") { controller.fitSelected() }
         .accessibilityAction(named: "Centre on the cursor") { controller.centreOnCursor() }
+        .accessibilityAction(named: "Details of the selected cycle") { controller.showSelectedReadout() }
         .onChange(of: layout, initial: true) { _, layout in
             controller.layout = layout
             controller.levels = levels
