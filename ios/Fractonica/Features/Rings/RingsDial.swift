@@ -197,7 +197,9 @@ struct RingsDial: View {
         case .began:
             guard !model.outOfRange, case .ring(let i, let phase, _)? = layout.hit(p) else { return }
             let level = range.levels[i]
-            guard let reading = clock.level(at: readTime, level) else { return }
+            // a ring drawn as a glow has no hand to wind
+            guard !RingsMath.isBlur(meanSeconds: clock.levelInfo(level).meanSeconds, speed: RingsScreenModel.speed(of: store)),
+                  let reading = clock.level(at: readTime, level) else { return }
             if level != selected { model.select(level, settings: settings, reduceMotion: reduceMotion) }
             scrub = Scrub(ring: i, level: level, position: Double(reading.cycle) + phase, lastPhase: phase, lastIndex: reading.index)
             model.scrubbingRing = i
