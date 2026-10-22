@@ -373,7 +373,7 @@ private struct DeltaCell: View, Equatable {
             Spacer(minLength: 0)
             if cell.inRange {
                 HelionBand(cell: cell, regular: metrics.regular)
-                    .frame(height: metrics.regular ? 18 : 13)
+                    .frame(height: metrics.regular ? 28 : 13)
             }
         }
         .padding(metrics.regular ? 6 : 4)
@@ -534,6 +534,13 @@ private struct HelionBand: View {
                 if regular {
                     let nx = x0 + step / 2
                     context.fill(Path(ellipseIn: CGRect(x: nx - 1, y: y - 3.5, width: 2, height: 2)), with: .color(Theme.levelColor(6, opacity: 0.6)))
+                    // the Helion's number in its Nuclide: all eleven where they fit, every fifth otherwise (pure-month.js)
+                    let n = cell.firstHelion + j
+                    if step >= 12 || n % 5 == 0 {
+                        context.draw(Text(verbatim: "\(n)").font(.system(size: 8, weight: .medium).monospacedDigit())
+                                        .foregroundStyle(Theme.levelColor(6, opacity: n % 5 == 0 ? 0.9 : 0.55)),
+                                     at: CGPoint(x: nx, y: 4), anchor: .center)
+                    }
                 }
             }
             for s in cell.syncs {
