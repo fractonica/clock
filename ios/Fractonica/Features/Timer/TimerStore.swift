@@ -45,7 +45,11 @@ final class TimerStore {
 
     private(set) var run: TimerRun?
     var draft = Draft() {
-        didSet { if draft != oldValue { save() } }
+        didSet {
+            guard draft != oldValue else { return }
+            problem = nil
+            save()
+        }
     }
     /// Timers set on the wheels lately, newest first (presets and aligned ends have their own rows).
     private(set) var recents: [TimerSpec] = []
@@ -143,12 +147,17 @@ final class TimerStore {
     func resume() {
         guard var run, !run.isRunning else { return }
         guard run.resume(at: .now, clock: clock) else {
-            problem = .outsideCatalogue
-            Haptics.play(.warning)
+            refuse("It would end outside the catalogue")
             return
         }
         self.run = run
         changed()
+    }
+
+    /// A change to the running timer that cannot be made: said where the user is (the run view shows no notices).
+    private func refuse(_ message: String) {
+        Haptics.play(.warning)
+        ToastCenter.shared.show(message, for: 3)
     }
 
     func togglePause() {
@@ -165,8 +174,7 @@ final class TimerStore {
     func add(_ unit: LadderUnit) {
         guard var run else { return }
         guard run.add(blinks: unit.blinks, at: .now, clock: clock) else {
-            problem = .outsideCatalogue
-            Haptics.play(.warning)
+            refuse("It would end outside the catalogue")
             return
         }
         self.run = run

@@ -171,7 +171,8 @@ struct TimerRun: Codable, Hashable, Sendable, Identifiable {
     }
 
     /// Adds `blinks` to a ladder run (or their length at now to an Earth one); false when the new end would leave the
-    /// catalogue.
+    /// catalogue. A timer waiting for a cycle no longer ends where that cycle begins: it becomes a plain countdown of its
+    /// new total, so it is not announced as the cycle's beginning.
     mutating func add(blinks: Int, at now: Date, clock: RealClock) -> Bool {
         switch measure {
         case .ladder:
@@ -182,6 +183,7 @@ struct TimerRun: Codable, Hashable, Sendable, Identifiable {
                 left = (left ?? 0) + Double(blinks)
             }
             total += Double(blinks)
+            if case .aligned = spec { spec = .ladder(LadderSpan(blinks: LadderReadout.ceilBlinks(total))) }
         case .earth:
             guard let seconds = clock.blinkSeconds(at: now) else { return false }
             add(seconds: Double(blinks) * seconds, at: now, clock: clock)

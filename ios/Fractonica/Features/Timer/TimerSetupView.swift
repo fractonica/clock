@@ -67,6 +67,8 @@ struct TimerSetupView: View {
         let spec = store.draft.spec(pure: pure)
         let empty = earth ? store.draft.earthSeconds == 0 : store.draft.ladder.isZero
         let unmeasurable = spec.measure == .ladder && !store.clock.inRange(.now)
+        var tooLong = false
+        if case .ladder(let span) = spec, !span.isZero, !unmeasurable { tooLong = !fits(span) }
         return VStack(spacing: 18) {
             if !pure {
                 Picker("Units", selection: $store.draft.input) {
@@ -95,7 +97,7 @@ struct TimerSetupView: View {
             }
             .frame(height: rowHeight * 5)
             .id(earth)
-            equivalence(spec: spec)
+            equivalence(spec: spec, tooLong: tooLong)
             HStack {
                 RoundControl("Reset", size: RoundControl.size(controls, dynamicType: dynamicTypeSize)) {
                     withAnimation(.snappy) {
@@ -107,7 +109,7 @@ struct TimerSetupView: View {
                 RoundControl("Start", tint: Theme.teal, size: RoundControl.size(controls, dynamicType: dynamicTypeSize)) {
                     withAnimation(.smooth) { _ = store.start(spec) }
                 }
-                .disabled(empty || unmeasurable)
+                .disabled(empty || unmeasurable || tooLong)
                 .keyboardShortcut(.defaultAction)
             }
             .padding(.horizontal, 12)
@@ -160,11 +162,13 @@ struct TimerSetupView: View {
     }
 
     /// What the wheels say in other words: "4 Preons · ≈ 33 min 41 s", or an Earth span on the ladder "≈ 3ι 57λ".
-    private func equivalence(spec: TimerSpec) -> some View {
+    private func equivalence(spec: TimerSpec, tooLong: Bool) -> some View {
         let clock = store.clock
         let blink = clock.blinkSeconds(at: .now)
         let text: String
         switch spec {
+        case .ladder where tooLong:
+            text = "It would end outside the catalogue"
         case .ladder(let span):
             if span.isZero {
                 text = "Turn the wheels to set a duration"
@@ -255,13 +259,18 @@ struct TimerSetupView: View {
                         .contentShape(.rect(cornerRadius: 16))
                     }
                     .buttonStyle(CardButtonStyle())
-                    .disabled(!store.clock.inRange(.now))
-                    .opacity(store.clock.inRange(.now) ? 1 : 0.4)
+                    .disabled(!fits(span))
+                    .opacity(fits(span) ? 1 : 0.4)
                     .accessibilityLabel("Start \(span.spoken)")
                     .accessibilityHint(presetSubtitle(span))
                 }
             }
         }
+    }
+
+    /// Whether a span started now ends inside the catalogue (near its end the long presets do not).
+    private func fits(_ span: LadderSpan) -> Bool {
+        store.clock.date(after: .now, blinks: Double(span.blinks)) != nil
     }
 
     private func presetSubtitle(_ span: LadderSpan) -> String {

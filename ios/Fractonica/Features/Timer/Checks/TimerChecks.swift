@@ -185,6 +185,13 @@ private func alignedChecks() {
     check(run.remaining(at: t0, clock: real).map { close($0, run.total, 1e-9) } == true, "its total is the Blinks to go")
     let reading = clock.level(at: vectorA, 8)!
     check(close(run.total * real.blinkSeconds(at: t0)!, reading.remaining, 1e-3), "which the clock reads as the Preon's remaining time")
+    var added = run
+    check(added.add(blinks: LadderUnit.lambda.blinks, at: t0, clock: real), "+1λ on an aligned timer")
+    if case .ladder(let span) = added.spec {
+        check(span.blinks == LadderReadout.ceilBlinks(run.total) + 25, "it becomes a countdown of its new total: \(span.name)")
+    } else {
+        check(false, "+1λ no longer waits for the cycle: \(added.spec)")
+    }
     let late = RealClock(offset: iota.time + 1 - 1_000_000)
     check(TimerRun.start(.aligned(iota), at: t0, clock: late).failure == .empty, "a passed boundary does not start")
 }

@@ -15,11 +15,14 @@ struct TimerDemo {
     var timer: String?
     var stopwatch: String?
 
-    static func current(_ defaults: UserDefaults = .standard) -> TimerDemo {
+    static func current(_ defaults: UserDefaults = .standard, arguments: [String] = CommandLine.arguments) -> TimerDemo {
         let args = defaults.volatileDomain(forName: UserDefaults.argumentDomain)
         func string(_ key: String) -> String? { (args[key] as? String) ?? (args[key] as? NSNumber)?.stringValue }
+        // the argument domain reads "-FXTimerNow -11253795000" as two flags: an instant before 1970 comes from the raw
+        // arguments, as LaunchOptions reads -FXTime
+        let rawNow = arguments.firstIndex(of: "-FXTimerNow").flatMap { i in i + 1 < arguments.count ? arguments[i + 1] : nil }
         return TimerDemo(
-            now: string("FXTimerNow").flatMap(Double.init).flatMap { $0.isFinite ? $0 : nil },
+            now: (rawNow ?? string("FXTimerNow")).flatMap(Double.init).flatMap { $0.isFinite ? $0 : nil },
             timer: string("FXTimerDemo")?.lowercased(),
             stopwatch: string("FXStopwatchDemo")?.lowercased()
         )

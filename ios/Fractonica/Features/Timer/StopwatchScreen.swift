@@ -183,15 +183,24 @@ struct StopwatchScreen: View {
 
     private func dialFace(live: Bool) -> some View {
         let run = store.run
-        return TimelineView(.animation(minimumInterval: 1.0 / 60, paused: !run.isRunning || !live)) { context in
-            let now = context.date
+        let paused = !run.isRunning || !live
+        func dial(_ now: Date) -> StopwatchDial {
             let blink = store.blinkSeconds(at: now)
             let elapsed = run.elapsed(at: now)
-            StopwatchDial(
+            return StopwatchDial(
                 elapsed: elapsed / blink,
                 lap: run.marks.isEmpty ? nil : (elapsed - run.currentLapStart) / blink,
                 reduceMotion: reduceMotion
             )
+        }
+        return Group {
+            if reduceMotion {
+                // the hands step once per Blink: redraw then, not every frame
+                let schedule = TickSchedule(anchor: run.zero(at: .now), steps: [store.blinkSeconds(at: .now)], paused: paused)
+                TimelineView(schedule) { dial($0.date) }
+            } else {
+                TimelineView(.animation(minimumInterval: 1.0 / 60, paused: paused)) { dial($0.date) }
+            }
         }
         .aspectRatio(1, contentMode: .fit)
         .accessibilityElement()
