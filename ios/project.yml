@@ -62,6 +62,8 @@ targets:
             CFBundleURLSchemes: [fractonica]
         ITSAppUsesNonExemptEncryption: false
         NSSupportsLiveActivities: true
+        # ProMotion iPhones run CADisplayLink / TimelineView(.animation) above 60 Hz only with this key (Focus)
+        CADisableMinimumFrameDurationOnPhone: true
         UIBackgroundModes: [audio, fetch]
         BGTaskSchedulerPermittedIdentifiers: [app.fractonica.clock.refresh]
         UILaunchScreen:
@@ -78,6 +80,11 @@ targets:
           - UIInterfaceOrientationPortraitUpsideDown
           - UIInterfaceOrientationLandscapeLeft
           - UIInterfaceOrientationLandscapeRight
+    entitlements:
+      path: Support/Fractonica-iOS.entitlements
+      properties:
+        # timer notifications break through Focus (.timeSensitive)
+        com.apple.developer.usernotifications.time-sensitive: true
     settings:
       base:
         PRODUCT_NAME: Fractonica
@@ -126,7 +133,12 @@ targets:
       properties:
         com.apple.security.app-sandbox: true
         com.apple.security.files.user-selected.read-write: true
+        # the Diary's WKWebView: its sandboxed web-content process dies at launch without it, even for a custom scheme
+        com.apple.security.network.client: true
         com.apple.security.print: true
+        # timer notifications break through Focus (.timeSensitive); needs a provisioning profile, so
+        # scripts/build.sh drops com.apple.developer.* keys from its ad-hoc signed builds
+        com.apple.developer.usernotifications.time-sensitive: true
     settings:
       base:
         PRODUCT_NAME: Fractonica

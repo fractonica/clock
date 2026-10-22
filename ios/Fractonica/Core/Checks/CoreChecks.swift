@@ -14,6 +14,7 @@ struct CoreChecks {
         await edgeStopChecks()
         scheduleChecks()
         linkChecks()
+        wordingChecks()
         Checks.finish()
     }
 }
@@ -68,6 +69,19 @@ private func settingsChecks() {
     let reloaded = AppSettings(defaults: defaults)
     check(!reloaded.pure && reloaded.zone == nil && reloaded.topDepth == 4, "overrides are never saved: \(reloaded.values)")
     check(a.pure && a.zone == "UTC", "overrides stay shown after other changes are saved")
+
+    let before = AppSettings(defaults: defaults).values
+    a.override(selectedLevel: 3, minDepth: 12, maxDepth: 14)
+    check(a.selectedLevel == 3 && a.minDepth == 12 && a.maxDepth == 14, "level and depth overrides are shown: \(a.values)")
+    check(AppSettings(defaults: defaults).values == before, "level and depth overrides are never saved")
+    a.override(selectedLevel: 99, minDepth: 0)
+    check(a.selectedLevel == 3 && a.minDepth == 12, "invalid overrides are ignored: \(a.values)")
+    a.override(minDepth: 2, maxDepth: 5)
+    check(a.minDepth == 2 && a.maxDepth == 5, "a depth range moves as a pair: \(a.values)")
+    a.topDepth = 9
+    let saved = AppSettings(defaults: defaults).values
+    check(saved.topDepth == 9 && saved.selectedLevel == before.selectedLevel && saved.minDepth == before.minDepth
+          && saved.maxDepth == before.maxDepth, "a later change is saved without the overrides: \(saved)")
 
     defaults.set(Data(#"{"pure":"yes","zone":"Nowhere/Land","topDepth":3.5,"selectedLevel":2,"minDepth":9,"maxDepth":4,"faceMode":"analog","haptics":false}"#.utf8), forKey: "settings.v1")
     let g = AppSettings(defaults: defaults)
@@ -174,4 +188,20 @@ private func linkChecks() {
     check(AppLink(url: URL(string: "fractonica://Timeline?t=nan")!) == AppLink(screen: .timeline), "case and bad times")
     check(AppLink(url: URL(string: "fractonica://bogus")!) == AppLink(screen: .now), "an unknown screen opens Now")
     check(AppLink(url: URL(string: "https://fractonica.app/rings")!) == nil, "other schemes are not links")
+}
+
+/// Wording's SPEC §8 labels: the year joins the short date only for a moment in another year.
+@MainActor
+private func wordingChecks() {
+    let words = Wording(pure: false, zone: "UTC")
+    let ref = 1_791_460_800.0                                   // 2026-10-08 12:00:00 UTC
+    check(words.label(ref + 3_723, relativeTo: ref) == "13:02:03", "same day: the time with seconds")
+    check(words.label(ref + 86_400 + 600, relativeTo: ref) == "Oct 9 12:10", "another day: month, day and time")
+    let nextYear = words.label(ref + 365 * 86_400, relativeTo: ref)
+    check(nextYear == "Oct 8 2027 12:00", "another year: with the year (\(nextYear))")
+    let lastYear = words.label(ref - 300 * 86_400, relativeTo: ref)
+    check(lastYear.hasSuffix(" 2025 12:00") || lastYear.contains(" 2025 "), "a past year too (\(lastYear))")
+    let pure = Wording(pure: true, zone: "UTC")
+    let far = pure.label(ref + 365 * 86_400, relativeTo: ref)
+    check(!far.contains("2027") && !far.contains("Oct"), "pure labels stay in Fractonica terms (\(far))")
 }

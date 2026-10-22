@@ -1,3 +1,6 @@
+#if os(macOS)
+import AppKit
+#endif
 import FractonicaKit
 import SwiftUI
 
@@ -7,7 +10,7 @@ import SwiftUI
 //
 //   iOS    `TransportBar` in the tab bar's bottom accessory (Liquid Glass); minimised with the tab bar, it keeps
 //          only the moment and Play.
-//   macOS  `TransportControls` in the window toolbar.
+//   macOS  `TransportControls` in the window toolbar; its moment ticks through an AppKit view (`ToolbarTicker`).
 
 #if os(iOS)
 /// The transport in the tab bar's bottom accessory.
@@ -85,6 +88,17 @@ struct MomentLabel: View {
         let words = settings.wording
         HStack(spacing: 10) {
             StatusDot(live: store.isLive)
+            #if os(macOS)
+            // In the window toolbar: drawn by AppKit, because a SwiftUI update inside a toolbar item rebuilds and
+            // re-lays out the whole toolbar (see ToolbarTicker).
+            ToolbarTicker(
+                base: store.base,
+                paused: store.isPaused,
+                time: { [store] in store.time(at: $0) },
+                text: { words.time($0) },
+                color: NSColor(store.isLive ? Theme.ink : Theme.cursor)
+            )
+            #else
             ClockTimeline(.periodic(1)) { t in
                 VStack(alignment: .leading, spacing: 1) {
                     Text(words.time(t))
@@ -99,6 +113,7 @@ struct MomentLabel: View {
                 }
                 .lineLimit(1)
             }
+            #endif
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(Text(store.isLive ? "Live clock" : "Displayed moment"))

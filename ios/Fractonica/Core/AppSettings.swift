@@ -105,11 +105,16 @@ final class AppSettings {
         stored = loaded
     }
 
-    /// Settings for this launch only (the `-FXPure` / `-FXZone` test hooks): shown, never saved.
-    func override(pure: Bool? = nil, zone: String? = nil) {
+    /// Settings for this launch only (the `-FXPure` / `-FXZone` test hooks, features' screenshot hooks): shown, never
+    /// saved, validated like any write. A depth range is applied as a pair, so `minDepth` may pass the shown
+    /// `maxDepth` when both move. A later change the user makes is saved on top of the stored values as usual.
+    func override(pure: Bool? = nil, zone: String? = nil, selectedLevel: Int? = nil, minDepth: Int? = nil, maxDepth: Int? = nil) {
         update(persist: false) { v in
             if let pure { v.pure = pure }
             if let zone { v.zone = zone }
+            if let selectedLevel { v.selectedLevel = selectedLevel }
+            if let minDepth { v.minDepth = minDepth }
+            if let maxDepth { v.maxDepth = maxDepth }
         }
     }
 

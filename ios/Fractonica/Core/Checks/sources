@@ -2,6 +2,7 @@
 Fractonica/Core/AppSettings.swift
 Fractonica/Core/ClockStore.swift
 Fractonica/Core/ClockTimeline.swift
+Fractonica/Core/Formatting.swift
 Shared/AppLink.swift
 Shared/Notation+Standard.swift
 Shared/Screen.swift
