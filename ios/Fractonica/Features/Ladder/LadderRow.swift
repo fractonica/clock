@@ -2,14 +2,41 @@ import FractonicaKit
 import SwiftUI
 
 /// One depth of the ladder (src/ui/ladder.js): chip, place in the parent, time left, the segmented bar and the phase;
-/// the selected row opens its details. Each row redraws on its own, at the cadence its bar and its countdown need
-/// (`LadderCadence.row`: once a minute for α … ε, once a second for a countdown in seconds, one pixel of its measured
-/// bar for ι κ, every frame for the fast ones; an open row at least once a second), and reads its level once per redraw.
+/// the selected row opens its details. The header and the details each redraw on their own, at the cadence they need
+/// (`LadderCadence.row`: once a minute for α … ε, once a second for a countdown in seconds, one pixel of the measured bar
+/// for ι κ, every frame for the fast ones; open details at least once a second), and read their level once per redraw.
+/// What a redraw would only rebuild unchanged stays out of it: the row's button with its style and actions, the
+/// details' buttons.
 struct LadderRow: View {
     let level: Int
     let isSelected: Bool
     let isExpanded: Bool
     let navigator: LadderNavigator
+    let onTap: () -> Void
+
+    /// The bar's width in device pixels, once measured: the row redraws about once a pixel (a phone's bar is a third
+    /// of the 2000 px assumed before, so ι redraws below 2 Hz there instead of 4).
+    @State private var barPixels = LadderCadence.assumedPixels
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            LadderRowHeader(level: level, isSelected: isSelected, isExpanded: isExpanded, navigator: navigator,
+                            barPixels: $barPixels, onTap: onTap)
+            if isExpanded {
+                LadderDetail(level: level, pixels: barPixels, navigator: navigator)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+    }
+}
+
+/// A row's chip, place, time left, bar and phase: a button whose label redraws with the clock.
+private struct LadderRowHeader: View {
+    let level: Int
+    let isSelected: Bool
+    let isExpanded: Bool
+    let navigator: LadderNavigator
+    @Binding var barPixels: Double
     let onTap: () -> Void
 
     @Environment(AppSettings.self) private var settings
@@ -22,87 +49,79 @@ struct LadderRow: View {
     /// Too fast to count down or to follow (ν, ξ).
     private var still: Bool { info.meanSeconds < LadderCadence.stillBelow }
 
-    /// The cadence the row asked for at its last redraw (`cadence(_:t:)`); it changes with the countdown's resolution.
+    /// The cadence the header asked for at its last redraw (`cadence(_:t:pure:)`); it changes with the countdown's
+    /// resolution.
     @State private var asked: Double?? = .none
-    /// The bar's width in device pixels, once measured: its row redraws about once a pixel (a phone's bar is a third
-    /// of the 2000 px assumed before, so ι redraws below 2 Hz there instead of 4).
-    @State private var barPixels = LadderCadence.assumedPixels
 
     /// Displayed seconds between redraws for a reading at t (nil: outside the catalogue); nil every frame.
-    private func cadence(_ lv: LevelReading?, t: Double) -> Double? {
-        if still { return isExpanded ? LadderCadence.readout : 60 }
+    private func cadence(_ lv: LevelReading?, t: Double, pure: Bool) -> Double? {
+        if still { return 60 }
         guard let lv else { return LadderCadence.row(meanSeconds: info.meanSeconds, pixels: barPixels) }
-        if isExpanded {
-            return LadderCadence.openRow(meanSeconds: info.meanSeconds, untilNext: (lv.next.time ?? lv.end) - t,
-                                         elapsed: t - lv.start, pure: settings.pure, pixels: barPixels)
-        }
-        return LadderCadence.row(meanSeconds: info.meanSeconds, remaining: lv.end - t, pure: settings.pure, pixels: barPixels)
+        return LadderCadence.row(meanSeconds: info.meanSeconds, remaining: lv.end - t, pure: pure, pixels: barPixels)
     }
 
     var body: some View {
         let words = settings.wording
-        // until the first redraw has asked for its own, the cadence of a row not yet read (never too slow)
-        let cadence = asked ?? LadderCadence.row(meanSeconds: info.meanSeconds)
-        ClockTimeline(cadence.map { .periodic($0) } ?? .animation) { raw in
-            let t = LadderLaunch.shown(raw)
-            let lv = store.clock.level(at: t, level)
-            VStack(alignment: .leading, spacing: 0) {
-                header(lv, t: t, words: words, container: cadence)
-                if isExpanded, let lv {
-                    LadderDetail(reading: lv, t: t, still: still, words: words, container: cadence, navigator: navigator)
-                        .transition(.opacity.combined(with: .move(edge: .top)))
-                }
-            }
-            .onChange(of: self.cadence(lv, t: t), initial: true) { _, wanted in asked = .some(wanted) }
-        }
-    }
-
-    // MARK: Header
-
-    private func header(_ lv: LevelReading?, t: Double, words: Wording, container: Double?) -> some View {
+        // until a redraw has asked for its own (a row the list prepares out of sight never redraws in sight): the
+        // cadence of the reading now
+        let cadence = asked ?? {
+            let t = LadderLaunch.shown(store.time())
+            return self.cadence(store.clock.level(at: t, level), t: t, pure: words.pure)
+        }()
         Button(action: onTap) {
-            HStack(spacing: 12) {
-                LevelChip(level: level, prominent: isSelected, dimmed: lv == nil)
-                VStack(alignment: .leading, spacing: 5) {
-                    // accessibility text sizes put the time left under the place, so neither is cut short
-                    let line = typeSize.isAccessibilitySize
-                        ? AnyLayout(VStackLayout(alignment: .leading, spacing: 2))
-                        : AnyLayout(HStackLayout(alignment: .firstTextBaseline, spacing: 8))
-                    line {
-                        Text(counter(lv, words: words))
-                            .font(.subheadline)
-                            .foregroundStyle(lv == nil ? Theme.ink3 : Theme.ink2)
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-                        if !typeSize.isAccessibilitySize { Spacer(minLength: 4) }
-                        left(lv, t: t, words: words, container: container)
-                            .font(.reading(readingSize, weight: .medium))
-                            .foregroundStyle(lv == nil ? Theme.ink3 : still ? Theme.ink2 : Theme.ink)
-                            .lineLimit(1)
-                            .layoutPriority(1)
-                    }
-                    SegmentBar(level: level, factor: info.factor, phase: lv?.phase, still: still, emphasized: isSelected, clip: clip(lv))
-                        .onGeometryChange(for: Double.self) { Double($0.size.width) } action: { width in
-                            let pixels = max(1, (width * displayScale).rounded())
-                            if pixels != barPixels { barPixels = pixels }
-                        }
-                }
-                PhaseMark(reading: still ? nil : lv, pure: words.pure)
+            ClockTimeline(cadence.map { .periodic($0) } ?? .animation) { raw in
+                let t = LadderLaunch.shown(raw)
+                let lv = store.clock.level(at: t, level)
+                header(lv, t: t, words: words, container: cadence)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(accessibilityText(lv, t: t, words: words))
+                    #if os(macOS)
+                    .help(helpText(lv, words: words))
+                    #endif
+                    .onChange(of: self.cadence(lv, t: t, pure: words.pure), initial: true) { _, wanted in asked = .some(wanted) }
             }
-            .padding(.vertical, 7)
-            .contentShape(.rect)
         }
         .buttonStyle(LadderPressStyle())
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(accessibilityText(lv, t: t, words: words))
         .accessibilityHint(isExpanded ? "Hides the details" : "Selects this depth and shows its details")
         .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
         .accessibilityAction(named: "Just after") { navigator.justAfter(level) }
         .accessibilityAction(named: "Just before") { navigator.justBefore(level) }
         .accessibilityAction(named: "Start of this cycle") { navigator.start(level) }
-        #if os(macOS)
-        .help(helpText(lv, words: words))
-        #endif
+    }
+
+    // MARK: Header
+
+    private func header(_ lv: LevelReading?, t: Double, words: Wording, container: Double?) -> some View {
+        HStack(spacing: 12) {
+            LevelChip(level: level, prominent: isSelected, dimmed: lv == nil)
+            VStack(alignment: .leading, spacing: 5) {
+                // accessibility text sizes put the time left under the place, so neither is cut short
+                let line = typeSize.isAccessibilitySize
+                    ? AnyLayout(VStackLayout(alignment: .leading, spacing: 2))
+                    : AnyLayout(HStackLayout(alignment: .firstTextBaseline, spacing: 8))
+                line {
+                    Text(counter(lv, words: words))
+                        .font(.subheadline)
+                        .foregroundStyle(lv == nil ? Theme.ink3 : Theme.ink2)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    if !typeSize.isAccessibilitySize { Spacer(minLength: 4) }
+                    left(lv, t: t, words: words, container: container)
+                        .font(.reading(readingSize, weight: .medium))
+                        .foregroundStyle(lv == nil ? Theme.ink3 : still ? Theme.ink2 : Theme.ink)
+                        .lineLimit(1)
+                        .layoutPriority(1)
+                }
+                SegmentBar(level: level, factor: info.factor, phase: lv?.phase, still: still, emphasized: isSelected, clip: clip(lv))
+                    .onGeometryChange(for: Double.self) { Double($0.size.width) } action: { width in
+                        let pixels = max(1, (width * displayScale).rounded())
+                        if pixels != barPixels { barPixels = pixels }
+                    }
+            }
+            PhaseMark(reading: still ? nil : lv, pure: words.pure)
+        }
+        .padding(.vertical, 7)
+        .contentShape(.rect)
     }
 
     #if os(macOS)
@@ -181,8 +200,53 @@ struct LadderRow: View {
 // MARK: - Details
 
 /// The open row's details: when the cycle ends (or what begins), its quarter thresholds, where the displayed time is
-/// inside it, its span, and the three ways to travel along it.
+/// inside it, its span, and the three ways to travel along it. They redraw on their own (`LadderCadence.openRow`: the
+/// row's bar pixel, at least once a second, faster for the last seconds of a threshold and a pure count of ν).
 struct LadderDetail: View {
+    let level: Int
+    /// The row's bar in device pixels.
+    let pixels: Double
+    let navigator: LadderNavigator
+
+    @Environment(AppSettings.self) private var settings
+    @Environment(ClockStore.self) private var store
+
+    /// The cadence the details asked for at their last redraw (`cadence(_:t:pure:)`).
+    @State private var asked: Double?? = .none
+
+    private var info: LevelInfo { FractonicaClock.shared.levelInfo(level) }
+    /// Too fast to count down or to follow (ν, ξ).
+    private var still: Bool { info.meanSeconds < LadderCadence.stillBelow }
+
+    /// Displayed seconds between redraws for a reading at t (nil: outside the catalogue); nil every frame.
+    private func cadence(_ lv: LevelReading?, t: Double, pure: Bool) -> Double? {
+        if still { return LadderCadence.readout }
+        guard let lv else { return LadderCadence.row(meanSeconds: info.meanSeconds, pixels: pixels) }
+        return LadderCadence.openRow(meanSeconds: info.meanSeconds, untilNext: (lv.next.time ?? lv.end) - t,
+                                     elapsed: t - lv.start, pure: pure, pixels: pixels)
+    }
+
+    var body: some View {
+        let words = settings.wording
+        let cadence = asked ?? {
+            let t = LadderLaunch.shown(store.time())
+            return self.cadence(store.clock.level(at: t, level), t: t, pure: words.pure)
+        }()
+        ClockTimeline(cadence.map { .periodic($0) } ?? .animation) { raw in
+            let t = LadderLaunch.shown(raw)
+            let lv = store.clock.level(at: t, level)
+            Group {
+                if let lv {
+                    LadderDetailContent(reading: lv, t: t, still: still, words: words, container: cadence, navigator: navigator)
+                }
+            }
+            .onChange(of: self.cadence(lv, t: t, pure: words.pure), initial: true) { _, wanted in asked = .some(wanted) }
+        }
+    }
+}
+
+/// The details at one redraw.
+private struct LadderDetailContent: View {
     let reading: LevelReading
     let t: Double
     let still: Bool
@@ -484,15 +548,36 @@ struct LadderDetail: View {
     // MARK: Actions
 
     private var actions: some View {
-        let color = Theme.levelColor(level)
         let lead = LadderText.justBeforeLead(reading.duration)
-        let leadText = pure ? text.blinks(lead) : LadderText.lead(lead)
-        let last = reading.end >= clock.tMax - 0.002
-        return ViewThatFits(in: .horizontal) {
-            HStack(spacing: 8) { actionButtons(color: color, compact: false, last: last, leadText: leadText) }.fixedSize(horizontal: true, vertical: false)
-            HStack(spacing: 8) { actionButtons(color: color, compact: true, last: last, leadText: leadText) }.fixedSize(horizontal: true, vertical: false)
+        return DetailActions(
+            level: level,
+            leadText: pure ? text.blinks(lead) : LadderText.lead(lead),
+            afterText: pure ? text.blinks(0.001) : "1 ms",
+            last: reading.end >= clock.tMax - 0.002,
+            navigator: navigator
+        )
+    }
+}
+
+/// The details' three ways to travel along the cycle, on one line when they fit. Its own view with plain inputs, so a
+/// redraw of the details passes over its buttons.
+private struct DetailActions: View {
+    let level: Int
+    /// How far ahead of the end Just before stops: "2 s", pure "4 Blinks".
+    let leadText: String
+    /// How far into the next cycle Just after goes: "1 ms".
+    let afterText: String
+    /// The cycle ends with the catalogue: nothing to travel to past it.
+    let last: Bool
+    let navigator: LadderNavigator
+
+    var body: some View {
+        let color = Theme.levelColor(level)
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 8) { actionButtons(color: color, compact: false) }.fixedSize(horizontal: true, vertical: false)
+            HStack(spacing: 8) { actionButtons(color: color, compact: true) }.fixedSize(horizontal: true, vertical: false)
             // large text: one button per line (the last choice of ViewThatFits is used even when nothing fits)
-            VStack(alignment: .leading, spacing: 8) { actionButtons(color: color, compact: false, last: last, leadText: leadText) }
+            VStack(alignment: .leading, spacing: 8) { actionButtons(color: color, compact: false) }
         }
         .controlSize(.small)
         .padding(.top, 2)
@@ -501,7 +586,7 @@ struct LadderDetail: View {
     }
 
     @ViewBuilder
-    private func actionButtons(color: Color, compact: Bool, last: Bool, leadText: String) -> some View {
+    private func actionButtons(color: Color, compact: Bool) -> some View {
         Button {
             navigator.start(level)
         } label: {
@@ -528,7 +613,7 @@ struct LadderDetail: View {
         .tint(color.opacity(0.85))
         .foregroundStyle(Theme.background)
         .disabled(last)
-        .help("Just after: \(pure ? text.blinks(0.001) : "1 ms") into the next cycle (↩)")
+        .help("Just after: \(afterText) into the next cycle (↩)")
     }
 }
 

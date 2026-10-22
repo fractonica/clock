@@ -202,13 +202,23 @@ extension View {
     /// there (the transport's band runs on under it); the content keeps clear of it and scrolls under it. Applied inside the screen's navigation stack (a safe area inset outside it does not reach the
     /// screen), so views pushed onto the stack go without it. Nothing on iOS 26, where it rides in the tab bar's
     /// accessory (`transportAccessory`).
+    ///
+    /// The content keeps clear of a still copy of the bar (its moment held: it never ticks), and the live bar lies over
+    /// that copy. A safe area inset whose content changes hands the screen its safe area anew; with a list under it,
+    /// iOS 18 then lays the window out again and again for about ¾ s, so the Ladder was busy for most of every second.
     @ViewBuilder
     fileprivate func transportInset() -> some View {
         if #available(iOS 26.0, *) {
             self
         } else {
-            safeAreaInset(edge: .bottom, spacing: 0) { TransportInsetBar() }
-                .toolbarBackground(.hidden, for: .tabBar)
+            safeAreaInset(edge: .bottom, spacing: 0) {
+                TransportInsetBar()
+                    .environment(\.clockHeld, true)
+                    .hidden()
+                    .accessibilityHidden(true)
+            }
+            .overlay(alignment: .bottom) { TransportInsetBar() }
+            .toolbarBackground(.hidden, for: .tabBar)
         }
     }
 }
