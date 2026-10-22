@@ -100,19 +100,28 @@ struct AlertsScreen: View {
     private func rulesSection(_ text: AlertText) -> some View {
         Section {
             if alerts.rules.isEmpty {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("No alerts yet")
-                        .font(.headline)
-                        .foregroundStyle(Theme.ink)
-                    Text("Choose the moments you want to hear about: start from a preset below, or make your own with +.")
-                        .font(.subheadline)
-                        .foregroundStyle(Theme.ink2)
+                HStack(alignment: .top, spacing: 14) {
+                    Image(systemName: "bell.badge")
+                        .font(.title2)
+                        .symbolRenderingMode(.palette)
+                        .foregroundStyle(Theme.teal, Theme.ink3)
+                        .frame(width: 32)
+                        .accessibilityHidden(true)
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("No alerts yet")
+                            .font(.headline)
+                            .foregroundStyle(Theme.ink)
+                        Text("Choose the moments you want to hear about: start from a preset below, or make your own with +.")
+                            .font(.subheadline)
+                            .foregroundStyle(Theme.ink2)
+                    }
                 }
-                .padding(.vertical, 4)
+                .padding(.vertical, 6)
             }
             ForEach(alerts.rules) { rule in
                 RuleRow(rule: rule, next: { alerts.next(of: rule.id, after: $0) }, text: text, now: { alerts.now },
-                        outOfRange: alerts.plan.outOfRange, isEnabled: enabledBinding(rule.id))
+                        outOfRange: alerts.plan.outOfRange, planned: alerts.plan.now != 0,
+                        isEnabled: enabledBinding(rule.id))
                     .onTapGesture { editor = AlertEditorTarget(rule: rule, isNew: false) }
                     .accessibilityAction(named: "Edit") { editor = AlertEditorTarget(rule: rule, isNew: false) }
                     .contextMenu {

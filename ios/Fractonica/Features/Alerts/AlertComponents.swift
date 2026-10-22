@@ -240,6 +240,8 @@ struct RuleRow: View {
     let text: AlertText
     let now: () -> Double
     var outOfRange = false
+    /// The first plan has been made (until then a row says nothing rather than "nothing more").
+    var planned = true
     let isEnabled: Binding<Bool>
 
     @Environment(\.dynamicTypeSize) private var typeSize
@@ -308,7 +310,7 @@ struct RuleRow: View {
                         .foregroundStyle(rule.subject.color.opacity(0.9))
                 }
             }
-        } else {
+        } else if planned {
             Text(outOfRange ? "Outside the catalogue" : "Nothing more in the catalogue")
                 .font(.caption)
                 .foregroundStyle(Theme.ink3)
