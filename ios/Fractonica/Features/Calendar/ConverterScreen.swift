@@ -556,6 +556,10 @@ struct CommitField: View {
 
     /// What is being typed (or was typed and refused); nil shows `value`.
     @State private var editing: String?
+    /// The value when editing began: leaving the field unchanged commits nothing (the clock may have moved on).
+    @State private var original: String?
+    /// The text last refused (its error is showing).
+    @State private var refused: String?
     @State private var error: CalendarError?
     @FocusState private var focused: Bool
 
@@ -595,14 +599,17 @@ struct CommitField: View {
             if isFocused {
                 // the text stays put under the cursor while the clock runs on
                 if editing == nil { editing = value }
+                original = editing
                 return
             }
-            if let editing, editing != value, !editing.trimmingCharacters(in: .whitespaces).isEmpty {
-                submit()
-            } else {
-                editing = nil
+            guard let editing, editing != original, !editing.trimmingCharacters(in: .whitespaces).isEmpty else {
+                // left unchanged (or emptied): show the model's value again
+                self.editing = nil
                 error = nil
+                return
             }
+            // typed and not yet answered: commit it (a refusal already on screen stays as it is)
+            if editing != refused { submit() }
         }
     }
 
@@ -610,9 +617,11 @@ struct CommitField: View {
         guard let text = editing else { return }
         if let e = commit(text) {
             withAnimation(.snappy) { error = e }
+            refused = text
             Haptics.play(.warning)
         } else {
             withAnimation(.snappy) { error = nil }
+            refused = nil
             editing = nil
         }
     }
