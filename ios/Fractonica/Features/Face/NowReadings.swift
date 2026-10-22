@@ -167,10 +167,15 @@ struct ReadingsPanel: View {
                     ForEach(0..<4, id: \.self) { level in
                         GridRow {
                             letter(level)
+                            // one line each: a long fracton name ("Gamma Didecafracton") shrinks a little, never wraps
                             Text(verbatim: Notation.periodName(level: level, ordinal: ordinals[level]))
                                 .foregroundStyle(Theme.ink)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.7)
+                                .layoutPriority(1)
                             Text(verbatim: quarters[level])
                                 .foregroundStyle(Theme.ink3)
+                                .lineLimit(1)
                         }
                     }
                     GridRow {
