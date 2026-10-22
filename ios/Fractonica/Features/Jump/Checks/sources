@@ -1,0 +1,3 @@
+# The app files JumpChecks.swift compiles against (relative to ios/).
+Fractonica/Features/Jump/JumpLogic.swift
+Shared/Notation+Standard.swift
