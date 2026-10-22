@@ -4,7 +4,8 @@ import Foundation
 // What a row of the watch face says about itself when it is pressed and held (or right-clicked on a Mac): the web
 // face's row tooltips (src/ui/face/helpers.js `periodTooltip`, `solarTooltip`; pure.js `purePeriodTooltip`,
 // `pureSolarTooltip`), without the click hints (the menu under the card is the native way to act). Pure mode says it
-// in Fractonica terms only: places, counts and spans on the ladder. No SwiftUI here: checked by Checks/FaceChecks.swift.
+// in Fractonica terms only: places, counts and spans on the ladder. No SwiftUI here: checked by Checks/FaceChecks.swift
+// (and line by line against the web's builders at several instants).
 
 /// A row's explanation: a title, what one cycle is, and a few lines.
 struct RowTip: Equatable, Sendable {
@@ -17,6 +18,11 @@ struct RowTip: Equatable, Sendable {
     var level: Int?
     /// Pure solar sync: the phase drawn as a glyph pair beside the first line.
     var pairPhase: Double?
+    /// Pure period rows: which numbers count from 1 and which from 0 (the web's last line), set apart as a footnote.
+    var note: String?
+
+    /// Every line as the web prints it (the note last).
+    var allLines: [String] { lines + (note.map { [$0] } ?? []) }
 }
 
 enum FaceTips {
@@ -33,7 +39,7 @@ enum FaceTips {
         let coarse = od.digits.first ?? 0
         let fine = od.digits.count > 1 ? od.digits[1] : 0
         let majorNext = clock.odometer(at: t, level, digits: 1)?.nextTime
-        let state = "State \(coarse) of 16: \(FaceWords.describe(index: coarse))"
+        let state = "State \(coarse) of 16: \(FaceWords.describe(index: coarse, arrows: true))"
         let title = "\(letter) · depth \(level + 1)"
 
         if words.pure {
@@ -51,8 +57,7 @@ enum FaceTips {
             let atEdge = lv.clipped || lv.end >= clock.tMax - 1e-3
             lines.append(atEdge ? "Ends \(span(lv.end)), with the catalogue"
                 : "Ends \(span(lv.end)) → \(FaceWords.follower(level: level, cycle: lv.cycle, notation: n)) begins")
-            lines.append(fromOne)
-            return RowTip(title: title, aside: cycleAside(level: level, notation: n), lines: lines, level: level)
+            return RowTip(title: title, aside: cycleAside(level: level, notation: n), lines: lines, level: level, note: fromOne)
         }
 
         var lines = [state]
@@ -120,6 +125,6 @@ enum FaceTips {
 
     /// The tip as plain lines, for a menu (macOS shows no preview card) and VoiceOver.
     static func plainLines(_ tip: RowTip) -> [String] {
-        [tip.aside].filter { !$0.isEmpty } + tip.lines
+        [tip.aside].filter { !$0.isEmpty } + tip.allLines
     }
 }

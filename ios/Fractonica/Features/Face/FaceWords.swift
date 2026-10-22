@@ -31,12 +31,13 @@ enum FaceWords {
     static func signed(_ v: Int) -> String { v > 0 ? "+\(v)" : v < 0 ? "−\(-v)" : "0" }
     static func integer(_ n: Int) -> String { n < 0 ? "−\(-n)" : String(n) }
 
-    /// "value −3, falling" / "peak, value +4" (helpers.js `describeState`, without the arrows).
-    static func describe(index: Int, strokes: Int = 2) -> String {
+    /// "value −3, falling" / "peak, value +4" (helpers.js `describeState`; spoken without the arrows, written with them:
+    /// "value +2, rising ↗", "value −3, falling ↘ (dot)").
+    static func describe(index: Int, strokes: Int = 2, arrows: Bool = false) -> String {
         let s = GlyphState.of(index: index, strokes: strokes)
         switch s.derivative {
-        case 1: return "value \(signed(s.value)), rising"
-        case -1: return "value \(signed(s.value)), falling"
+        case 1: return "value \(signed(s.value)), rising" + (arrows ? " ↗" : "")
+        case -1: return "value \(signed(s.value)), falling" + (arrows ? " ↘ (dot)" : "")
         default: return s.value > 0 ? "peak, value \(signed(s.value))" : "valley, value \(signed(s.value))"
         }
     }
@@ -218,25 +219,12 @@ enum FaceWords {
         let clock = n.model
         let last = lv.clipped || lv.end >= clock.tMax - 1e-3
         let kind = Notation.levelKind(level)
-        let next = lv.cycle + 1
-        let name: String
-        switch kind {
-        case "major":
-            name = n.cycleName(level: level, cycle: next)
-        case "unit" where level > 4:
-            // the finest count alone ("35η", "30ι"), or with the Nuclide when it turns over too ("ε#1 1η"),
-            // like pure.js `followerName`
-            let now = n.countsAtStart(level: level, cycle: lv.cycle)
-            let then = n.countsAtStart(level: level, cycle: next)
-            name = now.epsilon == then.epsilon && now.delta == then.delta
-                ? n.cycleShort(level: level, cycle: next) : n.cycleName(level: level, cycle: next)
-        case "unit":
-            name = n.cycleShort(level: level, cycle: next)
-        default:
-            name = Fractonica.periodName(level).text
-        }
+        // a period or a unit by what begins (pure.js `followerName`: "35η", "35η 0ι", "ε#1 1η", "ε#1 of Delta
+        // Tetrafracton"); a depth between units by its letter
+        let named = kind == "major" || kind == "unit"
+        let name = named ? follower(level: level, cycle: lv.cycle, notation: n) : Fractonica.periodName(level).text
         let countdown = last ? "" : words.countdown(lv.end - t, at: t)
-        return Turnover(name: name, named: kind == "major" || kind == "unit", countdown: countdown, last: last, level: level)
+        return Turnover(name: name, named: named, countdown: countdown, last: last, level: level)
     }
 
     /// The turnover as one sentence: "35η begins in 56 min 12 s", "Next θ in 1ι 30λ", "The catalogue ends with this η".
@@ -296,7 +284,7 @@ enum FaceGuideText {
 
     static let gestureLines = [
         "**Tap the top or the bottom** of a face, or swipe down or up, for a longer or shorter unit; the rail of letters beside it jumps straight there.",
-        "**Watch face:** tap the middle for the info labels, double tap to keep the period letters.",
+        "**Watch face:** tap the middle for the info labels, double tap to keep the period letters. Tapping a teal row also selects its period in every view; press and hold a row (right-click on a Mac) for what it says.",
         "**Swipe sideways** or use the dots to switch faces. Keys: ↑ ↓ step, ← → switch, i info, l letters.",
     ]
 }

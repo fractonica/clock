@@ -76,6 +76,14 @@ struct NowScreen: View {
             guard !Task.isCancelled else { return }
             withAnimation(.easeInOut(duration: 0.25)) { overlay.mode = .none }
         }
+        .overlay(alignment: .bottom) {
+            if let row = launch.tip, face == .watch {
+                FaceTipPreview(row: row, tips: rowTips(depth: FaceStepper.clampDepth(depth), words: settings.wording))
+                    .clipShape(.rect(cornerRadius: 22))
+                    .shadow(color: .black.opacity(0.5), radius: 20)
+                    .padding(.bottom, 24)
+            }
+        }
         .sheet(isPresented: $guideShown) {
             NavigationStack { FaceGuide() }
                 #if os(iOS)
@@ -172,7 +180,7 @@ struct NowScreen: View {
             WatchFaceView(frame: frame, overlay: shown, outOfRange: FaceWords.outOfRange(words: words),
                           solarUnavailable: FaceWords.solarUnavailable(pure: words.pure), selectedLevel: settings.selectedLevel,
                           animated: animated, flash: watchFlash, bounce: watchBounce,
-                          bounceDirection: stepDirection, onTap: watchTap)
+                          bounceDirection: stepDirection, onTap: watchTap, tips: rowTips(depth: depth, words: words))
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel(Text(verbatim: frame?.accessibilityLabel ?? FaceWords.outOfRange(words: words).title.joined(separator: " ")))
                 .accessibilityValue(Text(verbatim: watchValue(frame, words: words)))
@@ -182,6 +190,22 @@ struct NowScreen: View {
                 .accessibilityAction(named: Text(settings.showLetters ? "Hide period letters" : "Keep period letters")) { toggleLetters() }
                 .accessibilityAction(named: Text("Journal face")) { setFace(.journal) }
         }
+    }
+
+    /// What the watch rows' cards and menus say and do.
+    private func rowTips(depth: Int, words: Wording) -> WatchRowTips {
+        WatchRowTips(
+            store: store, words: words, topDepth: depth, fixed: launch.time, lettersKept: settings.showLetters,
+            selectedLevel: settings.selectedLevel,
+            select: { row in
+                selectRow(row)
+                steps += 1
+            },
+            step: { step($0) },
+            canStep: { canStep($0) },
+            showInfo: { showInfo() },
+            toggleLetters: { toggleLetters() }
+        )
     }
 
     private func watchValue(_ frame: WatchFrame?, words: Wording) -> String {
@@ -244,8 +268,9 @@ struct NowScreen: View {
         face == .journal ? FaceStepper.unit(unit, step: dir) != nil : FaceStepper.depth(depth, step: dir) != nil
     }
 
-    /// −1 one unit (or depth) longer, +1 shorter, on the face that shows.
-    private func step(_ dir: Int) {
+    /// −1 one unit (or depth) longer, +1 shorter, on the face that shows. `selected`: the same tap also selected a
+    /// row's level, so a step that cannot happen is no refusal (helpers.js: no red pulse when a row was hit).
+    private func step(_ dir: Int, selected: Bool = false) {
         stepDirection = dir
         let region: FaceRegion = dir < 0 ? .top : .bottom
         switch face {
@@ -253,11 +278,27 @@ struct NowScreen: View {
             guard let next = FaceStepper.unit(unit, step: dir) else { return refuse(region) }
             withAnimation(reduceMotion ? .easeInOut(duration: 0.2) : .smooth(duration: 0.42)) { setUnit(next) }
         case .watch:
-            guard let next = FaceStepper.depth(depth, step: dir) else { return refuse(region) }
+            guard let next = FaceStepper.depth(depth, step: dir) else {
+                guard selected else { return refuse(region) }
+                pulse(region, refused: false)
+                steps += 1
+                return
+            }
             withAnimation(.easeInOut(duration: 0.25)) { setDepth(next) }
         }
         pulse(region, refused: false)
         steps += 1
+    }
+
+    /// A period row's level becomes the level every view highlights (face.js `selectRow`); after a step the row stays
+    /// on the face, under its plate.
+    private func selectRow(_ row: WatchGeometry.Row) {
+        let levels = WatchGeometry.levels(topDepth: depth)
+        switch row {
+        case .top: settings.selectedLevel = levels.top
+        case .bottom: settings.selectedLevel = levels.bottom
+        case .solar: break
+        }
     }
 
     private func refuse(_ region: FaceRegion) {
@@ -321,12 +362,14 @@ struct NowScreen: View {
     }
 
     /// SPEC §10: top longer, bottom shorter, middle the info labels; a second middle tap within 0.4 s toggles the
-    /// letters.
+    /// letters. A tap on a period row also selects its level (face.js `onTap`).
     private func watchTap(_ p: CGPoint) {
         guard let region = WatchGeometry.region(at: p) else { return }
         if let dir = region.step {
             lastMiddleTap = nil
-            return step(dir)
+            let row = WatchGeometry.row(at: p).flatMap { $0 == .solar ? nil : $0 }
+            if let row { selectRow(row) }
+            return step(dir, selected: row != nil)
         }
         let tap = MiddleTap.resolve(previous: lastMiddleTap, now: ProcessInfo.processInfo.systemUptime)
         lastMiddleTap = tap.remember
