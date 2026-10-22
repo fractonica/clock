@@ -189,6 +189,12 @@ struct NowScreen: View {
                 .accessibilityAction(named: Text("Show info labels")) { showInfo() }
                 .accessibilityAction(named: Text(settings.showLetters ? "Hide period letters" : "Keep period letters")) { toggleLetters() }
                 .accessibilityAction(named: Text("Journal face")) { setFace(.journal) }
+                .accessibilityActions {
+                    if let frame {
+                        Button("Select \(frame.top.letter) in Every View") { selectRow(.top) }
+                        Button("Select \(frame.bottom.letter) in Every View") { selectRow(.bottom) }
+                    }
+                }
         }
     }
 
@@ -305,6 +311,11 @@ struct NowScreen: View {
         pulse(region, refused: true)
         if face == .journal { journalBounce += 1 } else { watchBounce += 1 }
         refusals += 1
+        // what the web says in a toast (face.js `blockedMessage`), for VoiceOver
+        let longer = region == .top
+        let what = face == .journal ? (longer ? "Longest unit shown" : "Shortest units shown")
+            : (longer ? "Longest period shown" : "Shortest periods shown")
+        AccessibilityNotification.Announcement(what).post()
     }
 
     private func pulse(_ region: FaceRegion, refused: Bool) {
