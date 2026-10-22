@@ -126,16 +126,18 @@ private struct EarthConverterContent: View {
         let earth = EarthFormatter.calendar(zone)
         VStack(spacing: 16) {
             EarthHero(model: model, snap: snap, earth: earth, wide: wide)
+            // lazy stacks: a tick of the followed clock re-lays out only the cards on screen, not the whole page
+            // (a plain stack measured every card once a second: about five times the work)
             if wide {
                 HStack(alignment: .top, spacing: 16) {
-                    VStack(spacing: 16) {
+                    LazyVStack(spacing: 16) {
                         earthCards(snap, earth, zone)
                         if snap.inRange { SolarCard(model: model, snap: snap, earth: earth, pure: false).id("solar") }
                     }
-                    VStack(spacing: 16) { fractonicaCards(snap, earth) }
+                    LazyVStack(spacing: 16) { fractonicaCards(snap, earth) }
                 }
             } else {
-                VStack(spacing: 16) {
+                LazyVStack(spacing: 16) {
                     earthCards(snap, earth, zone)
                     fractonicaCards(snap, earth)
                     if snap.inRange { SolarCard(model: model, snap: snap, earth: earth, pure: false).id("solar") }
@@ -543,7 +545,8 @@ private struct OutOfRangeCard: View {
 }
 
 /// A text field that commits on Return (or when it loses focus) and shows why it could not, without clearing the
-/// other side. While not editing it shows the model's value.
+/// other side. While not editing it shows the model's value directly, so a ticking clock costs no extra state update;
+/// once focused it holds what is being typed.
 struct CommitField: View {
     let label: String
     let value: String
@@ -551,14 +554,16 @@ struct CommitField: View {
     var numeric = false
     let commit: (String) -> CalendarError?
 
-    @State private var text = ""
+    /// What is being typed (or was typed and refused); nil shows `value`.
+    @State private var editing: String?
     @State private var error: CalendarError?
     @FocusState private var focused: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(label).font(.subheadline).foregroundStyle(Theme.ink3)
-            TextField(label, text: $text, prompt: Text(prompt).foregroundStyle(Theme.ink3.opacity(0.6)))
+            TextField(label, text: Binding(get: { editing ?? value }, set: { editing = $0 }),
+                      prompt: Text(prompt).foregroundStyle(Theme.ink3.opacity(0.6)))
                 .font(.code(15))
                 .foregroundStyle(Theme.ink)
                 .textFieldStyle(.plain)
@@ -586,27 +591,29 @@ struct CommitField: View {
                     .transition(.opacity)
             }
         }
-        .onChange(of: value, initial: true) { _, v in
-            if !focused { text = v }
-        }
         .onChange(of: focused) { _, isFocused in
-            guard !isFocused else { return }
-            if text != value, !text.trimmingCharacters(in: .whitespaces).isEmpty {
+            if isFocused {
+                // the text stays put under the cursor while the clock runs on
+                if editing == nil { editing = value }
+                return
+            }
+            if let editing, editing != value, !editing.trimmingCharacters(in: .whitespaces).isEmpty {
                 submit()
             } else {
-                text = value
+                editing = nil
                 error = nil
             }
         }
     }
 
     private func submit() {
+        guard let text = editing else { return }
         if let e = commit(text) {
             withAnimation(.snappy) { error = e }
             Haptics.play(.warning)
         } else {
             withAnimation(.snappy) { error = nil }
-            if !focused { text = value }
+            editing = nil
         }
     }
 }

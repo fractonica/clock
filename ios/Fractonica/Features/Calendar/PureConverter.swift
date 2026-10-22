@@ -16,13 +16,14 @@ struct PureConverterContent: View {
         VStack(spacing: 16) {
             if snap.inRange {
                 PureHero(model: model, snap: snap)
+                // lazy stacks: a tick re-lays out only the cards on screen (see EarthConverterContent)
                 if wide {
                     HStack(alignment: .top, spacing: 16) {
-                        VStack(spacing: 16) { momentCards(snap) }
-                        VStack(spacing: 16) { cycleCards(snap, earth) }
+                        LazyVStack(spacing: 16) { momentCards(snap) }
+                        LazyVStack(spacing: 16) { cycleCards(snap, earth) }
                     }
                 } else {
-                    VStack(spacing: 16) {
+                    LazyVStack(spacing: 16) {
                         momentCards(snap)
                         cycleCards(snap, earth)
                     }
@@ -157,25 +158,35 @@ private struct PureDateCard: View {
     }
 }
 
-/// A date typed in any of its forms, read back to its first Blink.
+/// A date typed in any of its forms, read back to its first Blink: the web's pure jump grammar (pure-parse.js, ported
+/// and fixture-tested as FractonicaKit's `PureJumpParser`) — dates in words or letters and any tail of them, counts,
+/// offsets from the converter's moment (`+2ε 5η`, `3η ago`, `+4 Blinks`), boundaries (`next Helion`), positions,
+/// syncs and glyph states — as pure-converter.js reads its stamp field.
 private struct PureStampCard: View {
     let model: ConverterModel
     let t: Double
 
     @Environment(ClockStore.self) private var store
+    @Environment(AppSettings.self) private var settings
 
     var body: some View {
         CalCard("Read a date", systemImage: "text.cursor") {
-            CommitField(label: "Stamp, words or counts", value: Notation.standard.stamp(at: t, upTo: "nu"), prompt: "δ#3 ε#5 34η 29ι") { text in
-                switch PureInput.read(text, clock: store.clock, ref: t) {
-                case .success(let moved):
+            CommitField(label: "Stamp, words, counts or an offset", value: Notation.standard.stamp(at: t, upTo: "nu"),
+                        prompt: "δ#3 ε#5 34η 29ι") { text in
+                let context = PureJumpContext(now: t, real: Date.now.timeIntervalSince1970, level: settings.selectedLevel)
+                let candidates = PureJumpParser.parse(text, context, notation: .standard)
+                if let time = candidates.first(where: \.isSelectable)?.time {
+                    return model.set(time, from: .pure) ? nil : CalendarError("Outside the catalogue")
+                }
+                // the converter's own reader as a fallback, then the parser's own words for what is wrong
+                if case .success(let moved) = PureInput.read(text, clock: store.clock, ref: t) {
                     model.set(moved, from: .pure)
                     return nil
-                case .failure(let e):
-                    return e
                 }
+                guard let why = candidates.first else { return CalendarError("Type a date, e.g. δ#3 ε#5 34η 29ι") }
+                return CalendarError(why.detail.isEmpty ? why.label : "\(why.label) · \(why.detail)")
             }
-            Text("Delta Trifracton Node ε#2 5η · α#6 β#4 γ#9 · 34η 17ι · pos 22.9 · sync 4820. Numbered entries and Helions start at 1, counts at 0.")
+            Text("Delta Trifracton Node ε#2 5η · α#6 β#4 γ#9 · 34η 17ι · +2ε 5η · 3η ago · next Helion · pos 22.9 · sync 4820. Numbered entries and Helions start at 1, counts at 0.")
                 .font(.footnote)
                 .foregroundStyle(Theme.ink3)
                 .fixedSize(horizontal: false, vertical: true)

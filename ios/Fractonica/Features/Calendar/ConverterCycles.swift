@@ -642,8 +642,9 @@ struct SolarCard: View {
                     }
                 }
                 if pure {
-                    CalValueRow(label: "Begins", value: n.stamp(at: s.start, upTo: "lambda"), mono: true)
-                    CalValueRow(label: "Ends", value: n.stamp(at: s.end, upTo: "lambda"), mono: true)
+                    // to the Preon, like the quarters below: a phone's width keeps both on one line with their label
+                    CalValueRow(label: "Begins", value: n.stamp(at: s.start, upTo: "iota"), mono: true)
+                    CalValueRow(label: "Ends", value: n.stamp(at: s.end, upTo: "iota"), mono: true)
                     CalValueRow(label: "Drift", value: n.driftText(start: s.start, nominalStart: s.nominalStart, drift: s.drift))
                 } else {
                     CalValueRow(label: "Begins", value: "\(earth.dateTime(s.start)) \(earth.tag(s.start))")

@@ -157,7 +157,7 @@ private struct DeltaHeader: View {
                 Text("\(Notation.periodName(level: 2, ordinal: path[2])) · \(Notation.periodName(level: 1, ordinal: path[1])) · \(Notation.periodName(level: 0, ordinal: path[0]))")
                     .font(.footnote)
                     .foregroundStyle(Theme.ink2)
-                    .lineLimit(2)
+                    .lineLimit(4)
                     .minimumScaleFactor(0.8)
                 Text("α#\(path[0]) β#\(path[1]) γ#\(path[2]) δ#\(page.delta)")
                     .font(.code(13))
@@ -274,9 +274,13 @@ private struct ColumnHeader: View {
                 Text("\(h)η")
                     .font(.caption.weight(.semibold).monospacedDigit())
                     .foregroundStyle(Theme.levelColor(6, opacity: 0.9))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.6)
                     .frame(maxWidth: .infinity)
             }
         }
+        // labels of a fixed grid: they grow with the text size only as far as their columns allow
+        .dynamicTypeSize(...DynamicTypeSize.xLarge)
         .accessibilityHidden(true)
     }
 }
@@ -296,6 +300,9 @@ private struct DeltaPageGrid: View {
                     Text("ε#\(row + 1)")
                         .font(.caption.weight(.semibold).monospacedDigit())
                         .foregroundStyle(Theme.levelColor(4))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.6)
+                        .dynamicTypeSize(...DynamicTypeSize.xLarge)
                         .frame(width: metrics.rowLabel, alignment: .leading)
                         .accessibilityHidden(true)
                     ForEach(0..<DeltaPage.columns, id: \.self) { col in
