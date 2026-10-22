@@ -178,7 +178,6 @@ private struct GroupStack: View {
                     }
                 }
         }
-        .transportInset()
     }
 }
 
@@ -199,8 +198,10 @@ extension View {
         }
     }
 
-    /// iOS 18: the transport at the foot of a tab's content, just above the tab bar; the content keeps clear of it and
-    /// scrolls under it. Nothing on iOS 26, where it rides in the tab bar's accessory (`transportAccessory`).
+    /// iOS 18: the transport at the foot of a screen, just above the tab bar; the content keeps clear of it and scrolls
+    /// under it. Applied inside the screen's navigation stack (a safe area inset outside it does not reach the
+    /// screen), so views pushed onto the stack go without it. Nothing on iOS 26, where it rides in the tab bar's
+    /// accessory (`transportAccessory`).
     @ViewBuilder
     fileprivate func transportInset() -> some View {
         if #available(iOS 26.0, *) {
@@ -321,8 +322,7 @@ struct ScreenContent: View {
     }
 }
 
-/// One screen in its own navigation stack, on the app's backdrop, with the shared toolbar (and on iOS 18 the transport
-/// under it).
+/// One screen in its own navigation stack, on the app's backdrop, with the shared toolbar.
 private struct ScreenStack: View {
     let screen: Screen
 
@@ -331,15 +331,13 @@ private struct ScreenStack: View {
             ScreenContent(screen: screen)
                 .screenChrome(screen)
         }
-        #if os(iOS)
-        .transportInset()
-        #endif
     }
 }
 
 extension View {
     /// The backdrop and the toolbar items every screen shares: on iOS, Sound (iPhone; iPad while it plays), Focus and
-    /// Settings on Now; on macOS, the transport, Sound (while it plays), Focus and Settings in every window toolbar.
+    /// Settings on Now (and on iOS 18 the transport at the foot); on macOS, the transport, Sound (while it plays), Focus
+    /// and Settings in every window toolbar.
     fileprivate func screenChrome(_ screen: Screen) -> some View {
         modifier(ScreenChrome(screen: screen))
     }
@@ -353,6 +351,9 @@ private struct ScreenChrome: ViewModifier {
     func body(content: Content) -> some View {
         content
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            #if os(iOS)
+            .transportInset()
+            #endif
             .background { Backdrop() }
             .toolbar {
                 #if os(iOS)
