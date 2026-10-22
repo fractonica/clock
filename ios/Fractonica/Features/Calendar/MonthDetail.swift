@@ -88,7 +88,7 @@ struct DayDetailView: View {
             travel(e)
         } label: {
             HStack(spacing: 12) {
-                EclipseMark(size: 22)
+                CalendarEclipseMark(size: 22)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(verbatim: "Eclipse #\(k)").font(.subheadline.weight(.semibold)).foregroundStyle(Theme.gold)
                     Text(verbatim: "greatest at \(earth.time(e)) · position \(k)").font(.footnote.monospacedDigit()).foregroundStyle(Theme.ink3)
@@ -137,7 +137,7 @@ struct DayDetailView: View {
                               label: "\(CalMath.cycleLabel(level: b.level, ordinal: b.ordinal)) begins at \(earth.time(b.time))") {
                         travel(CalMath.landOn(store.clock, b.time, level: b.level))
                     } content: {
-                        LevelChip(text: CalMath.cycleLabel(level: b.level, ordinal: b.ordinal), level: b.level, filled: b.level < 6, compact: true)
+                        CalendarLevelChip(text: CalMath.cycleLabel(level: b.level, ordinal: b.ordinal), level: b.level, filled: b.level < 6, compact: true)
                         if b.finest > b.level {
                             Text(verbatim: "with \((b.level + 1...b.finest).map(CalMath.letter).joined(separator: " "))")
                                 .font(.caption)
@@ -200,7 +200,7 @@ struct DayDetailView: View {
                         HStack(spacing: 10) {
                             Group {
                                 if case .level(let l) = track.band {
-                                    LevelChip(text: CalMath.cycleLabel(level: l, ordinal: s.ordinal), level: l, compact: true)
+                                    CalendarLevelChip(text: CalMath.cycleLabel(level: l, ordinal: s.ordinal), level: l, compact: true)
                                 } else {
                                     TintChip(text: "S\(s.index) \(CalMath.syncQuarterNames[s.ordinal])", color: Theme.gold, compact: true)
                                 }

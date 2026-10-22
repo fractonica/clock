@@ -498,7 +498,7 @@ private struct SarosCard: View {
                     Haptics.play(.selection)
                 } label: {
                     HStack(spacing: 12) {
-                        EclipseMark(size: 18)
+                        CalendarEclipseMark(size: 18)
                         VStack(alignment: .leading, spacing: 2) {
                             Text("Eclipse #\(k)").font(.subheadline.weight(.semibold)).foregroundStyle(Theme.ink)
                             Text("\(earth.dateTime(e, seconds: false)) · \(EarthTime.countdown(e - t))")

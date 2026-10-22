@@ -206,7 +206,7 @@ struct AddressCard: View {
         let of = level == 0 ? "of \(maximum) in the catalogue" : "of \(nominal) in its \(CalMath.letter(level - 1))"
         let clipped = level > 0 && maximum < nominal ? " · the catalogue ends after #\(maximum)" : ""
         return StepRow {
-            LevelChip(text: "\(CalMath.letter(level)) \(level + 1)", level: level, compact: true)
+            CalendarLevelChip(text: "\(CalMath.letter(level)) \(level + 1)", level: level, compact: true)
                 .fixedSize()
                 .frame(minWidth: 46, alignment: .leading)
             VStack(alignment: .leading, spacing: 1) {
@@ -230,7 +230,7 @@ struct AddressCard: View {
         let n = Notation.standard
         let name = Notation.unit(level: level)?.name ?? "\(CalMath.letter(level)) cycle"
         return StepRow {
-            LevelChip(text: "\(CalMath.letter(level)) \(level + 1)", level: level, compact: true)
+            CalendarLevelChip(text: "\(CalMath.letter(level)) \(level + 1)", level: level, compact: true)
                 .fixedSize()
                 .frame(minWidth: 46, alignment: .leading)
             VStack(alignment: .leading, spacing: 1) {
@@ -463,7 +463,7 @@ struct StatePicker: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 HStack(alignment: .firstTextBaseline) {
-                    LevelChip(text: "\(CalMath.letter(level)) \(level + 1)", level: level)
+                    CalendarLevelChip(text: "\(CalMath.letter(level)) \(level + 1)", level: level)
                     Text(pure ? "When does it show this pair?" : "When does it show this state?")
                         .font(.headline)
                         .foregroundStyle(Theme.ink)

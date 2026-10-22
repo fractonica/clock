@@ -351,7 +351,7 @@ private struct DeltaCell: View, Equatable {
         VStack(alignment: .leading, spacing: 2) {
             HStack(spacing: 3) {
                 if let e = cell.eclipse {
-                    EclipseMark(size: metrics.regular ? 12 : 9)
+                    CalendarEclipseMark(size: metrics.regular ? 12 : 9)
                     Text(Notation.eclipseName(e))
                         .font(.system(size: metrics.regular ? 11 : 9, weight: .semibold).monospacedDigit())
                         .foregroundStyle(Theme.gold)
@@ -472,7 +472,7 @@ private struct DeltaPagePicker: View {
             ForEach(0..<4, id: \.self) { level in
                 let maximum = max(1, CalMath.childCount(clock, parent: Array(path.prefix(level))))
                 HStack(spacing: 10) {
-                    LevelChip(text: CalMath.letter(level), level: level, compact: true).frame(width: 28)
+                    CalendarLevelChip(text: CalMath.letter(level), level: level, compact: true).frame(width: 28)
                     Text(verbatim: Notation.levelNames[level]).foregroundStyle(Theme.ink2).lineLimit(1)
                     Spacer(minLength: 8)
                     Picker(Notation.levelNames[level], selection: Binding(get: { min(path[level], maximum) }, set: { n in
@@ -730,7 +730,7 @@ private struct CellDetailView: View {
                     travel(clock.catalogue[e], "eclipse \(Notation.eclipseName(e))")
                 } label: {
                     HStack(spacing: 10) {
-                        EclipseMark(size: 20)
+                        CalendarEclipseMark(size: 20)
                         Text("Eclipse \(Notation.eclipseName(e)) · position \(e)").font(.subheadline.weight(.semibold)).foregroundStyle(Theme.gold)
                         Spacer()
                         Image(systemName: "location").foregroundStyle(Theme.ink3)

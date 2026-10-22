@@ -159,7 +159,7 @@ struct StepRow<Label: View, Control: View>: View {
 }
 
 /// "η 7"-style chip in a level's colour.
-struct LevelChip: View {
+struct CalendarLevelChip: View {
     let text: String
     let level: Int
     var filled = false
@@ -296,7 +296,7 @@ struct NudgeStepper: View {
 }
 
 /// The eclipse mark: a gold disc with the moon passing over it.
-struct EclipseMark: View {
+struct CalendarEclipseMark: View {
     var size: CGFloat = 14
 
     var body: some View {

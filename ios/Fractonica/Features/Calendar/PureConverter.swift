@@ -112,7 +112,7 @@ private struct PureDateCard: View {
                 VStack(spacing: 8) {
                     ForEach(PureEntry.allCases.filter(\.isMajor)) { entry in
                         StepRow {
-                            LevelChip(text: entry.sym, level: entry.level, compact: true).frame(width: 28)
+                            CalendarLevelChip(text: entry.sym, level: entry.level, compact: true).frame(width: 28)
                             VStack(alignment: .leading, spacing: 1) {
                                 Text(entry.name).font(.subheadline).foregroundStyle(Theme.ink)
                                 Text("\(Notation.quarterWords[c.quarters[entry.rawValue]]) quarter")
@@ -128,7 +128,7 @@ private struct PureDateCard: View {
                     ForEach(PureEntry.allCases.filter { !$0.isMajor }) { entry in
                         let r = entry.range(clock)
                         StepRow {
-                            LevelChip(text: entry.sym, level: entry.level, compact: true).frame(width: 28)
+                            CalendarLevelChip(text: entry.sym, level: entry.level, compact: true).frame(width: 28)
                             VStack(alignment: .leading, spacing: 1) {
                                 Text(entry.unit.name).font(.subheadline).foregroundStyle(Theme.ink)
                                 Text("\(entry == .epsilon ? "ε#" : "")\(r.lowerBound)–\(r.upperBound) \(entry.isNumbered ? "numbered" : "completed") in \(entry.parentWords)")
@@ -210,7 +210,7 @@ private struct PureSarosCard: View {
                     Haptics.play(.selection)
                 } label: {
                     HStack(spacing: 12) {
-                        EclipseMark(size: 18)
+                        CalendarEclipseMark(size: 18)
                         VStack(alignment: .leading, spacing: 2) {
                             Text("Eclipse \(Notation.eclipseName(k))").font(.subheadline.weight(.semibold)).foregroundStyle(Theme.ink)
                             Text(before ? "\(text) ago" : "in \(text)").font(.footnote.monospacedDigit()).foregroundStyle(Theme.ink3)
@@ -238,7 +238,7 @@ private struct PhaseCard: View {
             VStack(spacing: 6) {
                 ForEach(snap.levels.prefix(4), id: \.level) { r in
                     HStack(spacing: 10) {
-                        LevelChip(text: "\(r.name) \(r.depth)", level: r.level, compact: true).frame(width: 46, alignment: .leading)
+                        CalendarLevelChip(text: "\(r.name) \(r.depth)", level: r.level, compact: true).frame(width: 46, alignment: .leading)
                         Text(Notation.periodName(level: r.level, ordinal: n.ordinalOf(level: r.level, cycle: r.cycle)))
                             .font(.subheadline)
                             .foregroundStyle(Theme.ink)

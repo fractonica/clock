@@ -452,7 +452,7 @@ private struct DayCell: View, Equatable {
                     .background { if isToday { Circle().fill(Theme.now) } }
                 Spacer(minLength: 0)
                 if day.eclipse != nil {
-                    EclipseMark(size: metrics.regular ? 13 : 10).padding(.top, 3)
+                    CalendarEclipseMark(size: metrics.regular ? 13 : 10).padding(.top, 3)
                 }
             }
             if !events.isEmpty {
