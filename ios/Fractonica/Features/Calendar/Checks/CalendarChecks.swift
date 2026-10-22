@@ -4,7 +4,7 @@ import Foundation
 // The calendar's mapping maths against the web app's semantics (src/ui/calendar/convert.js, month.js, pure-conv.js and
 // test/calendar.test.js): position round trips, addresses and landings, local days across clock changes, the month
 // grid and its bands, the day's boundaries, the year ribbon, pure counters, reading pure dates back to their first
-// millisecond, and the Delta page. Run: ios/scripts/check.sh ios/Fractonica/Features/Calendar/Checks
+// millisecond, the Delta page, and fixture.json (make-calendar-fixture.mjs runs the JavaScript itself). Run: ios/scripts/check.sh ios/Fractonica/Features/Calendar/Checks
 
 @main
 struct CalendarChecks {
@@ -22,6 +22,7 @@ struct CalendarChecks {
         pureInputChecks()
         pureWordChecks()
         deltaPageChecks()
+        webFixtureChecks()
         Checks.finish()
     }
 }
@@ -367,4 +368,134 @@ private func deltaPageChecks() {
     check(lastPage.cells.contains { !$0.inRange } && lastPage.cells.contains { $0.cut < 1 }, "the last page ends inside a cell")
     let syncs = page.cells.flatMap(\.syncs)
     check(syncs.count >= 6 && syncs.allSatisfy { (0...1).contains($0.x) }, "solar sync quarters on the page: \(syncs.count)")
+}
+
+// MARK: - Against the web app (fixture.json from make-calendar-fixture.mjs)
+
+private typealias JSON = [String: Any]
+
+private func num(_ v: Any?) -> Double? { (v as? NSNumber)?.doubleValue }
+private func int(_ v: Any?) -> Int? { (v as? NSNumber)?.intValue }
+
+private func webFixtureChecks() {
+    let url = URL(fileURLWithPath: #filePath).deletingLastPathComponent().appendingPathComponent("fixture.json")
+    guard let data = try? Data(contentsOf: url), let fx = try? JSONSerialization.jsonObject(with: data) as? JSON else {
+        check(false, "fixture.json is missing: run node ios/Fractonica/Features/Calendar/Checks/make-calendar-fixture.mjs")
+        return
+    }
+    let range = CalMath.syncRange(clock)
+    let webRange = fx["syncRange"] as? JSON
+    check(range.lowerBound == int(webRange?["first"]) && range.upperBound == int(webRange?["last"]), "sync range \(range) as the web's")
+    check(DeltaPage.count(clock) == int(fx["viewCount"]), "Delta page count \(DeltaPage.count(clock)) as the web's")
+    webMonthChecks(fx["months"] as? [JSON] ?? [], syncRange: range)
+    webYearChecks(fx["years"] as? [JSON] ?? [])
+    webInstantChecks(fx["instants"] as? [JSON] ?? [])
+    webPageChecks(fx["pages"] as? [JSON] ?? [], syncRange: range)
+}
+
+private func webMonthChecks(_ months: [JSON], syncRange: ClosedRange<Int>) {
+    var cells = 0, segments = 0, bad: [String] = []
+    for m in months {
+        guard let y = int(m["year"]), let mo = int(m["month"]), let z = m["zone"] as? String, let zone = TimeZone(identifier: z),
+              let ws = int(m["weekStart"]), let ov = m["overlay"] as? String, let band = CalendarBand(key: ov),
+              let webCells = m["cells"] as? [JSON] else { bad.append("unreadable month"); continue }
+        let grid = MonthGrid(clock: clock, zone: zone, year: y, month: mo, weekStart: ws, bands: [band], syncRange: syncRange)
+        let tag = "\(y)-\(mo) \(z) \(ov)"
+        guard grid.days.count == webCells.count else { bad.append("\(tag): \(grid.days.count) days"); continue }
+        for (day, c) in zip(grid.days, webCells) {
+            cells += 1
+            let dayTag = "\(tag) \(day.key)"
+            if day.year != int(c["y"]) || day.month != int(c["m"]) || day.day != int(c["d"]) || day.inMonth != (c["inMonth"] as? Bool)
+                || day.weekday != int(c["dow"]) { bad.append("\(dayTag): date"); continue }
+            if day.start != num(c["start"]) || day.end != num(c["end"]) { bad.append("\(dayTag): day \(day.start) … \(day.end)") }
+            if day.inRange != (c["inRange"] as? Bool) { bad.append("\(dayTag): inRange \(day.inRange)") }
+            if (day.eclipse ?? -1) != int(c["eclipse"]) { bad.append("\(dayTag): eclipse \(String(describing: day.eclipse))") }
+            let webSegs = c["segs"] as? [JSON] ?? []
+            let segs = day.tracks.first?.segments ?? []
+            guard segs.count == webSegs.count else { bad.append("\(dayTag): \(segs.count) segments, web \(webSegs.count)"); continue }
+            for (s, w) in zip(segs, webSegs) {
+                segments += 1
+                guard Int(s.index) == int(w["idx"]), s.ordinal == int(w["ord"]), s.startsHere == (w["sh"] as? Bool), s.endsHere == (w["eh"] as? Bool),
+                      let ws = num(w["start"]), let we = num(w["end"]), abs(s.start - ws) < 1e-4, abs(s.end - we) < 1e-4 else {
+                    bad.append("\(dayTag): segment \(s.index) #\(s.ordinal) \(s.start)…\(s.end) vs \(w)")
+                    continue
+                }
+                let x0 = max(0, (ws - day.start) / day.length), x1 = min(1, (we - day.start) / day.length)
+                if abs(s.x0 - x0) > 1e-9 || abs(s.x1 - x1) > 1e-9 { bad.append("\(dayTag): segment \(s.index) at \(s.x0)…\(s.x1)") }
+            }
+        }
+    }
+    check(bad.isEmpty, "\(months.count) month grids (\(cells) days, \(segments) segments) match month.js buildMonth: \(bad.prefix(6))")
+}
+
+private func webYearChecks(_ years: [JSON]) {
+    for w in years {
+        guard let y = int(w["year"]), let z = w["zone"] as? String, let zone = TimeZone(identifier: z) else { continue }
+        let r = YearRibbon(clock: clock, zone: zone, year: y)
+        check(r.summary == w["text"] as? String, "year \(y) \(z): \"\(r.summary)\" is the web's \"\(w["text"] as? String ?? "")\"")
+        check(r.start == num(w["start"]) && r.end == num(w["end"]), "year \(y) \(z) spans the web's local year")
+        let months = w["months"] as? [JSON] ?? []
+        let monthsMatch = months.count == r.months.count && zip(r.months, months).allSatisfy {
+            abs($0.x0 - (num($1["x0"]) ?? .nan)) < 1e-12 && abs($0.x1 - (num($1["x1"]) ?? .nan)) < 1e-12 && $0.inRange == ($1["inRange"] as? Bool)
+        }
+        check(monthsMatch, "year \(y) \(z): ribbon months as the web's")
+        let ticks = (w["ticks"] as? [JSON] ?? []).map { "\(int($0["level"]) ?? -1):\(int($0["ord"]) ?? -1):\(CalMath.r3(num($0["start"]) ?? .nan))" }
+        let mine = r.ticks.map { "\($0.level):\($0.ordinal):\(CalMath.r3($0.time))" }
+        check(Set(ticks) == Set(mine) && ticks.count == mine.count, "year \(y) \(z): δ and ε ticks as the web's (\(mine.count) vs \(ticks.count))")
+    }
+}
+
+private func webInstantChecks(_ instants: [JSON]) {
+    var bad: [String] = []
+    for w in instants {
+        guard let t = num(w["t"]) else { continue }
+        let pos = CalMath.position(clock, at: t).map { "\($0.ordinal).\($0.fraction)" }
+        if pos != w["position"] as? String { bad.append("\(t): position \(pos ?? "nil") vs \(w["position"] ?? "nil")") }
+        let path = (w["path"] as? [NSNumber])?.map(\.intValue)
+        if CalMath.path(clock, at: t, depth: 14) != path { bad.append("\(t): address") }
+        let solar = clock.solar(at: t)
+        if let s = w["sync"] as? JSON {
+            if solar?.sync != int(s["n"]) || abs((solar?.phase ?? .nan) - (num(s["phase"]) ?? .nan)) > 1e-9 { bad.append("\(t): solar sync \(String(describing: solar?.sync))") }
+            if let n = int(s["n"]), let info = clock.solarSync(number: n), let ws = num(s["start"]), let we = num(s["end"]), let wd = num(s["drift"]) {
+                if abs(info.start - ws) > 1e-4 || abs(info.end - we) > 1e-4 || abs(info.drift - wd) > 1e-4 { bad.append("\(t): sync \(n) facts") }
+            }
+        } else if solar != nil, CalMath.syncRange(clock).contains(solar!.sync) {
+            bad.append("\(t): a solar sync where the web has none")
+        }
+        let e = CalMath.eclipses(clock, around: t)
+        let we = w["eclipse"] as? JSON
+        if e.previous != int(we?["prev"]) || e.next != int(we?["next"]) { bad.append("\(t): eclipses \(String(describing: e))") }
+        if DeltaPage.page(clock, at: t) != int(w["view"]) { bad.append("\(t): Delta page") }
+        let c = PureCounters(.standard, at: t)
+        if let wc = w["counters"] as? JSON {
+            let keys = ["alpha", "beta", "gamma", "delta", "epsilon", "eta", "iota", "lambda", "nu"]
+            if c?.values != keys.map({ int(wc[$0]) ?? -1 }) { bad.append("\(t): pure counters \(String(describing: c?.values))") }
+        } else if c != nil {
+            bad.append("\(t): pure counters where the web has none")
+        }
+    }
+    check(bad.isEmpty, "\(instants.count) instants: position, address, solar sync, eclipses, Delta page and pure counters as the web's: \(bad.prefix(6))")
+}
+
+private func webPageChecks(_ pages: [JSON], syncRange: ClosedRange<Int>) {
+    var bad: [String] = []
+    for w in pages {
+        guard let hv = int(w["hv"]), let cells = w["cells"] as? [JSON] else { continue }
+        let page = DeltaPage(clock: clock, index: hv, syncRange: syncRange)
+        for (c, wc) in zip(page.cells, cells) {
+            let tag = "page \(hv) cell \(c.index)"
+            if Int(c.z) != int(wc["z"]) || c.inRange != (wc["inRange"] as? Bool) { bad.append("\(tag): place"); continue }
+            if abs(c.cut - (num(wc["cut"]) ?? .nan)) > 1e-12 || c.start != num(wc["start"]) || c.end != num(wc["end"]) {
+                bad.append("\(tag): \(c.start) … \(c.end) cut \(c.cut)")
+            }
+            if (c.eclipse ?? -1) != int(wc["eclipse"]) || (c.eclipse != nil && abs(c.eclipseFraction - (num(wc["frac"]) ?? .nan)) > 1e-12) {
+                bad.append("\(tag): eclipse \(String(describing: c.eclipse)) at \(c.eclipseFraction)")
+            }
+            let syncs = (wc["syncs"] as? [JSON] ?? []).map { "\(int($0["n"]) ?? 0):\(int($0["q"]) ?? 0):\(String(format: "%.9f", num($0["x"]) ?? .nan))" }
+            if syncs != c.syncs.map({ "\($0.sync):\($0.quarter):\(String(format: "%.9f", $0.x))" }) { bad.append("\(tag): syncs \(c.syncs) vs \(syncs)") }
+            let dq = (wc["dq"] as? [JSON] ?? []).map { "\(int($0["q"]) ?? 0):\(num($0["x0"]) ?? .nan):\(num($0["x1"]) ?? .nan):\(($0["sh"] as? Bool) == true)" }
+            if dq != c.quarters.map({ "\($0.quarter):\($0.x0):\($0.x1):\($0.startsHere)" }) { bad.append("\(tag): Delta quarters") }
+        }
+    }
+    check(bad.isEmpty, "\(pages.count) Delta pages match pure-conv.js buildPureGrid: \(bad.prefix(6))")
 }
