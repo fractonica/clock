@@ -1,0 +1,10 @@
+# The app files FaceChecks.swift compiles against (relative to ios/).
+Fractonica/Features/Face/FaceGeometry.swift
+Fractonica/Features/Face/FaceCadence.swift
+Fractonica/Features/Face/FaceWords.swift
+Fractonica/Features/Face/FaceFrames.swift
+Fractonica/Features/Face/FaceTimeline.swift
+Fractonica/Core/Formatting.swift
+Fractonica/Core/AppSettings.swift
+Fractonica/Core/ClockStore.swift
+Shared/Notation+Standard.swift

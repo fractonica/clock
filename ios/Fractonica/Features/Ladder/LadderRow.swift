@@ -1,0 +1,548 @@
+import FractonicaKit
+import SwiftUI
+
+/// One depth of the ladder (src/ui/ladder.js): chip, place in the parent, time left, the segmented bar and the phase;
+/// the selected row opens its details. Each row redraws on its own, at the cadence its bar and its countdown need
+/// (`LadderCadence.row`: once a minute for α … ε, once a second for a countdown in seconds, one pixel of its measured
+/// bar for ι κ, every frame for the fast ones; an open row at least once a second), and reads its level once per redraw.
+struct LadderRow: View {
+    let level: Int
+    let isSelected: Bool
+    let isExpanded: Bool
+    let navigator: LadderNavigator
+    let onTap: () -> Void
+
+    @Environment(AppSettings.self) private var settings
+    @Environment(ClockStore.self) private var store
+    @ScaledMetric(relativeTo: .subheadline) private var readingSize = 15.0
+    @Environment(\.dynamicTypeSize) private var typeSize
+    @Environment(\.displayScale) private var displayScale
+
+    private var info: LevelInfo { FractonicaClock.shared.levelInfo(level) }
+    /// Too fast to count down or to follow (ν, ξ).
+    private var still: Bool { info.meanSeconds < LadderCadence.stillBelow }
+
+    /// The cadence the row asked for at its last redraw (`cadence(_:t:)`); it changes with the countdown's resolution.
+    @State private var asked: Double?? = .none
+    /// The bar's width in device pixels, once measured: its row redraws about once a pixel (a phone's bar is a third
+    /// of the 2000 px assumed before, so ι redraws below 2 Hz there instead of 4).
+    @State private var barPixels = LadderCadence.assumedPixels
+
+    /// Displayed seconds between redraws for a reading at t (nil: outside the catalogue); nil every frame.
+    private func cadence(_ lv: LevelReading?, t: Double) -> Double? {
+        if still { return isExpanded ? LadderCadence.readout : 60 }
+        guard let lv else { return LadderCadence.row(meanSeconds: info.meanSeconds, pixels: barPixels) }
+        if isExpanded {
+            return LadderCadence.openRow(meanSeconds: info.meanSeconds, untilNext: (lv.next.time ?? lv.end) - t,
+                                         elapsed: t - lv.start, pure: settings.pure, pixels: barPixels)
+        }
+        return LadderCadence.row(meanSeconds: info.meanSeconds, remaining: lv.end - t, pure: settings.pure, pixels: barPixels)
+    }
+
+    var body: some View {
+        let words = settings.wording
+        // until the first redraw has asked for its own, the cadence of a row not yet read (never too slow)
+        let cadence = asked ?? LadderCadence.row(meanSeconds: info.meanSeconds)
+        ClockTimeline(cadence.map { .periodic($0) } ?? .animation) { raw in
+            let t = LadderLaunch.shown(raw)
+            let lv = store.clock.level(at: t, level)
+            VStack(alignment: .leading, spacing: 0) {
+                header(lv, t: t, words: words, container: cadence)
+                if isExpanded, let lv {
+                    LadderDetail(reading: lv, t: t, still: still, words: words, container: cadence, navigator: navigator)
+                        .transition(.opacity.combined(with: .move(edge: .top)))
+                }
+            }
+            .onChange(of: self.cadence(lv, t: t), initial: true) { _, wanted in asked = .some(wanted) }
+        }
+    }
+
+    // MARK: Header
+
+    private func header(_ lv: LevelReading?, t: Double, words: Wording, container: Double?) -> some View {
+        Button(action: onTap) {
+            HStack(spacing: 12) {
+                LevelChip(level: level, prominent: isSelected, dimmed: lv == nil)
+                VStack(alignment: .leading, spacing: 5) {
+                    // accessibility text sizes put the time left under the place, so neither is cut short
+                    let line = typeSize.isAccessibilitySize
+                        ? AnyLayout(VStackLayout(alignment: .leading, spacing: 2))
+                        : AnyLayout(HStackLayout(alignment: .firstTextBaseline, spacing: 8))
+                    line {
+                        Text(counter(lv, words: words))
+                            .font(.subheadline)
+                            .foregroundStyle(lv == nil ? Theme.ink3 : Theme.ink2)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                        if !typeSize.isAccessibilitySize { Spacer(minLength: 4) }
+                        left(lv, t: t, words: words, container: container)
+                            .font(.reading(readingSize, weight: .medium))
+                            .foregroundStyle(lv == nil ? Theme.ink3 : still ? Theme.ink2 : Theme.ink)
+                            .lineLimit(1)
+                            .layoutPriority(1)
+                    }
+                    SegmentBar(level: level, factor: info.factor, phase: lv?.phase, still: still, emphasized: isSelected, clip: clip(lv))
+                        .onGeometryChange(for: Double.self) { Double($0.size.width) } action: { width in
+                            let pixels = max(1, (width * displayScale).rounded())
+                            if pixels != barPixels { barPixels = pixels }
+                        }
+                }
+                PhaseMark(reading: still ? nil : lv, pure: words.pure)
+            }
+            .padding(.vertical, 7)
+            .contentShape(.rect)
+        }
+        .buttonStyle(LadderPressStyle())
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(accessibilityText(lv, t: t, words: words))
+        .accessibilityHint(isExpanded ? "Hides the details" : "Selects this depth and shows its details")
+        .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+        .accessibilityAction(named: "Just after") { navigator.justAfter(level) }
+        .accessibilityAction(named: "Just before") { navigator.justBefore(level) }
+        .accessibilityAction(named: "Start of this cycle") { navigator.start(level) }
+        #if os(macOS)
+        .help(helpText(lv, words: words))
+        #endif
+    }
+
+    #if os(macOS)
+    /// The pointer's tooltip (the web ladder's hover card, in short): when the cycle ends, and how to travel.
+    private func helpText(_ lv: LevelReading?, words: Wording) -> String {
+        guard let lv else { return "Outside the catalogue" }
+        let how = "Click for details · ↩ Just after, ⇧↩ Just before · right-click for more"
+        if still {
+            let length = words.pure ? LadderPureText(notation: words.notation).periodBlinks(info.meanSeconds) : EarthTime.duration(info.meanSeconds)
+            return "Too fast to follow: one cycle lasts \(length)\n\(how)"
+        }
+        if words.pure {
+            let next = LadderPureText(notation: words.notation).nextCycle(level: level, cycle: lv.cycle)?.name
+            return "\(LadderPureText.endsText(next))\n\(how)"
+        }
+        return "\(lv.clipped ? "The catalogue ends" : "Ends") \(LadderText.whenFull(words.earth, lv.end, precise: lv.duration < 10)) \(words.tag(lv.end))\n\(how)"
+    }
+    #endif
+
+    /// "6 of 18" · pure "Trifracton Node", "ε#5", "34η".
+    private func counter(_ lv: LevelReading?, words: Wording) -> String {
+        guard let lv else { return "—" }
+        if still { return "too fast to follow" }
+        return words.pure ? LadderPureText(notation: words.notation).rowLabel(lv) : LadderText.counter(local: lv.local, siblings: lv.siblings)
+    }
+
+    @ViewBuilder
+    private func left(_ lv: LevelReading?, t: Double, words: Wording, container: Double?) -> some View {
+        if let lv {
+            if still {
+                Text(words.pure ? LadderPureText(notation: words.notation).periodBlinks(info.meanSeconds) : "every \(EarthTime.duration(info.meanSeconds))")
+            } else {
+                let end = lv.end
+                let pure = words.pure
+                let text = LadderPureText(notation: words.notation)
+                LiveCountdown(target: end, t: t, container: container, pure: pure) { now in
+                    pure ? text.left(from: now, to: end) : LadderText.remaining(end - now)
+                }
+            }
+        } else {
+            Text("—")
+        }
+    }
+
+    /// The phase at which the catalogue ends inside a clipped cycle.
+    private func clip(_ lv: LevelReading?) -> Double? {
+        guard let lv, lv.clipped else { return nil }
+        let p = info.prefix
+        return Double(Int128(store.clock.extent) * p - 4 * Int128(lv.cycle)) / 4
+    }
+
+    private func accessibilityText(_ lv: LevelReading?, t: Double, words: Wording) -> String {
+        let head = words.pure ? LadderPureText.depthWords(level) : "\(LadderText.letter(level)), depth \(level + 1)"
+        guard let lv else { return "\(head): outside the catalogue" }
+        if still {
+            let length = words.pure ? LadderPureText(notation: words.notation).periodBlinks(info.meanSeconds) : EarthTime.duration(info.meanSeconds)
+            return "\(head): too fast to follow, one cycle lasts \(length)"
+        }
+        let clipped = lv.clipped ? ", clipped by the end of the catalogue" : ""
+        if words.pure {
+            let text = LadderPureText(notation: words.notation)
+            let phase = Notation.isMajor(level)
+                ? "\(LadderPureText.quarterWord(lv.phase)) quarter"
+                : "phase \(Notation.pair(lv.phase).hi) and \(Notation.pair(lv.phase).lo) of 256"
+            let next = text.nextCycle(level: level, cycle: lv.cycle)?.name
+            return "\(head): \(text.cycleTitle(level: level, cycle: lv.cycle)), \(lv.local + 1) of \(lv.siblings), \(phase), "
+                + "\(text.left(from: t, to: lv.end)) left, then \(next.map { "\($0) begins" } ?? "the catalogue ends")\(clipped)"
+        }
+        let whole = LadderText.pctWhole(lv.phase)
+        let pct = info.meanSeconds >= 120 ? whole : whole / 10 * 10
+        return "\(head): \(LadderText.counter(local: lv.local, siblings: lv.siblings)), \(pct) percent through this cycle, "
+            + "\(LadderText.remaining(lv.end - t)) left, ends \(LadderText.whenFull(words.earth, lv.end))\(clipped)"
+    }
+}
+
+// MARK: - Details
+
+/// The open row's details: when the cycle ends (or what begins), its quarter thresholds, where the displayed time is
+/// inside it, its span, and the three ways to travel along it.
+struct LadderDetail: View {
+    let reading: LevelReading
+    let t: Double
+    let still: Bool
+    let words: Wording
+    let container: Double?
+    let navigator: LadderNavigator
+
+    @Environment(\.dynamicTypeSize) private var typeSize
+
+    private var level: Int { reading.level }
+    private var pure: Bool { words.pure }
+    /// Accessibility text sizes: one fact per line instead of columns, so nothing is cut short or pushed off the row.
+    private var stacked: Bool { typeSize.isAccessibilitySize }
+    private var text: LadderPureText { LadderPureText(notation: words.notation) }
+    private var clock: FractonicaClock { words.notation.model }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Rectangle().fill(Theme.line).frame(height: 1).padding(.top, 6)
+            ends
+            thresholds
+            facts
+            actions
+        }
+        .padding(.bottom, 10)
+        .padding(.leading, 2)
+    }
+
+    // MARK: Ends
+
+    @ViewBuilder
+    private var ends: some View {
+        let lv = reading
+        if pure {
+            let next = text.nextCycle(level: level, cycle: lv.cycle)
+            VStack(alignment: .leading, spacing: 3) {
+                DetailKey(text: next == nil ? "Catalogue ends" : "Ends")
+                if let next {
+                    Text(LadderPureText.endsText(next.name))
+                        .font(.title3.weight(.semibold))
+                        .foregroundStyle(Theme.ink)
+                    Text(next.address)
+                        .font(.code(12))
+                        .foregroundStyle(Theme.ink3)
+                        .textSelection(.enabled)
+                } else {
+                    LiveCountdown(target: lv.end, t: t, container: container, pure: true) { now in
+                        "in " + text.left(from: now, to: lv.end)
+                    }
+                    .font(.title3.weight(.semibold).monospacedDigit())
+                }
+            }
+        } else {
+            VStack(alignment: .leading, spacing: 3) {
+                DetailKey(text: lv.clipped ? "Catalogue ends" : "Ends")
+                let line = stacked
+                    ? AnyLayout(VStackLayout(alignment: .leading, spacing: 2))
+                    : AnyLayout(HStackLayout(alignment: .firstTextBaseline, spacing: 6))
+                line {
+                    Text(LadderText.whenFull(words.earth, lv.end, precise: lv.duration < 10))
+                        .font(.title3.weight(.semibold).monospacedDigit())
+                        .foregroundStyle(Theme.ink)
+                        .minimumScaleFactor(0.7)
+                    Text(words.tag(lv.end))
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(Theme.ink3)
+                }
+                .lineLimit(stacked ? nil : 1)
+                .fixedSize(horizontal: false, vertical: stacked)
+            }
+        }
+    }
+
+    // MARK: Thresholds
+
+    private var thresholds: some View {
+        let lv = reading
+        return VStack(alignment: .leading, spacing: 6) {
+            DetailKey(text: pure && !still && level < 12 ? "Quarters end at" : "Quarters")
+            if stacked {
+                // accessibility sizes: the quarter on one line, where and when it ends on the next
+                VStack(alignment: .leading, spacing: 10) {
+                    ForEach(0..<4, id: \.self) { i in
+                        let when = lv.thresholds[i + 1].time
+                        let state = quarterState(i)
+                        VStack(alignment: .leading, spacing: 2) {
+                            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                                quarterDot(state)
+                                quarterName(i, state: state)
+                            }
+                            Text(place(when)).monospacedDigit().foregroundStyle(state == 0 ? Theme.ink3 : Theme.ink2)
+                            relative(when, state: state)
+                                .monospacedDigit()
+                                .foregroundStyle(state == 1 ? Theme.levelColor(level) : Theme.ink3)
+                        }
+                        .font(.subheadline)
+                    }
+                }
+            } else {
+                Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 10, verticalSpacing: 7) {
+                    ForEach(0..<4, id: \.self) { i in
+                        let when = lv.thresholds[i + 1].time
+                        let state = quarterState(i)
+                        GridRow {
+                            quarterDot(state)
+                            quarterName(i, state: state)
+                            Text(place(when))
+                                .monospacedDigit()
+                                .foregroundStyle(state == 0 ? Theme.ink3 : Theme.ink2)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.75)
+                            relative(when, state: state)
+                                .monospacedDigit()
+                                .foregroundStyle(state == 1 ? Theme.levelColor(level) : Theme.ink3)
+                                .lineLimit(1)
+                                .gridColumnAlignment(.trailing)
+                                .frame(maxWidth: .infinity, alignment: .trailing)
+                        }
+                        .font(.subheadline)
+                    }
+                }
+            }
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    /// 0 passed, 1 the quarter the displayed time is in, 2 to come (every quarter of a cycle too fast to follow).
+    private func quarterState(_ i: Int) -> Int {
+        still ? 2 : i < reading.quarter ? 0 : i == reading.quarter ? 1 : 2
+    }
+
+    private func quarterDot(_ state: Int) -> some View {
+        Circle()
+            .fill(state == 0 ? Theme.ink3 : state == 1 ? Theme.levelColor(level) : .clear)
+            .overlay { Circle().strokeBorder(state == 2 ? Theme.ink3 : .clear, lineWidth: 1) }
+            .frame(width: 7, height: 7)
+    }
+
+    /// "Peak ¼".
+    private func quarterName(_ i: Int, state: Int) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 5) {
+            Text(Notation.quarterWords[i]).foregroundStyle(state == 0 ? Theme.ink3 : Theme.ink)
+            Text(["¼", "½", "¾", "1"][i]).font(.caption).foregroundStyle(Theme.ink3)
+        }
+    }
+
+    /// Where a threshold falls: a Gregorian label at the cycle's resolution · pure two stamp tokens ("34η 9ι").
+    private func place(_ when: Double?) -> String {
+        guard let when else { return "—" }
+        if pure {
+            let where_ = text.quarterWhere(when, level: level)
+            return where_.isEmpty ? "—" : where_
+        }
+        return LadderText.whenLabel(words.earth, when, ref: reading.start, span: reading.duration)
+    }
+
+    @ViewBuilder
+    private func relative(_ when: Double?, state: Int) -> some View {
+        if let when {
+            if still {
+                Text(pure ? "+" + text.periodBlinks(when - reading.start) : "+\(Int(LadderText.jsRound((when - reading.start) * 1000))) ms")
+            } else if state == 0 {
+                Text("passed")
+            } else {
+                LiveCountdown(target: when, t: t, container: container, pure: pure) { now in
+                    pure ? text.left(from: now, to: when) : "in " + LadderText.countdown(when - now)
+                }
+            }
+        } else {
+            Text("after the end")
+        }
+    }
+
+    // MARK: Facts
+
+    private var facts: some View {
+        let lv = reading
+        let seg = LadderText.segment(phase: lv.phase, factor: lv.factor)
+        let span = LadderText.positionSpan(cycle: lv.cycle, prefix: clock.levelInfo(level).prefix, extent: clock.extent, clipped: lv.clipped)
+        return Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 14, verticalSpacing: 9) {
+            if pure {
+                pureFacts(lv, seg: seg)
+            } else {
+                fact("Cycle", LadderText.place(level: level, local: lv.local, siblings: lv.siblings, cycle: lv.cycle))
+                fact("Through", still ? "too fast to follow" : "\(LadderText.pctTenths(lv.phase)) of this cycle")
+                fact("Sector", still ? "—" : LadderText.sector(level: level, index: seg.index, frac: seg.frac, factor: lv.factor))
+                fact("Started", LadderText.whenFull(words.earth, lv.start, precise: lv.duration < 10))
+                fact("Length", EarthTime.duration(lv.duration) + (lv.clipped ? " · clipped" : ""))
+            }
+            fact(pure ? "Position" : "Saros span", "\(span.from) → \(span.to)", code: true)
+        }
+        .font(.subheadline)
+    }
+
+    @ViewBuilder
+    private func pureFacts(_ lv: LevelReading, seg: (index: Int, frac: Double)) -> some View {
+        let major = Notation.isMajor(level)
+        factRow(major ? "Quarter" : "Phase") {
+            if still {
+                Text("too fast to follow").foregroundStyle(Theme.ink2)
+            } else if major {
+                HStack(spacing: 8) {
+                    QuarterPips(quarter: lv.quarter)
+                    Text(verbatim: "\(LadderPureText.quarterWord(lv.phase)) · \(lv.quarter + 1) of 4").foregroundStyle(Theme.ink)
+                }
+            } else {
+                HStack(spacing: 8) {
+                    PairView(fraction: lv.phase, color: Theme.teal, height: 15)
+                    Text(Notation.pairText(lv.phase)).monospacedDigit().foregroundStyle(Theme.ink)
+                }
+            }
+        }
+        factRow("Sector") {
+            if still {
+                Text("—").foregroundStyle(Theme.ink2)
+            } else {
+                let sector = text.sectorName(lv, index: seg.index, frac: seg.frac)
+                HStack(spacing: 8) {
+                    if !sector.major { PairView(fraction: seg.frac, color: Theme.teal.opacity(0.8), height: 13) }
+                    Text(verbatim: "\(sector.name)\(sector.quarter.map { " \($0)" } ?? "") · \(seg.index + 1) of \(lv.factor)")
+                        .foregroundStyle(Theme.ink)
+                }
+            }
+        }
+        factRow("Cycle") {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(text.cycleTitle(level: level, cycle: lv.cycle)).foregroundStyle(Theme.ink)
+                Text(text.cycleAddress(level: level, cycle: lv.cycle))
+                    .font(.code(12))
+                    .foregroundStyle(Theme.ink3)
+                    .textSelection(.enabled)
+            }
+        }
+        factRow("Started") {
+            Text(verbatim: "\(text.left(from: lv.start, to: t)) ago")
+                .monospacedDigit()
+                .foregroundStyle(Theme.ink)
+        }
+        factRow("Length") {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(text.length(lv) + (lv.clipped ? " · clipped" : "")).foregroundStyle(Theme.ink)
+                Text(text.unitSentence(level)).font(.caption).foregroundStyle(Theme.ink3)
+            }
+        }
+    }
+
+    /// A row of the facts: the key beside its value, or above it at accessibility text sizes.
+    @ViewBuilder
+    private func factRow<Value: View>(_ key: String, @ViewBuilder value: () -> Value) -> some View {
+        GridRow {
+            if stacked {
+                VStack(alignment: .leading, spacing: 2) {
+                    label(key)
+                    value()
+                }
+                .gridCellColumns(2)
+            } else {
+                label(key)
+                value()
+            }
+        }
+    }
+
+    private func fact(_ key: String, _ value: String, code: Bool = false) -> some View {
+        GridRow {
+            if stacked {
+                // accessibility sizes: the key above its value, both across the whole row
+                VStack(alignment: .leading, spacing: 2) {
+                    label(key)
+                    factValue(value, code: code)
+                }
+                .gridCellColumns(2)
+            } else {
+                label(key)
+                factValue(value, code: code)
+            }
+        }
+    }
+
+    private func factValue(_ value: String, code: Bool) -> some View {
+        Text(value)
+            .font(code ? .code(12) : nil)
+            .monospacedDigit()
+            .foregroundStyle(Theme.ink)
+            .textSelection(.enabled)
+            .lineLimit(code && !stacked ? 1 : nil)
+            .minimumScaleFactor(code ? 0.7 : 1)
+            .fixedSize(horizontal: false, vertical: !code || stacked)
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func label(_ text: String) -> some View {
+        Text(text)
+            .foregroundStyle(Theme.ink3)
+            .fixedSize()
+            .gridColumnAlignment(.leading)
+    }
+
+    // MARK: Actions
+
+    private var actions: some View {
+        let color = Theme.levelColor(level)
+        let lead = LadderText.justBeforeLead(reading.duration)
+        let leadText = pure ? text.blinks(lead) : LadderText.lead(lead)
+        let last = reading.end >= clock.tMax - 0.002
+        return ViewThatFits(in: .horizontal) {
+            HStack(spacing: 8) { actionButtons(color: color, compact: false, last: last, leadText: leadText) }.fixedSize(horizontal: true, vertical: false)
+            HStack(spacing: 8) { actionButtons(color: color, compact: true, last: last, leadText: leadText) }.fixedSize(horizontal: true, vertical: false)
+            // large text: one button per line (the last choice of ViewThatFits is used even when nothing fits)
+            VStack(alignment: .leading, spacing: 8) { actionButtons(color: color, compact: false, last: last, leadText: leadText) }
+        }
+        .controlSize(.small)
+        .padding(.top, 2)
+        .accessibilityElement(children: .contain)
+        .accessibilityHint("Just before stops \(leadText) ahead of the end, then plays in real time")
+    }
+
+    @ViewBuilder
+    private func actionButtons(color: Color, compact: Bool, last: Bool, leadText: String) -> some View {
+        Button {
+            navigator.start(level)
+        } label: {
+            ActionLabel(title: "Start", symbol: "backward.end")
+        }
+        .buttonStyle(.bordered)
+        .tint(Theme.ink2)
+        .help("Go to the start of this cycle")
+        Button {
+            navigator.justBefore(level)
+        } label: {
+            ActionLabel(title: compact ? "Before" : "Just before", symbol: "play")
+        }
+        .buttonStyle(.bordered)
+        .tint(color)
+        .disabled(last)
+        .help("Just before: \(leadText) ahead of the end, then real time, to watch it turn over (⇧↩)")
+        Button {
+            navigator.justAfter(level)
+        } label: {
+            ActionLabel(title: compact ? "After" : "Just after", symbol: "forward.end")
+        }
+        .buttonStyle(.borderedProminent)
+        .tint(color.opacity(0.85))
+        .foregroundStyle(Theme.background)
+        .disabled(last)
+        .help("Just after: \(pure ? text.blinks(0.001) : "1 ms") into the next cycle (↩)")
+    }
+}
+
+/// An icon and a title of a small action button, on one line at their natural width.
+private struct ActionLabel: View {
+    let title: String
+    let symbol: String
+
+    var body: some View {
+        HStack(spacing: 5) {
+            Image(systemName: symbol).imageScale(.small)
+            Text(title).lineLimit(1)
+        }
+        .font(.subheadline.weight(.medium))
+        .fixedSize()
+    }
+}

@@ -1,0 +1,6 @@
+# The app files DiaryChecks.swift compiles against (relative to ios/).
+Fractonica/Features/Diary/DiaryOptions.swift
+Fractonica/Features/Diary/DiaryLogic.swift
+Fractonica/Features/Diary/DiaryPlan.swift
+Fractonica/Features/Diary/DiaryResources.swift
+Shared/Notation+Standard.swift

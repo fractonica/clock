@@ -1,0 +1,7 @@
+# The app files RingsChecks.swift compiles against (relative to ios/). make-fixture.mjs computes the expected values
+# from the web app's modules; the checks run it with Node.
+Fractonica/Features/Rings/RingsGeometry.swift
+Fractonica/Features/Rings/RingsText.swift
+Fractonica/Features/Rings/RingsPureText.swift
+Fractonica/Features/Rings/RingsHelp.swift
+Shared/Notation+Standard.swift

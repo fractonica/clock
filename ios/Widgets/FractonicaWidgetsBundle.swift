@@ -1,11 +1,22 @@
 import SwiftUI
 import WidgetKit
 
-/// The widget extension: the clock widgets on both platforms and, on iOS, the timer's Live Activity.
+/// The widget extension, the same on iOS and macOS: the journal face, the clock, up next and the rings on the Home
+/// Screen, the desktop and in StandBy; the extra-large overview on iPad and the Mac; the Lock Screen accessories (iOS); the Focus and Timer controls; on iOS the
+/// timer's Live Activity.
 @main
 struct FractonicaWidgetsBundle: WidgetBundle {
     var body: some Widget {
-        ClockWidgets()
+        JournalWidget()
+        ClockWidget()
+        UpNextWidget()
+        RingsWidget()
+        OverviewWidget()
+        #if os(iOS)
+        AccessoryWidget()
+        #endif
+        FocusControl()
+        TimerControl()
         #if os(iOS)
         TimerLiveActivityWidget()
         #endif
