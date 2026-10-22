@@ -26,7 +26,7 @@ struct TimerRunView: View {
             } else {
                 VStack(spacing: 0) {
                     Spacer(minLength: 12)
-                    dial(size: min(w - 40, h - 150, 620))
+                    dial(size: min(w - 40, h - 160, 700))
                     Spacer(minLength: 20)
                     controls(vertical: false)
                         .frame(maxWidth: 560)
@@ -45,15 +45,22 @@ struct TimerRunView: View {
         let clock = store.clock
         let units = lead.downToBlink
         let inner = size / 2 * TimerDial.innerRadius(rings: units.count)
+        func face(_ now: Date) -> TimerDial {
+            TimerDial(
+                fraction: run.fraction(at: now, clock: clock),
+                blinks: run.remainingBlinks(at: now, clock: clock),
+                units: units,
+                paused: !run.isRunning,
+                reduceMotion: reduceMotion
+            )
+        }
         return ZStack {
-            TimelineView(.animation(minimumInterval: nil, paused: !run.isRunning)) { context in
-                TimerDial(
-                    fraction: run.fraction(at: context.date, clock: clock),
-                    blinks: run.remainingBlinks(at: context.date, clock: clock),
-                    units: units,
-                    paused: !run.isRunning,
-                    reduceMotion: reduceMotion
-                )
+            if reduceMotion {
+                // whole segments only: redraw when a Blink is used up, not every frame
+                let blink = clock.blinkSeconds(at: .now) ?? 0.311
+                TimelineView(TickSchedule(anchor: run.end ?? .now, steps: [blink], paused: !run.isRunning)) { face($0.date) }
+            } else {
+                TimelineView(.animation(minimumInterval: nil, paused: !run.isRunning)) { face($0.date) }
             }
             center(innerDiameter: inner * 2, dial: size)
         }
