@@ -17,6 +17,7 @@ struct TimelineChecks {
         viewportChecks()
         dataChecks()
         wordingChecks()
+        webWordingChecks(fixture)
         Checks.finish()
     }
 }
@@ -355,4 +356,71 @@ private func wordingChecks() {
     let earth = TimelineWords(pure: false, earth: EarthFormatter(zone: "UTC"))
     check(TimelineWords.cycleLength(clock.levelInfo(6).meanSeconds) == "5.05 h" && earth.laneLength(4, compact: false) == "≈ 16.2 d",
           "Earth lane heads give the mean length")
+}
+
+// MARK: - Wording against the web
+
+/// The canvas wording against src/ui/timeline/words.js and paint.js (fixture.json "words", "lanes", "rulerTips"): the
+/// cursor's cycle at every depth for 17 instants, its pure block labels at three widths and its Earth end label; the lane
+/// heads, dense-lane notes and lane-head explanations; the ruler key's explanation of every step.
+@MainActor
+private func webWordingChecks(_ fixture: JSON) {
+    let clock = FractonicaClock.shared
+    let data = TimelineData()
+    let pure = TimelineWords(pure: true, earth: EarthFormatter(zone: "UTC"))
+    let earth = TimelineWords(pure: false, earth: EarthFormatter(zone: "UTC"))
+    var cycles = 0, bad = 0
+    func fail(_ message: String) {
+        bad += 1
+        if bad <= 5 { check(false, message) }
+    }
+    for w in fixture["words"] as? [JSON] ?? [] {
+        let t = d(w["t"]), level = (w["L"] as? NSNumber)?.intValue ?? -1
+        cycles += 1
+        guard let c = data.cycle(level, at: t) else {
+            fail("no cycle of level \(level) at \(t)")
+            continue
+        }
+        guard c.idx == (w["idx"] as? NSNumber)?.int64Value, c.local == (w["local"] as? NSNumber)?.intValue else {
+            fail("level \(level) at \(t): cycle \(c.idx) local \(c.local), the web has \(w["idx"] ?? "-") local \(w["local"] ?? "-")")
+            continue
+        }
+        let siblings = clock.levelInfo(level).siblings ?? data.alpha.count
+        let wants = w["labels"] as? [[String]] ?? []
+        for (j, width) in [900.0, 100, 35].enumerated() where j < wants.count {
+            let got = pure.blockLabels(level: level, idx: c.idx, local: c.local, siblings: siblings, width: width, wide: j == 0,
+                                       end: c.end, endsWithCatalogue: c.end >= clock.tMax - 1e-3, refYear: 2026,
+                                       quarter: w["quarter"] as? String, names: { data.names($0, $1) })
+            if got != wants[j] { fail("level \(level) at \(t), \(width) pt: \(got), the web has \(wants[j])") }
+        }
+        let end = earth.endLabel(level: level, end: c.end, refYear: 2026)
+        if end != w["endLabel"] as? String { fail("level \(level) at \(t): ends \(end), the web has \(w["endLabel"] ?? "-")") }
+    }
+    check(bad == 0 && cycles > 200, "block labels and end labels match the web for \(cycles) cycles")
+
+    bad = 0
+    for lane in fixture["lanes"] as? [JSON] ?? [] {
+        let level = (lane["L"] as? NSNumber)?.intValue ?? -1
+        let got = [pure.laneLength(level, compact: true), pure.denseMessage(level), pure.laneTip(level, alphaCycles: data.alpha.count),
+                   TimelineWords.cycleLength(clock.levelInfo(level).meanSeconds)]
+        let want = ["laneLength", "dense", "tip", "length"].map { lane[$0] as? String ?? "" }
+        for (g, w) in zip(got, want) where g != w { fail("lane \(level): \(g)  ≠  \(w)") }
+    }
+    check(bad == 0, "lane heads, dense-lane notes and lane-head explanations match the web")
+
+    bad = 0
+    let hint = " Press ? for the glossary."
+    for tip in fixture["rulerTips"] as? [JSON] ?? [] {
+        let id = tip["id"] as? String ?? ""
+        guard let step = data.ruler.step(id: id) else {
+            fail("ruler step \(id) is missing")
+            continue
+        }
+        let want = (tip["tip"] as? String ?? "").replacingOccurrences(of: hint, with: "")
+        let got = pure.rulerTip(step, ruler: data.ruler)
+        if got != want { fail("ruler tip \(id): \(got)  ≠  \(want)") }
+    }
+    check(bad == 0, "the ruler key's explanations match the web")
+    let leaks = (0...13).map { pure.laneTip($0, alphaCycles: 18) }.filter { $0.contains(earthWords) }
+    check(leaks.isEmpty, "pure lane-head explanations say nothing Gregorian: \(leaks)")
 }

@@ -74,12 +74,29 @@ struct TimelineReadout: View {
                         .padding(.horizontal, 12)
                         .background(Theme.panel.opacity(0.7), in: .rect(cornerRadius: 12))
                     }
+                    about(level: level, pure: pure, earth: words.earth)
                 }
             }
         } else {
             ContentUnavailableView("Outside the catalogue", systemImage: "circle.dashed",
                                    description: Text("This cycle does not exist in the Saros 141 catalogue."))
         }
+    }
+
+    /// What the depth is (the web's lane-head tooltip).
+    private func about(level: Int, pure: Bool, earth: EarthFormatter) -> some View {
+        let info = clock.levelInfo(level)
+        return VStack(alignment: .leading, spacing: 6) {
+            Text("ABOUT \(info.letter) · DEPTH \(info.depth)")
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(Theme.ink3)
+            Text(TimelineWords(pure: pure, earth: earth).laneTip(level, alphaCycles: data.alpha.count))
+                .font(.footnote)
+                .foregroundStyle(Theme.ink2)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.horizontal, 4)
+        .accessibilityElement(children: .combine)
     }
 
     private func header(level: Int, idx: Int64, color: Color, title: String, subtitle: String, path: String) -> some View {

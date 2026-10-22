@@ -37,6 +37,8 @@ final class TimelineController {
     @ObservationIgnored private var pinching = false
     /// The clock's revision after the timeline's own last move of the cursor.
     @ObservationIgnored private var ownRevision = -1
+    /// The clock's revision the view last followed.
+    @ObservationIgnored private var seenRevision = -1
     /// A pinch happened during the current pan: no coasting when the fingers lift.
     @ObservationIgnored private var pinched = false
 
@@ -56,12 +58,29 @@ final class TimelineController {
         viewport.zoom(by: factor, atX: nil, cursor: cursor, cursorIn: cursorIn, animated: true, reduceMotion: reduceMotion)
     }
 
-    /// Zoom presets: the whole catalogue, one unit across (α … ν), or a day, an hour, a minute (Earth mode).
+    /// Zoom presets: the whole catalogue, one unit across (α … ν), and in Earth mode the calendar (a century … a
+    /// minute, the web's Day … Century and the brief's hour and minute). `strip`: shown in the inline row; the menu has
+    /// them all.
     struct Preset: Identifiable, Hashable {
         let id: String
         let label: String
         let title: String
+        var strip = true
+        var calendar = false
     }
+
+    private static let year = 365.25 * 86_400
+    /// The calendar presets: id, label, menu title, width in seconds, in the inline row.
+    private static let calendar: [(id: String, label: String, title: String, span: Double, strip: Bool)] = [
+        ("century", "Century", "A century", 100 * year, false),
+        ("decade", "Decade", "A decade", 10 * year, false),
+        ("year", "Year", "A year", year, false),
+        ("month", "Month", "A month", 30.4375 * 86_400, false),
+        ("week", "Week", "A week", 7 * 86_400, false),
+        ("day", "Day", "A day", 86_400, true),
+        ("hour", "Hour", "An hour", 3600, true),
+        ("minute", "Min", "A minute", 60, true),
+    ]
 
     func presets(pure: Bool) -> [Preset] {
         let ruler = data.ruler
@@ -75,23 +94,16 @@ final class TimelineController {
         let units = ["alpha", "beta", "gamma", "delta", "epsilon"].map { id in
             let u = ruler.unitIndex(id)
             let sym = ruler.units[u].sym
-            return Preset(id: "u:\(id)", label: sym, title: "One \(sym) cycle across (≈ \(TimelineWords.cycleLength(ruler.sec[u])))")
+            return Preset(id: "u:\(id)", label: sym, title: "One \(sym) cycle (≈ \(TimelineWords.cycleLength(ruler.sec[u])))")
         }
-        return [Preset(id: "all", label: "All", title: "The whole catalogue")] + units + [
-            Preset(id: "day", label: "Day", title: "One day across"),
-            Preset(id: "hour", label: "Hour", title: "One hour across"),
-            Preset(id: "minute", label: "Min", title: "One minute across"),
-        ]
+        let calendar = Self.calendar.map { Preset(id: $0.id, label: $0.label, title: $0.title, strip: $0.strip, calendar: true) }
+        return [Preset(id: "all", label: "All", title: "The whole catalogue")] + units + calendar
     }
 
     private func presetWindow(_ id: String, anchor: Double, frac: Double) -> TimelineWindow {
         let lim = viewport.limits
-        switch id {
-        case "day": return lim.window(span: 86_400, anchor: anchor, frac: frac)
-        case "hour": return lim.window(span: 3600, anchor: anchor, frac: frac)
-        case "minute": return lim.window(span: 60, anchor: anchor, frac: frac)
-        default: return lim.clamp(data.ruler.presetWindow(id, limits: lim, anchor: anchor, frac: frac))
-        }
+        if let c = Self.calendar.first(where: { $0.id == id }) { return lim.window(span: c.span, anchor: anchor, frac: frac) }
+        return lim.clamp(data.ruler.presetWindow(id, limits: lim, anchor: anchor, frac: frac))
     }
 
     /// Show a preset, keeping the cursor where it is on screen when it is in view (at the middle while following).
@@ -108,12 +120,14 @@ final class TimelineController {
         viewport.animate(to: presetWindow(id, anchor: anchor, frac: frac), cursor: cursor, cursorIn: cursorIn, duration: 0.35, reduceMotion: reduceMotion)
     }
 
-    /// The preset the view is at (within ~12 %), if any.
+    /// The preset the view is at: the nearest one within ~12 % (a year and one γ are only 11 % apart).
     func activePreset(pure: Bool, window w: TimelineWindow) -> String? {
-        presets(pure: pure).first { p in
-            let target = presetWindow(p.id, anchor: w.c, frac: 0.5)
-            return abs(log(w.span / target.span)) < 0.12
-        }?.id
+        var best: (id: String, d: Double)?
+        for p in presets(pure: pure) {
+            let d = abs(log(w.span / presetWindow(p.id, anchor: w.c, frac: 0.5).span))
+            if d < 0.12, d < best?.d ?? .infinity { best = (p.id, d) }
+        }
+        return best?.id
     }
 
     /// Zoom to the selected level's cycle at the cursor.
@@ -150,6 +164,7 @@ final class TimelineController {
         let target = clock.clamp(t)
         store.travel(to: target)
         ownRevision = store.revision
+        seenRevision = store.revision
         // a read-out's "Travel here" may go to a start off screen: bring it into view
         if reveal, !viewport.goal(cursor: target, cursorIn: true).contains(target) {
             viewport.centre(on: target, cursor: target, cursorIn: true, reduceMotion: reduceMotion)
@@ -167,8 +182,26 @@ final class TimelineController {
     }
 
     func clockChanged() {
-        guard let store, store.revision != ownRevision else { return }
+        guard let store else { return }
+        seenRevision = store.revision
+        guard store.revision != ownRevision else { return }
         viewport.clockChanged(store.lastChange, cursor: cursor, cursorIn: cursorIn, playing: store.isPlaying, reduceMotion: reduceMotion)
+    }
+
+    /// The screen appears: a jump made while it was away (another tab, a widget's link) is shown as if it had been
+    /// watching — the cursor is brought into view.
+    func appeared() {
+        guard let store, store.revision != seenRevision else { return }
+        clockChanged()
+    }
+
+    /// Return: the cursor to the middle of the view (web: Enter).
+    func travelToCentre() {
+        let w = viewport.goal(cursor: cursor, cursorIn: cursorIn)
+        guard clock.inRange(w.c) else { return }
+        Haptics.play(.selection)
+        viewport.setFollow(false, cursor: cursor, cursorIn: cursorIn)
+        travel(to: w.c)
     }
 
     // MARK: Hit testing
@@ -320,9 +353,10 @@ final class TimelineController {
                 readout = TimelineReadoutItem(selection: .eclipse(k), anchor: CGRect(x: x - 6, y: layout.eclipseY, width: 12, height: layout.eclipseH * 0.7))
             }
         case .axis:
-            // tap the ruler: move the cursor there, snapped to a tick within a few points
+            // tap the ruler: move the cursor there, snapped to a labelled tick within a few points
             let scale = viewport.scale(windowNow)
-            let t = scale.t(p.x)
+            var t = scale.t(p.x)
+            if let tick = TimelineSearch.nearest(hits.ticks, t, within: (touch ? 8 : 5) / scale.k) { t = hits.ticks[tick] }
             guard clock.inRange(t) else { return }
             Haptics.play(.selection)
             viewport.setFollow(false, cursor: cursor, cursorIn: cursorIn)
@@ -344,12 +378,16 @@ final class TimelineController {
         viewport.zoom(by: 2.5, atX: p.x, cursor: cursor, cursorIn: cursorIn, animated: true, reduceMotion: reduceMotion)
     }
 
+    /// The pointer (or a finger held down) over the canvas: the plot shows the moment there, the map its own moment, an
+    /// eclipse marker that eclipse, and a head in the gutter explains its row.
     func inspect(at p: CGPoint?, touch: Bool) {
-        guard let p, let layout, p.x >= layout.px0, p.x <= layout.px1, p.y >= layout.axisY, p.y < layout.bottom else {
+        guard let p, let layout, p.x >= 0, p.x <= layout.px1, p.y >= 0, p.y < layout.bottom,
+              layout.region(x: p.x, y: p.y).region != .none else {
             if hover != nil { hover = nil }
             return
         }
-        hover = TimelineHover(x: p.x, y: p.y, touch: touch)
+        let next = TimelineHover(x: p.x, y: p.y, touch: touch)
+        if hover != next { hover = next }
     }
 
     /// Scrolling: `dx` points moves the view later, `dy` points zooms out (both as a web wheel event reads them).

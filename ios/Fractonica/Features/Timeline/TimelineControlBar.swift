@@ -20,20 +20,21 @@ struct TimelineControlBar: View {
         let w = viewport.target
         let presets = controller.presets(pure: words.pure)
         let active = controller.activePreset(pure: words.pure, window: w)
+        let strip = presets.filter(\.strip)
         // the inline presets need about this much room beside the zoom, fit and follow controls
-        let stripWidth = presets.reduce(0) { $0 + max(34, CGFloat($1.label.count) * 9 + 20) + 2 }
+        let stripWidth = strip.reduce(0) { $0 + max(34, CGFloat($1.label.count) * 9 + 20) + 2 }
         GlassEffectContainer(spacing: 10) {
             if vertical {
                 VStack(spacing: 10) {
-                    zoomCluster(w, presets: presets, active: active, menu: true)
+                    zoomCluster(w, presets: presets, active: active)
                     Spacer(minLength: 4)
                     fitButton(labelled: false)
                     followButton
                 }
             } else {
                 HStack(spacing: 10) {
-                    zoomCluster(w, presets: presets, active: active, menu: width < stripWidth + 330)
-                    if width >= stripWidth + 330 { presetStrip(presets, active: active) }
+                    zoomCluster(w, presets: presets, active: active)
+                    if width >= stripWidth + 330 { presetStrip(strip, active: active) }
                     Spacer(minLength: 4)
                     fitButton(labelled: width >= 330)
                     followButton
@@ -45,9 +46,9 @@ struct TimelineControlBar: View {
         .controlSize(.regular)
     }
 
-    /// − · width · + (+ · width · − in a column), one glass capsule; the width opens the presets where they are not
-    /// shown inline.
-    private func zoomCluster(_ w: TimelineWindow, presets: [TimelineController.Preset], active: String?, menu: Bool) -> some View {
+    /// − · width · + (+ · width · − in a column), one glass capsule; the width opens every preset under the window's
+    /// extent.
+    private func zoomCluster(_ w: TimelineWindow, presets: [TimelineController.Preset], active: String?) -> some View {
         let lim = viewport.limits
         let plot = viewport.plotWidth
         let stack = vertical ? AnyLayout(VStackLayout(spacing: 0)) : AnyLayout(HStackLayout(spacing: 0))
@@ -75,33 +76,23 @@ struct TimelineControlBar: View {
         return stack {
             if vertical { zoomIn } else { zoomOut }
             divider
-            Group {
-                if menu {
-                    Menu {
-                        Section(windowText(w)) {
-                            ForEach(presets) { p in
-                                Button {
-                                    controller.apply(preset: p.id)
-                                } label: {
-                                    if p.id == active {
-                                        Label(p.title, systemImage: "checkmark")
-                                    } else {
-                                        Text(p.title)
-                                    }
-                                }
-                            }
-                        }
-                    } label: {
-                        widthLabel(w, plot: plot, chevron: !vertical)
-                    }
-                    .menuIndicator(.hidden)
-                    .accessibilityLabel("Zoom presets")
-                    .accessibilityValue("\(words.spanText(w, ruler: controller.data.ruler, plotWidth: plot)) across")
-                } else {
-                    widthLabel(w, plot: plot, chevron: false)
-                        .accessibilityLabel("\(words.spanText(w, ruler: controller.data.ruler, plotWidth: plot)) across")
+            Menu {
+                Section(windowText(w)) {
+                    ForEach(presets.filter { !$0.calendar }) { p in presetItem(p, active: active) }
                 }
+                let calendar = presets.filter(\.calendar)
+                if !calendar.isEmpty {
+                    Section("Calendar") {
+                        ForEach(calendar) { p in presetItem(p, active: active) }
+                    }
+                }
+            } label: {
+                widthLabel(w, plot: plot, chevron: !vertical)
             }
+            .menuIndicator(.hidden)
+            .accessibilityLabel("Zoom presets")
+            .accessibilityValue("\(words.spanText(w, ruler: controller.data.ruler, plotWidth: plot)) across")
+            .help("The width of the view; choose a preset")
             divider
             if vertical { zoomOut } else { zoomIn }
         }
@@ -110,6 +101,18 @@ struct TimelineControlBar: View {
         .foregroundStyle(Theme.ink)
         .glassEffect(.regular.interactive(), in: vertical ? AnyShape(.rect(cornerRadius: 22)) : AnyShape(.capsule))
         .glassEffectID("zoom", in: glass)
+    }
+
+    private func presetItem(_ p: TimelineController.Preset, active: String?) -> some View {
+        Button {
+            controller.apply(preset: p.id)
+        } label: {
+            if p.id == active {
+                Label(p.title, systemImage: "checkmark")
+            } else {
+                Text(p.title)
+            }
+        }
     }
 
     /// The window's extent, the menu's heading: "Oct 7 12:00 → Oct 9 12:00 · 1 d 16 h across".
@@ -123,7 +126,7 @@ struct TimelineControlBar: View {
     private func widthLabel(_ w: TimelineWindow, plot: Double, chevron: Bool) -> some View {
         let text = words.pure
             ? controller.data.ruler.spanText(w.t0, w.t1, parts: 1, slack: 0.5 / max(1, plot))
-            : TimelineWords.cycleLength(w.span)
+            : TimelineWords.widthText(w.span)
         return HStack(spacing: 4) {
             Text(text)
                 .font(.reading(15, weight: .semibold))

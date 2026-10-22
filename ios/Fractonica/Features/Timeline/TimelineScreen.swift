@@ -14,10 +14,11 @@ import SwiftUI
 ///     -FXTimelineSpan <seconds>      the window's width (default: about eight cycles of the selected depth)
 ///     -FXTimelineCenter <unix s>     the window's centre (default: the cursor)
 ///     -FXTimelineYear <year>         the window's centre on 1 January of a year (for years before 1970)
-///     -FXTimelinePreset <id>         all, alpha … nu (one unit across), day, hour, minute
+///     -FXTimelinePreset <id>         all, alpha … nu (one unit across), century, decade, year, month, week, day, hour, minute
 ///     -FXTimelineFollow 0|1          Follow on or off at launch
 ///     -FXTimelineReadout <level>     open the read-out of the cursor's cycle at a level (0-based), or e<k> for eclipse k
 ///     -FXTimelineInspect <0…1>       show the inspect crosshair at that fraction of the plot
+///     -FXTimelineInspectAt <x>,<y>   show the pointer's card at that point of the canvas (a lane head, the map …)
 ///     -FXTimelineDebug 1             draw the painter's time per frame in the corner
 ///     -FXTimelineBench 1             zoom in and out continuously (with the frame time), to measure the painter
 ///     -FXTimelineHeight <points>     cap the canvas height, to see the short (landscape) layout on a portrait device
@@ -29,6 +30,7 @@ struct TimelineScreen: View {
     @Environment(\.displayScale) private var displayScale
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.accessibilityEnabled) private var assistiveTech
+    @Environment(\.scenePhase) private var scenePhase
     #if os(iOS)
     @Environment(\.verticalSizeClass) private var verticalSizeClass
     #endif
@@ -97,18 +99,16 @@ struct TimelineScreen: View {
     private func canvas(size: CGSize, words: TimelineWords) -> some View {
         let levels = self.levels
         let layout = TimelineLayout(width: size.width, height: size.height, lanes: levels.count, textScale: textScale)
-        ClockTimeline(cadence(layout: layout, words: words)) { t in
-            let frame = makeFrame(t: t, layout: layout, words: words, levels: levels)
-            Canvas(opaque: false) { context, _ in
-                let painter = TimelinePainter(f: frame, data: data, hits: controller.hits)
-                context.withCGContext { cg in
-                    TimelinePerf.shared.measure { painter.paint(cg) }
-                    if TimelinePerf.shared.enabled { TimelinePerf.shared.draw(cg, at: CGPoint(x: layout.px1 - 4, y: layout.lanesY + 10)) }
+        Group {
+            if let interval = pausedNowInterval(layout: layout, words: words) {
+                // paused, the displayed time stands still but the real now marker moves on: redraw on real time, as
+                // often as that marker or its label needs
+                TimelineView(.animation(minimumInterval: interval, paused: scenePhase == .background)) { _ in
+                    plot(t: store.time(), layout: layout, words: words, levels: levels)
                 }
-            }
-            .overlay(alignment: .topLeading) {
-                if let hover = controller.hover {
-                    TimelineInspector(frame: frame, hover: hover, data: data)
+            } else {
+                ClockTimeline(cadence(layout: layout, words: words)) { t in
+                    plot(t: t, layout: layout, words: words, levels: levels)
                 }
             }
         }
@@ -139,6 +139,37 @@ struct TimelineScreen: View {
             viewport.plotWidth = layout.plotWidth
             LaunchState.applyDeferred(controller: controller, store: store, layout: layout)
         }
+    }
+
+    private func plot(t: Double, layout: TimelineLayout, words: TimelineWords, levels: [Int]) -> some View {
+        let frame = makeFrame(t: t, layout: layout, words: words, levels: levels)
+        return Canvas(opaque: false) { context, _ in
+            let painter = TimelinePainter(f: frame, data: data, hits: controller.hits)
+            context.withCGContext { cg in
+                TimelinePerf.shared.measure { painter.paint(cg) }
+                if TimelinePerf.shared.enabled { TimelinePerf.shared.draw(cg, at: CGPoint(x: layout.px1 - 4, y: layout.lanesY + 10)) }
+            }
+        }
+        .overlay(alignment: .topLeading) {
+            if let hover = controller.hover {
+                TimelineInspector(frame: frame, hover: hover, data: data)
+            }
+        }
+    }
+
+    /// While paused and still: how often (real seconds) the now marker needs a redraw — a quarter point of motion or a
+    /// change of its flag when it is in or near the view, its chip's label when it is far off; nil when it is not shown.
+    private func pausedNowInterval(layout: TimelineLayout, words: TimelineWords) -> Double? {
+        guard store.isPaused, !viewport.isMoving else { return nil }
+        let now = Date.now.timeIntervalSince1970
+        guard clock.inRange(now) else { return nil }
+        let w = viewport.base
+        let k = layout.plotWidth / w.span
+        let unit = words.pure ? data.ruler.pick(pxPerSec: k, plotWidth: layout.plotWidth).u : TimelineRuler.iota
+        let near = now >= w.t0 - w.span && now <= w.t1
+        let label = near ? words.flagResolution(span: w.span, ruler: data.ruler, rulerUnit: unit)
+                         : words.pure ? data.ruler.flagResolution(unit) : 60
+        return max(1.0 / 30, near ? min(label, 0.25 / k) : label)
     }
 
     /// The slowest redraw that keeps what moves honest: every frame while the window moves or the cursor glides more
@@ -213,6 +244,7 @@ struct TimelineScreen: View {
         case .upArrow: controller.stepSelection(-1)
         case .downArrow: controller.stepSelection(1)
         case .home: controller.centreOnCursor()
+        case .return: controller.travelToCentre()
         case .pageUp: controller.pan(fraction: -0.9)
         case .pageDown: controller.pan(fraction: 0.9)
         default:
@@ -234,9 +266,9 @@ struct TimelineScreen: View {
         let t = store.time()
         viewport.placeIfNeeded(cursor: t, selectedLevel: settings.selectedLevel, follow: store.isLive || store.isPlaying)
         LaunchState.applyOnce(controller: controller, store: store)
-        #if os(macOS)
+        controller.appeared()
+        // the keys work without a click first (a Mac, an iPad with a keyboard)
         focused = true
-        #endif
     }
 }
 
@@ -313,7 +345,8 @@ private enum LaunchState {
     private static func applyLayoutArguments(controller: TimelineController, store: ClockStore, layout: TimelineLayout) {
         let t = store.time()
         if let id = value("FXTimelinePreset") {
-            let preset = ["all", "day", "hour", "minute"].contains(id) ? id : "u:\(id)"
+            let calendar = ["all", "century", "decade", "year", "month", "week", "day", "hour", "minute"]
+            let preset = calendar.contains(id) ? id : "u:\(id)"
             let reduce = controller.reduceMotion
             controller.reduceMotion = true
             controller.apply(preset: preset)
@@ -322,6 +355,9 @@ private enum LaunchState {
         if let f = value("FXTimelineInspect").flatMap(Double.init) {
             let x = layout.px0 + f * layout.plotWidth
             controller.inspect(at: CGPoint(x: x, y: layout.lanesY + layout.laneH * 3.5), touch: true)
+        }
+        if let at = value("FXTimelineInspectAt")?.split(separator: ",").compactMap({ Double($0) }), at.count == 2 {
+            controller.inspect(at: CGPoint(x: at[0], y: at[1]), touch: false)
         }
         if let r = value("FXTimelineReadout") {
             if r.hasPrefix("e"), let k = Int(r.dropFirst()), k >= 0, k < store.clock.catalogue.count {

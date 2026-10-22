@@ -32,6 +32,16 @@ struct TimelineWords: Sendable {
         return "\(sig3(s * 1000)) ms"
     }
 
+    /// The width of the view on the zoom control: `cycleLength` without trailing zeros ("1 d", "1.5 h", "16.2 d").
+    static func widthText(_ s: Double) -> String {
+        let text = cycleLength(s)
+        guard let space = text.firstIndex(of: " "), text[..<space].contains(".") else { return text }
+        var number = String(text[..<space])
+        while number.hasSuffix("0") { number.removeLast() }
+        if number.hasSuffix(".") { number.removeLast() }
+        return number + text[space...]
+    }
+
     /// The lane head's second line: Earth "≈ 16.2 d"; pure one cycle counted in the next unit, the ladder itself:
     /// α "= 5β", ε "= 77η", η "= 36ι", the depths between "= 11η", ξ "= 0.14ν", the Blink "= 7ξ".
     func laneLength(_ level: Int, compact: Bool) -> String {
@@ -152,6 +162,122 @@ struct TimelineWords: Sendable {
     /// Variants of the chip of an off-screen cursor or now marker, longest first.
     func markerChip(name: String, label: String, right: Bool) -> [String] {
         right ? ["\(name) \(label) ▸", "\(name) ▸"] : ["◂ \(name) \(label)", "◂ \(name)"]
+    }
+
+    // MARK: Explanations (the web's lane-head, ruler-key, map and Saros tooltips)
+
+    /// "1st", "2nd", "3rd", "11th", "21st" (words.js `nth`).
+    static func nth(_ n: Int) -> String {
+        let r = n % 100
+        let suffix = r >= 11 && r <= 13 ? "th" : n % 10 == 1 ? "st" : n % 10 == 2 ? "nd" : n % 10 == 3 ? "rd" : "th"
+        return "\(n)\(suffix)"
+    }
+
+    private static func aName(_ name: String) -> String {
+        (name.first.map { "AEIOU".contains($0) } ?? false ? "an " : "a ") + name
+    }
+
+    private static func aLetter(_ letter: String) -> String {
+        (letter.first.map { "αεηιουω".contains($0) } ?? false ? "an " : "a ") + letter
+    }
+
+    /// What a lane head explains: its depth's cycles, how they are named and what they are made of (words.js
+    /// `laneTip`; Earth: the lane-head tooltip of timeline.js).
+    func laneTip(_ level: Int, alphaCycles: Int) -> String {
+        let info = clock.levelInfo(level)
+        guard pure else {
+            if level == 0 {
+                return "One α cycle spans 4 Saros intervals ≈ \(Self.cycleLength(info.meanSeconds)); the catalogue holds \(alphaCycles) (the last one is cut off)."
+            }
+            let parent = clock.levelInfo(level - 1)
+            return "\(info.siblings ?? 0) per \(parent.letter) cycle, each ≈ \(Self.cycleLength(info.meanSeconds)). Every \(parent.letter) cycle splits into \(parent.factor) of them."
+        }
+        if level == 0 {
+            return "Alpha (α): a major period of 4 Saros intervals; the catalogue holds \(alphaCycles) (the last one is cut off). One Alpha is \(info.factor) β. Named in words with its quarter: Peak, Node, Valley or End."
+        }
+        let parent = clock.levelInfo(level - 1).letter
+        switch Notation.levelKind(level) {
+        case "major":
+            let u = Notation.unit(level: level)!
+            return "\(u.name) (\(u.sym)): a major period, depth \(info.depth). \(info.siblings ?? 0) of them make \(Self.aLetter(parent)); one is \(info.factor) \(clock.levelInfo(level + 1).letter). Named in words with its quarter: Peak, Node, Valley or End."
+        case "unit":
+            let u = Notation.unit(level: level)!
+            let above = Notation.unit(level: level - 1) ?? Notation.unit(level: level - 2)!
+            let per = Int((notation.cyclePos(above.level) / notation.cyclePos(level)).rounded())
+            let next = Notation.units.first { $0.level > level }
+            let made = next.map { "; one is \(Int((notation.cyclePos(level) / notation.cyclePos($0.level)).rounded())) \(Notation.unitName($0.sym, count: 2)) (\($0.sym))" } ?? ""
+            let head = next == nil
+                ? "\(u.name) (\(u.sym)): the finest unit, depth \(info.depth), and the device's real-time tick."
+                : "\(u.name) (\(u.sym)): a minor unit, depth \(info.depth)."
+            let naming = level == 4 ? "Named ε#1 … ε#\(per) inside its Delta."
+                : u.id == "eta" ? "Numbered 1η … \(per)η inside its Nuclide."
+                : "Counted 0\(u.sym) … \(per - 1)\(u.sym) inside its \(above.name)."
+            return "\(head) \(per) of them make \(Self.aName(above.name)) (\(above.sym))\(made). \(naming)"
+        case "between":
+            let above = Notation.unit(level: level - 1)!
+            let len = notation.cycleLength(level: level)
+            let digits = len.prefix { $0.isNumber }
+            let n = Int(digits) ?? 1
+            let sym = String(len.dropFirst(digits.count))
+            let first = sym == "η" ? 1 : 0
+            func at(_ i: Int) -> String { "\(i * n + first)\(sym)" }
+            let siblings = info.siblings ?? 1
+            return "\(info.letter) (depth \(info.depth)) lies between the units: one cycle is \(len), \(siblings) of them make \(Self.aName(above.name)) (\(above.sym)). A cycle is named by where it starts: \([0, 1, 2].map(at).joined(separator: ", ")) … \(at(siblings - 1))."
+        default:
+            return "\(info.letter) (depth \(info.depth)) is finer than the Blink: one cycle lasts \(notation.cycleLength(level: level)), \(info.siblings ?? 0) of them make \(Self.aLetter(parent)). A cycle is named by the decimal Blink it starts at."
+        }
+    }
+
+    /// What the pure ruler's ticks and the row above them say (words.js `rulerTip`, without the web's keyboard hint).
+    func rulerTip(_ step: TimelineRuler.Step, ruler: TimelineRuler) -> String {
+        let units = ruler.units
+        let u = step.u, unit = units[u]
+        let firstClock = TimelineRuler.eta
+        let clockUnits = [TimelineRuler.eta, TimelineRuler.iota, TimelineRuler.lambda]
+        let what: String
+        if unit.major {
+            what = "Each tick starts \(Self.aName(unit.name)) (\(unit.sym)), a major period, named in words where there is room (\"\(Notation.periodName(level: unit.level, ordinal: 3))\") and else in letters (\(unit.sym)#3)"
+        } else if u < firstClock {
+            what = "Each tick starts \(Self.aName(unit.name)) (\(unit.sym), depth \(unit.level + 1)), named by its place in the Delta (ε#1 … ε#5)"
+        } else {
+            what = "Each tick starts \(Self.aName(unit.name)) (\(unit.sym), depth \(unit.level + 1))"
+        }
+        let every = step.m > 1 ? "; every \(Self.nth(step.m)) one is labelled" : ""
+        var context = ""
+        if step.ctx >= 0 {
+            let c = units[step.ctx]
+            context = step.quarters
+                ? " The row above names the \(c.name) (\(c.sym)) and its quarters Peak, Node, Valley and End, each named by the threshold that ends it."
+                : " The row above names the \(c.name) (\(c.sym)) each one belongs to."
+        }
+        var inside = ""
+        if u >= firstClock {
+            let range = u == firstClock ? "1 to \(ruler.perOf(u))" : "0 to \(ruler.perOf(u) - 1)"
+            inside = " Here \(unit.sym) is \(u == firstClock ? "numbered" : "counted") inside the \(units[u - 1].name), from \(range)\(clockUnits.contains(u) ? ", like the clock in the header" : "")."
+        }
+        let notation = " ε#5 names the 5th Nuclide of its Delta and 34η the 34th Helion of its Nuclide, both numbered from 1; 29ι 21λ 3ν count the Preons, Flavons and Blinks completed since, from 0."
+        return "\(what)\(every).\(context)\(inside)\(notation)"
+    }
+
+    /// The eclipse lane's head (timeline.js / tips.js).
+    var sarosTip: String {
+        let n = clock.catalogue.count
+        if pure {
+            return "The \(n) greatest-eclipse instants (\(catalogueRange)) are the time base of the clock. They are numbered \(Notation.eclipseName(0)) – \(Notation.eclipseName(clock.extent)), like the position. Every fourth one starts an Alpha."
+        }
+        return "The \(n) greatest-eclipse instants (\(catalogueYears)) are the time base of the clock. Every fourth one starts an α cycle."
+    }
+
+    /// The catalogue map's head.
+    var mapTip: String {
+        pure
+            ? "The whole Saros 141 catalogue (\(catalogueRange)); the numbers are eclipse numbers, like the position (\(Notation.eclipseName(10)) sits at pos 10). The teal frame is what the timeline shows. Drag it, or tap to jump there."
+            : "The whole Saros 141 catalogue. The teal frame is what the timeline shows. Drag it, or tap to jump there."
+    }
+
+    /// The Earth axis's head: the zone its days and hours are in.
+    func zoneTip(at t: Double) -> String {
+        "Days and hours in \(earth.tag(t)), the time zone in Settings. A local day lasts 23 or 25 hours where the clocks change."
     }
 
     // MARK: Flags

@@ -73,9 +73,12 @@ final class TimelineHitMap {
     var chips: [Chip] = []
     var cursorFlag: CGRect?
     var overviewFrame: CGRect?
+    /// The labelled ticks of the axis in view, sorted: a tap on the ruler snaps to them.
+    var ticks: [Double] = []
 
     func reset() {
         chips.removeAll(keepingCapacity: true)
+        ticks.removeAll(keepingCapacity: true)
         cursorFlag = nil
         overviewFrame = nil
     }
@@ -126,13 +129,64 @@ struct TimelinePainter {
         let selChip = planSelectedChip()
         if L.showsOverview { overview(cg, td) }
         laneBackdrop(cg)
-        for i in f.levels.indices { lane(cg, td, i, selChip) }
+        var names: [LaneText] = []
+        for i in f.levels.indices {
+            if let t = lane(cg, td, i, selChip) { names.append(t) }
+        }
         outsideCatalogue(cg, td)
         eclipseLane(cg, td)
         axis(cg, td)
+        // the cursor and now lines run under the lanes' names: a name they cross gets a dark backing, so neither the
+        // line nor the text strikes the other out
+        let lines = markerLines(cg)
+        for t in names { laneText(cg, td, t, lines: lines) }
         markers(cg, td)
         gutter(cg, td)
         chips(cg, td, selChip)
+    }
+
+    /// A lane's names and second lines, drawn after the marker lines.
+    private struct LaneText {
+        struct Label {
+            let text: String
+            let x: CGFloat
+            let y: CGFloat
+            let color: CGColor
+            let backed: Bool
+        }
+        let clip: CGRect
+        let style: TimelineText.Style
+        let detailStyle: TimelineText.Style
+        let detailColor: CGColor
+        var labels: [Label] = []
+        var details: [(String, CGFloat, CGFloat)] = []
+    }
+
+    private func laneText(_ cg: CGContext, _ td: TimelineTextDrawing, _ t: LaneText, lines: [CGFloat]) {
+        guard !t.labels.isEmpty || !t.details.isEmpty else { return }
+        cg.saveGState()
+        cg.clip(to: t.clip)
+        let backing = CGMutablePath(), dim = CGMutablePath()
+        for l in t.labels {
+            let lw = text.width(l.text, t.style)
+            let r = CGRect(x: l.x - 3, y: l.y - 7.5, width: lw + 6, height: 15)
+            let crossed = lines.contains { $0 > r.minX - 1 && $0 < r.maxX + 1 }
+            if crossed { backing.addPath(roundRect(r, 5)) } else if l.backed { dim.addPath(roundRect(r, 5)) }
+        }
+        for (s, x, y) in t.details {
+            let lw = text.width(s, t.detailStyle)
+            let r = CGRect(x: x - 2, y: y - 7, width: lw + 6, height: 14)
+            if lines.contains(where: { $0 > r.minX - 1 && $0 < r.maxX + 1 }) { backing.addPath(roundRect(r, 5)) }
+        }
+        cg.addPath(dim)
+        cg.setFillColor(P.background(0.45))
+        cg.fillPath()
+        cg.addPath(backing)
+        cg.setFillColor(P.background(0.78))
+        cg.fillPath()
+        for l in t.labels { td.draw(l.text, x: l.x, y: l.y, t.style, l.color) }
+        for (s, x, y) in t.details { td.draw(s, x: x + 1, y: y, t.detailStyle, t.detailColor) }
+        cg.restoreGState()
     }
 
     // MARK: - Shapes
@@ -327,7 +381,16 @@ struct TimelinePainter {
 
     // MARK: - Lanes
 
-    private func lane(_ cg: CGContext, _ td: TimelineTextDrawing, _ i: Int, _ selChip: SelChip?) {
+    /// The band of a lane that holds the waves, under the row of names: (top, bottom), or nil when the lane is too thin
+    /// for a wave. Tall lanes leave room for a block's second line.
+    static func waveBand(y: CGFloat, h: CGFloat) -> (top: CGFloat, bottom: CGFloat)? {
+        let top = y + min(12, h * 0.34) + 7.5 + (h >= 72 ? 18 : 3)
+        let bottom = y + h - 4
+        return bottom - top >= 10 ? (top, bottom) : nil
+    }
+
+    @discardableResult
+    private func lane(_ cg: CGContext, _ td: TimelineTextDrawing, _ i: Int, _ selChip: SelChip?) -> LaneText? {
         let level = f.levels[i]
         let info = clock.levelInfo(level)
         let st = P.lane(level)
@@ -348,7 +411,7 @@ struct TimelinePainter {
             // too dense to draw: a hatch, the cursor's cycle as a hairline and a note
             // only where the catalogue is: outside it there are no cycles to be dense
             let ca = max(px0, X(clock.tMin)), cb = min(px1, X(clock.tMax))
-            guard cb > ca else { return }
+            guard cb > ca else { return nil }
             hatch(cg, CGRect(x: ca, y: y + 3, width: cb - ca, height: h - 6), st.hatch, gap: 5)
             if let cur {
                 let a = min(px1, max(px0, X(cur.start)))
@@ -364,21 +427,22 @@ struct TimelinePainter {
                 cg.fillPath()
                 td.draw(msg, x: mx + 6, y: y + h / 2, small, P.ink2(0.95))
             }
-            return
+            return nil
         }
 
         let blocks = data.blocks(level, t0, t1)
         var n = max(0, TimelineSearch.lastAtOrBefore(blocks, t0) { $0.start })
-        let showWave = h >= 26
+        let band = Self.waveBand(y: y, h: h)
+        let showWave = band != nil
         let reserve: CGFloat = (selChip.map { !$0.right && level == f.selected } ?? false) ? selChip!.width + 14 : 0
         let fillA = CGMutablePath(), fillB = CGMutablePath(), strong = CGMutablePath()
         var current: (rect: CGRect, path: CGPath, block: TimelineBlock, x0: CGFloat, x1: CGFloat)?
-        var labels: [(String, CGFloat, CGFloat, Bool, Bool)] = [] // text, x, y, current, backed
-        var details: [(String, CGFloat, CGFloat)] = []
         let detailStyle = font(.ui(10, 500))
         var waves: [(TimelineBlock, CGFloat, CGFloat, Bool)] = []
         // thin lanes (a phone in landscape) set their names smaller, so they stay inside the lane
         let labelStyle = font(.ui(h < 22 ? max(8, min(10, h - 6)) : 11, 600))
+        var names = LaneText(clip: CGRect(x: px0, y: y, width: plotW, height: h), style: labelStyle, detailStyle: detailStyle,
+                             detailColor: st.textDim)
         let quarterWord: String? = {
             guard f.pure, Notation.isMajor(level), cur != nil, let q = f.words.notation.quarter(at: f.cursor, level: level) else { return nil }
             return Notation.quarterWords[q]
@@ -429,11 +493,11 @@ struct TimelinePainter {
                     if tx >= cx0 + 1 {
                         let wavy = showWave && w >= 80
                         let ty = wavy ? y + min(12, h * 0.34) : y + h / 2
-                        labels.append((lab, tx, ty, isCur, wavy))
+                        names.labels.append(.init(text: lab, x: tx, y: ty, color: isCur ? st.cur : st.text, backed: wavy))
                         // tall lanes: a second, quieter line under a wide block's name
                         if h >= 72, w >= 160, let detail = blockDetail(level, b, isCur: isCur),
                            text.width(detail, detailStyle) <= cx1 - tx - 8 {
-                            details.append((detail, tx, ty + 16))
+                            names.details.append((detail, tx, ty + 16))
                         }
                     }
                 }
@@ -453,7 +517,7 @@ struct TimelinePainter {
             cg.setFillColor(st.fillCur)
             cg.fillPath()
         }
-        for (b, _, _, isCur) in waves { wave(cg, td, level, b, st, y, h, isCur) }
+        if let band { for (b, _, _, isCur) in waves { wave(cg, td, level, b, st, band, isCur) } }
         if let current {
             cg.addPath(roundRect(current.rect.insetBy(dx: 0.75, dy: 0.75), min(5, current.rect.width * 0.22, h * 0.2)))
             cg.setStrokeColor(st.cur)
@@ -466,16 +530,7 @@ struct TimelinePainter {
             cg.setLineWidth(1.5)
             cg.strokePath()
         }
-        for (lab, tx, ty, isCur, backed) in labels {
-            if backed {
-                let lw = text.width(lab, labelStyle)
-                cg.addPath(roundRect(CGRect(x: tx - 3, y: ty - 7.5, width: lw + 6, height: 15), 5))
-                cg.setFillColor(P.background(0.45))
-                cg.fillPath()
-            }
-            td.draw(lab, x: tx, y: ty, labelStyle, isCur ? st.cur : st.text)
-        }
-        for (detail, tx, ty) in details { td.draw(detail, x: tx + 1, y: ty, detailStyle, st.textDim) }
+        return names
     }
 
     /// The second line of a wide block in a tall lane: Earth its start and end; pure its length and, on the cursor's
@@ -498,7 +553,7 @@ struct TimelinePainter {
     /// The triangle wave of one cycle (0 → peak at ¼ → valley at ¾ → 0), its quarter ticks and, on the cursor's cycle,
     /// where the cursor sits on it.
     private func wave(_ cg: CGContext, _ td: TimelineTextDrawing, _ level: Int, _ b: TimelineBlock, _ st: TimelinePalette.Lane,
-                      _ y: CGFloat, _ h: CGFloat, _ isCur: Bool) {
+                      _ band: (top: CGFloat, bottom: CGFloat), _ isCur: Bool) {
         // the wave's geometry in unclamped doubles (its slope near the cursor must be exact), drawn only where visible
         func ux(_ t: Double) -> CGFloat { CGFloat(f.scale.x(t)) }
         let x0 = ux(b.start), x1 = ux(b.end)
@@ -513,8 +568,9 @@ struct TimelinePainter {
             cx0 = max(cx0, c - 26)
             cx1 = min(cx1, c + 26)
         }
-        let mid = y + min(h * 0.64, h - 22)
-        let a = min(h * 0.19, 15)
+        // the wave keeps to its band under the names, so neither crosses the other
+        let mid = (band.top + band.bottom) / 2
+        let a = min((band.bottom - band.top) / 2, 15)
         let pts = [CGPoint(x: x0, y: mid), CGPoint(x: q1, y: mid - a), CGPoint(x: q3, y: mid + a), CGPoint(x: x1, y: mid)]
         let path = CGMutablePath()
         var started = false
@@ -554,7 +610,7 @@ struct TimelinePainter {
                 cg.strokeEllipse(in: dot)
             }
         }
-        let bottom = y + h - 2
+        let bottom = band.bottom + 2
         let ticks = CGMutablePath()
         for (qx, tall) in [(q1, 4.0), (q2, 6.0), (q3, 4.0)] where qx > cx0 && qx < cx1 && qx < x1 - 0.5 {
             ticks.addRect(CGRect(x: snap(qx), y: bottom - tall, width: f.pixel * 2, height: tall))
@@ -562,23 +618,27 @@ struct TimelinePainter {
         cg.addPath(ticks)
         cg.setFillColor(st.textDim)
         cg.fillPath()
-        guard h >= 30 else { return }
+        // the quarters' words sit inside the wave, on the side of the mid line the wave leaves free there
+        guard a >= 8 else { return }
         let small = font(.ui(9.5, 500))
+        let above = mid - a * 0.5 - 1, below = mid + a * 0.5 + 1
         if f.pure, Notation.isMajor(level) {
-            // a major period's quarters in words, each centred on its stretch (named by the threshold that ends it)
+            // a major period's quarters in words, each centred on its stretch (named by the threshold that ends it):
+            // the wave is above the mid line in the first two stretches, below it in the last two
             guard x1 - x0 >= 160 else { return }
-            for (i, (a, b)) in [(x0, q1), (q1, q2), (q2, q3), (q3, x1)].enumerated() {
+            for (i, (s0, s1)) in [(x0, q1), (q1, q2), (q2, q3), (q3, x1)].enumerated() {
                 let word = Notation.quarterWords[i]
-                let cx = (a + b) / 2
-                if b - a >= text.width(word, small) + 10, cx > cx0 + 14, cx < cx1 - 14 {
-                    td.draw(word, x: cx, y: bottom - 11, small, st.textDim, align: .center)
+                let cx = (s0 + s1) / 2
+                if s1 - s0 >= text.width(word, small) + 10, cx > cx0 + 14, cx < cx1 - 14 {
+                    td.draw(word, x: cx, y: i < 2 ? below : above, small, st.textDim, align: .center)
                 }
             }
             return
         }
         guard !f.pure, x1 - x0 >= 320 else { return }
-        for (qx, name) in [(q1, "peak"), (q2, "node"), (q3, "valley")] where qx > cx0 + 14 && qx < cx1 - 14 {
-            td.draw(name, x: qx, y: bottom - 11, small, st.textDim, align: .center)
+        // under the peak, above the valley, and above the node where the wave runs down through the mid line
+        for (qx, name, wy) in [(q1, "peak", below), (q2, "node", above), (q3, "valley", above)] where qx > cx0 + 14 && qx < cx1 - 14 {
+            td.draw(name, x: qx, y: wy, small, st.textDim, align: .center)
         }
     }
 
@@ -792,6 +852,7 @@ struct TimelinePainter {
             if x < px0 || x > px1 { continue }
             let next = i + 1 < ticks.count ? min(X(ticks[i + 1].t), px1 + 100) : px1 + 100
             visible.append((tk, x, next - x - 8))
+            hits.ticks.append(tk.t)
         }
         let maxVariants = visible.reduce(1) { max($0, $1.tk.labels.count) }
         var variant = 0
@@ -849,6 +910,23 @@ struct TimelinePainter {
         return r
     }
 
+    /// The now line (rose; solid while live) and the cursor line; returns the x of each line drawn.
+    private func markerLines(_ cg: CGContext) -> [CGFloat] {
+        let cx = X(f.cursor), nx = X(f.now)
+        let cVis = f.cursorIn && cx >= L.px0 && cx <= L.px1
+        let nVis = f.nowShow && nx >= L.px0 && nx <= L.px1
+        var xs: [CGFloat] = []
+        if nVis {
+            vline(cg, nx, L.markY, L.bottom, f.live ? P.now : P.nowDim, width: f.live ? 2 : 1.25, dash: f.live ? nil : [5, 3])
+            xs.append(nx)
+        }
+        if cVis, !f.live {
+            vline(cg, cx, L.markY, L.bottom, P.cursor, width: 1.75)
+            xs.append(cx)
+        }
+        return xs
+    }
+
     private func markers(_ cg: CGContext, _ td: TimelineTextDrawing) {
         let px0 = L.px0, px1 = L.px1
         let top = L.markY, bottom = L.bottom
@@ -858,8 +936,6 @@ struct TimelinePainter {
         let cVis = f.cursorIn && cx >= px0 && cx <= px1
         let nVis = f.nowShow && nx >= px0 && nx <= px1
         let same = f.live || abs(cx - nx) < 1
-        if nVis { vline(cg, nx, top, bottom, f.live ? P.now : P.cg(Theme.now, 0.8), width: f.live ? 2 : 1.25, dash: f.live ? nil : [5, 3]) }
-        if cVis, !f.live { vline(cg, cx, top, bottom, P.cursor, width: 1.75) }
 
         if same, nVis {
             let r = flag(cg, td, nx, f.live ? "NOW \(flagLabel(f.now))" : flagLabel(f.cursor), f.live ? P.now : P.cursor, side: 0)

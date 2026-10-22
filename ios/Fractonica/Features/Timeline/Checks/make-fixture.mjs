@@ -9,6 +9,8 @@ import { createFormatter } from '../../../../../src/core/format.js';
 import { createPure } from '../../../../../src/core/pure.js';
 import { createRuler } from '../../../../../src/ui/timeline/ruler.js';
 import { pickStep, generateTicks, generateContext, civilSpans, stepById, limitsFor, STEPS } from '../../../../../src/ui/timeline/helpers.js';
+import { createWords } from '../../../../../src/ui/timeline/words.js';
+import { createData } from '../../../../../src/ui/timeline/data.js';
 
 const model = createModel();
 const T_A = 1791460800;
@@ -75,6 +77,25 @@ for (const zone of zones) {
     }
   }
 }
+// the canvas wording (src/ui/timeline/words.js and paint.js): the cursor's cycle at every depth, its block labels in
+// pure mode at three widths, its Earth end label; the lane heads, the dense-lane notes and the lane-head explanations
+const words = createWords({ model, pure, ruler });
+const utc = createData({ model, fmt: createFormatter(() => 'UTC'), pure });
+out.words = [];
+for (const t of instants) {
+  for (let L = 0; L <= 13; L++) {
+    const c = utc.cycleAt(L, t, false);
+    if (!c) continue;
+    const sib = model.levelInfo(L).siblings ?? utc.alpha.length;
+    const quarter = pure.isMajor(L) ? pure.QUARTER_WORDS[pure.quarterAt(t, L)] : null;
+    const endsWithCatalogue = c.end >= model.tMax - 1e-3;
+    const labels = [900, 100, 35].map((w) => words.blockLabels({ level: L, local: c.local, idx: c.idx, sib, wide: w === 900, w, endsWithCatalogue, quarter }));
+    out.words.push({ t, L, idx: c.idx, local: c.local, start: c.start, end: c.end, quarter, labels, endLabel: utc.endLabel(L, c.idx, c.end, 2026) });
+  }
+}
+out.lanes = [];
+for (let L = 0; L <= 13; L++) out.lanes.push({ L, laneLength: words.laneLength(L), dense: words.denseMsg(L), tip: words.laneTip(L, utc.alpha.length), length: utc.lengthLabel(L) });
+out.rulerTips = ruler.STEPS.map((s) => ({ id: s.id, tip: words.rulerTip(s) }));
 out.gregSteps = STEPS.map((s) => s.id);
 out.gregPick = [];
 for (let k = 1e-9; k < 5000; k *= 1.9) out.gregPick.push({ k, id: pickStep(k).id });

@@ -21,8 +21,17 @@ enum TimelinePalette {
         let glow: CGColor
     }
 
+    /// Resolved once per colour: the painter asks for the same few dozen tones on every frame, and resolving a SwiftUI
+    /// colour builds an environment each time.
+    private static var resolved: [Color: CGColor] = [:]
+    private static let environment = EnvironmentValues()
+
     static func cg(_ color: Color) -> CGColor {
-        color.resolve(in: EnvironmentValues()).cgColor
+        if let c = resolved[color] { return c }
+        let c = color.resolve(in: environment).cgColor
+        if resolved.count > 512 { resolved.removeAll(keepingCapacity: true) }
+        resolved[color] = c
+        return c
     }
 
     static func cg(_ color: Color, _ opacity: Double) -> CGColor {
@@ -74,4 +83,5 @@ enum TimelinePalette {
     static let axisBase = ink2(0.25)
     static let minorTick = ink2(0.4)
     static let mutedText = ink2(0.9)
+    static let nowDim = cg(Theme.now, 0.8)
 }
