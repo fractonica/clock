@@ -224,7 +224,20 @@ struct FocusChecks {
     static func styles() {
         check(FocusStyle.interference.advanced(by: -1) == .aurora && FocusStyle.aurora.advanced(by: 1) == .interference, "styles wrap")
         check(Set(FocusStyle.allCases.map(\.shaderIndex)) == [0, 1, 2, 3], "shader indices")
-        check(MemoryLayout<FocusUniforms>.stride == 112 && MemoryLayout<FocusGPULevel>.stride == 48, "uniform layouts match the shaders")
+        check(MemoryLayout<FocusUniforms>.stride == 128 && MemoryLayout<FocusGPULevel>.stride == 80, "uniform layouts match the shaders")
+
+        // The per-frame constants the CPU computes for the shaders.
+        var h = FocusHarmonics()
+        h.update(input(vectorA))
+        for i in 0...12 {
+            let place = FocusRenderer.place(of: i, h)
+            let radius = Double((place.x * place.x + place.y * place.y).squareRoot())
+            let expected = i <= 4 ? 0.45 + 0.08 * Double(i) : 0.06 + 0.035 * Double(i - 5)
+            check(abs(radius - expected) < 1e-5, "level \(i) circles at its radius: \(radius) vs \(expected)")
+        }
+        check(FocusRenderer.place(of: 3, h).z != 0 && FocusRenderer.place(of: 7, h).z == 0, "harmonograph glows for γ … ζ only")
+        let tip = FocusRenderer.penTip(h)
+        check(tip.x.isFinite && tip.y.isFinite && (tip.x * tip.x + tip.y * tip.y).squareRoot() < 1.5, "pen tip on the canvas: \(tip)")
     }
 
     // MARK: Shaders
@@ -233,7 +246,9 @@ struct FocusChecks {
     static func shaders() async {
         let pipelines: FocusPipelines
         do {
+            let started = CACurrentMediaTimeLike()
             pipelines = try await FocusPipelines.load()
+            print(String(format: "  shaders compiled in %.0f ms (8 field pipelines + the trail)", (CACurrentMediaTimeLike() - started) * 1000))
         } catch {
             check(false, "shaders compile: \(error)")
             return
@@ -301,8 +316,26 @@ struct FocusChecks {
             let cpuMean = cpu.reduce(0, +) / Double(max(1, cpu.count))
             print(String(format: "  %@: GPU %.2f ms/frame (max %.2f) at %dx%d · CPU %.3f ms/frame (harmonics + encode)",
                          style.rawValue, mean * 1000, (gpu.max() ?? 0) * 1000, width, height, cpuMean * 1000))
-            // A sanity bound only: the build machine's GPU is shared with simulators and other builds.
-            check(mean < 0.030, "\(style.rawValue) renders in under 30 ms on this Mac: \(mean * 1000) ms")
+            // A sanity bound only: the build machine's GPU is shared with simulators and other builds (uncontended, every
+            // style takes well under 2 ms here at this size).
+            check(mean < 0.012, "\(style.rawValue) renders in under 12 ms on this Mac: \(mean * 1000) ms")
+        }
+        // A cross-fade draws both styles: halfway, the picture holds some of each.
+        for (from, to) in [(FocusStyle.rings, FocusStyle.aurora), (.harmonograph, .interference)] {
+            var h = FocusHarmonics()
+            h.update(input(vectorA))
+            var look = FocusLook()
+            look.previous = from
+            look.style = to
+            look.transition = 0.5
+            renderer.update(harmonics: h, look: look, pixels: SIMD2(Float(width), Float(height)), pointScale: 3, drift: 40)
+            guard let buffer = renderer.queue.makeCommandBuffer() else { continue }
+            renderer.encode(buffer, target: texture)
+            buffer.commit()
+            waitFor(buffer)
+            let stats = pixelStats(texture)
+            check(!stats.allBlack && stats.mean < 200, "cross-fade \(from.rawValue) → \(to.rawValue) draws (mean \(stats.mean))")
+            if let folder { writePNG(texture, to: folder.appendingPathComponent("fade-\(from.rawValue)-\(to.rawValue).png")) }
         }
         // Out of range: a dark ember, never a reading.
         var outside = FocusHarmonics()

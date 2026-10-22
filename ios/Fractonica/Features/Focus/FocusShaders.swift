@@ -5,7 +5,9 @@
 /// simulator. `FocusPipelines` builds them off the main thread, once per process.
 ///
 /// The picture is linear light written to an sRGB target (blending happens in linear space), soft-clipped and
-/// dithered. Coordinates: the shorter side of the view spans −1 … 1, y up. The layouts match `FocusUniforms` and
+/// dithered. The field's fragment function is specialised per style with a function constant: one pipeline that
+/// switched between the four styles at run time cost ten to thirty times as much GPU time per pixel (the register
+/// budget of the heaviest style held back every other), so a style cross-fade draws two passes instead. Coordinates: the shorter side of the view spans −1 … 1, y up. The layouts match `FocusUniforms` and
 /// `FocusGPULevel` in FocusRenderer.swift. Level i is depth i + 1: δ 3, ε 4, ζ 5, η 6, θ 7, ι 8, κ 9, λ 10, μ 11,
 /// ν 12, and the sub-Blink ξ ο π 13 … 15.
 enum FocusShaders {
@@ -16,20 +18,28 @@ using namespace metal;
 struct Header {
     float4 view;    // width px, height px, px per point, min(width, height) px
     float4 clock;   // drift s, breath 0…1, breath cue 0…1, calm 0…1
-    float4 style;   // style A, style B, mix A→B 0…1, alive 0…1
+    float4 style;   // style A, style B, alpha of this pass (a cross-fade's second pass), alive 0…1
     float4 extra;   // shimmer 0…1, dim 0…1, frame seed, exposure
     float4 lines;   // segments, width pt, alpha, unused
     float4 ground;  // background rgb (linear), unused
     float4 accent;  // the app's accent (teal), linear rgb, unused
+    float4 tip;     // the harmonograph pen's tip (field units), unused, unused
 };
 
 struct Level {
     float4 motion;  // phase 0…1, amplitude 0…1, ripple 0…1, ripple age s
     float4 color;   // linear rgb, weight
     float4 info;    // siblings, factor, unused, unused
+    float4 trig;    // cos 2πφ, sin 2πφ, unused, unused (per frame, on the CPU: uniform for every pixel)
+    float4 place;   // interference glow / source centre xy, harmonograph glow centre xy (per frame, on the CPU)
 };
 
 constant float TAU = 6.283185307;
+
+/// The style a field pipeline draws (0 interference, 1 harmonograph, 2 rings, 3 aurora) and whether it blends over
+/// the previous pass with the alpha in `style.z` (the second pass of a cross-fade).
+constant int STYLE [[function_constant(0)]];
+constant bool BLENDED [[function_constant(1)]];
 
 // ---------------------------------------------------------------- helpers
 
@@ -55,14 +65,24 @@ static float2 rotate(float2 p, float a) {
     return float2(c * p.x - s * p.y, s * p.x + c * p.y);
 }
 
-static float3 encodeSRGB(float3 c) {
-    c = max(c, 0.0);
-    return select(1.055 * pow(c, 1.0 / 2.4) - 0.055, c * 12.92, c < 0.0031308);
+/// Rotates by the angle whose cosine and sine are `cs`.
+static float2 rotateBy(float2 p, float2 cs) {
+    return float2(cs.x * p.x - cs.y * p.y, cs.y * p.x + cs.x * p.y);
 }
 
-static float3 decodeSRGB(float3 c) {
-    c = max(c, 0.0);
-    return select(pow((c + 0.055) / 1.055, 2.4), c / 12.92, c < 0.04045);
+static float hash11(float p) {
+    p = fract(p * 0.1031);
+    p *= p + 33.33;
+    p *= p + p;
+    return fract(p);
+}
+
+/// Value noise along a line (half the cost of `vnoise` where the second coordinate is constant).
+static float vnoise1(float x, float seed) {
+    float i = floor(x);
+    float f = fract(x);
+    float u = f * f * (3.0 - 2.0 * f);
+    return mix(hash11(i + seed), hash11(i + 1.0 + seed), u);
 }
 
 static float phaseOf(constant Level* L, int i) { return L[i].motion.x; }
@@ -111,12 +131,10 @@ static float3 breathHalo(float r, float px, constant Header& H) {
 static float shimmer(float2 px, constant Header& H, constant Level* L) {
     float s = H.extra.x;
     if (s <= 0.0) { return 1.0; }
-    float2 cell = floor(px * 0.5);
-    float g = 0.0;
-    for (int k = 13; k <= 15; k++) {
-        float h = hash12(cell + float(k) * 17.3);
-        g += cos(TAU * (phaseOf(L, k) + h));
-    }
+    float h = hash12(floor(px * 0.5));
+    float g = cos(TAU * (phaseOf(L, 13) + h))
+            + cos(TAU * (phaseOf(L, 14) + fract(h * 7.31)))
+            + cos(TAU * (phaseOf(L, 15) + fract(h * 13.17)));
     return 1.0 + 0.07 * s * g / 3.0;
 }
 
@@ -128,14 +146,12 @@ static float shimmer(float2 px, constant Header& H, constant Level* L) {
 /// line in the hue of the level its height corresponds to, coolest in the troughs, warmest on the crests. Broad glows
 /// of α … ε drift the palette underneath.
 static float3 interference(float2 p, float px, constant Header& H, constant Level* L) {
-    float2 q = rotate(p, -TAU * phaseOf(L, 7));               // θ turns the whole pattern once per cycle
+    float2 q = rotateBy(p, float2(L[7].trig.x, -L[7].trig.y)); // θ turns the whole pattern once per cycle
     float r = length(q);
     float3 col = 0.0;
 
     for (int i = 0; i <= 4; i++) {
-        float place = TAU * (phaseOf(L, i) * 5.0 + float(i) * 0.27);
-        float2 c = (0.45 + 0.08 * float(i)) * float2(cos(place), sin(place));
-        float d = length(q - c);
+        float d = length(q - L[i].place.xy);
         col += L[i].color.rgb * (0.040 * L[i].color.w * exp(-d * d * 2.4));
     }
 
@@ -143,9 +159,7 @@ static float3 interference(float2 p, float px, constant Header& H, constant Leve
     for (int i = 5; i <= 12; i++) {
         float amp = ampOf(L, i) * L[i].color.w;
         if (amp <= 0.001) { continue; }
-        float place = TAU * phaseOf(L, i - 3) * (i % 2 == 0 ? 1.0 : -1.0) + float(i) * 2.39996;
-        float2 src = (0.06 + 0.035 * float(i - 5)) * float2(cos(place), sin(place));
-        float2 v = q - src;
+        float2 v = q - L[i].place.xy;
         float d = length(v);
         float k = 5.0 + 1.6 * float(i - 5);
         float m = L[i].info.x;
@@ -170,22 +184,17 @@ static float3 interference(float2 p, float px, constant Header& H, constant Leve
 
 /// 1 · Harmonograph: the trail is drawn by the line pipeline; underneath, a faint nebula in the slow levels'
 /// colours and the pen's glowing tip.
-static float2 pen(float s, constant Level* L, thread float4& weights);
-
 static float3 harmonographGround(float2 p, float px, constant Header& H, constant Level* L) {
     float r = length(p);
     float3 col = 0.0;
     for (int i = 2; i <= 5; i++) {
-        float place = TAU * (phaseOf(L, i - 2) * 3.0) + float(i) * 1.7;
-        float2 c = 0.42 * float2(cos(place), sin(place));
-        float d = length(p - c);
+        float d = length(p - L[i].place.zw);
         col += L[i].color.rgb * (0.035 * exp(-d * d * 2.0));
     }
-    float4 w;
-    float2 tip = pen(0.0, L, w);
+    float2 tip = H.tip.xy;
     float swell = 1.0 + 0.03 * (H.clock.y - 0.5) * H.clock.z * (1.0 - H.clock.w);
     float d = length(p - tip * swell);
-    col += levelColor(L, 11.0) * (exp(-d * d / (px * px * 30.0)) * 1.4 + exp(-d / (px * 26.0)) * 0.10) * H.lines.z / 0.3;
+    col += levelColor(L, 11.0) * (exp(-d * d / (px * px * 30.0)) * 1.4 + exp(-d / (px * 26.0)) * 0.10);
     return col * exp(-r * r * 0.25);
 }
 
@@ -201,14 +210,15 @@ static float3 rings(float2 p, float px, constant Header& H, constant Level* L) {
         if (abs(r - R0) > 0.06) { continue; }                  // nothing of this ring reaches here
         float amp = ampOf(L, i);
         float ph = phaseOf(L, i);
-        float R = R0 * (1.0 + 0.012 * sin(TAU * ph) * amp);
+        float2 cs = L[i].trig.xy;                             // cos, sin of the phase angle
+        float R = R0 * (1.0 + 0.012 * cs.y * amp);
         float d = abs(r - R);
         float w = px * 0.85;
         float track = exp(-d * d / (w * w));
         float glow = exp(-d / (px * 5.0));
         float behind = fract(ph - f);                         // 0 at the head, growing backwards
         float tail = exp(-behind * (i >= 11 ? 9.0 : 4.5));
-        float2 headPoint = R * float2(sin(TAU * ph), cos(TAU * ph));
+        float2 headPoint = R * float2(cs.y, cs.x);
         float h = length(p - headPoint);
         float head = exp(-h * h / (px * px * 16.0)) * 1.6 + exp(-h / (px * 10.0)) * 0.25;
         float qf = fract(f * 4.0);
@@ -229,24 +239,28 @@ static float3 aurora(float2 p, float px, constant Header& H, constant Level* L) 
     float halfHeight = H.view.y / H.view.w;
     float drift = H.clock.x;
     float3 col = 0.0;
-    float raySlide = 0.025 * sin(TAU * phaseOf(L, 11)) * ampOf(L, 11) + 0.008 * sin(TAU * phaseOf(L, 12)) * ampOf(L, 12);
+    float raySlide = 0.025 * L[11].trig.y * ampOf(L, 11) + 0.008 * L[12].trig.y * ampOf(L, 12);
     float x = p.x;
     float spread = min(halfHeight, 1.9);
+    // The swaying waves, sin(1.7x ± 2πφ) and sin(4.3x ± 2πφ), from these and each level's cos and sin.
+    float s17 = sin(1.7 * x), c17 = cos(1.7 * x);
+    float s43 = sin(4.3 * x), c43 = cos(4.3 * x);
     for (int i = 3; i <= 12; i++) {
         float amp = ampOf(L, i);
         float k = float(i - 3) / 9.0;                          // 0 slow … 1 fast
         float slow = phaseOf(L, max(i - 2, 0));
-        float base = mix(0.62, -0.50, k) * spread + 0.08 * sin(TAU * slow);
-        float fold = vnoise(float2(x * 0.65 + slow * 5.0 + drift * 0.003, float(i) * 3.7)) * 0.75
-                   + vnoise(float2(x * 1.7 - slow * 3.0, float(i) * 5.1 + 9.0)) * 0.25;
+        int next = min(i + 1, 12);
+        float base = mix(0.62, -0.50, k) * spread + 0.08 * L[max(i - 2, 0)].trig.y;
+        float fold = vnoise1(x * 0.65 + slow * 5.0 + drift * 0.003, float(i) * 37.0) * 0.75
+                   + vnoise1(x * 1.7 - slow * 3.0, float(i) * 53.0 + 9.0) * 0.25;
         float y0 = base + 0.55 * (fold - 0.5)
-                 + 0.05 * sin(1.7 * x + TAU * phaseOf(L, i)) * amp
-                 + 0.02 * sin(4.3 * x - TAU * phaseOf(L, min(i + 1, 12))) * ampOf(L, min(i + 1, 12));
+                 + 0.05 * (s17 * L[i].trig.x + c17 * L[i].trig.y) * amp
+                 + 0.02 * (s43 * L[next].trig.x - c43 * L[next].trig.y) * ampOf(L, next);
         float dy = p.y - y0;
         float height = 0.07 + 0.12 * (1.0 - k);
         float reach = height * 9.0;
         if (dy < -0.05 || dy > reach) { continue; }
-        float patch = smoothstep(0.42, 0.78, vnoise(float2(x * 0.8 - slow * 7.0 + float(i) * 11.0, float(i))));
+        float patch = smoothstep(0.36, 0.86, vnoise1(x * 0.8 - slow * 7.0 + float(i) * 11.0, float(i) * 71.0));
         if (patch <= 0.0) { continue; }
         float up = exp(-max(dy, 0.0) / height);
         float down = exp(min(dy, 0.0) / 0.008);
@@ -294,9 +308,9 @@ static float3 finish(float3 col, float2 pixel, constant Header& H) {
     col = 1.0 - exp(-col * H.extra.w);                       // soft clip
     col *= 1.0 - 0.45 * H.extra.y;                           // dim behind the overlay
     col += H.ground.rgb;
-    // Dither in the encoded domain: ±½ step of the 8-bit target.
+    // Dither: ±½ step of the 8-bit sRGB target, in linear light (d linear / d encoded ≈ 2.2 √linear).
     float n = hash12(pixel + H.extra.z * 7.13) - 0.5;
-    return decodeSRGB(encodeSRGB(col) + n / 255.0);
+    return max(col + n * (2.2 / 255.0) * sqrt(max(col, 1e-5)), 0.0);
 }
 
 fragment float4 focusFieldFragment(FieldOut in [[stage_in]],
@@ -309,13 +323,7 @@ fragment float4 focusFieldFragment(FieldOut in [[stage_in]],
     float px = 2.0 / H.view.w;                               // one pixel in field units
     float2 q = p / swellOf(H);
 
-    int a = int(H.style.x + 0.5);
-    int b = int(H.style.y + 0.5);
-    float m = H.style.z;
-    float3 col = styleColor(a, q, px, H, L);
-    if (m > 0.001 && b != a) {
-        col = mix(col, styleColor(b, q, px, H, L), m);
-    }
+    float3 col = styleColor(STYLE, q, px, H, L);              // STYLE is a constant: only that style is compiled
     col *= shimmer(pixel, H, L);
     col += ripples(r, px, L) * (1.0 - H.clock.w);
     col += breathHalo(r, px, H);
@@ -326,7 +334,7 @@ fragment float4 focusFieldFragment(FieldOut in [[stage_in]],
         float ember = exp(-r * r * 3.0) * 0.012 * (0.85 + 0.15 * sin(H.clock.x * 0.4));
         col = mix(float3(ember), col, alive);
     }
-    return float4(finish(col, pixel, H), 1.0);
+    return float4(finish(col, pixel, H), BLENDED ? H.style.z : 1.0);
 }
 
 // ---------------------------------------------------------------- the harmonograph trail

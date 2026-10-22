@@ -8,7 +8,6 @@ enum FocusHooks: FeatureHooks {
     static let notificationIdentifier = "focus.end"
 
     static func launch() {
-        FocusLaunch.log("launch")
         let model = FocusModel.shared
         model.onComplete = { session, late in
             guard !late else { return }
@@ -94,11 +93,10 @@ struct FocusLaunch: Sendable {
 
     static let current = FocusLaunch(defaults: .standard)
 
-    /// A diagnostic line on standard error (unbuffered, so `simctl launch --console` shows it at once).
+    /// A diagnostic line on standard error (unbuffered, so `simctl launch --console` shows it at once); only the
+    /// -FXFocusStats statistics use it.
     static func log(_ message: String) {
         FileHandle.standardError.write(Data("[focus] \(message)\n".utf8))
-        let url = FileManager.default.temporaryDirectory.appendingPathComponent("focus-debug.txt")
-        if let h = try? FileHandle(forWritingTo: url) { h.seekToEndOfFile(); h.write(Data("\(message)\n".utf8)); try? h.close() } else { try? Data("\(message)\n".utf8).write(to: url) }
     }
 
     init(defaults: UserDefaults) {

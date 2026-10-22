@@ -94,7 +94,6 @@ struct FocusScreen: View {
             #endif
         }
         .onAppear {
-            FocusLaunch.log("appear immersive=\(isImmersive) phase=\(scenePhase)")
             model.attach()
             if let elapsed = launch.elapsed { model.start(elapsed: elapsed) }
             if launch.overlay == false { overlayVisible = false }

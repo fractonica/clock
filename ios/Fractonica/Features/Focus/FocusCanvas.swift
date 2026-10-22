@@ -146,7 +146,6 @@ final class FocusMetalView: NSView {
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
-        FocusLaunch.log("moved to window \(window != nil) screen=\(window?.screen != nil)")
         if window != nil {
             relayout()
             let link = displayLink(target: driver, selector: #selector(FocusDriver.step(_:)))
@@ -243,7 +242,6 @@ final class FocusDriver: NSObject {
     // MARK: Display link
 
     func start(link newLink: CADisplayLink, maximumFramesPerSecond: Int) {
-        FocusLaunch.log("start fps=\(maximumFramesPerSecond)")
         link?.invalidate()
         link = newLink
         self.maximumFramesPerSecond = max(30, maximumFramesPerSecond)
@@ -286,10 +284,7 @@ final class FocusDriver: NSObject {
         return max(1, min(nativeScale, 2, CGFloat((budget / area).squareRoot())))
     }
 
-    private var debugCount = 0
     @objc func step(_ link: CADisplayLink) {
-        debugCount += 1
-        if debugCount % 60 == 1 { FocusLaunch.log("step \(debugCount) active=\(config.active) renderer=\(renderer != nil) size=\(layer?.drawableSize ?? .zero)") }
         let interval = link.targetTimestamp - link.timestamp
         render(frameInterval: interval > 0 ? interval : link.duration, targetTimestamp: link.targetTimestamp)
     }
