@@ -63,6 +63,8 @@ struct FocusClockReading: View {
 /// "Breathe in" while the Flavon rises, "Breathe out" while it falls: the words of the picture's breathing cue.
 struct FocusBreathWord: View {
     var timeOverride: Double?
+    /// Followed by a hairline (beside the session line).
+    var divided = false
 
     @Environment(ClockStore.self) private var store
 
@@ -70,9 +72,17 @@ struct FocusBreathWord: View {
         // Real time: the cue keeps breathing when the displayed time is paused (it then follows the live Flavon).
         TimelineView(.periodic(from: .now, by: 0.25)) { context in
             if let inhaling = Self.inhaling(store: store, date: context.date, timeOverride: timeOverride) {
-                Label(inhaling ? "Breathe in" : "Breathe out", systemImage: inhaling ? "arrow.up.circle" : "arrow.down.circle")
-                    .contentTransition(.symbolEffect(.replace))
-                    .animation(.easeInOut(duration: 0.6), value: inhaling)
+                HStack(spacing: 12) {
+                    Label(inhaling ? "Breathe in" : "Breathe out", systemImage: inhaling ? "arrow.up.circle" : "arrow.down.circle")
+                        .contentTransition(.symbolEffect(.replace))
+                        .animation(.easeInOut(duration: 0.6), value: inhaling)
+                    if divided {
+                        Capsule()
+                            .fill(Theme.ink3.opacity(0.6))
+                            .frame(width: 1, height: 13)
+                            .accessibilityHidden(true)
+                    }
+                }
             }
         }
     }

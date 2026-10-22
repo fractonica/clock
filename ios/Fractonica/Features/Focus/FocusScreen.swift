@@ -193,10 +193,11 @@ struct FocusScreen: View {
         .dynamicTypeSize(...DynamicTypeSize.accessibility1)
     }
 
+    /// The breathing word and the session line; side by side, a hairline keeps them apart ("Breathe in | 4ι …").
     @ViewBuilder
-    private var breathAndSession: some View {
+    private func breathAndSession(divided: Bool) -> some View {
         if model.breathing {
-            FocusBreathWord(timeOverride: launch.time)
+            FocusBreathWord(timeOverride: launch.time, divided: divided)
         }
         FocusSessionLine(model: model)
     }
@@ -215,8 +216,8 @@ struct FocusScreen: View {
                 VStack(spacing: 8) {
                     // One line where it fits, the breathing word above the session at large text sizes.
                     ViewThatFits(in: .horizontal) {
-                        HStack(spacing: 14) { breathAndSession }
-                        VStack(spacing: 6) { breathAndSession }
+                        HStack(spacing: 12) { breathAndSession(divided: true) }
+                        VStack(spacing: 6) { breathAndSession(divided: false) }
                     }
                     .lineLimit(1)
                     .font(.subheadline)
