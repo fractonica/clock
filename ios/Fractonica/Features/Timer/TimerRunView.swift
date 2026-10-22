@@ -55,7 +55,7 @@ struct TimerRunView: View {
                     reduceMotion: reduceMotion
                 )
             }
-            center(innerDiameter: inner * 2)
+            center(innerDiameter: inner * 2, dial: size)
         }
         .frame(width: size, height: size)
         .accessibilityElement(children: .contain)
@@ -66,11 +66,12 @@ struct TimerRunView: View {
         LadderReadout.timerLead(total: run.totalSpan(at: .now, clock: store.clock))
     }
 
-    private func center(innerDiameter: CGFloat) -> some View {
+    private func center(innerDiameter: CGFloat, dial: CGFloat) -> some View {
         let clock = store.clock
         let blink = clock.blinkSeconds(at: .now) ?? 0.311
         let fields = CGFloat(lead.downToBlink.count)
-        let readoutSize = min(56 * readoutScale, innerDiameter * 0.84 / (fields * 1.72))
+        let readoutSize = min(56 * readoutScale * max(1, dial / 420), innerDiameter * 0.86 / (fields * 1.72))
+        let small = max(13, readoutSize * 0.32)
         let schedule = TickSchedule(anchor: run.end ?? .now, steps: settings.pure ? [blink] : [blink, 1], paused: !run.isRunning)
         return TimelineView(schedule) { context in
             let now = context.date
@@ -78,7 +79,7 @@ struct TimerRunView: View {
             let blinks = run.remainingBlinks(at: now, clock: clock).map(LadderReadout.ceilBlinks)
             VStack(spacing: readoutSize * 0.18) {
                 Text(words.title(run.spec))
-                    .font(.subheadline.weight(.medium))
+                    .font(.system(size: small * 1.15, weight: .medium))
                     .foregroundStyle(Theme.ink2)
                     .lineLimit(1)
                     .accessibilityLabel(words.spokenTitle(run.spec))
@@ -90,7 +91,7 @@ struct TimerRunView: View {
                         .foregroundStyle(run.isRunning ? Theme.ink : Theme.ink2)
                         .accessibilityLabel("\(earth) left")
                         .accessibilityAddTraits(.updatesFrequently)
-                    LadderReadoutView(span: blinks.map(LadderSpan.init(blinks:)), lead: lead, size: 19, weight: .regular, ink: Theme.ink2)
+                    LadderReadoutView(span: blinks.map(LadderSpan.init(blinks:)), lead: lead, size: max(19, readoutSize * 0.42), weight: .regular, ink: Theme.ink2)
                 } else {
                     LadderReadoutView(
                         span: blinks.map(LadderSpan.init(blinks:)),
@@ -102,7 +103,7 @@ struct TimerRunView: View {
                     .accessibilityAddTraits(.updatesFrequently)
                     if !words.pure {
                         Text(earth)
-                            .font(.reading(17))
+                            .font(.reading(max(17, readoutSize * 0.38)))
                             .foregroundStyle(Theme.ink3)
                             .accessibilityLabel("\(earth) left")
                     }
@@ -115,7 +116,7 @@ struct TimerRunView: View {
                         Label("Paused", systemImage: "pause.fill")
                     }
                 }
-                .font(.footnote.monospacedDigit())
+                .font(.system(size: small, weight: .regular).monospacedDigit())
                 .foregroundStyle(run.isRunning ? Theme.ink3 : Theme.teal)
                 .labelStyle(TightLabelStyle())
                 .lineLimit(1)

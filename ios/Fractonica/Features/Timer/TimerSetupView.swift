@@ -17,9 +17,9 @@ struct TimerSetupView: View {
                     HStack(alignment: .top, spacing: 40) {
                         VStack(spacing: 24) {
                             notices
-                            setter(rowHeight: max(wheelRow, 46))
+                            setter(rowHeight: max(wheelRow, geo.size.width >= 1000 ? 54 : 46))
                         }
-                        .frame(maxWidth: 460)
+                        .frame(maxWidth: geo.size.width >= 1000 ? 500 : 460)
                         VStack(spacing: 28) {
                             presets
                             aligned
@@ -192,7 +192,7 @@ struct TimerSetupView: View {
                 systemImage: "circle.dashed",
                 text: settings.pure
                     ? "Real now lies outside the catalogue (\(Notation.standard.catalogueText())). The ladder cannot be measured here."
-                    : "The device clock reads outside the catalogue (1613–2857), so Fractonica timers cannot be measured. Earth timers still run."
+                    : "The device clock reads outside the catalogue (\(catalogueYears)), so Fractonica timers cannot be measured. Earth timers still run."
             )
         } else if store.problem == .outsideCatalogue {
             notice(systemImage: "exclamationmark.circle", text: "That timer would end outside the catalogue.")
@@ -200,6 +200,15 @@ struct TimerSetupView: View {
         if store.access == .denied {
             NotificationsOffNotice()
         }
+    }
+
+    /// "1613–2857": the catalogue's first and last years.
+    private var catalogueYears: String {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = .gmt
+        let clock = store.clock.clock
+        func year(_ t: Double) -> Int { calendar.component(.year, from: Date(timeIntervalSince1970: t)) }
+        return "\(year(clock.tMin))–\(year(clock.tMax))"
     }
 
     private func notice(systemImage: String, text: String) -> some View {

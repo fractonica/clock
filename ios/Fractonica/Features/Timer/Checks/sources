@@ -3,3 +3,4 @@ Fractonica/Features/Timer/Ladder.swift
 Fractonica/Features/Timer/TimerModel.swift
 Fractonica/Features/Timer/TickSchedule.swift
 Shared/Notation+Standard.swift
+Fractonica/Features/Timer/TimerDialGeometry.swift

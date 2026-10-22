@@ -1,23 +1,24 @@
 import SwiftUI
 
-/// The countdown dial: an outer teal ring draining with the whole timer, and inside it one ring of ticks per unit of
-/// the readout, coarse outside to fine inside. Each ring has as many ticks as the unit has in the next one up (77η in
-/// an ε, 36ι in an η, 65λ in an ι, 25ν in a λ), with longer ticks at the depth between (ζ, θ, κ, μ); the lit ticks
-/// are the count left, so "02ι 13λ 07ν" lights 2, 13 and 7, and the tick being used up fades as it goes.
+/// The countdown dial: an outer teal ring draining with the whole timer, and inside it one segmented phase ring per
+/// unit of the readout, coarse outside to fine inside. A ring has a segment per unit in the next one up (77η in an ε,
+/// 36ι in an η, 65λ in an ι, 25ν in a λ), with a wider gap at each depth between (ζ = 11η, θ = 4ι, κ = 13λ, μ = 5ν);
+/// the lit segments are the count left, so "02ι 13λ 07ν" lights 2, 13 and 7, and the segment being used up shrinks
+/// as it goes. The finest ring turns once per its parent (a Blink ring empties every Flavon), the coarse ones crawl.
 struct TimerDial: View {
     /// What is left of the whole timer, 1 … 0.
     let fraction: Double
-    /// Blinks left; nil outside the catalogue (the tick rings go dark).
+    /// Blinks left; nil outside the catalogue (the phase rings go dark).
     let blinks: Double?
     /// The readout's units, coarse to fine.
     let units: [LadderUnit]
     var paused = false
-    /// Whole ticks only (no fading tick).
+    /// Whole segments only (nothing shrinks continuously).
     var reduceMotion = false
 
     /// The radius inside the innermost ring, as a fraction of half the dial, for laying out the readout.
     static func innerRadius(rings: Int) -> CGFloat {
-        rings >= 4 ? 0.58 : 0.62
+        TimerDialGeometry.innerRadius(rings: rings)
     }
 
     var body: some View {
@@ -32,11 +33,12 @@ struct TimerDial: View {
         guard s > 20 else { return }
         let c = CGPoint(x: size.width / 2, y: size.height / 2)
         let unit = s / 320
-        let ringRadius = s / 2 - 6 * unit
-        let ringWidth = 5 * unit
-        if paused { context.opacity = 0.62 }
+        let geometry = TimerDialGeometry(rings: units.count, side: s)
+        if paused { context.opacity = 0.6 }
 
         // the whole timer
+        let ringRadius = geometry.outerRadius
+        let ringWidth = geometry.outerWidth
         context.stroke(circle(c, ringRadius), with: .color(Theme.line), lineWidth: ringWidth)
         let f = min(1, max(0, fraction))
         if f > 0 {
@@ -45,67 +47,51 @@ struct TimerDial: View {
             arc.addArc(center: c, radius: ringRadius, startAngle: .degrees(-90), endAngle: end, clockwise: false)
             let style = StrokeStyle(lineWidth: ringWidth, lineCap: .round)
             context.drawLayer { glow in
-                glow.addFilter(.shadow(color: Theme.teal.opacity(0.55), radius: 7 * unit))
+                glow.addFilter(.shadow(color: Theme.teal.opacity(paused ? 0.25 : 0.55), radius: 7 * unit))
                 glow.stroke(arc, with: .color(Theme.teal), style: style)
             }
-            let head = point(c, ringRadius, end)
-            context.fill(circle(head, ringWidth * 0.62), with: .color(Theme.ink))
+            context.fill(circle(point(c, ringRadius, end), ringWidth * 0.62), with: .color(Theme.ink))
         }
 
-        // one ring of ticks per unit
-        let outer = ringRadius - 13 * unit
-        let inner = s / 2 * Self.innerRadius(rings: units.count) + 4 * unit
-        let pitch = (outer - inner) / CGFloat(max(1, units.count))
+        // one phase ring per unit
         for (i, u) in units.enumerated() {
-            let r = outer - pitch * CGFloat(i)
-            drawRing(u, radius: r, length: pitch * 0.6, unit: unit, center: c, in: &context)
+            drawRing(u, radius: geometry.ringRadius(i), width: geometry.ringWidth, center: c, in: &context)
         }
     }
 
-    private func drawRing(_ u: LadderUnit, radius r: CGFloat, length: CGFloat, unit: CGFloat, center c: CGPoint, in context: inout GraphicsContext) {
+    private func drawRing(_ u: LadderUnit, radius r: CGFloat, width: CGFloat, center c: CGPoint, in context: inout GraphicsContext) {
         let n = u.perParent
         let color = Theme.levelColor(u.level)
-        // the count left of this unit inside the next one up, with its fraction
-        var value = 0.0
-        if let blinks, blinks > 0 {
-            let x = blinks / Double(u.blinks)
-            value = u == .eta ? min(Double(n), x) : x.truncatingRemainder(dividingBy: Double(n))
-            if reduceMotion { value = value.rounded(.up) }
-        }
+        let value = TimerDialGeometry.ringValue(blinks: blinks, unit: u, whole: reduceMotion)
         let whole = Int(value.rounded(.down))
         let part = value - Double(whole)
 
-        var dark = Path(), darkMajor = Path(), lit = Path(), litMajor = Path()
-        var fading: (Path, Bool)?
-        // lit ticks run their full length; the rest of the ring is a quiet track of dots, a dash at each group
-        let mid = r - length / 2
+        // gaps as arc lengths, so every ring has the same rhythm whatever its count
+        let gap = Double(max(2.2, width * 0.42) / r)
+        let groupGap = gap * 2.4
+        let step = 2 * Double.pi / Double(n)
+        var track = Path(), lit = Path(), partial = Path()
         for k in 0..<n {
-            let major = k % u.group == 0
-            let a = Angle.degrees(-90 + 360 * (Double(k) + 0.5) / Double(n))
-            let len = major ? length : length * 0.72
-            var tick = Path()
-            tick.move(to: point(c, mid + len / 2, a))
-            tick.addLine(to: point(c, mid - len / 2, a))
+            let leading = k % u.group == 0 ? groupGap : gap
+            let trailing = (k + 1) % u.group == 0 || k + 1 == n ? groupGap : gap
+            let a0 = -Double.pi / 2 + Double(k) * step + leading / 2
+            let a1 = -Double.pi / 2 + Double(k + 1) * step - trailing / 2
+            guard a1 > a0 else { continue }
+            var seg = Path()
+            seg.addArc(center: c, radius: r, startAngle: .radians(a0), endAngle: .radians(a1), clockwise: false)
             if k < whole {
-                if major { litMajor.addPath(tick) } else { lit.addPath(tick) }
+                lit.addPath(seg)
             } else {
-                let short = major ? length * 0.3 : 0.01
-                var mark = Path()
-                mark.move(to: point(c, mid + short / 2, a))
-                mark.addLine(to: point(c, mid - short / 2, a))
-                if major { darkMajor.addPath(mark) } else { dark.addPath(mark) }
-                if k == whole && part > 0.001 { fading = (tick, major) }
+                track.addPath(seg)
+                if k == whole && part > 0.002 {
+                    partial.addArc(center: c, radius: r, startAngle: .radians(a0), endAngle: .radians(a0 + (a1 - a0) * part), clockwise: false)
+                }
             }
         }
-        let thin = StrokeStyle(lineWidth: 1.7 * unit, lineCap: .round)
-        let bold = StrokeStyle(lineWidth: 2.5 * unit, lineCap: .round)
-        context.stroke(dark, with: .color(Theme.line2.opacity(0.9)), style: StrokeStyle(lineWidth: 1.9 * unit, lineCap: .round))
-        context.stroke(darkMajor, with: .color(Theme.ink3.opacity(0.5)), style: thin)
-        context.stroke(lit, with: .color(color.opacity(0.85)), style: thin)
-        context.stroke(litMajor, with: .color(color), style: bold)
-        if let (tick, major) = fading {
-            context.stroke(tick, with: .color(color.opacity(0.12 + 0.73 * part)), style: major ? bold : thin)
-        }
+        let style = StrokeStyle(lineWidth: width, lineCap: .butt)
+        context.stroke(track, with: .color(Theme.line.opacity(0.95)), style: style)
+        context.stroke(lit, with: .color(color.opacity(0.9)), style: style)
+        context.stroke(partial, with: .color(color.opacity(0.7)), style: style)
     }
 
     private func circle(_ c: CGPoint, _ r: CGFloat) -> Path {

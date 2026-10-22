@@ -6,7 +6,9 @@ import SwiftUI
 struct StopwatchScreen: View {
     @Environment(AppSettings.self) private var settings
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @AppStorage("timer.stopwatch.face") private var face = Face.digits.rawValue
+    @AppStorage("timer.stopwatch.face") private var savedFace = Face.digits.rawValue
+    /// The `-FXStopwatchFace` launch argument's face, shown without being saved until the user picks one.
+    @State private var forced = StopwatchScreen.forcedFace
 
     private var store: StopwatchStore { .shared }
 
@@ -37,7 +39,15 @@ struct StopwatchScreen: View {
             #if DEBUG && os(iOS)
             TimerDemo.rotateIfAsked()
             #endif
-            if let forced = Self.forcedFace { face = forced }
+        }
+    }
+
+    /// The face showing on iPhone: digits or dial.
+    private var face: String {
+        get { forced ?? savedFace }
+        nonmutating set {
+            forced = nil
+            savedFace = newValue
         }
     }
 
@@ -62,10 +72,10 @@ struct StopwatchScreen: View {
                 .scrollTargetLayout()
             }
             .scrollTargetBehavior(.paging)
-            .scrollPosition(id: Binding(get: { face }, set: { if let new = $0 { face = new } }))
+            .scrollPosition(id: Binding(get: { face }, set: { if let new = $0, new != face { face = new } }))
             .scrollIndicators(.hidden)
             .frame(height: faceHeight)
-            .onAppear { proxy.scrollTo(Self.forcedFace ?? face) }
+            .onAppear { proxy.scrollTo(face) }
             }
             pageDots
                 .padding(.top, 6)

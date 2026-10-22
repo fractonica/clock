@@ -15,6 +15,7 @@ struct TimerChecks {
         stopwatchChecks()
         scheduleChecks()
         earthChecks()
+        dialChecks()
         Checks.finish()
     }
 }
@@ -238,6 +239,28 @@ private func earthChecks() {
     check(EarthClockText.stopwatch(28.47) == "00:28.47", "stopwatch: \(EarthClockText.stopwatch(28.47))")
     check(EarthClockText.stopwatch(3725.1) == "1:02:05.10", "stopwatch hours: \(EarthClockText.stopwatch(3725.1))")
     check(EarthClockText.name(seconds: 300) == "5 min" && EarthClockText.name(seconds: 5445) == "1 h 30 min 45 s", "Earth names")
+}
+
+private func dialChecks() {
+    // the brief's countdown, 02ι 13λ 07ν, lights 2, 13 and 7 segments (and part of the next one while it runs)
+    let left = Double(LadderSpan(iota: 2, lambda: 13, nu: 7).blinks) - 0.4
+    check(TimerDialGeometry.ringValue(blinks: left, unit: .iota, whole: true) == 2, "ι ring, whole")
+    check(TimerDialGeometry.ringValue(blinks: left, unit: .lambda, whole: true) == 13, "λ ring, whole")
+    check(TimerDialGeometry.ringValue(blinks: left, unit: .nu, whole: true) == 7, "ν ring, whole")
+    let lambda = TimerDialGeometry.ringValue(blinks: left, unit: .lambda, whole: false)
+    check(lambda > 13 && lambda < 14, "λ ring sweeps inside the 14th segment: \(lambda)")
+    let nu = TimerDialGeometry.ringValue(blinks: left, unit: .nu, whole: false)
+    check(close(nu, 6.6, 1e-9), "ν ring: \(nu)")
+    check(TimerDialGeometry.ringValue(blinks: Double(LadderSpan(eta: 90).blinks), unit: .eta, whole: false) == 77, "Helions cap at a full ring")
+    check(TimerDialGeometry.ringValue(blinks: nil, unit: .nu, whole: false) == 0, "outside the catalogue: dark")
+    check(TimerDialGeometry.ringValue(blinks: 0, unit: .lambda, whole: true) == 0, "rung: dark")
+    for rings in 1...4 {
+        let g = TimerDialGeometry(rings: rings, side: 320)
+        let innermost = g.ringRadius(rings - 1) - g.ringWidth / 2
+        check(innermost >= 160 * TimerDialGeometry.innerRadius(rings: rings), "\(rings) rings leave the readout its room")
+        check(g.ringRadius(0) + g.ringWidth / 2 < g.outerRadius - g.outerWidth / 2, "\(rings) rings stay inside the outer ring")
+        if rings > 1 { check(g.ringRadius(0) - g.ringRadius(1) > g.ringWidth, "\(rings) rings do not touch") }
+    }
 }
 
 extension Result {
