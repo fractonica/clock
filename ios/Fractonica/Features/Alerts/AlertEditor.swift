@@ -35,24 +35,32 @@ struct AlertEditor: View {
         let text = AlertText(words: settings.wording)
         let now = alerts.now
         let upcoming = AlertPlanner().occurrences(of: draft.sanitized(), after: now, limit: 4)
-        Form {
-            Group {
-            previewSection(text, upcoming.first, now: now)
-            nameSection(text)
-            subjectSection(text)
-            if draft.subject.hasEvents { eventsSection }
-            if case .level(let level) = draft.subject { filterSection(level, text) }
-            leadSection(text, now: now)
-            messageSection
-            deliverySection
-            comingSection(text, upcoming, now: now)
-            if !target.isNew {
-                Section {
-                    Button("Delete Alert", systemImage: "trash", role: .destructive) { confirmDelete = true }
+        ScrollViewReader { proxy in
+            Form {
+                Group {
+                    previewSection(text, upcoming.first, now: now)
+                    nameSection(text)
+                    subjectSection(text)
+                    if draft.subject.hasEvents { eventsSection }
+                    if case .level(let level) = draft.subject { filterSection(level, text) }
+                    leadSection(text, now: now)
+                    messageSection
+                    deliverySection
+                    comingSection(text, upcoming, now: now)
+                    if !target.isNew {
+                        Section {
+                            Button("Delete Alert", systemImage: "trash", role: .destructive) { confirmDelete = true }
+                        }
+                    }
                 }
+                .listRowBackground(Theme.panel)
             }
+            .task {
+                // -FXAlertsScroll with -FXAlertsEdit: show a lower section (screenshots).
+                guard let section = alerts.launch.scroll, alerts.launch.edit != nil else { return }
+                try? await Task.sleep(for: .seconds(1))
+                proxy.scrollTo(section, anchor: .top)
             }
-            .listRowBackground(Theme.panel)
         }
         .formStyle(.grouped)
         .scrollContentBackground(.hidden)
@@ -180,6 +188,7 @@ struct AlertEditor: View {
             }
         } header: {
             Text("Only")
+                .id("only")
         } footer: {
             if !draft.filtersCanMeet() {
                 Label("These never meet: a cycle that begins with a coarser one is the first of its parent, and one that ends with it the last.",
@@ -223,6 +232,7 @@ struct AlertEditor: View {
             }
         } header: {
             Text("When")
+                .id("when")
         } footer: {
             Text(draft.lead.isAtMoment ? "Notifies at the moment itself." : "Notifies \(text.leadSummary(draft.lead, at: now).lowercasedFirst) each moment.")
         }
@@ -251,6 +261,7 @@ struct AlertEditor: View {
             .scrollIndicators(.hidden)
         } header: {
             Text("Message")
+                .id("message")
         } footer: {
             Text("{name} the cycle · {event} what happens · {ordinal} its place · {unit} its unit · {when} how far ahead · {time} the moment")
         }
@@ -264,6 +275,7 @@ struct AlertEditor: View {
             }
         } header: {
             Text("Delivery")
+                .id("delivery")
         }
     }
 
@@ -287,6 +299,7 @@ struct AlertEditor: View {
             }
         } header: {
             Text("Coming up")
+                .id("coming")
         } footer: {
             if case .level(let level) = draft.subject, level >= 9, draft.ordinal == nil, draft.coarser == nil {
                 Text("These come every \(text.words.levelLength(level).replacingOccurrences(of: "≈ ", with: "")): Fractonica keeps at most \(AlertPlanner.budget) alerts queued and refills them whenever it runs.")

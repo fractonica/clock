@@ -80,7 +80,8 @@ struct AlertsScreen: View {
            let rule = alerts.rule(first.ruleID) {
             Section {
                 NextAlertHero(alert: first, rule: rule, message: alerts.messages[first.id], text: text,
-                              held: alerts.pending.contains(first.id), now: { alerts.now })
+                              held: alerts.pending.contains(first.id), permission: alerts.authorization,
+                              now: { alerts.now })
             }
             .id("hero")
             .alertRow()
@@ -102,7 +103,7 @@ struct AlertsScreen: View {
             }
             ForEach(alerts.rules) { rule in
                 RuleRow(rule: rule, next: alerts.plan.next[rule.id], text: text, now: { alerts.now },
-                        isEnabled: enabledBinding(rule.id))
+                        outOfRange: alerts.plan.outOfRange, isEnabled: enabledBinding(rule.id))
                     .onTapGesture { editor = AlertEditorTarget(rule: rule, isNew: false) }
                     .accessibilityAction(named: "Edit") { editor = AlertEditorTarget(rule: rule, isNew: false) }
                     .contextMenu {
@@ -250,7 +251,9 @@ struct AlertsScreen: View {
                 if !clockStore.isLive {
                     Label("Alerts follow the real clock, not the moment you are viewing.", systemImage: "clock.arrow.circlepath")
                 }
-                Text(statusLine(text))
+                TimelineView(.periodic(from: .now, by: 30)) { _ in
+                    Text(statusLine(text))
+                }
             }
         }
     }
@@ -261,7 +264,9 @@ struct AlertsScreen: View {
             ? "\(held) of \(AlertPlanner.budget) alerts queued with the system, shared fairly between your alerts."
             : "Alerts are planned but not queued."
         if let refill = alerts.lastRefill, !alerts.launch.isPreview {
-            line += " Refilled \(text.words.relative(refill.timeIntervalSince1970, to: Date.now.timeIntervalSince1970))."
+            let ago = Date.now.timeIntervalSince(refill)
+            line += ago < 30 ? " Refilled just now."
+                : " Refilled \(text.words.relative(refill.timeIntervalSince1970, to: Date.now.timeIntervalSince1970))."
         }
         return line
     }
@@ -349,9 +354,11 @@ private struct NextAlertHero: View {
     let message: AlertMessage?
     let text: AlertText
     let held: Bool
+    var permission = AlertStore.Authorization.unknown
     let now: () -> Double
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @ScaledMetric(relativeTo: .title) private var countdownSize: CGFloat = 24
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 1)) { _ in
@@ -364,7 +371,7 @@ private struct NextAlertHero: View {
                 }
                 .frame(width: 74, height: 74)
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(held ? "NEXT ALERT" : "NEXT, ONCE ALLOWED")
+                    Text(held ? "NEXT ALERT" : permission == .unknown ? "NEXT" : "NEXT, ONCE ALLOWED")
                         .font(.caption2.weight(.semibold))
                         .tracking(1.2)
                         .foregroundStyle(Theme.ink3)
@@ -374,7 +381,7 @@ private struct NextAlertHero: View {
                         .lineLimit(2)
                         .minimumScaleFactor(0.8)
                     Text(text.words.countdown(alert.fire - t, at: t))
-                        .font(.reading(24, weight: .medium))
+                        .font(.reading(countdownSize, weight: .medium))
                         .foregroundStyle(alert.occurrence.subject.color)
                         .contentTransition(reduceMotion ? .identity : .numericText(countsDown: true))
                         .lineLimit(1)

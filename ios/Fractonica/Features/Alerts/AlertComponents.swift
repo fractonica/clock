@@ -236,6 +236,7 @@ struct RuleRow: View {
     let next: AlertOccurrence?
     let text: AlertText
     let now: () -> Double
+    var outOfRange = false
     let isEnabled: Binding<Bool>
 
     var body: some View {
@@ -279,7 +280,7 @@ struct RuleRow: View {
                     .foregroundStyle(rule.subject.color.opacity(0.9))
             }
         } else {
-            Text("Nothing more in the catalogue")
+            Text(outOfRange ? "Outside the catalogue" : "Nothing more in the catalogue")
                 .font(.caption)
                 .foregroundStyle(Theme.ink3)
         }

@@ -1,7 +1,12 @@
 import FractonicaKit
 import Foundation
 import Observation
+import os
+import Synchronization
 import UserNotifications
+
+/// Alerts' diagnostics: `log stream --predicate 'subsystem == "app.fractonica.clock" && category == "alerts"'`.
+let alertsLog = Logger(subsystem: "app.fractonica.clock", category: "alerts")
 
 /// Alerts' state: the rules and quiet hours (persisted under `alerts.v1`), the notification permission, the plan the
 /// scheduler made and what the system actually holds. It keeps the system's pending `alert.` requests equal to the
@@ -39,7 +44,7 @@ final class AlertStore {
     var launchEditor: String?
 
     @ObservationIgnored private let defaults: UserDefaults
-    @ObservationIgnored private var refilling = false
+    @ObservationIgnored private var refillTask: Task<Void, Never>?
     @ObservationIgnored private var refillAgain = false
     @ObservationIgnored private var debounce: Task<Void, Never>?
     @ObservationIgnored private var wake: Task<Void, Never>?
@@ -52,7 +57,7 @@ final class AlertStore {
     init(defaults: UserDefaults = .standard, launch: AlertLaunchOptions = .current()) {
         self.defaults = defaults
         self.launch = launch
-        config = launch.demo ? launch.demoConfig : AlertsConfig.load(from: defaults)
+        config = launch.demo || launch.live ? launch.demoConfig : AlertsConfig.load(from: defaults)
         launchEditor = launch.edit
         if let auth = launch.authorization { authorization = auth }
     }
@@ -117,7 +122,7 @@ final class AlertStore {
     }
 
     private func changed() {
-        if !launch.isPreview { config.save(to: defaults) }
+        if !launch.isPreview && !launch.live { config.save(to: defaults) }
         refillSoon()
     }
 
@@ -138,8 +143,8 @@ final class AlertStore {
 
     // MARK: - Lifecycle
 
-    /// Starts the store once: permission, the first refill, refills when settings change, and on macOS a periodic
-    /// background activity.
+    /// Starts the store once: the first plan (it never waits for the system), the permission, refills when settings
+    /// change, and on macOS a periodic background activity.
     func start() {
         guard !started else { return }
         started = true
@@ -147,18 +152,24 @@ final class AlertStore {
         #if os(macOS)
         if !launch.isPreview { startBackgroundActivity() }
         #endif
+        Task { await refill() }
         Task {
-            await refreshAuthorization()
-            await refill()
+            if launch.live {
+                // -FXAlertsLive: provisional permission needs no prompt, so the real queue can be checked unattended.
+                _ = await AlertScheduling.within(10) {
+                    try? await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .provisional])
+                }
+            }
+            if await refreshAuthorization() { await refill() }
         }
     }
 
     func becameActive() {
         start()
         active = true
+        Task { await refill() }
         Task {
-            await refreshAuthorization()
-            await refill()
+            if await refreshAuthorization() { await refill() }
         }
     }
 
@@ -185,14 +196,20 @@ final class AlertStore {
     }
 
     /// Plans from the real now and makes the system's pending `alert.` requests match the plan. Runs one at a time;
-    /// a request made meanwhile runs once more afterwards.
+    /// a call made meanwhile waits for a fresh pass, so when it returns the requests reflect everything before it.
     func refill() async {
-        if refilling {
+        if let running = refillTask {
             refillAgain = true
+            await running.value
             return
         }
-        refilling = true
-        defer { refilling = false }
+        let task = Task { await runRefills() }
+        refillTask = task
+        await task.value
+        refillTask = nil
+    }
+
+    private func runRefills() async {
         repeat {
             refillAgain = false
             let input = AlertScheduling.Input(rules: config.rules, quiet: config.quiet, zone: AppSettings.shared.timeZone,
@@ -204,13 +221,19 @@ final class AlertStore {
                 pending = authorization.canPost ? Set(result.requests.map(\.id)) : []
                 delivered = launch.demo ? AlertScheduling.demoDelivered(input) : []
             } else if authorization.canPost {
-                pending = await AlertScheduling.apply(result.requests)
-                delivered = await AlertScheduling.delivered()
+                let requests = result.requests
+                if let held = await AlertScheduling.within(30, { await AlertScheduling.apply(requests) }) {
+                    pending = held
+                } else {
+                    alertsLog.error("the notification centre did not answer while queueing")
+                }
+                delivered = await AlertScheduling.within(5) { await AlertScheduling.delivered() } ?? delivered
             } else {
                 pending = []
                 delivered = []
             }
             lastRefill = .now
+            alertsLog.info("refill: \(result.plan.alerts.count) planned, \(self.pending.count) held, permission \(self.authorization.rawValue)")
         } while refillAgain
         scheduleWake()
     }
@@ -264,12 +287,21 @@ final class AlertStore {
 
     // MARK: - Permission
 
-    func refreshAuthorization() async {
+    /// Reads the permission; true when it changed. A system that does not answer leaves it as it was.
+    @discardableResult
+    func refreshAuthorization() async -> Bool {
+        let next: Authorization
         if let fake = launch.authorization {
-            authorization = fake
-            return
+            next = fake
+        } else if let read = await AlertScheduling.within(5, { await AlertScheduling.authorization() }) {
+            next = read
+        } else {
+            alertsLog.error("the notification centre did not answer for the permission")
+            return false
         }
-        authorization = await AlertScheduling.authorization()
+        guard next != authorization else { return false }
+        authorization = next
+        return true
     }
 
     /// Asks the system for permission (the user chose to turn alerts on), then schedules.
@@ -354,6 +386,36 @@ enum AlertScheduling {
         let plan: AlertPlan
         let messages: [String: AlertMessage]
         let requests: [Request]
+    }
+
+    /// `work`'s result, or nil when it takes longer than `seconds` (a notification centre that never answers must not
+    /// hold up the plan; the late answer is dropped).
+    static func within<T: Sendable>(_ seconds: Double, _ work: @escaping @Sendable () async -> T) async -> T? {
+        let once = Once<T?>()
+        return await withCheckedContinuation { continuation in
+            once.set(continuation)
+            Task { once.resume(await work()) }
+            Task {
+                try? await Task.sleep(for: .seconds(seconds))
+                once.resume(nil)
+            }
+        }
+    }
+
+    /// A continuation resumed by whichever of its racers comes first.
+    private final class Once<T: Sendable>: Sendable {
+        private let continuation = Mutex<CheckedContinuation<T, Never>?>(nil)
+
+        func set(_ c: CheckedContinuation<T, Never>) {
+            continuation.withLock { $0 = c }
+        }
+
+        func resume(_ value: T) {
+            continuation.withLock { c in
+                c?.resume(returning: value)
+                c = nil
+            }
+        }
     }
 
     static let fingerprintKey = "fx.alert.fingerprint"
@@ -457,7 +519,8 @@ enum AlertScheduling {
         let text = AlertText(words: Wording(pure: input.pure, timeZone: input.zone))
         var out: [DeliveredAlert] = []
         for rule in input.rules where rule.enabled {
-            for o in planner.occurrences(of: rule, after: input.now - 2 * 86_400, limit: 4) where o.fire <= input.now {
+            let past = planner.occurrences(of: rule, after: input.now - 86_400, limit: 60).filter { $0.fire <= input.now }
+            for o in past.suffix(2) {
                 out.append(DeliveredAlert(id: o.identifier, title: text.title(rule, o), body: text.body(rule, o),
                                           date: Date(timeIntervalSince1970: o.fire), ruleID: rule.id))
             }
@@ -476,19 +539,23 @@ enum AlertScheduling {
 ///     -FXAlertsAuth notDetermined|denied|authorized|provisional   show this permission state
 ///     -FXAlertsEdit <preset>|new|rule       open the editor: a preset's new rule, a blank one, or the first rule
 ///     -FXAlertsQuiet 1                      quiet hours on (with -FXAlertsDemo)
+///     -FXAlertsLive 1                       the demo rules really queued, with provisional (quiet, promptless)
+///                                           permission: checks the system queue end to end; nothing is saved
 ///     -FXAlertsScroll quiet                 scroll to a section (hero rules presets quiet upcoming recent)
 struct AlertLaunchOptions: Sendable {
     var demo = false
+    var live = false
     var now: Double?
     var authorization: AlertStore.Authorization?
     var edit: String?
     var quiet = false
     var pure = false
-    /// `-FXAlertsScroll hero|rules|presets|quiet|upcoming|recent`: scroll the screen there on launch.
+    /// `-FXAlertsScroll hero|rules|presets|quiet|upcoming|recent` (with -FXAlertsEdit: `only|when|message|delivery|coming`):
+    /// scroll there on launch.
     var scroll: String?
 
-    /// Any hook is set: show, never schedule.
-    var isPreview: Bool { demo || now != nil || authorization != nil }
+    /// A hook that shows without scheduling is set.
+    var isPreview: Bool { (demo && !live) || now != nil || authorization != nil }
 
     static func current(_ defaults: UserDefaults = .standard) -> AlertLaunchOptions {
         let args = defaults.volatileDomain(forName: UserDefaults.argumentDomain)
@@ -496,6 +563,7 @@ struct AlertLaunchOptions: Sendable {
         func flag(_ key: String) -> Bool { string(key).map { ["1", "yes", "true"].contains($0.lowercased()) } ?? false }
         return AlertLaunchOptions(
             demo: flag("FXAlertsDemo"),
+            live: flag("FXAlertsLive"),
             now: string("FXAlertsNow").flatMap(Double.init).flatMap { $0.isFinite ? $0 : nil },
             authorization: string("FXAlertsAuth").flatMap { AlertStore.Authorization(rawValue: $0) },
             edit: string("FXAlertsEdit"),
