@@ -1,0 +1,171 @@
+import FractonicaKit
+import SwiftUI
+
+/// Choosing the Delta of the diary: the fracton names of its Alpha, Beta, Gamma and Delta (src/ui/diary/picker.js),
+/// or the Delta of the displayed moment, with when it runs.
+struct DiaryDeltaPicker: View {
+    let model: DiaryModel
+
+    @Environment(AppSettings.self) private var settings
+    @Environment(ClockStore.self) private var store
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var day: Date?
+
+    private static let levelNames = ["Alpha", "Beta", "Gamma", "Delta"]
+
+    var body: some View {
+        let path = model.path
+        NavigationStack {
+            Form {
+                Section {
+                    Toggle(isOn: Binding(get: { model.follow }, set: { model.setFollow($0, time: store.time()) })) {
+                        Label("Delta of the shown moment", systemImage: "scope")
+                    }
+                    .tint(Theme.teal)
+                } footer: {
+                    Text(followNote)
+                }
+
+                if !settings.pure, let days = dayRange {
+                    Section {
+                        DatePicker(selection: dayBinding, in: days, displayedComponents: .date) {
+                            Label("Holding the day", systemImage: "calendar")
+                        }
+                        .environment(\.timeZone, settings.timeZone)
+                    } footer: {
+                        Text("The diary becomes the Delta that holds this day.")
+                    }
+                }
+
+                Section("Delta") {
+                    ForEach(0..<4, id: \.self) { level in
+                        Picker(selection: Binding(get: { path[level] }, set: { pick(level: level, ordinal: $0) })) {
+                            ForEach(DiaryDelta.choices(level: level, path: path, range: model.range), id: \.ordinal) { choice in
+                                Text(DiaryDelta.name(level: level, ordinal: choice.ordinal))
+                                    .tag(choice.ordinal)
+                                    .selectionDisabled(!choice.ok)
+                            }
+                        } label: {
+                            HStack(spacing: 10) {
+                                Text(DiaryDelta.letters[level])
+                                    .font(.code(15, weight: .semibold))
+                                    .foregroundStyle(Theme.levelColor(level))
+                                    .frame(width: 18)
+                                Text(Self.levelNames[level])
+                            }
+                        }
+                        .pickerStyle(.menu)
+                    }
+                    HStack {
+                        Button("Previous", systemImage: "chevron.left") { model.choose(delta: model.delta - 1) }
+                            .disabled(model.delta <= model.range.lowerBound)
+                        Spacer()
+                        Button("Next", systemImage: "chevron.right") { model.choose(delta: model.delta + 1) }
+                            .labelStyle(TrailingIcon())
+                            .disabled(model.delta >= model.range.upperBound)
+                    }
+                    .buttonStyle(.borderless)
+                }
+
+                Section {
+                    LabeledContent("Stamp") {
+                        Text(DiaryDelta.stamp(path)).font(.code(14)).foregroundStyle(Theme.teal)
+                    }
+                    if let span = model.span {
+                        LabeledContent("Begins") { momentView(span.t0) }
+                        LabeledContent("Ends") { momentView(span.t1) }
+                    }
+                    LabeledContent("Holds", value: "5 Nuclides · 385 Helions")
+                } header: {
+                    Text(DiaryDelta.name(level: 3, ordinal: path[3]))
+                } footer: {
+                    Text((0..<3).map { DiaryDelta.name(level: $0, ordinal: path[$0]) }.joined(separator: " · "))
+                }
+            }
+            .formStyle(.grouped)
+            .scrollContentBackground(.hidden)
+            .background { Backdrop() }
+            .navigationTitle("Delta")
+            #if os(iOS)
+            .navigationBarTitleDisplayMode(.inline)
+            #endif
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                }
+            }
+        }
+        #if os(macOS)
+        .frame(minWidth: 420, minHeight: 460)
+        #endif
+    }
+
+    /// The days a Delta of the catalogue can hold.
+    private var dayRange: ClosedRange<Date>? {
+        guard let first = DiaryDelta.span(model.range.lowerBound), let last = DiaryDelta.span(model.range.upperBound) else { return nil }
+        return Date(timeIntervalSince1970: first.t0)...Date(timeIntervalSince1970: last.t1 - 1)
+    }
+
+    /// The day picked here while it lies in the diary's Delta, else the Delta's first day.
+    private var dayBinding: Binding<Date> {
+        Binding {
+            if let day, let span = model.span, day.timeIntervalSince1970 >= span.t0, day.timeIntervalSince1970 < span.t1 { return day }
+            return Date(timeIntervalSince1970: model.span?.t0 ?? store.time())
+        } set: { date in
+            day = date
+            // noon of the picked day, so a Delta that turns over during that day goes to the one holding most of it
+            var calendar = Calendar(identifier: .gregorian)
+            calendar.timeZone = settings.timeZone
+            let noon = calendar.date(bySettingHour: 12, minute: 0, second: 0, of: date) ?? date
+            let index = DiaryDelta.index(at: noon.timeIntervalSince1970, range: model.range)
+            if index != model.delta || model.follow {
+                model.choose(delta: index)
+                Haptics.play(.selection)
+            }
+        }
+    }
+
+    private func pick(level: Int, ordinal: Int) {
+        var p = model.path
+        p[level] = ordinal
+        model.choose(path: p)
+        Haptics.play(.selection)
+    }
+
+    /// A moment in full: "Tue 28 Jul 2026, 12:59" over "Delta Trifracton Peak ε#1 1η 0ι" (the web head's
+    /// Fractonica span) · pure "α#6 β#4 γ#9 δ#3 ε#1 1η 0ι".
+    private func momentView(_ t: Double) -> some View {
+        let words = settings.wording
+        let at = min(t + 1e-3, store.clock.tMax)
+        return VStack(alignment: .trailing, spacing: 2) {
+            if words.pure {
+                Text(words.notation.stamp(at: at, upTo: "iota")).font(.code(13))
+            } else {
+                Text(words.earth.long(t, seconds: false))
+                Text(words.notation.dateText(at: at)).font(.caption).foregroundStyle(Theme.ink3)
+            }
+        }
+        .multilineTextAlignment(.trailing)
+    }
+
+    private var followNote: String {
+        let t = store.time()
+        if !store.clock.inRange(t) { return "The shown moment is outside the catalogue: the nearest Delta is shown." }
+        // the catalogue's last Delta is cut short by its end: it has no diary
+        if let last = DiaryDelta.span(model.range.upperBound), t >= last.t1 {
+            return "The shown moment lies in the catalogue’s last Delta, which the catalogue cuts short: the diary is the whole Delta before it."
+        }
+        return model.follow ? "The diary changes with the displayed time." : "The diary stays on the Delta chosen here."
+    }
+}
+
+/// A label with its icon after the title ("Next ›").
+private struct TrailingIcon: LabelStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        HStack(spacing: 4) {
+            configuration.title
+            configuration.icon
+        }
+    }
+}

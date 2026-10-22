@@ -3,56 +3,83 @@ import ActivityKit
 import SwiftUI
 import WidgetKit
 
-/// A running timer on the Lock Screen and in the Dynamic Island: its name and the time left, counting down on its own
-/// (`Text(timerInterval:)`), so the activity needs no updates until the timer changes.
+/// A running timer or stopwatch on the Lock Screen and in the Dynamic Island. The system keeps the countdown and the
+/// draining ring moving on its own (`Text(timerInterval:)`, `ProgressView(timerInterval:)`), so the activity needs no
+/// updates until the run changes; the views are shared with the app (Shared/TimerActivity.swift). A timer that rang
+/// while the app could not end its activity goes stale at its end and reads "Done".
 struct TimerLiveActivityWidget: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: TimerActivityAttributes.self) { context in
-            HStack {
-                Label(context.attributes.title, systemImage: "timer")
-                    .font(.headline)
-                    .foregroundStyle(Theme.ink)
-                Spacer()
-                Countdown(end: context.state.endDate)
-                    .font(.system(size: 34, weight: .semibold).monospacedDigit())
-                    .foregroundStyle(Theme.teal)
-            }
-            .padding()
-            .activityBackgroundTint(Theme.background)
-            .activitySystemActionForegroundColor(Theme.teal)
+            TimerActivityLockScreen(attributes: context.attributes, state: context.state)
+                .environment(\.timerActivityStale, context.isStale)
+                .activityBackgroundTint(Theme.background.opacity(0.92))
+                .activitySystemActionForegroundColor(Theme.teal)
+                .widgetURL(link(context.attributes))
         } dynamicIsland: { context in
-            DynamicIsland {
+            let attributes = context.attributes
+            let state = context.state
+            return DynamicIsland {
                 DynamicIslandExpandedRegion(.leading) {
-                    Label(context.attributes.title, systemImage: "timer")
-                        .foregroundStyle(Theme.ink)
+                    HStack(spacing: 10) {
+                        TimerActivityBadge(attributes: attributes, state: state, size: 36, lineWidth: 4)
+                        VStack(alignment: .leading, spacing: 1) {
+                            if attributes.kind == .timer {
+                                Text("Timer")
+                                    .font(.caption2.weight(.semibold))
+                                    .foregroundStyle(Theme.ink3)
+                            }
+                            Text(state.title)
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(Theme.ink)
+                                .lineLimit(1)
+                        }
+                    }
+                    .padding(.leading, 4)
+                    .environment(\.timerActivityStale, context.isStale)
                 }
                 DynamicIslandExpandedRegion(.trailing) {
-                    Countdown(end: context.state.endDate)
-                        .font(.title2.monospacedDigit())
-                        .foregroundStyle(Theme.teal)
+                    TimerActivityReading(attributes: attributes, state: state, size: 34)
+                        .frame(maxWidth: 150, alignment: .trailing)
+                        .padding(.trailing, 4)
+                        .environment(\.timerActivityStale, context.isStale)
+                }
+                DynamicIslandExpandedRegion(.bottom) {
+                    HStack(spacing: 10) {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(state.detail)
+                                .font(.footnote.monospacedDigit())
+                                .foregroundStyle(Theme.ink2)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.8)
+                            if attributes.kind == .timer {
+                                TimerActivityBar(state: state)
+                            }
+                        }
+                        Spacer(minLength: 4)
+                        TimerActivityButtons(attributes: attributes, state: state, compact: true)
+                    }
+                    .padding(.horizontal, 4)
+                    .padding(.top, 4)
+                    .environment(\.timerActivityStale, context.isStale)
                 }
             } compactLeading: {
-                Image(systemName: "timer").foregroundStyle(Theme.teal)
+                TimerActivityBadge(attributes: attributes, state: state, size: 22, lineWidth: 3)
+                    .environment(\.timerActivityStale, context.isStale)
             } compactTrailing: {
-                Countdown(end: context.state.endDate)
-                    .monospacedDigit()
-                    .frame(maxWidth: 64)
-                    .foregroundStyle(Theme.teal)
+                TimerActivityCompactReading(attributes: attributes, state: state)
+                    .environment(\.timerActivityStale, context.isStale)
             } minimal: {
-                Image(systemName: "timer").foregroundStyle(Theme.teal)
+                TimerActivityBadge(attributes: attributes, state: state, size: 22, lineWidth: 3)
+                    .environment(\.timerActivityStale, context.isStale)
             }
+            .widgetURL(link(attributes))
+            .keylineTint(Theme.teal)
         }
     }
-}
 
-/// The time left until `end`, counting down by itself; zero once it has passed.
-private struct Countdown: View {
-    let end: Date
-
-    var body: some View {
-        let now = Date.now
-        Text(timerInterval: now...max(now, end), countsDown: true)
-            .multilineTextAlignment(.trailing)
+    private func link(_ attributes: TimerActivityAttributes) -> URL {
+        AppLink(screen: attributes.kind == .timer ? .timer : .stopwatch).url
     }
 }
+
 #endif

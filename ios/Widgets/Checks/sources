@@ -1,0 +1,3 @@
+# The widget logic WidgetChecks.swift compiles against (relative to ios/).
+Widgets/Model/*.swift
+Shared/Notation+Standard.swift

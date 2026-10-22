@@ -1,0 +1,15 @@
+# The app files WaveChecks.swift compiles against (relative to ios/).
+Fractonica/Features/Wave/WaveGeometry.swift
+Fractonica/Features/Wave/WaveEngine.swift
+Fractonica/Features/Wave/WaveSolar.swift
+Fractonica/Features/Wave/WaveNav.swift
+Fractonica/Features/Wave/WaveWords.swift
+Fractonica/Features/Wave/WaveLabels.swift
+Fractonica/Features/Wave/WaveReadout.swift
+Fractonica/Features/Wave/WaveStage.swift
+Fractonica/Features/Wave/WaveRenderer.swift
+Shared/Theme.swift
+Fractonica/Core/Formatting.swift
+Fractonica/Core/AppSettings.swift
+Fractonica/Core/ClockStore.swift
+Shared/Notation+Standard.swift
