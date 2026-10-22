@@ -77,21 +77,27 @@ struct TimerDial: View {
             let a0 = -Double.pi / 2 + Double(k) * step + leading / 2
             let a1 = -Double.pi / 2 + Double(k + 1) * step - trailing / 2
             guard a1 > a0 else { continue }
-            var seg = Path()
-            seg.addArc(center: c, radius: r, startAngle: .radians(a0), endAngle: .radians(a1), clockwise: false)
+            // each segment a filled band sector, its own closed subpath (stroked arcs in one path join up)
             if k < whole {
-                lit.addPath(seg)
+                sector(&lit, c, r, width, a0, a1)
             } else {
-                track.addPath(seg)
-                if k == whole && part > 0.002 {
-                    partial.addArc(center: c, radius: r, startAngle: .radians(a0), endAngle: .radians(a0 + (a1 - a0) * part), clockwise: false)
-                }
+                sector(&track, c, r, width, a0, a1)
+                if k == whole && part > 0.002 { sector(&partial, c, r, width, a0, a0 + (a1 - a0) * part) }
             }
         }
-        let style = StrokeStyle(lineWidth: width, lineCap: .butt)
-        context.stroke(track, with: .color(Theme.line.opacity(0.95)), style: style)
-        context.stroke(lit, with: .color(color.opacity(0.9)), style: style)
-        context.stroke(partial, with: .color(color.opacity(0.7)), style: style)
+        context.fill(track, with: .color(Theme.line.opacity(0.8)))
+        context.fill(lit, with: .color(color.opacity(0.9)))
+        context.fill(partial, with: .color(color.opacity(0.7)))
+    }
+
+    /// The band `width` wide around radius `r` from angle `a0` to `a1` (radians, clockwise on screen).
+    private func sector(_ path: inout Path, _ c: CGPoint, _ r: CGFloat, _ width: CGFloat, _ a0: Double, _ a1: Double) {
+        let ro = r + width / 2, ri = r - width / 2
+        path.move(to: point(c, ro, .radians(a0)))
+        path.addArc(center: c, radius: ro, startAngle: .radians(a0), endAngle: .radians(a1), clockwise: false)
+        path.addLine(to: point(c, ri, .radians(a1)))
+        path.addArc(center: c, radius: ri, startAngle: .radians(a1), endAngle: .radians(a0), clockwise: true)
+        path.closeSubpath()
     }
 
     private func circle(_ c: CGPoint, _ r: CGFloat) -> Path {
