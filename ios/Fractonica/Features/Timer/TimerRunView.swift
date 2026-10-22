@@ -60,7 +60,7 @@ struct TimerRunView: View {
                 let blink = clock.blinkSeconds(at: .now) ?? 0.311
                 TimelineView(TickSchedule(anchor: run.end ?? .now, steps: [blink], paused: !run.isRunning)) { face($0.date) }
             } else {
-                TimelineView(.animation(minimumInterval: nil, paused: !run.isRunning)) { face($0.date) }
+                TimelineView(.animation(minimumInterval: 1.0 / 60, paused: !run.isRunning)) { face($0.date) }
             }
             center(innerDiameter: inner * 2, dial: size)
         }

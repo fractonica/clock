@@ -170,7 +170,7 @@ struct StopwatchScreen: View {
     private var dialFace: some View {
         let run = store.run
         let clock = store.clock
-        return TimelineView(.animation(minimumInterval: nil, paused: !run.isRunning)) { context in
+        return TimelineView(.animation(minimumInterval: 1.0 / 60, paused: !run.isRunning)) { context in
             let now = context.date
             let blink = clock.blinkSeconds(at: now) ?? clock.clock.levelInfo(LadderUnit.nu.level).meanSeconds
             let elapsed = run.elapsed(at: now)
