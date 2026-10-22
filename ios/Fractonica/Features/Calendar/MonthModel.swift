@@ -21,6 +21,8 @@ final class MonthModel {
     private(set) var displayedPage: Int?
     /// The day whose detail is open: its date.
     var selectedDay: DayRef?
+    /// The device clock's date in the app zone (today's mark), kept by the screen once a minute.
+    private(set) var today: DayRef?
     var showsDetail = false
 
     var bands: [CalendarBand] {
@@ -181,6 +183,13 @@ final class MonthModel {
     static func monthIndex(of t: Double, zone: TimeZone) -> Int {
         let p = EarthTime.zonedParts(t, zone: zone)
         return CalMath.clampMonth(CalMath.monthIndex(year: p.year, month: p.month))
+    }
+
+    /// Today's date in a zone from the device clock (changes once a day, so the cells redraw once a day).
+    func updateToday(zone: TimeZone, now: Double = Date.now.timeIntervalSince1970) {
+        let p = EarthTime.zonedParts(now, zone: zone)
+        let ref = DayRef(year: p.year, month: p.month, day: p.day)
+        if today != ref { today = ref }
     }
 
     /// Follow the displayed time: the page moves with it while `follows`.

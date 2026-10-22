@@ -59,11 +59,12 @@ struct CalDayDetailView: View {
             if inRange {
                 HStack(spacing: 10) {
                     CalActionButton(title: "Go to this day", systemImage: "location.fill", prominent: true) {
-                        // the same time of day as the displayed moment
-                        let t = store.time()
-                        let p = EarthTime.zonedParts(t, zone: zone)
-                        let shown = CalMath.dayStart(zone, p.year, p.month, p.day)
-                        travel(min(end - 0.001, max(start, start + (t - shown))))
+                        // the displayed moment's wall-clock time on that day (monthview.js timeOnDay), inside the day
+                        // when the zone skips that hour
+                        let p = EarthTime.zonedParts(store.time(), zone: zone)
+                        let wall = EarthTime.zonedToUnix(.init(year: ref.year, month: ref.month, day: ref.day, hour: p.hour,
+                                                               minute: p.minute, second: p.second, ms: p.ms), zone: zone)
+                        travel(min(end - 0.001, max(start, wall)))
                     }
                     CalActionButton(title: "Noon", systemImage: "sun.max") {
                         travel(EarthTime.zonedToUnix(.init(year: ref.year, month: ref.month, day: ref.day, hour: 12), zone: zone))

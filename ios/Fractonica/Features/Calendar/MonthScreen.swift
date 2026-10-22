@@ -80,6 +80,12 @@ private struct EarthMonthView: View {
             ClockTimeline(.periodic(store.isPlaying ? max(60, abs(store.rate) / 4) : 60)) { t in
                 Color.clear.onChange(of: t, initial: true) { _, t in model.follow(t, zone: zone) }
             }
+            // today's mark follows the device clock, also while the displayed time is paused or elsewhere (a real-world
+            // date, not the clock: a minute's precision is plenty)
+            TimelineView(.everyMinute) { context in
+                Color.clear.onChange(of: context.date, initial: true) { model.updateToday(zone: zone) }
+            }
+            .onChange(of: zone) { model.updateToday(zone: zone) }
         }
         .onChange(of: store.revision) {
             // a jump anywhere brings the page back to the displayed time
@@ -340,7 +346,7 @@ private struct CalMonthPage: View {
     @Environment(ClockStore.self) private var store
 
     var body: some View {
-        let today = grid.dayIndex(of: Date.now.timeIntervalSince1970)
+        let today = model.today.flatMap { ref in grid.days.firstIndex { $0.year == ref.year && $0.month == ref.month && $0.day == ref.day } }
         let earth = EarthFormatter.calendar(zone)
         VStack(spacing: metrics.gap) {
             ForEach(0..<6, id: \.self) { row in
