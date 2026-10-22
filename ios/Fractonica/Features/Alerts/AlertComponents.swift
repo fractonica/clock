@@ -115,6 +115,8 @@ struct NotificationPreview: View {
     let corner: String
     var silent = false
 
+    @Environment(\.dynamicTypeSize) private var typeSize
+
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
             RoundedRectangle(cornerRadius: 9, style: .continuous)
@@ -131,7 +133,7 @@ struct NotificationPreview: View {
                     Text(title)
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(Theme.ink)
-                        .lineLimit(2)
+                        .lineLimit(typeSize.isAccessibilitySize ? 4 : 2)
                     Spacer(minLength: 8)
                     if silent {
                         Image(systemName: "bell.slash.fill")
@@ -148,7 +150,7 @@ struct NotificationPreview: View {
                     Text(message)
                         .font(.subheadline)
                         .foregroundStyle(Theme.ink2)
-                        .lineLimit(4)
+                        .lineLimit(typeSize.isAccessibilitySize ? 8 : 4)
                 }
             }
         }
@@ -233,33 +235,58 @@ struct AuthorizationCard: View {
 /// A rule in the list: its badge, name, what it listens for, when it next fires (live), and its switch.
 struct RuleRow: View {
     let rule: AlertRule
-    let next: AlertOccurrence?
+    /// The rule's next moment after an instant (it moves on as alerts fire between refills).
+    let next: (Double) -> AlertOccurrence?
     let text: AlertText
     let now: () -> Double
     var outOfRange = false
     let isEnabled: Binding<Bool>
 
+    @Environment(\.dynamicTypeSize) private var typeSize
+
     var body: some View {
-        HStack(spacing: 12) {
-            SubjectBadge(subject: rule.subject, dimmed: !rule.enabled)
-            VStack(alignment: .leading, spacing: 3) {
-                Text(rule.name)
-                    .font(.body.weight(.medium))
-                    .foregroundStyle(rule.enabled ? Theme.ink : Theme.ink3)
-                    .lineLimit(2)
-                Text(text.summary(rule, at: now()))
-                    .font(.footnote)
-                    .foregroundStyle(Theme.ink2)
-                    .lineLimit(2)
-                nextLine
+        Group {
+            if typeSize.isAccessibilitySize {
+                // Large text: the words get the row's whole width, the badge and switch a line of their own.
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        SubjectBadge(subject: rule.subject, dimmed: !rule.enabled)
+                        Spacer(minLength: 4)
+                        toggle
+                    }
+                    words
+                }
+            } else {
+                HStack(spacing: 12) {
+                    SubjectBadge(subject: rule.subject, dimmed: !rule.enabled)
+                    words
+                    Spacer(minLength: 4)
+                    toggle
+                }
             }
-            Spacer(minLength: 4)
-            Toggle(rule.name, isOn: isEnabled)
-                .labelsHidden()
-                .accessibilityLabel(Text("\(rule.name) on"))
         }
         .padding(.vertical, 2)
         .contentShape(.rect)
+    }
+
+    private var words: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(rule.name)
+                .font(.body.weight(.medium))
+                .foregroundStyle(rule.enabled ? Theme.ink : Theme.ink3)
+                .lineLimit(typeSize.isAccessibilitySize ? 4 : 2)
+            Text(text.summary(rule, at: now()))
+                .font(.footnote)
+                .foregroundStyle(Theme.ink2)
+                .lineLimit(typeSize.isAccessibilitySize ? 6 : 2)
+            nextLine
+        }
+    }
+
+    private var toggle: some View {
+        Toggle(rule.name, isOn: isEnabled)
+            .labelsHidden()
+            .accessibilityLabel(Text("\(rule.name) on"))
     }
 
     @ViewBuilder
@@ -272,12 +299,14 @@ struct RuleRow: View {
             Label("These filters never meet", systemImage: "exclamationmark.triangle")
                 .font(.caption)
                 .foregroundStyle(Theme.danger)
-        } else if let next {
+        } else if next(now()) != nil {
             TimelineView(.periodic(from: .now, by: 1)) { _ in
                 let t = now()
-                Text("next \(text.words.countdown(next.fire - t, at: t))")
-                    .font(.caption.monospacedDigit())
-                    .foregroundStyle(rule.subject.color.opacity(0.9))
+                if let next = next(t) {
+                    Text(next.fire > t ? "next \(text.words.countdown(next.fire - t, at: t))" : "now")
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(rule.subject.color.opacity(0.9))
+                }
             }
         } else {
             Text(outOfRange ? "Outside the catalogue" : "Nothing more in the catalogue")

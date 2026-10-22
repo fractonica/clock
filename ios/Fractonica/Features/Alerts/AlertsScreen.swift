@@ -79,14 +79,14 @@ struct AlertsScreen: View {
         statusSection(text)
     }
 
+    /// The next alert: the first queued one (planned, while notifications are not allowed).
     @ViewBuilder
     private func heroSection(_ text: AlertText) -> some View {
-        if let first = alerts.scheduled.first ?? (alerts.authorization.canPost ? nil : alerts.plan.alerts.first),
-           let rule = alerts.rule(first.ruleID) {
+        let held = alerts.authorization.canPost
+        let list = held ? alerts.scheduled : alerts.plan.alerts
+        if !list.isEmpty {
             Section {
-                NextAlertHero(alert: first, rule: rule, message: alerts.messages[first.id], text: text,
-                              held: alerts.pending.contains(first.id), permission: alerts.authorization,
-                              now: { alerts.now })
+                NextAlertHero(list: list, text: text, held: held, permission: alerts.authorization, now: { alerts.now })
             }
             .id("hero")
             .alertRow()
@@ -107,7 +107,7 @@ struct AlertsScreen: View {
                 .padding(.vertical, 4)
             }
             ForEach(alerts.rules) { rule in
-                RuleRow(rule: rule, next: alerts.plan.next[rule.id], text: text, now: { alerts.now },
+                RuleRow(rule: rule, next: { alerts.next(of: rule.id, after: $0) }, text: text, now: { alerts.now },
                         outOfRange: alerts.plan.outOfRange, isEnabled: enabledBinding(rule.id))
                     .onTapGesture { editor = AlertEditorTarget(rule: rule, isNew: false) }
                     .accessibilityAction(named: "Edit") { editor = AlertEditorTarget(rule: rule, isNew: false) }
@@ -369,57 +369,65 @@ struct AlertsScreen: View {
 /// The next alert, large: the rhythm it waits on (the running cycle of its level, or the sync, at the real now), what
 /// it will say and a live countdown.
 private struct NextAlertHero: View {
-    let alert: PlannedAlert
-    let rule: AlertRule
-    let message: AlertMessage?
+    /// The queue, soonest first: the hero shows the first one still to come (it moves on as alerts fire between
+    /// refills).
+    let list: [PlannedAlert]
     let text: AlertText
     let held: Bool
     var permission = AlertStore.Authorization.unknown
     let now: () -> Double
 
+    @State private var alerts = AlertStore.shared
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var typeSize
     @ScaledMetric(relativeTo: .title) private var countdownSize: CGFloat = 24
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 1)) { _ in
             let t = now()
-            HStack(alignment: .center, spacing: 16) {
-                ZStack {
-                    RhythmRing(progress: progress(at: t), color: alert.occurrence.subject.color,
-                               events: rule.subject.hasEvents ? rule.events : [], lineWidth: 4)
-                    SubjectBadge(subject: alert.occurrence.subject, size: 38)
-                }
-                .frame(width: 74, height: 74)
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(held ? "NEXT ALERT" : permission == .unknown ? "NEXT" : "NEXT, ONCE ALLOWED")
-                        .font(.caption2.weight(.semibold))
-                        .tracking(1.2)
-                        .foregroundStyle(Theme.ink3)
-                    Text(message?.title ?? rule.name)
-                        .font(.title3.weight(.semibold))
-                        .foregroundStyle(Theme.ink)
-                        .lineLimit(2)
-                        .minimumScaleFactor(0.8)
-                    Text(text.words.countdown(alert.fire - t, at: t))
-                        .font(.reading(countdownSize, weight: .medium))
-                        .foregroundStyle(alert.occurrence.subject.color)
-                        .contentTransition(reduceMotion ? .identity : .numericText(countsDown: true))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.7)
-                    Text("\(text.words.label(alert.fire + 0.002, relativeTo: t)) · \(rule.name)")
-                        .font(.footnote)
-                        .foregroundStyle(Theme.ink2)
-                        .lineLimit(1)
-                }
-                Spacer(minLength: 0)
+            if let alert = AlertStore.upcoming(list, after: t), let rule = alerts.rule(alert.ruleID) {
+                card(alert, rule, message: alerts.messages[alert.id], t: t)
             }
-            .padding(.vertical, 8)
-            .accessibilityElement(children: .combine)
         }
     }
 
+    private func card(_ alert: PlannedAlert, _ rule: AlertRule, message: AlertMessage?, t: Double) -> some View {
+        HStack(alignment: .center, spacing: 16) {
+            ZStack {
+                RhythmRing(progress: progress(alert, at: t), color: alert.occurrence.subject.color,
+                           events: rule.subject.hasEvents ? rule.events : [], lineWidth: 4)
+                SubjectBadge(subject: alert.occurrence.subject, size: 38)
+            }
+            .frame(width: 74, height: 74)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(held ? "NEXT ALERT" : permission == .unknown ? "NEXT" : "NEXT, ONCE ALLOWED")
+                    .font(.caption2.weight(.semibold))
+                    .tracking(1.2)
+                    .foregroundStyle(Theme.ink3)
+                Text(message?.title ?? rule.name)
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(Theme.ink)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.8)
+                Text(alert.fire > t ? text.words.countdown(alert.fire - t, at: t) : "now")
+                    .font(.reading(countdownSize, weight: .medium))
+                    .foregroundStyle(alert.occurrence.subject.color)
+                    .contentTransition(reduceMotion ? .identity : .numericText(countsDown: true))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                Text("\(text.moment(alert.fire + 0.002, from: t)) · \(rule.name)")
+                    .font(.footnote)
+                    .foregroundStyle(Theme.ink2)
+                    .lineLimit(typeSize.isAccessibilitySize ? 3 : 1)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.vertical, 8)
+        .accessibilityElement(children: .combine)
+    }
+
     /// Where the running cycle of the alert's level (the sync for the sync) stands at the real now.
-    private func progress(at t: Double) -> Double? {
+    private func progress(_ alert: PlannedAlert, at t: Double) -> Double? {
         switch alert.occurrence.subject {
         case .level(let level): text.clock.level(at: t, level)?.progress
         case .solar: text.clock.solar(at: t)?.phase

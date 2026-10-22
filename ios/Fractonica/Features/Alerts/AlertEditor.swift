@@ -18,10 +18,13 @@ struct AlertEditor: View {
     let target: AlertEditorTarget
 
     @State private var draft: AlertRule
+    /// The draft as it opened (after pure mode restates its lead): a changed draft is not swiped away by accident.
+    @State private var baseline: AlertRule
     @State private var alerts = AlertStore.shared
     @State private var confirmDelete = false
     @FocusState private var focus: Field?
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.dynamicTypeSize) private var typeSize
     @Environment(AppSettings.self) private var settings
 
     private enum Field { case name, title, body }
@@ -29,6 +32,7 @@ struct AlertEditor: View {
     init(target: AlertEditorTarget) {
         self.target = target
         _draft = State(initialValue: target.rule)
+        _baseline = State(initialValue: target.rule)
     }
 
     var body: some View {
@@ -87,15 +91,17 @@ struct AlertEditor: View {
         }
         .onAppear {
             if settings.pure { draft.lead = draft.lead.inFractonicaUnits() }
+            baseline = draft
         }
+        .interactiveDismissDisabled(draft != baseline)
         .onChange(of: draft.subject) { old, new in
             if old.level != new.level {
                 draft.ordinal = nil
                 draft.coarser = nil
             }
-            draft = draft.sanitized()
+            resanitize()
         }
-        .onChange(of: draft.coarser) { draft = draft.sanitized() }
+        .onChange(of: draft.coarser) { resanitize() }
         .sensoryFeedback(.selection, trigger: draft.events) { _, _ in settings.haptics }
     }
 
@@ -154,7 +160,9 @@ struct AlertEditor: View {
 
     private var eventsSection: some View {
         Section {
-            HStack(spacing: 6) {
+            // Five in a row; three to a row at accessibility text sizes, where "Valley" no longer fits a fifth.
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6),
+                                     count: typeSize.isAccessibilitySize ? 3 : 5), spacing: 6) {
                 ForEach(AlertEvent.allCases, id: \.self) { event in
                     EventChip(event: event, isOn: draft.events.contains(event), isEnabled: allows(event)) {
                         toggle(event)
@@ -285,17 +293,28 @@ struct AlertEditor: View {
                 Text("Nothing ahead")
                     .foregroundStyle(Theme.ink3)
             }
+            let rule = draft.sanitized()
             ForEach(upcoming, id: \.identifier) { o in
-                HStack {
-                    Text(text.title(draft.sanitized(), o))
-                        .font(.subheadline)
-                        .foregroundStyle(Theme.ink)
-                        .lineLimit(1)
-                    Spacer()
-                    Text(text.words.label(o.fire + 0.002, relativeTo: now))
+                HStack(alignment: .firstTextBaseline) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(text.title(rule, o))
+                            .font(.subheadline)
+                            .foregroundStyle(Theme.ink)
+                            .lineLimit(2)
+                        if o.fire != o.time {
+                            // Ahead of the moment: when the notification itself comes.
+                            Label(text.moment(o.fire + 0.002, from: now), systemImage: "bell")
+                                .font(.caption.monospacedDigit())
+                                .foregroundStyle(Theme.ink3)
+                        }
+                    }
+                    Spacer(minLength: 8)
+                    Text(text.moment(o.time + 0.002, from: now))
                         .font(.reading(13))
                         .foregroundStyle(draft.subject.color)
+                        .multilineTextAlignment(.trailing)
                 }
+                .accessibilityElement(children: .combine)
             }
         } header: {
             Text("Coming up")
@@ -308,6 +327,14 @@ struct AlertEditor: View {
     }
 
     // MARK: Editing
+
+    /// The draft made valid after a structural change, keeping the name as typed: an empty name stays empty and keeps
+    /// showing (and saving as) the automatic one, instead of becoming "Alert".
+    private func resanitize() {
+        var next = draft.sanitized()
+        next.name = draft.name
+        if next != draft { draft = next }
+    }
 
     private var aheadBinding: Binding<Bool> {
         Binding(

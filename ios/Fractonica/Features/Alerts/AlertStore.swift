@@ -55,6 +55,7 @@ final class AlertStore {
     @ObservationIgnored private var wake: Task<Void, Never>?
     @ObservationIgnored private var started = false
     @ObservationIgnored private var active = true
+    @ObservationIgnored private var clockObservers: [any NSObjectProtocol] = []
     #if os(macOS)
     @ObservationIgnored private var activity: NSBackgroundActivityScheduler?
     #endif
@@ -150,6 +151,24 @@ final class AlertStore {
     /// The instant the scheduler reads as now: the device's real time (a launch hook may set it for a preview).
     var now: Double { launch.now ?? Date.now.timeIntervalSince1970 }
 
+    /// The rule's next moment after `t`. Between refills the planned one may have passed: then its next queued alert
+    /// (its own, or one folded into another rule's), so countdowns never run into the past; the planned one as a last
+    /// resort.
+    func next(of id: UUID, after t: Double) -> AlertOccurrence? {
+        let planned = plan.next[id]
+        if let planned, planned.fire > t { return planned }
+        for alert in plan.alerts where alert.fire > t {
+            if alert.ruleID == id { return alert.occurrence }
+            if let o = alert.also.first(where: { $0.ruleID == id }) { return o }
+        }
+        return planned
+    }
+
+    /// The first of `list` still to come at `t` (the last one if all have passed, until the next refill).
+    static func upcoming(_ list: [PlannedAlert], after t: Double) -> PlannedAlert? {
+        list.first { $0.fire > t } ?? list.last
+    }
+
     // MARK: - Lifecycle
 
     /// Starts the store once: the first plan (it never waits for the system), the permission, refills when settings
@@ -158,6 +177,7 @@ final class AlertStore {
         guard !started else { return }
         started = true
         observeSettings()
+        observeClock()
         #if os(macOS)
         if !launch.isPreview { startBackgroundActivity() }
         #endif
@@ -272,6 +292,16 @@ final class AlertStore {
                 self?.refillSoon()
                 self?.observeSettings()
             }
+        }
+    }
+
+    /// The device's clock was set or its time zone changed: pending requests count down in elapsed time and quiet
+    /// hours follow the zone, so plan again (the zone setting may be "system").
+    private func observeClock() {
+        for name in [Notification.Name.NSSystemClockDidChange, .NSSystemTimeZoneDidChange] {
+            clockObservers.append(NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { _ in
+                Task { @MainActor in AlertStore.shared.refillSoon(after: 1) }
+            })
         }
     }
 

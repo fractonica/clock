@@ -287,6 +287,16 @@ func textChecks() {
     let pe = planner.occurrences(of: pureEclipse, after: vectorA, limit: 1)[0]
     check(pure.body(pureEclipse, pe).hasPrefix("Greatest eclipse in 5η · "), "pure eclipse body: \(pure.body(pureEclipse, pe))")
 
+    // moments far ahead name their year (Earth) or their Alpha, Beta and Gamma (pure): the SPEC §8 label drops them
+    let eclipse23 = clock.catalogue[23] + 0.002
+    check(earth.moment(eclipse23, from: vectorA) == "Jan 26 2028 15:07", "an eclipse years ahead: \(earth.moment(eclipse23, from: vectorA))")
+    check(earth.moment(eclipse23, from: eclipse23 - 86_400) == "Jan 26 15:07", "… a day ahead, in its year")
+    check(earth.moment(h.time + 0.002, from: vectorA) == "12:56:12", "… the same day: the time")
+    check(pure.moment(eclipse23, from: vectorA) == "α#6 β#4 γ#10 δ#4 ε#4 58η", "pure, another Gamma: \(pure.moment(eclipse23, from: vectorA))")
+    check(pure.moment(d.time + 0.002, from: vectorA) == "δ#4 ε#1 1η", "pure, the same Gamma: \(pure.moment(d.time + 0.002, from: vectorA))")
+    check(pure.moment(h.time + 0.002, from: vectorA) == "35η 0ι 0λ", "pure, the same Nuclide: the clock")
+    check(leaks(pure.moment(eclipse23, from: vectorA)).isEmpty, "pure moments say no Earth word")
+
     // tokens and templates
     var custom = helion
     custom.title = "{unit} {ordinal} · {name} {event} {nope}"

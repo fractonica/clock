@@ -120,7 +120,24 @@ struct AlertText: Sendable {
 
     /// The moment, read a hair after it so a beginning cycle reads as begun.
     func time(_ o: AlertOccurrence) -> String {
-        words.label(o.time + 0.002, relativeTo: o.fire)
+        moment(o.time + 0.002, from: o.fire)
+    }
+
+    /// A moment seen from `ref`, as precise as it needs to be: the time of day on the same day, "Jan 26 15:07" in the
+    /// same year, "Jan 26 2028 15:07" beyond · pure: the clock in the same Nuclide, the short letter date in the same
+    /// Gamma ("δ#4 ε#4 58η"), the full stamp beyond ("α#6 β#4 γ#10 δ#4 ε#4 58η"). `Wording.label` drops the year
+    /// (SPEC §8), which misleads for alerts years ahead (eclipses, Alpha turns).
+    func moment(_ t: Double, from ref: Double) -> String {
+        if pure {
+            if notation.stamp(at: t, upTo: "epsilon") == notation.stamp(at: ref, upTo: "epsilon") {
+                return notation.clockText(at: t)
+            }
+            let sameGamma = clock.level(at: t, 2).map(\.cycle) == clock.level(at: ref, 2).map(\.cycle)
+            return sameGamma ? notation.dateText(at: t, letters: true, upTo: "eta") : notation.stamp(at: t, upTo: "eta")
+        }
+        let a = words.earth.parts(t), b = words.earth.parts(ref)
+        if a.year == b.year && a.month == b.month && a.day == b.day { return words.earth.time(t, seconds: true) }
+        return words.earth.short(t, refYear: b.year)
     }
 
     /// The level that names a turnover and the index of its cycle there: a major period or Nuclide turning over is

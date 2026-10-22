@@ -2,6 +2,7 @@ import Foundation
 import UserNotifications
 #if os(iOS)
 import BackgroundTasks
+import Synchronization
 #endif
 
 /// Lifecycle entry points of Alerts: notifications for the clock events the user chooses. The store refills the
@@ -65,22 +66,38 @@ enum AlertsHooks: FeatureHooks {
 #if os(iOS)
 /// The background refresh task, outside the main actor: BackgroundTasks calls the handler on its own queue.
 private enum BackgroundRefresh {
-    /// A BGTask handed to the main actor; it is only ever completed once, from there.
+    /// A BGTask handed to the main actor, completed exactly once: when the refill is done, or at once when the system
+    /// says time is up (a late completion gets the app killed and its refreshes rationed).
     private final class TaskBox: @unchecked Sendable {
-        let task: BGTask
+        private let task: BGTask
+        private let done = Mutex(false)
+
         init(_ task: BGTask) { self.task = task }
+
+        func complete(success: Bool) {
+            let first = done.withLock { done in
+                defer { done = true }
+                return !done
+            }
+            if first { task.setTaskCompleted(success: success) }
+        }
     }
 
     static func register(_ identifier: String) {
         BGTaskScheduler.shared.register(forTaskWithIdentifier: identifier, using: nil) { task in
             let box = TaskBox(task)
             let work = Task { @MainActor in
+                // The request that woke us is spent: ask for the next one first, so an expiry cannot lose it.
+                AlertsHooks.submitRefresh()
                 AlertStore.shared.start()
                 await AlertStore.shared.refill()
                 AlertsHooks.submitRefresh()
-                box.task.setTaskCompleted(success: !Task.isCancelled)
+                box.complete(success: !Task.isCancelled)
             }
-            task.expirationHandler = { work.cancel() }
+            task.expirationHandler = {
+                work.cancel()
+                box.complete(success: false)
+            }
         }
     }
 
