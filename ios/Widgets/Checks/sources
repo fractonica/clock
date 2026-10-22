@@ -1,3 +1,4 @@
 # The widget logic WidgetChecks.swift compiles against (relative to ios/).
 Widgets/Model/*.swift
+Widgets/HelionArc/HelionArcModel.swift
 Shared/Notation+Standard.swift

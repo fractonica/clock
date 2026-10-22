@@ -11,6 +11,8 @@ enum WidgetChange: Hashable, Sendable {
     case pair(level: Int)
     /// The 52-state 3-stroke glyph of a level (a major period's phase on the journal face).
     case glyph3(level: Int)
+    /// The 16-state 2-stroke glyph of a level: its cycle in sixteenths (the Helion Arc's dot on the Preon).
+    case glyph2(level: Int)
     /// A new cycle of a level, so a new count ("29ι" → "30ι").
     case cycle(level: Int)
     /// A new quarter of a level (Peak, Node, Valley, End).
@@ -38,6 +40,8 @@ enum WidgetChange: Hashable, Sendable {
             next = clock.odometer(at: at, level)?.nextTime
         case .glyph3(let level):
             next = clock.odometer(at: at, level, strokes: 3, digits: 1)?.nextTime
+        case .glyph2(let level):
+            next = clock.odometer(at: at, level, strokes: 2, digits: 1)?.nextTime
         case .cycle(let level):
             next = clock.level(at: at, level).flatMap { $0.clipped ? nil : $0.end }
         case .quarter(let level):

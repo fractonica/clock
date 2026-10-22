@@ -276,6 +276,63 @@ enum Render {
                 }
             }
         }, to: out.appendingPathComponent("lock.png"))
+
+        // the Helion Arc at t and at the moments its lens is at either end, crossing the middle and moving on
+        let clock = FractonicaClock.shared
+        var arcs: [(String, Double)] = [("t", t)]
+        if let helion = clock.level(at: t, 6), let preon = clock.level(at: t, 8) {
+            arcs += [
+                ("Helion start", helion.start + WidgetChange.settle),
+                ("17ι, mid", helion.start + 17.5 / 36 * helion.duration),
+                ("next Preon", preon.end + WidgetChange.settle),
+                ("Helion end", helion.end - 1),
+            ]
+        }
+        write(Sheet(title: "Helion Arc · \(tag)") {
+            HStack(alignment: .top, spacing: 24) {
+                ForEach(arcs, id: \.1) { name, at in
+                    LockCell(title: "\(name) · rectangular", size: Size.rectangular) {
+                        HelionArcView(snapshot: HelionArcSnapshot(at: at), size: .rectangular)
+                    }
+                }
+            }
+            HStack(alignment: .top, spacing: 18) {
+                ForEach(arcs, id: \.1) { name, at in
+                    HomeCell(title: "\(name) · small", size: Size.small[0]) {
+                        HelionArcView(snapshot: HelionArcSnapshot(at: at), size: .small)
+                    }
+                }
+            }
+            HStack(alignment: .top, spacing: 18) {
+                ForEach(Size.medium, id: \.width) { size in
+                    HomeCell(title: "medium \(Int(size.width))", size: size) {
+                        HelionArcView(snapshot: HelionArcSnapshot(at: t), size: .medium)
+                    }
+                }
+                HomeCell(title: "medium · \(arcs.last?.0 ?? "")", size: Size.medium[0]) {
+                    HelionArcView(snapshot: HelionArcSnapshot(at: arcs.last?.1 ?? t), size: .medium)
+                }
+            }
+            HStack(alignment: .top, spacing: 18) {
+                HomeCell(title: "small 170", size: Size.small[1]) {
+                    HelionArcView(snapshot: HelionArcSnapshot(at: t), size: .small)
+                }
+                HomeCell(title: "StandBy (no background)", size: Size.small[1], background: false) {
+                    HelionArcView(snapshot: HelionArcSnapshot(at: t), size: .small)
+                }
+                TintCell(title: "tinted · small", size: Size.small[0]) {
+                    HelionArcView(snapshot: HelionArcSnapshot(at: t), size: .small)
+                }
+                TintCell(title: "tinted · medium", size: Size.medium[0]) {
+                    HelionArcView(snapshot: HelionArcSnapshot(at: t), size: .medium)
+                }
+            }
+            HStack(alignment: .top, spacing: 18) {
+                LockCell(title: "rectangular · out", size: Size.rectangular) { HelionArcView(snapshot: nil, size: .rectangular) }
+                HomeCell(title: "out of range", size: Size.small[0]) { HelionArcView(snapshot: nil, size: .small) }
+                HomeCell(title: "out of range · medium", size: Size.medium[0]) { HelionArcView(snapshot: nil, size: .medium) }
+            }
+        }, to: out.appendingPathComponent("helionarc.png"))
     }
 
     /// Builds every widget's timeline from t as its provider does, and reports its size and cost: a timeline must be
@@ -303,6 +360,7 @@ enum Render {
             report("overview \(mode)") { SnapshotTimeline.timeline(now: now, changes: { OverviewSnapshot.changes(at: $0, words: w) }) { OverviewSnapshot(at: $0, words: w) } }
         }
         report("lock") { SnapshotTimeline.timeline(now: now, changes: { _ in AccessorySnapshot.changes }) { AccessorySnapshot(at: $0) } }
+        report("helion arc") { SnapshotTimeline.timeline(now: now, changes: { _ in HelionArcSnapshot.changes }) { HelionArcSnapshot(at: $0) } }
     }
 
     @MainActor

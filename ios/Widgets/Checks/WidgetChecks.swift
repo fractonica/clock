@@ -16,6 +16,7 @@ enum WidgetChecks {
         schedules()
         pureLeaks()
         edges()
+        helionArc()
         Checks.finish()
     }
 
@@ -179,6 +180,9 @@ enum WidgetChecks {
             expectHonest("accessory", from: start, changes: { _ in AccessorySnapshot.changes }) { t in
                 AccessorySnapshot(at: t).map { "\($0.helion) \($0.helionPair) \($0.inline) \($0.major) \($0.nuclide)" }
             }
+            expectHonest("helion arc", from: start, changes: { _ in HelionArcSnapshot.changes }) { t in
+                HelionArcSnapshot(at: t).map { "\($0.helionToken.text) \($0.preonToken.text) \($0.preon) \($0.step)" }
+            }
         }
 
         // bounds of a timeline
@@ -252,6 +256,7 @@ enum WidgetChecks {
             }
             if let s = RingsSnapshot(at: t, words: pure) { texts.append(s.accessibility) }
             if let s = AccessorySnapshot(at: t) { texts += [s.inline, s.major, s.nuclide] }
+            if let s = HelionArcSnapshot(at: t) { texts += [s.helionToken.text, s.preonToken.text, s.accessibility] }
             for text in texts {
                 for pattern in forbidden where text.range(of: pattern, options: [.regularExpression, .caseInsensitive]) != nil {
                     leaks.append("\(pattern) in \"\(text)\"")
@@ -271,6 +276,7 @@ enum WidgetChecks {
             check(UpNextSnapshot(at: t, words: pure) == nil, "no up next outside (\(t))")
             check(RingsSnapshot(at: t, words: pure) == nil, "no rings outside (\(t))")
             check(AccessorySnapshot(at: t) == nil, "no accessory outside (\(t))")
+            check(HelionArcSnapshot(at: t) == nil, "no Helion Arc outside (\(t))")
             check(EntrySchedule.times(from: t, changes: ClockSnapshot.changes(words: pure)).isEmpty, "no timeline outside (\(t))")
         }
         // the closing hours: entries never pass the end, the last turnover is the catalogue's end
@@ -285,5 +291,136 @@ enum WidgetChecks {
         // the first instants
         let early = EntrySchedule.times(from: clock.tMin, changes: JournalSnapshot.changes(unit: 5))
         check(early.first == clock.tMin && early.count > 1, "a timeline from the catalogue's first instant")
+    }
+
+    // MARK: - Helion Arc
+
+    static func helionArc() {
+        typealias G = HelionArcGeometry
+        // the counts: the journal face's, two digits each, at A and anywhere in the catalogue
+        let s = HelionArcSnapshot(at: a)
+        check(s?.helionToken.text == "34η" && s?.preonToken.text == "29ι", "Helion Arc at A: \(s?.helionToken.text ?? "nil") \(s?.preonToken.text ?? "")")
+        check(s?.helion == 34 && s?.preon == 29, "Helion Arc counts at A")
+        check(s?.helionToken.level == 6 && s?.preonToken.level == 8 && s?.helionToken.number == "34" && s?.preonToken.suffix == "ι",
+              "tokens split for colouring")
+        let first = clock.level(at: clock.level(at: a, 4)!.start + WidgetChange.settle, 6)!.start + WidgetChange.settle
+        let start = HelionArcSnapshot(at: first)
+        check(start?.helionToken.text == "01η" && start?.preonToken.text == "00ι" && start?.step == 0,
+              "two digits at a Nuclide's start: \(start?.helionToken.text ?? "nil") \(start?.preonToken.text ?? "")")
+        var instants: [Double] = [a, first, 946_684_800, 2_886_085_800, clock.tMin, clock.tMin + 3 * 86_400, clock.tMax - 3 * 86_400, clock.tMax]
+        var seed: UInt64 = 0x2545_F491_4F6C_DD1D
+        for _ in 0..<300 {
+            seed = seed &* 6_364_136_223_846_793_005 &+ 1_442_695_040_888_963_407
+            instants.append(clock.tMin + Double(seed >> 11) / Double(1 << 53) * (clock.tMax - clock.tMin))
+        }
+        var wrong: [String] = []
+        for t in instants {
+            guard let s = HelionArcSnapshot(at: t), let c = Notation.standard.clock(at: t), let preon = clock.level(at: t, 8),
+                  let journal = Journal.reading(at: t, unit: 5)?.tokens else {
+                wrong.append("\(t): no reading")
+                continue
+            }
+            if [s.helionToken.text, s.preonToken.text] != journal.prefix(2).map(\.text) { wrong.append("\(t): labels \(s.helionToken.text) \(s.preonToken.text)") }
+            if s.helion != c.eta || s.preon != c.iota { wrong.append("\(t): counts \(s.helion) \(s.preon) vs \(c.eta) \(c.iota)") }
+            // the dot stands in the middle of the Preon's sixteenth the moment is in
+            if abs(s.phase - preon.phase) > 0.5 / Double(HelionArcSnapshot.steps) + 1e-6 { wrong.append("\(t): dot \(s.phase) vs phase \(preon.phase)") }
+        }
+        check(wrong.isEmpty, "Helion Arc readings: \(wrong.prefix(4))")
+
+        // the lens: 36 Preons a Helion, the running one drawn 7 times as long; its stretch always holds the moment's
+        // true place on the Helion
+        check(clock.levelInfo(6).factor * clock.levelInfo(7).factor == G.preons, "36 Preons a Helion")
+        check(G.window(preon: 0).lowerBound == 0 && abs(G.window(preon: G.preons - 1).upperBound - 1) < 1e-12, "the lens spans the arc's ends")
+        check(abs(G.window - 1.0 / 6) < 1e-12 && abs(G.amplitude - .pi / 12) < 1e-12, "the wave takes a sixth of the arc: \(G.window)")
+        var lens: [String] = []
+        for preon in 0..<G.preons {
+            let w = G.window(preon: preon)
+            if abs(w.upperBound - w.lowerBound - G.window) > 1e-12 { lens.append("\(preon): width") }
+            if preon > 0 && abs(w.lowerBound - G.window(preon: preon - 1).lowerBound - (1 - G.window) / Double(G.preons - 1)) > 1e-12 {
+                lens.append("\(preon): the lens moves on by one Preon's share of the rest")
+            }
+            for k in 0...16 {
+                let p = Double(k) / 16
+                let truth = (Double(preon) + p) / Double(G.preons)
+                if truth < w.lowerBound - 1e-12 || truth > w.upperBound + 1e-12 { lens.append("\(preon) \(p): true place \(truth) off \(w)") }
+                if k > 0 && G.position(preon: preon, phase: p) <= G.position(preon: preon, phase: Double(k - 1) / 16) { lens.append("\(preon) \(p): not forward") }
+            }
+            if G.position(preon: preon, phase: 0) != w.lowerBound || abs(G.position(preon: preon, phase: 1) - w.upperBound) > 1e-12 {
+                lens.append("\(preon): the Preon's ends are the lens's")
+            }
+        }
+        check(lens.isEmpty, "the lens: \(lens.prefix(4))")
+
+        // the drawing in each family's frame
+        func near(_ p: CGPoint, _ q: CGPoint, _ eps: Double = 1e-9) -> Bool { hypot(p.x - q.x, p.y - q.y) < eps }
+        for (w, h) in [(160.0, 72.0), (126.0, 126.0), (306.0, 126.0), (332.0, 138.0)] {
+            let g = HelionArcGeometry(width: w, height: h)
+            let name = "\(Int(w))×\(Int(h))"
+            let fitsW = abs(G.widthInRadii * g.r - w) < 1e-9, fitsH = abs(G.heightInRadii * g.r - h) < 1e-9
+            check((fitsW || fitsH) && G.widthInRadii * g.r <= w + 1e-9 && G.heightInRadii * g.r <= h + 1e-9, "\(name): the drawing fits")
+            check(near(g.arc(0).point, CGPoint(x: g.cx - 2 * g.r, y: g.cy)) && near(g.arc(0.5).point, CGPoint(x: g.cx, y: g.cy))
+                  && near(g.arc(1).point, CGPoint(x: g.cx + 2 * g.r, y: g.cy)), "\(name): the half-arcs meet on the axis")
+            var shape: [String] = []
+            for i in 1..<100 where i != 50 {
+                let f = Double(i) / 100
+                let q = g.arc(f)
+                // the first half-arc below the axis (descending), the second above (ascending)
+                if f < 0.5 ? q.point.y <= g.cy : q.point.y >= g.cy { shape.append("\(f) on the wrong side of the axis") }
+                // the wave's first half bulges to the right of the way the arc runs
+                let ahead = g.arc(f + 1e-6).point
+                let run = CGVector(dx: ahead.x - q.point.x, dy: ahead.y - q.point.y)
+                if abs(-run.dy * q.side.dx + run.dx * q.side.dy - hypot(run.dx, run.dy)) > 1e-6 { shape.append("\(f): side") }
+            }
+            var waves: [String] = []
+            for preon in 0..<G.preons {
+                let lens = G.window(preon: preon)
+                // the wave starts and ends on the arc at the Preon's stretch, and crosses it halfway
+                if !near(g.wave(preon: preon, phase: 0), g.arc(lens.lowerBound).point, 1e-6)
+                    || !near(g.wave(preon: preon, phase: 1), g.arc(lens.upperBound).point, 1e-6)
+                    || !near(g.wave(preon: preon, phase: 0.5), g.arc((lens.lowerBound + lens.upperBound) / 2).point, 1e-6) {
+                    waves.append("\(preon): ends")
+                }
+                // its first half a half-arc on the right of the way, its second on the left, `amplitude` radii high
+                for (p, sign) in [(0.25, 1.0), (0.75, -1.0)] {
+                    let q = g.arc(lens.lowerBound + p * G.window)
+                    let d = g.wave(preon: preon, phase: p)
+                    let lift = (d.x - q.point.x) * q.side.dx + (d.y - q.point.y) * q.side.dy
+                    if abs(lift - sign * G.amplitude * g.r) > 1e-6 { waves.append("\(preon) \(p): lift \(lift)") }
+                }
+                // the drawn wave ends where the dot stands
+                for step in [0, 7, 15] {
+                    let p = (Double(step) + 0.5) / 16
+                    if !near(g.wave(preon: preon, from: 0, to: p).last!, g.wave(preon: preon, phase: p)) { waves.append("\(preon) \(step): dot") }
+                }
+                // nothing leaves the frame, and the counts stay clear of the arc and of the wave wherever it rides
+                let points = g.arc(from: 0, to: 1) + g.wave(preon: preon, from: 0, to: 1)
+                if points.contains(where: { $0.x < 0 || $0.x > w || $0.y < 0 || $0.y > h }) { waves.append("\(preon): leaves the frame") }
+                for first in [true, false] {
+                    let rect = g.labelRect(first: first, reach: g.cy)
+                    if rect.minX < -1e-9 || rect.maxX > w + 1e-9 || rect.minY < -1e-9 || rect.maxY > h + 1e-9 { waves.append("label leaves the frame") }
+                    if points.contains(where: { rect.insetBy(dx: -1, dy: -1).contains($0) }) { waves.append("\(preon): the \(first ? "first" : "second") count under a line") }
+                }
+            }
+            check(shape.isEmpty && waves.isEmpty, "\(name): \((shape + waves).prefix(4))")
+            let label = g.labelRect(first: true, reach: g.cy)
+            check(label.width > g.r && label.height > 0.8 * g.r, "\(name): room for a count: \(label)")
+        }
+
+        // a timeline: sixteen entries a Preon, each Preon start among them, the budget filled
+        let times = EntrySchedule.times(from: a, changes: HelionArcSnapshot.changes)
+        check(times.count == EntrySchedule.maxEntries && times.first == a, "a full timeline from now: \(times.count)")
+        if let last = times.last {
+            var boundaries: [Double] = []
+            var t = clock.level(at: a, 8)!.end
+            while t <= last {
+                boundaries.append(t)
+                t = clock.level(at: t + WidgetChange.settle, 8)!.end
+            }
+            check(boundaries.allSatisfy { b in times.contains { abs($0 - b) < 0.01 } }, "an entry at every Preon start")
+            let preonLength = clock.level(at: a, 8)!.duration
+            let gaps = zip(times.dropFirst(), times.dropFirst(2)).map { $1 - $0 }
+            check(gaps.allSatisfy { abs($0 - preonLength / 16) < 0.5 }, "entries a sixteenth of a Preon apart: \(gaps.min() ?? 0) … \(gaps.max() ?? 0)")
+            check(boundaries.count >= 9 && last - a < 86_400, "150 entries last about 9ι: \(boundaries.count) Preon starts, \(Int(last - a)) s")
+        }
     }
 }

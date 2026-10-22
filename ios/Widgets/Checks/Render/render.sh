@@ -5,9 +5,9 @@
 #
 #   ios/Widgets/Checks/Render/render.sh OUT_DIR [unix time [zone]]     (default: SPEC vector A, 1791460800, UTC)
 #
-# Compiles the widget views (Widgets/Model, Widgets/Parts, Widgets/*/…View(s).swift) and the shared drawing
-# (Shared/) for macOS against FractonicaKit, then renders them with ImageRenderer at 2×. Text(timerInterval:) and
-# ProgressView(timerInterval:) are drawn as they read at render time.
+# Compiles the widget views (Widgets/Model, Widgets/Parts, Widgets/*/…View(s).swift and …Model.swift) and the shared
+# drawing (Shared/) for macOS against FractonicaKit, then renders them with ImageRenderer at 2×. Text(timerInterval:)
+# and ProgressView(timerInterval:) are drawn as they read at render time.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
@@ -29,7 +29,7 @@ fi
 xcrun swiftc -swift-version 6 -parse-as-library -D WIDGET_RENDER -I "$KIT" -L "$KIT" -lFractonicaKit \
   "$ROOT/Widgets/Checks/Render/render.swift" \
   "$ROOT"/Widgets/Model/*.swift "$ROOT"/Widgets/Parts/*.swift \
-  $(find "$ROOT/Widgets" -path '*/Checks' -prune -o \( -name '*View.swift' -o -name '*Views.swift' \) -print) \
+  $(find "$ROOT/Widgets" -path '*/Checks' -prune -o \( -name '*View.swift' -o -name '*Views.swift' -o -name '*Model.swift' \) -print) \
   "$ROOT"/Shared/{Theme,Backdrop,GlyphViews,Notation+Standard,AppLink,Screen}.swift \
   -o "$BIN/render"
 "$BIN/render" "$OUT_DIR" "$@"
