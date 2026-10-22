@@ -121,6 +121,32 @@ struct WaveChipState: Equatable, Sendable {
     }
 }
 
+/// How often the depth chips refresh: as often as the quickest bar that can be followed moves a 48th of its width (at
+/// least every second, at most four times a second). A level whose half-arc passes in under ten seconds at the clock's
+/// speed is too fast to follow on a chip: it shows no sign and a still bar, and sets no pace. A paused clock shows them
+/// all.
+struct WaveChipPace: Equatable, Sendable {
+    let interval: Double
+    /// The shortest half-arc (seconds) a chip follows.
+    private let shortest: Double
+    private let halves: [Double]
+
+    static let minimumHalf = 10.0
+
+    init(halfSeconds: [Double], rate: Double) {
+        let r = abs(rate)
+        halves = halfSeconds
+        shortest = Self.minimumHalf * r
+        let steps = halfSeconds.filter { $0 >= Self.minimumHalf * r }.map { $0 / max(r, 1e-9) / 48 }
+        interval = max(0.25, min(1, steps.min() ?? 1))
+    }
+
+    /// Whether a level's chip shows its sign and progress.
+    func followable(_ level: Int) -> Bool {
+        level >= 0 && level < halves.count && halves[level] >= shortest
+    }
+}
+
 /// The solar strip: the sync at every depth (src/ui/wave/sun.js).
 struct WaveSolarReadout: Equatable, Sendable {
     var number: String

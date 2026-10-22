@@ -29,6 +29,7 @@ struct WaveChecks {
         readoutChecks(root, engine)
         labelChecks()
         wheelChecks()
+        chipPaceChecks(engine)
         fitChecks()
         if let dir = ProcessInfo.processInfo.environment["WAVE_FRAMES"] { WaveFrames.run(into: dir) }
         Checks.finish()
@@ -594,4 +595,20 @@ private func fitChecks() {
     let a = WaveCamera.fit(pts, rot: 0, width: 400, height: 400, pad: pad)
     let b = WaveCamera.fit(pts, rot: 0, width: 400, height: 400, pad: pad, avoiding: [far])
     check(a == b, "fit: a control away from the figure changes nothing")
+}
+
+/// The depth chips refresh at the pace of the quickest bar that can be followed, and leave the faster ones still.
+private func chipPaceChecks(_ engine: WaveEngine) {
+    let halves = (0...Fractonica.maxLevel).map { engine.clock.levelInfo($0).meanSeconds / 2 }
+    let live = WaveChipPace(halfSeconds: halves, rate: 1)
+    // live: κ (half-arc ≈ 50 s) is the quickest followed, its bar moves a 48th about every second; λ (≈ 3.9 s) and finer are still
+    check(live.followable(9) && !live.followable(10), "chips live: κ is followed, λ is too fast")
+    check(abs(live.interval - min(1, halves[9] / 48)) < 1e-9, "chips live: refresh at κ's pace (\(live.interval))")
+    let paused = WaveChipPace(halfSeconds: halves, rate: 0)
+    check((0...Fractonica.maxLevel).allSatisfy { paused.followable($0) }, "chips paused: every chip shows its state")
+    let lapse = WaveChipPace(halfSeconds: halves, rate: -3600)
+    check(lapse.followable(5) && !lapse.followable(6), "chips at an hour a second (backwards): ζ is followed, η is too fast")
+    check(lapse.interval >= 0.25 && lapse.interval <= 1, "chips at an hour a second: the pace stays within 0.25–1 s (\(lapse.interval))")
+    let fast = WaveChipPace(halfSeconds: halves, rate: 1e12)
+    check(!fast.followable(0) && fast.interval == 1, "chips at a huge rate: nothing is followed, a slow refresh")
 }
