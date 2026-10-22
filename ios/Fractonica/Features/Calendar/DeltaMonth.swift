@@ -129,6 +129,14 @@ private struct CalPureBandChooser: View {
     @Environment(AppSettings.self) private var settings
 
     var body: some View {
+        ViewThatFits(in: .horizontal) {
+            chips(words: true)
+            chips(words: false)
+        }
+        .dynamicTypeSize(...DynamicTypeSize.accessibility2)
+    }
+
+    private func chips(words: Bool) -> some View {
         HStack(spacing: 6) {
             ForEach(MonthModel.pureBands, id: \.self) { level in
                 let on = model.pureBand == level
@@ -141,8 +149,11 @@ private struct CalPureBandChooser: View {
                 } label: {
                     HStack(spacing: 5) {
                         Text(CalMath.letter(level)).font(.subheadline.weight(.bold))
-                        Text(Self.names[level] ?? "").font(.caption).foregroundStyle(on ? color.opacity(0.85) : Theme.ink3)
+                        if words {
+                            Text(Self.names[level] ?? "").font(.caption).foregroundStyle(on ? color.opacity(0.85) : Theme.ink3)
+                        }
                     }
+                    .fixedSize()
                     .foregroundStyle(on ? color : Theme.ink3)
                     .lineLimit(1)
                     .padding(.horizontal, 10)
@@ -160,7 +171,6 @@ private struct CalPureBandChooser: View {
             }
             Spacer(minLength: 0)
         }
-        .dynamicTypeSize(...DynamicTypeSize.accessibility1)
     }
 
     static let names = [3: "quarters", 4: "Nuclides", 6: "Helions"]
@@ -229,6 +239,8 @@ private struct DeltaHeader: View {
                     .font(.code(13))
                     .foregroundStyle(Theme.teal)
             }
+            // the page's names head a fixed grid: they stop growing with the title, so it stays the largest
+            .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
             .accessibilityElement(children: .combine)
             Spacer(minLength: 4)
             if shown != nil, shown != model.page {
@@ -248,6 +260,7 @@ private struct DeltaHeader: View {
                 Text("by \(model.pageStep.name)")
                     .font(.caption2)
                     .foregroundStyle(Theme.levelColor(model.pageStep.level))
+                    .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
             }
         }
     }
@@ -290,6 +303,8 @@ private struct CalQuarterBar: View {
                         } label: {
                             Text(Notation.quarterWords[q])
                                 .font(.caption.weight(q == current ? .bold : .medium))
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.7)
                                 .foregroundStyle(q == current ? Theme.background : Theme.levelColor(3))
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 6)
@@ -326,6 +341,8 @@ private struct CalQuarterBar: View {
                 }
                 .accessibilityHidden(true)
             }
+            // four words over a fixed grid: they grow with the text size as far as a quarter of a phone's width allows
+            .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
         }
     }
 }

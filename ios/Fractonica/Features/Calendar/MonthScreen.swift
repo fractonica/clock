@@ -206,6 +206,8 @@ struct CalStepPair: View {
                 .keyboardShortcut(shortcuts ? KeyboardShortcut(.rightArrow, modifiers: .command) : nil)
         }
         .glassEffect(.regular.interactive(), in: .capsule)
+        // the arrows sit in a fixed 44 × 38 frame: past xxxLarge they would outgrow it
+        .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
     }
 
     private func button(_ delta: Int, _ symbol: String, _ label: String) -> some View {
