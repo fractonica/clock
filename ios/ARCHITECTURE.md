@@ -98,6 +98,19 @@ background. Pick the slowest cadence that keeps the finest visible thing honest 
 ~7.8 s, the η pair every ~71 s). Never run your own `Timer` for the clock. Content that needs the real instant (an
 animation that runs while the clock is paused) reads `Date.now`, which is the tick's moment.
 
+What a tick costs comes out of a 120 Hz frame budget, so keep each timeline around what moves (the Ladder measures
+itself with `-FXLadderHitches`):
+
+- Every tick rebuilds the timeline's content and lays out its container again up to the hosting root (a list row, the
+  window), whether anything visible changed or not. A view built inside it with a closure (a `Button`, its style) or
+  with the tick's time as an input runs its body every tick: put the timeline in a button's label, not around the
+  button, and hand subviews only what changes when something passes.
+- A `Canvas` redraws on the main thread, a texture and a GPU pass each time its view is rebuilt. Draw what stays in it
+  and lay what moves over it as shapes that only change place (the Ladder's `SegmentBar`).
+- A list keeps its rows out of sight in the view graph, and their timelines keep ticking (each tick updating the whole
+  list): `.clockHeldOutOfSight()` holds the `ClockTimeline`s inside a row from `onDisappear` to `onAppear`
+  (`\.clockHeld` holds them by hand).
+
 **Nothing ticks inside a macOS toolbar item through SwiftUI.** Any update of a toolbar item's SwiftUI content makes
 SwiftUI rebuild the toolbar's platform items and AppKit re-lay out the toolbar and update the window's constraints:
 the transport's moment ticking at 30 Hz there during a time-lapse cost ~30 % of a core with an empty screen. The
