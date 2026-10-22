@@ -208,7 +208,7 @@ final class WaveStage {
     private func camera(for scene: WaveScene, _ input: WaveFrameInput) -> WaveCamera {
         switch scene {
         case .overview(let o): o.layout.camera(width: size.width, height: size.height, pad: input.overviewPad)
-        case .focus(let f): WaveCamera.fit(f.samples, rot: f.rot, width: size.width, height: size.height, pad: input.focusPad)
+        case .focus(let f): WaveCamera.fit(f.samples, rot: f.rot, width: size.width, height: size.height, pad: input.focusPad, avoiding: input.avoid)
         }
     }
 
