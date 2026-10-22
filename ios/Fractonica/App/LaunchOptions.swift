@@ -5,7 +5,8 @@ import Foundation
 ///
 ///     -FXTab <screen>    open a screen, presenting it as a sheet or cover where that is how it appears:
 ///                        now rings ladder wave timeline converter month diary sound timer stopwatch alerts focus jump settings
-///     -FXTime <unix s>   start travelling, paused at that moment (e.g. 1791460800, SPEC §12 vector A)
+///     -FXTime <unix s>   start travelling, paused at that moment (e.g. 1791460800, SPEC §12 vector A; negative values
+///                        before 1970 work too)
 ///     -FXPure 1|0        pure mode on / off for this launch
 ///     -FXZone <IANA id>  time zone for this launch (e.g. UTC), for reproducible Earth times
 ///     -FXLink <url>      open an `AppLink` as a widget or notification tap does (fractonica://rings?t=1791460800);
@@ -20,12 +21,15 @@ struct LaunchOptions: Sendable {
     var link: AppLink?
 
     /// The options this process was launched with.
-    static func current(_ defaults: UserDefaults = .standard) -> LaunchOptions {
+    static func current(_ defaults: UserDefaults = .standard, arguments: [String] = CommandLine.arguments) -> LaunchOptions {
         let args = defaults.volatileDomain(forName: UserDefaults.argumentDomain)
         func string(_ key: String) -> String? { (args[key] as? String) ?? (args[key] as? NSNumber)?.stringValue }
+        // The argument domain reads "-FXTime -11253795000" as two flags, so a time before 1970 is taken from the raw
+        // arguments: the token after -FXTime, whatever its sign.
+        let rawTime = arguments.firstIndex(of: "-FXTime").flatMap { i in i + 1 < arguments.count ? arguments[i + 1] : nil }
         return LaunchOptions(
             screen: string("FXTab").flatMap { Screen(rawValue: $0.lowercased()) },
-            time: string("FXTime").flatMap(Double.init).flatMap { $0.isFinite ? $0 : nil },
+            time: (rawTime ?? string("FXTime")).flatMap(Double.init).flatMap { $0.isFinite ? $0 : nil },
             pure: string("FXPure").flatMap { ["1", "yes", "true"].contains($0.lowercased()) ? true : ["0", "no", "false"].contains($0.lowercased()) ? false : nil },
             zone: string("FXZone"),
             link: string("FXLink").flatMap(URL.init(string:)).flatMap(AppLink.init(url:))
