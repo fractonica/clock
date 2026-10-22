@@ -218,7 +218,25 @@ func scheduleChecks() {
     check(abs(s.timeIntervalSince1970 - (1005 + ChangeSchedule.lag)) < 1e-6, "rate 2: the change 10 displayed seconds ahead comes in 5 real ones")
     let back = ChangeSchedule(base: ClockStore.TimeBase(t0: 0, real0: 1000, rate: -60), paused: false, minimumStep: 1.0 / 30, next: next)
     let b = back.tick(after: Date(timeIntervalSince1970: 1000), lowFrequency: false)!
-    check(abs(b.timeIntervalSince1970 - (1000 + 1.0 / 30)) < 1e-6, "backwards: steady redraws")
+    check(abs(b.timeIntervalSince1970 - (1000 + 1.0 / 30)) < 1e-6, "backwards, standing on a change: the next frame")
+    let rewind = ChangeSchedule(base: ClockStore.TimeBase(t0: 7, real0: 1000, rate: -2), paused: false, minimumStep: 1.0 / 30, next: next)
+    let r = rewind.tick(after: Date(timeIntervalSince1970: 1000), lowFrequency: false)!
+    check(abs(r.timeIntervalSince1970 - (1003.5 + ChangeSchedule.lag)) < 1e-6,
+          "backwards at −2: the change 7 displayed seconds behind comes in 3.5 real ones: \(r.timeIntervalSince1970)")
+    let fastBack = ChangeSchedule(base: ClockStore.TimeBase(t0: 7, real0: 1000, rate: -3600), paused: false, minimumStep: 1.0 / 30, next: next)
+    check(abs(fastBack.tick(after: Date(timeIntervalSince1970: 1000), lowFrequency: false)!.timeIntervalSince1970 - (1000 + 1.0 / 30)) < 1e-6,
+          "a fast rewind redraws at most 30 times a second")
+    // the journal running backwards at real speed: each redraw lands just after the content changed, never between
+    var tb = vectorA
+    var behind = 0
+    for _ in 0..<30 {
+        guard let c = ChangeSchedule.lastChange(atOrBefore: tb, within: 1.0 / 30, next: { FaceCadence.journal(after: $0, unit: 5) }) else { break }
+        // text that counts on the ladder turns a hair after the boundary (pure spans' margin): compare a lag later
+        let n = FaceCadence.journal(after: c + 1e-5, unit: 5) ?? .infinity
+        if c > tb || n <= tb || journalKey(tb, 5) != journalKey(c + ChangeSchedule.lag, 5) { behind += 1 }
+        tb = c - ChangeSchedule.lag
+    }
+    check(behind == 0, "backwards: the change found is the one that began the shown content (\(behind) wrong)")
     let none = ChangeSchedule(base: .live, paused: false, minimumStep: 1.0 / 30, next: { _ in nil })
     check(abs(none.tick(after: Date(timeIntervalSince1970: 50), lowFrequency: false)!.timeIntervalSince1970 - 51) < 1e-6,
           "no known change: checked once a second")
