@@ -1,4 +1,7 @@
 import SwiftUI
+#if os(iOS)
+import UIKit
+#endif
 
 // iOS 18 compatibility. The iOS app runs from iOS 18.6 (the Mac app from macOS 26): on iOS 26 and later, and always
 // on the Mac, each wrapper here is exactly the Liquid Glass API it names; on iOS 18 it draws that system's own
@@ -12,6 +15,7 @@ import SwiftUI
 //     .glassSurface(.regular.interactive(), in: .capsule)       // .glassEffect(.regular.interactive(), in: .capsule)
 //     .glassButtonStyle()                                       // .buttonStyle(.glass)
 //     GlassContainer(spacing: 10) { … }                         // GlassEffectContainer(spacing: 10) { … }
+//     .sheetDetents([.medium, .large])                          // .presentationDetents([.medium, .large])
 
 /// A Liquid Glass variant, spelled as `Glass` spells it (`.regular`, `.regular.tint(c)`, `.regular.interactive()`),
 /// for `glassSurface(_:in:)`.
@@ -73,6 +77,23 @@ extension View {
         } else {
             self
         }
+    }
+
+    /// A sheet's heights (`presentationDetents(_:)`). iPad on iOS 18 draws a medium detent as half of its form sheet,
+    /// where only a few rows show: there a sheet that can be large opens large, as the whole form sheet.
+    @ViewBuilder
+    func sheetDetents(_ detents: Set<PresentationDetent>) -> some View {
+        #if os(iOS)
+        if #available(iOS 26.0, *) {
+            presentationDetents(detents)
+        } else if UIDevice.current.userInterfaceIdiom == .pad, detents.contains(.large) {
+            presentationDetents([.large])
+        } else {
+            presentationDetents(detents)
+        }
+        #else
+        presentationDetents(detents)
+        #endif
     }
 
     /// `.buttonStyle(.glass)`. iOS 18: `.bordered`, which takes the same `tint` and `buttonBorderShape`.

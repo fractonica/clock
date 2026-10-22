@@ -77,7 +77,7 @@ struct DiaryScreen: View {
         .modifier(OptionsPresentation(isPresented: $showOptions, compact: isCompact))
         .sheet(isPresented: $showPicker) {
             DiaryDeltaPicker(model: model)
-                .presentationDetents([.medium, .large])
+                .sheetDetents([.medium, .large])
         }
         .sheet(isPresented: $showPages) {
             DiaryPagesView(model: model)

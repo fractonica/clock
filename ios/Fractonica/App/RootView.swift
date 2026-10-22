@@ -410,7 +410,7 @@ private struct Presentations: ViewModifier {
         content
             .sheet(isPresented: $router.isTransportPresented) {
                 TransportPanel()
-                    .presentationDetents(transportDetents)
+                    .sheetDetents([.medium, .large])
             }
             .sheet(isPresented: $router.isSoundPresented) {
                 NavigationStack {
@@ -436,14 +436,6 @@ private struct Presentations: ViewModifier {
         #endif
     }
 
-    #if os(iOS)
-    /// Time travel's sheet: half or full height. iPad on iOS 18 draws a sheet's medium detent as half of its form sheet,
-    /// which shows only the moment, so there it opens as the whole form sheet.
-    private var transportDetents: Set<PresentationDetent> {
-        if #available(iOS 26.0, *) { return [.medium, .large] }
-        return router.isCompact ? [.medium, .large] : [.large]
-    }
-    #endif
 }
 
 #if os(iOS)

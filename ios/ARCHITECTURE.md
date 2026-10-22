@@ -224,6 +224,7 @@ API it names on iOS 26 and the Mac:
 | `GlassEffectContainer(spacing:)` | `GlassContainer(spacing:)` | the content |
 | `.glassEffectID(id, in: namespace)` | `.glassID(id, in: namespace)` | nothing (no morph) |
 | `Button(…, role: .confirm)` | `role: .confirmIfAvailable` | no role (a confirmation action is bold already) |
+| `.presentationDetents([.medium, .large])` on a sheet iPad shows | `.sheetDetents([.medium, .large])` | iPad: `.large` (its medium is half the form sheet, a few rows); iPhone: as given |
 
 Guarded in place: the transport (RootView's `transportAccessory` on iOS 26; `transportInset` and `TransportInsetBar`
 on iOS 18, applied by `ScreenChrome` inside each screen's navigation stack — a safe area inset outside the stack does
