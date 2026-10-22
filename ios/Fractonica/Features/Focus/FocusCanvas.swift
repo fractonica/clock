@@ -144,8 +144,26 @@ final class FocusMetalView: NSView {
         relayout()
     }
 
+    private var occlusion: (any NSObjectProtocol)?
+
+    override func viewWillMove(toWindow newWindow: NSWindow?) {
+        super.viewWillMove(toWindow: newWindow)
+        if let occlusion { NotificationCenter.default.removeObserver(occlusion) }
+        occlusion = nil
+        guard let newWindow else { return }
+        let driver = driver
+        occlusion = NotificationCenter.default.addObserver(
+            forName: NSWindow.didChangeOcclusionStateNotification, object: newWindow, queue: .main
+        ) { [weak newWindow] _ in
+            MainActor.assumeIsolated {
+                driver.occluded = !(newWindow?.occlusionState.contains(.visible) ?? false)
+            }
+        }
+    }
+
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
+        if let window { driver.occluded = !window.occlusionState.contains(.visible) && window.isVisible }
         if window != nil {
             relayout()
             let link = displayLink(target: driver, selector: #selector(FocusDriver.step(_:)))
@@ -169,7 +187,13 @@ final class FocusDriver: NSObject {
         didSet {
             if config.style != oldValue.style { beginTransition(from: oldValue.style) }
             if config.calm != oldValue.calm { updateFrameRate() }
+            if config.active != oldValue.active { updatePause() }
         }
+    }
+
+    /// The view's window is fully covered (macOS: another window, a full-screen space): nothing to draw.
+    var occluded = false {
+        didSet { if occluded != oldValue { updatePause() } }
     }
 
     let stats: FocusFrameStats
@@ -247,7 +271,15 @@ final class FocusDriver: NSObject {
         self.maximumFramesPerSecond = max(30, maximumFramesPerSecond)
         lowPower = ProcessInfo.processInfo.isLowPowerModeEnabled
         updateFrameRate()
+        updatePause()
         newLink.add(to: .main, forMode: .common)
+    }
+
+    /// The display link rests while the scene is in the background or the window is covered.
+    private func updatePause() {
+        let paused = !config.active || occluded
+        link?.isPaused = paused
+        if paused { lastFrame = nil }
     }
 
     func stop() {
@@ -300,7 +332,7 @@ final class FocusDriver: NSObject {
     }
 
     private func render(frameInterval: Double, targetTimestamp: CFTimeInterval) {
-        guard config.active, let renderer, let layer, layer.drawableSize.width > 1 else { return }
+        guard config.active, !occluded, let renderer, let layer, layer.drawableSize.width > 1 else { return }
         let cpuStart = CACurrentMediaTime()
         let real = Date.now.timeIntervalSince1970 + (targetTimestamp - cpuStart)
         let frameDate = Date(timeIntervalSince1970: real)

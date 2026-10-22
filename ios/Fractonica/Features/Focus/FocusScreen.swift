@@ -79,6 +79,11 @@ struct FocusScreen: View {
             change(by: 1)
             return .handled
         }
+        .onKeyPress(.escape) {
+            guard isImmersive else { return .ignored }
+            close()
+            return .handled
+        }
         #if os(macOS)
         .onContinuousHover { phase in
             if case .active = phase { revealOnPointer() }
@@ -100,6 +105,11 @@ struct FocusScreen: View {
             FocusAwake.hold(true)
             FocusChimePlayer.prepare()
             focused = true
+            #if os(iOS)
+            if launch.landscape, let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
+                scene.requestGeometryUpdate(.iOS(interfaceOrientations: .landscapeRight))
+            }
+            #endif
         }
         .onDisappear {
             model.detach()

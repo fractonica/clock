@@ -157,7 +157,8 @@ static float3 interference(float2 p, float px, constant Header& H, constant Leve
 
     float sum = 0.0, total = 0.0;
     for (int i = 5; i <= 12; i++) {
-        float amp = ampOf(L, i) * L[i].color.w;
+        // The slow levels shape the contours; μ and ν, whose waves pass in a second or less, only stir them.
+        float amp = ampOf(L, i) * L[i].color.w * (i == 12 ? 0.22 : (i == 11 ? 0.45 : 1.0));
         if (amp <= 0.001) { continue; }
         float2 v = q - L[i].place.xy;
         float d = length(v);

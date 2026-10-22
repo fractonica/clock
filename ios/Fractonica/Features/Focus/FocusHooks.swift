@@ -81,6 +81,7 @@ enum FocusHooks: FeatureHooks {
 ///     -FXFocusStats 1          frame statistics on screen and in the log every 3 s
 ///     -FXFocusTime <unix s>    show this moment, unclamped (outside the catalogue shows the dormant state)
 ///     -FXFocusInline 1         on iPad and Mac, open Focus as the sidebar's screen rather than full screen
+///     -FXFocusLandscape 1      on iOS, turn the window to landscape when Focus appears
 struct FocusLaunch: Sendable {
     var style: FocusStyle?
     var length: FocusLength?
@@ -90,6 +91,7 @@ struct FocusLaunch: Sendable {
     var stats = false
     var time: Double?
     var inline = false
+    var landscape = false
 
     static let current = FocusLaunch(defaults: .standard)
 
@@ -113,6 +115,7 @@ struct FocusLaunch: Sendable {
         stats = flag("FXFocusStats") ?? false
         time = string("FXFocusTime").flatMap(Double.init).flatMap { $0.isFinite ? $0 : nil }
         inline = flag("FXFocusInline") ?? false
+        landscape = flag("FXFocusLandscape") ?? false
     }
 }
 
