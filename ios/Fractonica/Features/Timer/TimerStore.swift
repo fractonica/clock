@@ -200,7 +200,8 @@ final class TimerStore {
             ringing = Ringing(id: finished.id, spec: finished.spec, at: end)
             Haptics.play(.success)
             TimerChime.shared.play(repeating: isScreenVisible)
-            if !isScreenVisible { ToastCenter.shared.show("Timer done · \(title)", for: 4) }
+            // elsewhere in the app its notification shows as a banner (TimerHooks); without notifications, a toast
+            if !isScreenVisible && access != .allowed { ToastCenter.shared.show("Timer done · \(title)", for: 4) }
         } else if Date.now.timeIntervalSince(end) < 120 {
             // came back to the app right after it rang (the notification has played the chime)
             ringing = Ringing(id: finished.id, spec: finished.spec, at: end)
@@ -284,7 +285,7 @@ final class TimerStore {
     private func scheduleNotification() {
         guard let run, let end = run.end else { return TimerNotifications.replace(with: nil) }
         TimerNotifications.replace(with: TimerNotifications.Plan(
-            after: end.timeIntervalSinceNow,
+            end: end,
             title: "Timer done",
             body: words.notificationBody(run),
             link: AppLink(screen: .timer).userInfo

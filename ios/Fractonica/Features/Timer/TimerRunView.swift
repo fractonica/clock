@@ -127,8 +127,9 @@ struct TimerRunView: View {
     /// In a row under the dial; beside it (landscape), the two round controls side by side above +1.
     @ViewBuilder
     private func controls(vertical: Bool, size: CGFloat = 78, large: Bool = false) -> some View {
+        // ⌘. rather than Escape, which is too easily pressed to throw a running timer away
         let cancel = RoundControl("Cancel", size: size) { withAnimation(.smooth) { store.cancel() } }
-            .keyboardShortcut(.cancelAction)
+            .keyboardShortcut(".", modifiers: .command)
         let toggle = RoundControl(run.isRunning ? "Pause" : "Resume", tint: Theme.teal, size: size) { store.togglePause() }
             .keyboardShortcut(.defaultAction)
         if vertical {

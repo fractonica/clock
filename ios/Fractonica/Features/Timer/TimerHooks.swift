@@ -34,7 +34,7 @@ enum TimerHooks: FeatureHooks {
     }
 
     /// In front, the app rings the timer itself: on the Timer screen with its alert (so the banner stays away), elsewhere
-    /// with a toast and the banner (the chime has already played, so the banner is silent).
+    /// with the banner (the chime has already played, so the banner is silent; tapping it opens the Timer).
     static func presentation(ofNotification identifier: String) -> UNNotificationPresentationOptions? {
         guard identifier.hasPrefix(TimerNotifications.prefix) else { return nil }
         let store = TimerStore.shared
