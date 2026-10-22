@@ -34,6 +34,8 @@ struct WaveLabelPlacer {
         var ox: Double
         var oy: Double
         var t: Double
+        /// Still on its way to a new slot.
+        var gliding: Bool
     }
 
     private var stage = WaveRect(x0: 4, y0: 4, x1: 396, y1: 296)
@@ -124,21 +126,25 @@ struct WaveLabelPlacer {
             }
         }
         occupied.append((best.rect, weight))
-        // ease towards the spot, measured from the point so that following the point costs no lag
+        // ease towards a new spot, measured from the point so that following the point costs no lag; a label that keeps
+        // its slot follows its point (and the turning normal of a dot orbiting a small arc) exactly, so a moving dot
+        // never keeps the stage drawing every frame
         let tx = best.center.x - x
         let ty = best.center.y - y
         var ox = tx
         var oy = ty
-        if let last {
+        var gliding = false
+        if let last, best.slot != last.slot || last.gliding {
             let dist = hypot(tx - last.ox, ty - last.oy)
             if dist > 0, dist < 160, now > last.t, now - last.t < 0.4 {
                 let k = min(1, Self.maxStep / dist, 1 - exp(-(now - last.t) / Self.glide))
                 ox = last.ox + (tx - last.ox) * k
                 oy = last.oy + (ty - last.oy) * k
             }
+            gliding = hypot(ox - tx, oy - ty) > 0.4
         }
-        if hypot(ox - tx, oy - ty) > 0.4 { settling = true }
-        memory[key] = Memory(slot: best.slot, ox: ox, oy: oy, t: now)
+        if gliding { settling = true }
+        memory[key] = Memory(slot: best.slot, ox: ox, oy: oy, t: now, gliding: gliding)
         if memory.count > 200 { memory.removeAll() }
         return Spot(center: WavePoint(x: x + ox, y: y + oy), rect: best.rect, slot: best.slot, cost: best.cost)
     }

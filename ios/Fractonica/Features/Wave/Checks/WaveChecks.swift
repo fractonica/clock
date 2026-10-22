@@ -509,6 +509,25 @@ private func labelChecks() {
     check(moved.slot != first.slot, "a blocked label moves to another side")
     check(hypot(moved.center.x - first.center.x, moved.center.y - first.center.y) <= WaveLabelPlacer.maxStep + 0.01, "it glides there instead of jumping")
     check(placer.settling, "a gliding label asks for the next frame")
+    // it arrives and stops asking
+    var f = 1.032
+    for _ in 0..<60 {
+        placer.begin(stage: stage, now: f)
+        placer.occupy(first.rect.inset(by: -4), weight: 1)
+        _ = placer.place(key: "g", text: "peak", width: 30, at: WavePoint(x: 100, y: 100), normal: WavePoint(x: 0, y: -1), clearance: 8, weight: 1)
+        f += 0.016
+    }
+    check(!placer.settling, "a glide ends")
+    // the letter of a dot orbiting a small arc follows it (its normal turning every frame) without asking for frames
+    var asked = 0
+    for k in 0..<120 {
+        let a = Double(k) * 0.05
+        placer.begin(stage: stage, now: 3 + Double(k) * 0.008)
+        _ = placer.place(key: "lv10", text: "λ", width: 9, at: WavePoint(x: 150 + 6 * cos(a), y: 120 + 6 * sin(a)),
+                         normal: WavePoint(x: cos(a), y: sin(a)), clearance: 8, weight: WaveLabelPlacer.soft)
+        if placer.settling { asked += 1 }
+    }
+    check(asked == 0, "an orbiting dot's letter never keeps the stage drawing (\(asked) frames asked)")
 }
 
 // MARK: - The Mac wheel and the fit around floating controls
