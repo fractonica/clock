@@ -16,6 +16,7 @@ enum WidgetChecks {
         schedules()
         pureLeaks()
         edges()
+        helionArc()
         Checks.finish()
     }
 
@@ -179,6 +180,9 @@ enum WidgetChecks {
             expectHonest("accessory", from: start, changes: { _ in AccessorySnapshot.changes }) { t in
                 AccessorySnapshot(at: t).map { "\($0.helion) \($0.helionPair) \($0.inline) \($0.major) \($0.nuclide)" }
             }
+            expectHonest("helion arc", from: start, changes: { _ in HelionArcSnapshot.changes }) { t in
+                HelionArcSnapshot(at: t).map { "\($0.helionToken.text) \($0.preonToken.text) \($0.preon) \($0.step)" }
+            }
         }
 
         // bounds of a timeline
@@ -252,6 +256,7 @@ enum WidgetChecks {
             }
             if let s = RingsSnapshot(at: t, words: pure) { texts.append(s.accessibility) }
             if let s = AccessorySnapshot(at: t) { texts += [s.inline, s.major, s.nuclide] }
+            if let s = HelionArcSnapshot(at: t) { texts += [s.helionToken.text, s.preonToken.text, s.accessibility] }
             for text in texts {
                 for pattern in forbidden where text.range(of: pattern, options: [.regularExpression, .caseInsensitive]) != nil {
                     leaks.append("\(pattern) in \"\(text)\"")
@@ -271,6 +276,7 @@ enum WidgetChecks {
             check(UpNextSnapshot(at: t, words: pure) == nil, "no up next outside (\(t))")
             check(RingsSnapshot(at: t, words: pure) == nil, "no rings outside (\(t))")
             check(AccessorySnapshot(at: t) == nil, "no accessory outside (\(t))")
+            check(HelionArcSnapshot(at: t) == nil, "no Helion Arc outside (\(t))")
             check(EntrySchedule.times(from: t, changes: ClockSnapshot.changes(words: pure)).isEmpty, "no timeline outside (\(t))")
         }
         // the closing hours: entries never pass the end, the last turnover is the catalogue's end
@@ -285,5 +291,231 @@ enum WidgetChecks {
         // the first instants
         let early = EntrySchedule.times(from: clock.tMin, changes: JournalSnapshot.changes(unit: 5))
         check(early.first == clock.tMin && early.count > 1, "a timeline from the catalogue's first instant")
+    }
+
+    // MARK: - Helion Arc
+
+    static func helionArc() {
+        typealias G = HelionArcGeometry
+        // the counts: the journal face's, two digits each, at A and anywhere in the catalogue
+        let s = HelionArcSnapshot(at: a)
+        check(s?.helionToken.text == "34η" && s?.preonToken.text == "29ι", "Helion Arc at A: \(s?.helionToken.text ?? "nil") \(s?.preonToken.text ?? "")")
+        check(s?.helion == 34 && s?.preon == 29, "Helion Arc counts at A")
+        check(s?.helionToken.level == 6 && s?.preonToken.level == 8 && s?.helionToken.number == "34" && s?.preonToken.suffix == "ι",
+              "tokens split for colouring")
+        let first = clock.level(at: clock.level(at: a, 4)!.start + WidgetChange.settle, 6)!.start + WidgetChange.settle
+        let start = HelionArcSnapshot(at: first)
+        check(start?.helionToken.text == "01η" && start?.preonToken.text == "00ι" && start?.step == 0,
+              "two digits at a Nuclide's start: \(start?.helionToken.text ?? "nil") \(start?.preonToken.text ?? "")")
+        var instants: [Double] = [a, first, 946_684_800, 2_886_085_800, clock.tMin, clock.tMin + 3 * 86_400, clock.tMax - 3 * 86_400, clock.tMax]
+        var seed: UInt64 = 0x2545_F491_4F6C_DD1D
+        for _ in 0..<300 {
+            seed = seed &* 6_364_136_223_846_793_005 &+ 1_442_695_040_888_963_407
+            instants.append(clock.tMin + Double(seed >> 11) / Double(1 << 53) * (clock.tMax - clock.tMin))
+        }
+        var wrong: [String] = []
+        for t in instants {
+            guard let s = HelionArcSnapshot(at: t), let c = Notation.standard.clock(at: t), let preon = clock.level(at: t, 8),
+                  let journal = Journal.reading(at: t, unit: 5)?.tokens else {
+                wrong.append("\(t): no reading")
+                continue
+            }
+            if [s.helionToken.text, s.preonToken.text] != journal.prefix(2).map(\.text) { wrong.append("\(t): labels \(s.helionToken.text) \(s.preonToken.text)") }
+            if s.helion != c.eta || s.preon != c.iota { wrong.append("\(t): counts \(s.helion) \(s.preon) vs \(c.eta) \(c.iota)") }
+            // the dot stands in the middle of the Preon's sixteenth the moment is in
+            if abs(s.phase - preon.phase) > 0.5 / Double(HelionArcSnapshot.steps) + 1e-6 { wrong.append("\(t): dot \(s.phase) vs phase \(preon.phase)") }
+        }
+        check(wrong.isEmpty, "Helion Arc readings: \(wrong.prefix(4))")
+
+        // the magnifier: 36 Preons a Helion, the running one drawn 7 times its length, its stretch centred on its true
+        // middle (shifted inward at the ends), fixed for the whole Preon; the arc around it unstretched
+        check(clock.levelInfo(6).factor * clock.levelInfo(7).factor == G.preons, "36 Preons a Helion")
+        check(abs(G.window - 7.0 / 36) < 1e-12 && abs(G.amplitude - 7 * .pi / 72) < 1e-12, "the wave takes seven Preons' worth of the arc: \(G.window)")
+        let preonShare = 1.0 / Double(G.preons)
+        let centred = 3...(G.preons - 4) // where the stretch fits around the Preon's middle
+        var magnifier: [String] = []
+        var offCentred = 0.0, offEnds = 0.0
+        for preon in 0..<G.preons {
+            let w = G.window(preon: preon)
+            let middle = (Double(preon) + 0.5) * preonShare
+            if abs(w.upperBound - w.lowerBound - G.window) > 1e-12 { magnifier.append("\(preon): width") }
+            if w.lowerBound < 0 || w.upperBound > 1 + 1e-12 { magnifier.append("\(preon): leaves the arc \(w)") }
+            // centred on the Preon's middle, shifted only as far as the arc's ends demand
+            let centre = (w.lowerBound + w.upperBound) / 2
+            if abs(centre - min(1 - G.window / 2, max(G.window / 2, middle))) > 1e-12 { magnifier.append("\(preon): not centred \(centre) vs \(middle)") }
+            if centred.contains(preon) != (abs(centre - middle) < 1e-12) { magnifier.append("\(preon): centred only where it fits") }
+            if preon > 0 {
+                let move = w.lowerBound - G.window(preon: preon - 1).lowerBound
+                // by exactly one Preon at each start, resting where it lies against an end
+                let expected = centred.contains(preon) && centred.contains(preon - 1) ? preonShare : 0
+                if abs(move - expected) > 1e-12 { magnifier.append("\(preon): moves on by \(move), not \(expected)") }
+            }
+            for k in 0...64 {
+                let p = Double(k) / 64
+                let truth = G.truth(preon: preon, phase: p), at = G.position(preon: preon, phase: p)
+                if abs(truth - (Double(preon) + p) * preonShare) > 1e-15 { magnifier.append("\(preon) \(p): truth") }
+                // the stretch holds the moment's true place; the dot moves forward through it
+                if truth < w.lowerBound - 1e-12 || truth > w.upperBound + 1e-12 { magnifier.append("\(preon) \(p): true place \(truth) off \(w)") }
+                if k > 0 && at <= G.position(preon: preon, phase: Double(k - 1) / 64) { magnifier.append("\(preon) \(p): not forward") }
+                // the dot's foot: the stretch's start plus how far across the wave's own double arc it has come
+                // (angle-linear on its half-arcs, so within 0.053 of the phase)
+                let across = Journal.arcPoint(p, cl: 1, cr: 3, cy: 0, r: 1).x / 4
+                if abs(at - (w.lowerBound + across * G.window)) > 1e-15 || abs(across - p) > 0.053 { magnifier.append("\(preon) \(p): foot \(at)") }
+                // where centred, off its phase's true place by (phase − ½)(window − 1/36) + (across − phase)·window
+                if centred.contains(preon) && abs(at - truth - ((p - 0.5) * (G.window - preonShare) + (across - p) * G.window)) > 1e-12 {
+                    magnifier.append("\(preon) \(p): offset \(at - truth)")
+                }
+                // the Helion's arc outside the stretch: bright exactly before the moment; the bright line never
+                // passes the moment, the wave carries it on
+                if G.brightEnd(preon: preon) > truth + 1e-12 { magnifier.append("\(preon) \(p): bright past the moment") }
+                for i in 0...720 {
+                    let f = Double(i) / 720
+                    if w.contains(f) { continue }
+                    if (f < G.brightEnd(preon: preon)) != (f < truth) { magnifier.append("\(preon) \(p): \(f) bright \(f < G.brightEnd(preon: preon))") }
+                }
+            }
+            if G.position(preon: preon, phase: 0) != w.lowerBound || abs(G.position(preon: preon, phase: 1) - w.upperBound) > 1e-12 {
+                magnifier.append("\(preon): the Preon's ends are the stretch's")
+            }
+            if abs(G.position(preon: preon, phase: 0.5) - G.truth(preon: preon, phase: 0.5)) > 1e-12 && centred.contains(preon) {
+                magnifier.append("\(preon): the dot on the true place at mid-Preon")
+            }
+            // the dot at its sixteen places (the middles of the Preon's sixteenths): off its phase's true place by no
+            // more than 1/12 where centred and −n/36 … (6 − n)/36 at the ends (mirrored at the far end); off the moment
+            // itself, anywhere in its sixteenth, by at most half a sixteenth of a Preon (1/1152 of the arc) more
+            let n = Double(preon < centred.lowerBound ? preon : G.preons - 1 - preon)
+            let range = centred.contains(preon) ? (-(G.window - preonShare) / 2)...((G.window - preonShare) / 2)
+                : preon < centred.lowerBound ? (-n * preonShare)...((6 - n) * preonShare) : (-(6 - n) * preonShare)...(n * preonShare)
+            let halfStep = 0.5 / Double(HelionArcSnapshot.steps) * preonShare
+            for step in 0..<HelionArcSnapshot.steps {
+                let p = (Double(step) + 0.5) / Double(HelionArcSnapshot.steps), at = G.position(preon: preon, phase: p)
+                let off = at - G.truth(preon: preon, phase: p)
+                if centred.contains(preon) { offCentred = max(offCentred, abs(off)) } else { offEnds = max(offEnds, abs(off)) }
+                if !range.contains(off) { magnifier.append("\(preon) step \(step): offset \(off) off \(range)") }
+                for j in 0...8 {
+                    let moment = G.truth(preon: preon, phase: (Double(step) + Double(j) / 8) / Double(HelionArcSnapshot.steps))
+                    if at - moment < range.lowerBound - halfStep - 1e-12 || at - moment > range.upperBound + halfStep + 1e-12 {
+                        magnifier.append("\(preon) step \(step): \(at - moment) from the moment")
+                    }
+                }
+            }
+        }
+        check(G.window(preon: 0).lowerBound == 0 && abs(G.window(preon: G.preons - 1).upperBound - 1) < 1e-12, "the stretch rests at the arc's ends")
+        // the bounds the geometry's notes state (0.0833, just under 1/12, where centred; 0.1666, just under 1/6, at the
+        // ends), and that they are reached
+        check(offCentred > 0.08326 && offCentred < (G.window - preonShare) / 2, "the dot within 0.0833 < 1/12 of its true place where centred: \(offCentred)")
+        check(offEnds > 0.16659 && offEnds < G.window - preonShare, "the dot within 0.1666 < 1/6 of its true place at the ends: \(offEnds)")
+        check(magnifier.isEmpty, "the magnifier: \(magnifier.prefix(4))")
+
+        // against the journal face (the Journal widget's arc) at the moments the render harness draws and at random:
+        // the wave's stretch holds the journal's tick, so the two agree everywhere outside it; one stretch a Preon
+        var journalWrong: [String] = []
+        var marks = instants
+        let helionA = clock.level(at: a, 6)!, preonA = clock.level(at: a, 8)!
+        marks += [helionA.start + WidgetChange.settle, helionA.start + 17.5 / 36 * helionA.duration, preonA.end + WidgetChange.settle,
+                  preonA.end - WidgetChange.settle, helionA.end - 1]
+        for t in marks {
+            guard let s = HelionArcSnapshot(at: t), let reading = Journal.reading(at: t, unit: 5), let preon = clock.level(at: t, 8) else { continue }
+            let w = G.window(preon: s.preon)
+            if reading.leadLevel != 6 { journalWrong.append("\(t): the journal's lead \(reading.leadLevel)") }
+            if !w.contains(reading.leadPhase) { journalWrong.append("\(t): the journal's tick \(reading.leadPhase) off the stretch \(w)") }
+            if abs(G.truth(preon: s.preon, phase: s.phase) - reading.leadPhase) > 0.5 / 16 * preonShare + 1e-6 {
+                journalWrong.append("\(t): progress \(G.truth(preon: s.preon, phase: s.phase)) vs the journal's \(reading.leadPhase)")
+            }
+            // the same stretch from the Preon's first instant to its last
+            for u in [preon.start + WidgetChange.settle, preon.end - WidgetChange.settle] {
+                if let other = HelionArcSnapshot(at: u), other.preon != s.preon || G.window(preon: other.preon) != w { journalWrong.append("\(t): the stretch moves within the Preon") }
+            }
+        }
+        check(journalWrong.isEmpty, "the Helion Arc against the journal: \(journalWrong.prefix(4))")
+        if let s = HelionArcSnapshot(at: a), let reading = Journal.reading(at: a, unit: 5) {
+            let w = G.window(preon: s.preon)
+            check(abs(reading.leadPhase - 0.81) < 0.01 && w.contains(reading.leadPhase) && G.brightEnd(preon: s.preon) < reading.leadPhase
+                  && w.upperBound > reading.leadPhase,
+                  "at A the journal's tick (\(reading.leadPhase)) lies in the stretch \(w): bright before it, dim after")
+        }
+
+        // the drawing in each family's frame
+        func near(_ p: CGPoint, _ q: CGPoint, _ eps: Double = 1e-9) -> Bool { hypot(p.x - q.x, p.y - q.y) < eps }
+        for (w, h) in [(160.0, 72.0), (126.0, 126.0), (306.0, 126.0), (332.0, 138.0)] {
+            let g = HelionArcGeometry(width: w, height: h)
+            let name = "\(Int(w))×\(Int(h))"
+            let fitsW = abs(G.widthInRadii * g.r - w) < 1e-9, fitsH = abs(G.heightInRadii * g.r - h) < 1e-9
+            check((fitsW || fitsH) && G.widthInRadii * g.r <= w + 1e-9 && G.heightInRadii * g.r <= h + 1e-9, "\(name): the drawing fits")
+            check(near(g.arc(0).point, CGPoint(x: g.cx - 2 * g.r, y: g.cy)) && near(g.arc(0.5).point, CGPoint(x: g.cx, y: g.cy))
+                  && near(g.arc(1).point, CGPoint(x: g.cx + 2 * g.r, y: g.cy)), "\(name): the half-arcs meet on the axis")
+            var shape: [String] = []
+            for i in 1..<100 where i != 50 {
+                let f = Double(i) / 100
+                let q = g.arc(f)
+                // the first half-arc below the axis (descending), the second above (ascending)
+                if f < 0.5 ? q.point.y <= g.cy : q.point.y >= g.cy { shape.append("\(f) on the wrong side of the axis") }
+                // the wave's first half bulges to the right of the way the arc runs
+                let ahead = g.arc(f + 1e-6).point
+                let run = CGVector(dx: ahead.x - q.point.x, dy: ahead.y - q.point.y)
+                if abs(-run.dy * q.side.dx + run.dx * q.side.dy - hypot(run.dx, run.dy)) > 1e-6 { shape.append("\(f): side") }
+            }
+            var waves: [String] = []
+            for preon in 0..<G.preons {
+                let stretch = G.window(preon: preon)
+                // the wave starts and ends on the arc at the Preon's stretch, and crosses it halfway
+                if !near(g.wave(preon: preon, phase: 0), g.arc(stretch.lowerBound).point, 1e-6)
+                    || !near(g.wave(preon: preon, phase: 1), g.arc(stretch.upperBound).point, 1e-6)
+                    || !near(g.wave(preon: preon, phase: 0.5), g.arc((stretch.lowerBound + stretch.upperBound) / 2).point, 1e-6) {
+                    waves.append("\(preon): ends")
+                }
+                // its first half a half-arc on the right of the way, its second on the left, `amplitude` radii high
+                for (p, sign) in [(0.25, 1.0), (0.75, -1.0)] {
+                    let q = g.arc(stretch.lowerBound + p * G.window)
+                    let d = g.wave(preon: preon, phase: p)
+                    let lift = (d.x - q.point.x) * q.side.dx + (d.y - q.point.y) * q.side.dy
+                    if abs(lift - sign * G.amplitude * g.r) > 1e-6 { waves.append("\(preon) \(p): lift \(lift)") }
+                }
+                // the drawn wave ends where the dot stands
+                for step in [0, 7, 15] {
+                    let p = (Double(step) + 0.5) / 16
+                    if !near(g.wave(preon: preon, from: 0, to: p).last!, g.wave(preon: preon, phase: p)) { waves.append("\(preon) \(step): dot") }
+                }
+                // the dot stands square off the arc at its foot, `position`, the arc's nearest point to it: where the
+                // bounds above measure it
+                for step in 0..<HelionArcSnapshot.steps {
+                    let p = (Double(step) + 0.5) / Double(HelionArcSnapshot.steps)
+                    let foot = g.arc(G.position(preon: preon, phase: p)), d = g.wave(preon: preon, phase: p)
+                    let off = CGVector(dx: d.x - foot.point.x, dy: d.y - foot.point.y), distance = hypot(off.dx, off.dy)
+                    if abs(off.dx * foot.side.dy - off.dy * foot.side.dx) > 1e-9 { waves.append("\(preon) \(step): the dot not square off its foot") }
+                    if (0...1000).contains(where: { let q = g.arc(Double($0) / 1000).point; return hypot(q.x - d.x, q.y - d.y) < distance - 1e-9 }) {
+                        waves.append("\(preon) \(step): the dot nearer another point of the arc than its foot")
+                    }
+                }
+                // nothing leaves the frame, and the counts stay clear of the arc and of the wave wherever it rides
+                let points = g.arc(from: 0, to: 1) + g.wave(preon: preon, from: 0, to: 1)
+                if points.contains(where: { $0.x < 0 || $0.x > w || $0.y < 0 || $0.y > h }) { waves.append("\(preon): leaves the frame") }
+                for first in [true, false] {
+                    let rect = g.labelRect(first: first, reach: g.cy)
+                    if rect.minX < -1e-9 || rect.maxX > w + 1e-9 || rect.minY < -1e-9 || rect.maxY > h + 1e-9 { waves.append("label leaves the frame") }
+                    if points.contains(where: { rect.insetBy(dx: -1, dy: -1).contains($0) }) { waves.append("\(preon): the \(first ? "first" : "second") count under a line") }
+                }
+            }
+            check(shape.isEmpty && waves.isEmpty, "\(name): \((shape + waves).prefix(4))")
+            let label = g.labelRect(first: true, reach: g.cy)
+            check(label.width > g.r && label.height > 0.8 * g.r, "\(name): room for a count: \(label)")
+        }
+
+        // a timeline: sixteen entries a Preon, each Preon start among them, the budget filled
+        let times = EntrySchedule.times(from: a, changes: HelionArcSnapshot.changes)
+        check(times.count == EntrySchedule.maxEntries && times.first == a, "a full timeline from now: \(times.count)")
+        if let last = times.last {
+            var boundaries: [Double] = []
+            var t = clock.level(at: a, 8)!.end
+            while t <= last {
+                boundaries.append(t)
+                t = clock.level(at: t + WidgetChange.settle, 8)!.end
+            }
+            check(boundaries.allSatisfy { b in times.contains { abs($0 - b) < 0.01 } }, "an entry at every Preon start")
+            let preonLength = clock.level(at: a, 8)!.duration
+            let gaps = zip(times.dropFirst(), times.dropFirst(2)).map { $1 - $0 }
+            check(gaps.allSatisfy { abs($0 - preonLength / 16) < 0.5 }, "entries a sixteenth of a Preon apart: \(gaps.min() ?? 0) … \(gaps.max() ?? 0)")
+            check(boundaries.count >= 9 && last - a < 86_400, "150 entries last about 9ι: \(boundaries.count) Preon starts, \(Int(last - a)) s")
+        }
     }
 }

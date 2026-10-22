@@ -314,6 +314,7 @@ identify the widgets people have placed):
 | `app.fractonica.clock.rings` | The rings | small, large |
 | `app.fractonica.clock.overview` | The overview (iPad and Mac) | extra large |
 | `app.fractonica.clock.lock` | Lock Screen accessories (iOS) | circular, rectangular, inline |
+| `app.fractonica.clock.helionarc` | The Helion Arc: the Helion's double arc, the running Preon riding it as a wave | rectangular (iOS Lock Screen), small, medium |
 | `app.fractonica.clock.control.focus` | Control: open Focus | Control Center (iPhone: also Lock Screen, Action button) |
 | `app.fractonica.clock.control.timer` | Control: open the Timer | Control Center (iPhone: also Lock Screen, Action button) |
 
@@ -323,6 +324,21 @@ are in Shared/TimerActivity.swift, shared with the app). Widgets configure thems
 `AppLink`s. Their timelines are pure logic, checked by `Widgets/Checks`; `Widgets/Checks/Render/render.sh OUT_DIR
 [unix time [zone]]` renders every family of every widget at its exact size into contact sheets on the Mac (no Home
 Screen needed), the way to look at a widget change.
+
+The Helion Arc (Widgets/HelionArc) draws the running Helion as the journal face's two half-arcs, bright up to the
+running Preon, which rides it as one wave: a double arc of its own bent along the Helion's, its first half on the right
+of the way the Helion runs (as the Helion's own first half lies below the axis), the dot on it. A Preon is a 36th of
+the Helion, too short to see a wave in, so it is drawn through a magnifier: its wave spans seven Preons' worth of the
+arc (7/36), centred on the Preon's true middle and shifted inward only at the Helion's ends, fixed for the whole Preon
+and moving on by 1/36 at each Preon start. The arc around it is not stretched, so outside the wave's stretch it is
+bright exactly up to the Helion's true progress, as on the journal face (the stretch holds the journal's tick); the dot
+(angle-linear on the wave, like the journal's tick) stands, measured at its foot on the Helion's arc, within 1/12 of
+the arc of its sixteenth's true place (1/6 in the first and last three Preons), and of the moment's within half a
+sixteenth of a Preon (1/1152 of the arc) more; the geometry's notes give the exact bounds.
+`HelionArcGeometry` holds that geometry (and where the counts go: "34η" on the first half-arc's open side, "29ι" on
+the second's), `HelionArcSnapshot` the counts and the dot's step: sixteen a Preon, the Preon's 2-stroke glyph
+(`WidgetChange.glyph2`), an entry every ~32 s, so a timeline's 150 entries last about 9ι. It opens the Wave screen and
+has no configuration (Fractonica terms only).
 
 `Fractonica/Features/Intents` holds the app's App Intents and App Shortcuts (`FractonicaShortcuts`, available in Siri
 and Spotlight from installation): "What's the Fractonica time?" (`FractonicaTimeIntent`, answered in the background
