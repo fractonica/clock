@@ -281,6 +281,7 @@ final class FocusDriver: NSObject {
         let paused = !config.active || occluded
         link?.isPaused = paused
         if paused { lastFrame = nil }
+        if config.logStats { FocusLaunch.log("display link \(paused ? "rests" : "runs") (active \(config.active), occluded \(occluded))") }
     }
 
     func stop() {
