@@ -17,6 +17,7 @@ struct FocusChecks {
     @MainActor
     static func main() async {
         harmonics()
+        webParity()
         sessions()
         spans()
         model()
@@ -122,6 +123,33 @@ struct FocusChecks {
         check(start.inRange, "tMin reads")
     }
 
+    // MARK: Parity with the web app
+
+    /// Values printed by the web app's JavaScript (fractonica.js + src/core/model.js + pure.js, node 24) at the same
+    /// instants: each level's phase (model.levelAt(t, L).phase, 4 decimals), the minor clock (pure.clockText) and pure
+    /// spans (pure.duration(s, {at: t})).
+    static func webParity() {
+        let web: [(t: Double, clock: String, phases: [Double])] = [
+            (1_791_460_800, "34η 29ι 21λ", [0.7320, 0.6598, 0.5776, 0.8878, 0.4392, 0.0741, 0.8146, 0.3313, 0.3252, 0.6260, 0.1385, 0.6927, 0.4635]),
+            (946_684_800, "21η 12ι 6λ", [0.3608, 0.8039, 0.4506, 0.2528, 0.2641, 0.8487, 0.3360, 0.0240, 0.0959, 0.4794, 0.2324, 0.1622, 0.8111]),
+            (2_886_085_800, "1η 23ι 1λ", [0.2129, 0.0646, 0.8403, 0.2017, 0.0083, 0.0582, 0.6397, 0.7572, 0.0289, 0.1445, 0.8780, 0.3898, 0.9490]),
+            (clock.tMin + 3600, "1η 7ι 8λ", [0.0000, 0.0000, 0.0001, 0.0005, 0.0026, 0.0180, 0.1979, 0.7813, 0.1253, 0.6263, 0.1424, 0.7118, 0.5590]),
+            (clock.tMax - 3600, "20η 1ι 56λ", [0.2500, 0.2500, 0.2499, 0.2495, 0.2474, 0.7320, 0.0521, 0.4687, 0.8748, 0.3739, 0.8601, 0.3007, 0.5037]),
+        ]
+        for row in web {
+            var h = FocusHarmonics()
+            h.update(input(row.t))
+            for (level, phase) in row.phases.enumerated() {
+                let d = abs(h.levels[level].phase - phase)
+                check(min(d, 1 - d) < 6e-5, "web parity at \(row.t): level \(level) phase \(h.levels[level].phase) vs \(phase)")
+            }
+            check(Notation.standard.clockText(at: row.t) == row.clock, "web parity at \(row.t): clock \(Notation.standard.clockText(at: row.t)) vs \(row.clock)")
+            check(FocusText.span(2015, pure: true, at: row.t) == "3ι 64λ", "web parity: 2015 s is 3ι 64λ, got \(FocusText.span(2015, pure: true, at: row.t))")
+            check(FocusText.span(30, pure: true, at: row.t) == "3λ 21ν", "web parity: 30 s is 3λ 21ν, got \(FocusText.span(30, pure: true, at: row.t))")
+        }
+        check(Notation.standard.catalogueText() == "α#1 – α#18", "web parity: catalogue text \(Notation.standard.catalogueText())")
+    }
+
     // MARK: Sessions
 
     static func sessions() {
@@ -205,6 +233,15 @@ struct FocusChecks {
         check(model.session?.start == now - 100, "start with elapsed time")
         model.detach()
         check(model.session == nil && !model.isShowing, "the last viewer ends the session")
+        let left = now - 100
+        now += 0.4
+        model.attach()
+        check(model.session?.start == left, "a view appearing just after the last one left carries on its session")
+        model.detach()
+        now += 2
+        model.attach()
+        check(model.session?.start == now, "later, a new session starts")
+        model.detach()
     }
 
     // MARK: Chime

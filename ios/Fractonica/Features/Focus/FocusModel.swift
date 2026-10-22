@@ -158,6 +158,11 @@ final class FocusModel {
     @ObservationIgnored private var viewers = 0
     @ObservationIgnored private var persisting = true
     @ObservationIgnored private var endTask: Task<Void, Never>?
+    /// The session the last Focus view left, and when.
+    @ObservationIgnored private var handedOver: (session: FocusSession, completed: FocusSession?, at: Double)?
+
+    /// A Focus view appearing within this many seconds of the last one leaving carries on its session.
+    static let handOver = 1.0
 
     /// A completion noticed this long after the end is late.
     static let lateAfter = 5.0
@@ -185,10 +190,19 @@ final class FocusModel {
 
     // MARK: Viewers
 
-    /// A Focus view appeared: the first one starts a session.
+    /// A Focus view appeared: the first one starts a session, or takes over the one a Focus view left a moment ago
+    /// (iPad: the sidebar's Focus and the full-screen one hand over as the cover comes and goes, in either order).
     func attach() {
         viewers += 1
-        if viewers == 1, session == nil { start() }
+        guard viewers == 1, session == nil else { return }
+        if let left = handedOver, now() - left.at < Self.handOver {
+            session = left.session
+            completed = left.completed
+            handedOver = nil
+            schedule(left.session)
+        } else {
+            start()
+        }
     }
 
     /// A Focus view went away: the last one ends the session.
@@ -203,6 +217,7 @@ final class FocusModel {
 
     /// Starts a new session of the chosen length now (replacing any running one).
     func start(elapsed: Double = 0) {
+        handedOver = nil
         let made = FocusSession(length: length, start: now() - max(0, elapsed))
         session = made
         completed = nil
@@ -217,6 +232,7 @@ final class FocusModel {
 
     /// Ends the session without completing it.
     func stop() {
+        if let session { handedOver = (session, completed, now()) }
         endTask?.cancel()
         endTask = nil
         session = nil
