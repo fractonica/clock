@@ -101,7 +101,7 @@ struct FocusLaunch: Sendable {
         FileHandle.standardError.write(Data("[focus] \(message)\n".utf8))
     }
 
-    init(defaults: UserDefaults) {
+    init(defaults: UserDefaults, arguments: [String] = CommandLine.arguments) {
         let args = defaults.volatileDomain(forName: UserDefaults.argumentDomain)
         func string(_ key: String) -> String? { (args[key] as? String) ?? (args[key] as? NSNumber)?.stringValue }
         func flag(_ key: String) -> Bool? {
@@ -113,7 +113,9 @@ struct FocusLaunch: Sendable {
         overlay = flag("FXFocusOverlay")
         calm = flag("FXFocusCalm") ?? false
         stats = flag("FXFocusStats") ?? false
-        time = string("FXFocusTime").flatMap(Double.init).flatMap { $0.isFinite ? $0 : nil }
+        // The argument domain reads "-FXFocusTime -2e10" as two flags: a negative moment comes from the raw arguments.
+        let rawTime = arguments.firstIndex(of: "-FXFocusTime").flatMap { i in i + 1 < arguments.count ? arguments[i + 1] : nil }
+        time = (rawTime ?? string("FXFocusTime")).flatMap(Double.init).flatMap { $0.isFinite ? $0 : nil }
         inline = flag("FXFocusInline") ?? false
         landscape = flag("FXFocusLandscape") ?? false
     }

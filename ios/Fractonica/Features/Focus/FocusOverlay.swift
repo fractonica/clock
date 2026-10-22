@@ -25,15 +25,13 @@ struct FocusClockReading: View {
     private func reading(at t: Double) -> some View {
         let clock = FractonicaClock.shared
         if let minor = Notation.standard.clock(at: t), let helion = clock.level(at: t, 6) {
-            HStack(alignment: .center, spacing: size * 0.22) {
-                Text("\(minor.eta)η")
-                PairView(fraction: helion.phase, color: Theme.teal, height: size * 0.62)
-                Text("\(minor.iota)ι \(minor.lambda)λ")
+            // The whole line, glyphs included, steps down together where it does not fit (never one word alone).
+            ViewThatFits(in: .horizontal) {
+                ForEach([1.0, 0.85, 0.72, 0.6], id: \.self) { scale in
+                    line(eta: minor.eta, rest: "\(minor.iota)ι \(minor.lambda)λ", pair: helion.phase, size: size * scale)
+                }
             }
-            .font(.reading(size, weight: .light))
             .foregroundStyle(Theme.ink)
-            .lineLimit(1)
-            .minimumScaleFactor(0.6)
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(Text("Clock \(settings.wording.notation.clockText(at: t))"))
         } else {
@@ -47,6 +45,18 @@ struct FocusClockReading: View {
             }
             .multilineTextAlignment(.center)
         }
+    }
+
+    /// "34η", the Helion's phase pair, "29ι 21λ", at one size.
+    private func line(eta: Int, rest: String, pair: Double, size: CGFloat) -> some View {
+        HStack(alignment: .center, spacing: size * 0.22) {
+            Text(verbatim: "\(eta)η")
+            PairView(fraction: pair, color: Theme.teal, height: size * 0.62)
+            Text(verbatim: rest)
+        }
+        .font(.reading(size, weight: .light))
+        .lineLimit(1)
+        .fixedSize()
     }
 }
 
@@ -144,6 +154,8 @@ struct FocusStyleIndicator: View {
             Text(style.title.uppercased())
                 .font(.caption.weight(.medium))
                 .tracking(2)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
                 .foregroundStyle(Theme.ink2)
                 .contentTransition(.opacity)
             HStack(spacing: 6) {

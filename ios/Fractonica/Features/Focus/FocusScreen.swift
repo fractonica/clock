@@ -58,9 +58,11 @@ struct FocusScreen: View {
                     }
                 }
 
-            overlay
-                .opacity(overlayShown ? 1 : 0)
-                .allowsHitTesting(overlayShown)
+            // Removed (not just transparent) while hidden, so its readings stop ticking.
+            if overlayShown {
+                overlay
+                    .transition(.opacity)
+            }
         }
         .scaleEffect(1 - min(pull, 400) / 400 * 0.08)
         .offset(y: pull * 0.6)
@@ -155,9 +157,12 @@ struct FocusScreen: View {
 
     private var overlay: some View {
         VStack(spacing: 0) {
+            // The top bar spans the whole width (the close button sits in the corner, even on a wide iPad or Mac
+            // window); the readings and controls stay in a centred column.
             ZStack(alignment: .top) {
                 FocusStyleIndicator(style: model.style)
                     .animation(.easeInOut(duration: 0.3), value: model.style)
+                    .padding(.horizontal, isImmersive ? 64 : 0)   // clear of the close button
                     .frame(maxWidth: .infinity)
                     .padding(.top, 6)
                 HStack(alignment: .top) {
@@ -178,15 +183,41 @@ struct FocusScreen: View {
                     .padding(.top, 12)
             }
             Spacer(minLength: 24)
+            bottom
+                .frame(maxWidth: 720)
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 12)
+        // The overlay is a few words over a picture: it grows with Dynamic Type up to the first accessibility size.
+        .dynamicTypeSize(...DynamicTypeSize.accessibility1)
+    }
+
+    @ViewBuilder
+    private var breathAndSession: some View {
+        if model.breathing {
+            FocusBreathWord(timeOverride: launch.time)
+        }
+        FocusSessionLine(model: model)
+    }
+
+    /// The minor clock, the breathing word and the session, and the controls.
+    private var bottom: some View {
+        VStack(spacing: 0) {
             VStack(spacing: 12) {
                 FocusClockReading(timeOverride: launch.time, regular: isRegular)
+                // Full screen hides the transport: while the clock is travelling (often paused, which holds the
+                // picture still) Focus offers the way back to the live clock itself.
+                if isImmersive, launch.time == nil, !store.isLive {
+                    LiveButton()
+                        .transition(.opacity.combined(with: .scale(scale: 0.9)))
+                }
                 VStack(spacing: 8) {
-                    HStack(spacing: 14) {
-                        if model.breathing {
-                            FocusBreathWord(timeOverride: launch.time)
-                        }
-                        FocusSessionLine(model: model)
+                    // One line where it fits, the breathing word above the session at large text sizes.
+                    ViewThatFits(in: .horizontal) {
+                        HStack(spacing: 14) { breathAndSession }
+                        VStack(spacing: 6) { breathAndSession }
                     }
+                    .lineLimit(1)
                     .font(.subheadline)
                     .foregroundStyle(Theme.ink2)
                     FocusSessionProgress(model: model)
@@ -196,9 +227,7 @@ struct FocusScreen: View {
             .padding(.bottom, 22)
             controls
         }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 12)
-        .frame(maxWidth: 720)
+        .animation(.easeInOut(duration: 0.3), value: store.isLive)
     }
 
     private var controls: some View {
