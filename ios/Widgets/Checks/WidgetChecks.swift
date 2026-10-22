@@ -333,62 +333,62 @@ enum WidgetChecks {
         check(abs(G.window - 7.0 / 36) < 1e-12 && abs(G.amplitude - 7 * .pi / 72) < 1e-12, "the wave takes seven Preons' worth of the arc: \(G.window)")
         let preonShare = 1.0 / Double(G.preons)
         let centred = 3...(G.preons - 4) // where the stretch fits around the Preon's middle
-        var lens: [String] = []
+        var magnifier: [String] = []
         var offCentred = 0.0, offEnds = 0.0
         for preon in 0..<G.preons {
             let w = G.window(preon: preon)
             let middle = (Double(preon) + 0.5) * preonShare
-            if abs(w.upperBound - w.lowerBound - G.window) > 1e-12 { lens.append("\(preon): width") }
-            if w.lowerBound < 0 || w.upperBound > 1 + 1e-12 { lens.append("\(preon): leaves the arc \(w)") }
+            if abs(w.upperBound - w.lowerBound - G.window) > 1e-12 { magnifier.append("\(preon): width") }
+            if w.lowerBound < 0 || w.upperBound > 1 + 1e-12 { magnifier.append("\(preon): leaves the arc \(w)") }
             // centred on the Preon's middle, shifted only as far as the arc's ends demand
             let centre = (w.lowerBound + w.upperBound) / 2
-            if abs(centre - min(1 - G.window / 2, max(G.window / 2, middle))) > 1e-12 { lens.append("\(preon): not centred \(centre) vs \(middle)") }
-            if centred.contains(preon) != (abs(centre - middle) < 1e-12) { lens.append("\(preon): centred only where it fits") }
+            if abs(centre - min(1 - G.window / 2, max(G.window / 2, middle))) > 1e-12 { magnifier.append("\(preon): not centred \(centre) vs \(middle)") }
+            if centred.contains(preon) != (abs(centre - middle) < 1e-12) { magnifier.append("\(preon): centred only where it fits") }
             if preon > 0 {
                 let move = w.lowerBound - G.window(preon: preon - 1).lowerBound
                 // by exactly one Preon at each start, resting where it lies against an end
                 let expected = centred.contains(preon) && centred.contains(preon - 1) ? preonShare : 0
-                if abs(move - expected) > 1e-12 { lens.append("\(preon): moves on by \(move), not \(expected)") }
+                if abs(move - expected) > 1e-12 { magnifier.append("\(preon): moves on by \(move), not \(expected)") }
             }
             for k in 0...64 {
                 let p = Double(k) / 64
                 let truth = G.truth(preon: preon, phase: p), at = G.position(preon: preon, phase: p)
-                if abs(truth - (Double(preon) + p) * preonShare) > 1e-15 { lens.append("\(preon) \(p): truth") }
+                if abs(truth - (Double(preon) + p) * preonShare) > 1e-15 { magnifier.append("\(preon) \(p): truth") }
                 // the stretch holds the moment's true place; the dot moves forward through it
-                if truth < w.lowerBound - 1e-12 || truth > w.upperBound + 1e-12 { lens.append("\(preon) \(p): true place \(truth) off \(w)") }
-                if k > 0 && at <= G.position(preon: preon, phase: Double(k - 1) / 64) { lens.append("\(preon) \(p): not forward") }
+                if truth < w.lowerBound - 1e-12 || truth > w.upperBound + 1e-12 { magnifier.append("\(preon) \(p): true place \(truth) off \(w)") }
+                if k > 0 && at <= G.position(preon: preon, phase: Double(k - 1) / 64) { magnifier.append("\(preon) \(p): not forward") }
                 // the dot's offset from the true place: (phase − ½)(window − 1/36) where centred, exact at mid-Preon
                 let off = at - truth
                 if centred.contains(preon) {
                     offCentred = max(offCentred, abs(off))
-                    if abs(off - (p - 0.5) * (G.window - preonShare)) > 1e-12 { lens.append("\(preon) \(p): offset \(off)") }
+                    if abs(off - (p - 0.5) * (G.window - preonShare)) > 1e-12 { magnifier.append("\(preon) \(p): offset \(off)") }
                 } else {
                     offEnds = max(offEnds, abs(off))
                     let n = Double(preon < centred.lowerBound ? preon : G.preons - 1 - preon)
                     let range = preon < centred.lowerBound ? (-n * preonShare)...((6 - n) * preonShare) : (-(6 - n) * preonShare)...(n * preonShare)
-                    if off < range.lowerBound - 1e-12 || off > range.upperBound + 1e-12 { lens.append("\(preon) \(p): offset \(off) off \(range)") }
+                    if off < range.lowerBound - 1e-12 || off > range.upperBound + 1e-12 { magnifier.append("\(preon) \(p): offset \(off) off \(range)") }
                 }
                 // the Helion's arc outside the stretch: bright exactly before the moment; the bright line never
                 // passes the moment, the wave carries it on
-                if G.brightEnd(preon: preon) > truth + 1e-12 { lens.append("\(preon) \(p): bright past the moment") }
+                if G.brightEnd(preon: preon) > truth + 1e-12 { magnifier.append("\(preon) \(p): bright past the moment") }
                 for i in 0...720 {
                     let f = Double(i) / 720
                     if w.contains(f) { continue }
-                    if (f < G.brightEnd(preon: preon)) != (f < truth) { lens.append("\(preon) \(p): \(f) bright \(f < G.brightEnd(preon: preon))") }
+                    if (f < G.brightEnd(preon: preon)) != (f < truth) { magnifier.append("\(preon) \(p): \(f) bright \(f < G.brightEnd(preon: preon))") }
                 }
             }
             if G.position(preon: preon, phase: 0) != w.lowerBound || abs(G.position(preon: preon, phase: 1) - w.upperBound) > 1e-12 {
-                lens.append("\(preon): the Preon's ends are the stretch's")
+                magnifier.append("\(preon): the Preon's ends are the stretch's")
             }
             if abs(G.position(preon: preon, phase: 0.5) - G.truth(preon: preon, phase: 0.5)) > 1e-12 && centred.contains(preon) {
-                lens.append("\(preon): the dot on the true place at mid-Preon")
+                magnifier.append("\(preon): the dot on the true place at mid-Preon")
             }
         }
         check(G.window(preon: 0).lowerBound == 0 && abs(G.window(preon: G.preons - 1).upperBound - 1) < 1e-12, "the stretch rests at the arc's ends")
         // the bounds the geometry's notes state, and that they are reached
         check(abs(offCentred - (G.window - preonShare) / 2) < 1e-12, "the dot within ±(window − 1/36)/2 = ±1/12 where centred: \(offCentred)")
         check(abs(offEnds - (G.window - preonShare)) < 1e-12, "the dot within ±(window − 1/36) = ±1/6 at the ends: \(offEnds)")
-        check(lens.isEmpty, "the magnifier: \(lens.prefix(4))")
+        check(magnifier.isEmpty, "the magnifier: \(magnifier.prefix(4))")
 
         // against the journal face (the Journal widget's arc) at the moments the render harness draws and at random:
         // the wave's stretch holds the journal's tick, so the two agree everywhere outside it; one stretch a Preon
@@ -440,16 +440,16 @@ enum WidgetChecks {
             }
             var waves: [String] = []
             for preon in 0..<G.preons {
-                let lens = G.window(preon: preon)
+                let stretch = G.window(preon: preon)
                 // the wave starts and ends on the arc at the Preon's stretch, and crosses it halfway
-                if !near(g.wave(preon: preon, phase: 0), g.arc(lens.lowerBound).point, 1e-6)
-                    || !near(g.wave(preon: preon, phase: 1), g.arc(lens.upperBound).point, 1e-6)
-                    || !near(g.wave(preon: preon, phase: 0.5), g.arc((lens.lowerBound + lens.upperBound) / 2).point, 1e-6) {
+                if !near(g.wave(preon: preon, phase: 0), g.arc(stretch.lowerBound).point, 1e-6)
+                    || !near(g.wave(preon: preon, phase: 1), g.arc(stretch.upperBound).point, 1e-6)
+                    || !near(g.wave(preon: preon, phase: 0.5), g.arc((stretch.lowerBound + stretch.upperBound) / 2).point, 1e-6) {
                     waves.append("\(preon): ends")
                 }
                 // its first half a half-arc on the right of the way, its second on the left, `amplitude` radii high
                 for (p, sign) in [(0.25, 1.0), (0.75, -1.0)] {
-                    let q = g.arc(lens.lowerBound + p * G.window)
+                    let q = g.arc(stretch.lowerBound + p * G.window)
                     let d = g.wave(preon: preon, phase: p)
                     let lift = (d.x - q.point.x) * q.side.dx + (d.y - q.point.y) * q.side.dy
                     if abs(lift - sign * G.amplitude * g.r) > 1e-6 { waves.append("\(preon) \(p): lift \(lift)") }

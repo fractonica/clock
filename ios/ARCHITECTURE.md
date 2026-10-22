@@ -328,9 +328,11 @@ Screen needed), the way to look at a widget change.
 The Helion Arc (Widgets/HelionArc) draws the running Helion as the journal face's two half-arcs, bright up to the
 running Preon, which rides it as one wave: a double arc of its own bent along the Helion's, its first half on the right
 of the way the Helion runs (as the Helion's own first half lies below the axis), the dot on it. A Preon is a 36th of
-the Helion, too short to see a wave in, so the arc is a lens: the running Preon is drawn seven times as long as the
-others (a sixth of the arc), the Preons before it share the arc before its wave and those after it the rest, and the
-lens moves on at each Preon start; the moment's true place on the Helion always lies on the wave's stretch.
+the Helion, too short to see a wave in, so it is drawn through a magnifier: its wave spans seven Preons' worth of the
+arc (7/36), centred on the Preon's true middle and shifted inward only at the Helion's ends, fixed for the whole Preon
+and moving on by 1/36 at each Preon start. The arc around it is not stretched, so outside the wave's stretch it is
+bright exactly up to the Helion's true progress, as on the journal face (the stretch holds the journal's tick); the dot
+is on the true place at mid-Preon and within ±1/12 of the arc elsewhere (±1/6 in the first and last three Preons).
 `HelionArcGeometry` holds that geometry (and where the counts go: "34η" on the first half-arc's open side, "29ι" on
 the second's), `HelionArcSnapshot` the counts and the dot's step: sixteen a Preon, the Preon's 2-stroke glyph
 (`WidgetChange.glyph2`), an entry every ~32 s, so a timeline's 150 entries last about 9ι. It opens the Wave screen and

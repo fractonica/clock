@@ -277,7 +277,7 @@ enum Render {
             }
         }, to: out.appendingPathComponent("lock.png"))
 
-        // the Helion Arc at t and at the moments its lens is at either end, crossing the middle and moving on
+        // the Helion Arc at t and at the moments its wave rests at either end, sits mid-Helion and moves on a Preon
         let clock = FractonicaClock.shared
         var arcs: [(String, Double)] = [("t", t)]
         if let helion = clock.level(at: t, 6), let preon = clock.level(at: t, 8) {
@@ -300,6 +300,14 @@ enum Render {
                 ForEach(arcs, id: \.1) { name, at in
                     HomeCell(title: "\(name) · small", size: Size.small[0]) {
                         HelionArcView(snapshot: HelionArcSnapshot(at: at), size: .small)
+                    }
+                }
+            }
+            // the journal face at the same moments: outside the wave's stretch the two arcs agree
+            HStack(alignment: .top, spacing: 18) {
+                ForEach(arcs, id: \.1) { name, at in
+                    HomeCell(title: "\(name) · journal", size: Size.small[0]) {
+                        JournalWidgetView(snapshot: JournalSnapshot(at: at, unit: 5, words: WidgetWords(pure: true)), size: .small)
                     }
                 }
             }
