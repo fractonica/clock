@@ -62,6 +62,10 @@ struct MiniChip: View {
 
 /// A cycle's progress as one segment per child cycle (lib.js `segmentState`): the finished children filled, the
 /// current one filled up to the exact phase, a hairline at the displayed instant and ticks at the quarter thresholds.
+///
+/// The track is drawn once per segment (`SegmentTrack`); what moves inside the current segment — its fill and the
+/// hairline — is laid out over it (`SegmentProgress`), so a tick moves two layers instead of redrawing the canvas
+/// (a canvas renders on the main thread, a texture per redraw).
 struct SegmentBar: View {
     let level: Int
     let factor: Int
@@ -75,37 +79,70 @@ struct SegmentBar: View {
     var clip: Double? = nil
 
     /// The bar's own height; ticks and the hairline reach `overhang` beyond it.
-    static let barHeight: CGFloat = 6
-    static let overhang: CGFloat = 3
+    nonisolated static let barHeight: CGFloat = 6
+    nonisolated static let overhang: CGFloat = 3
 
     var body: some View {
-        Canvas { context, size in draw(in: &context, size: size) }
+        let current = phase.map { LadderText.segment(phase: $0, factor: max(1, factor)).index }
+        SegmentTrack(level: level, factor: factor, current: current, still: still, emphasized: emphasized, clip: clip)
+            .overlay {
+                SegmentProgress(level: level, factor: factor, phase: still ? nil : phase, clip: clip)
+            }
             .frame(height: Self.barHeight + 2 * Self.overhang)
             .accessibilityHidden(true)
     }
+}
+
+/// Where the segments of a bar fall, shared by the track and what moves over it.
+private struct SegmentGeometry {
+    let n: Int
+    let gap: CGFloat
+    /// One segment's width.
+    let width: CGFloat
+    let radius: CGFloat
+
+    init(barWidth: CGFloat, factor: Int) {
+        n = max(1, factor)
+        gap = barWidth / CGFloat(n) > 10 ? 2 : 1
+        width = (barWidth - gap * CGFloat(n - 1)) / CGFloat(n)
+        radius = min(2, SegmentBar.barHeight / 2, width / 2)
+    }
+
+    func x(_ i: Int) -> CGFloat { CGFloat(i) * (width + gap) }
+
+    /// Where a phase falls along the bar, gaps included.
+    func position(_ p: Double) -> CGFloat {
+        let s = LadderText.segment(phase: p, factor: n)
+        return x(s.index) + CGFloat(s.frac) * width
+    }
+}
+
+/// The bar without what moves inside the current segment: every segment's ground (the finished ones filled), what lies
+/// past the end of the catalogue and the quarter ticks. Its inputs change only when the current segment does.
+private struct SegmentTrack: View {
+    let level: Int
+    let factor: Int
+    /// The segment the displayed time is in; nil draws the empty track (outside the catalogue).
+    let current: Int?
+    let still: Bool
+    let emphasized: Bool
+    let clip: Double?
+
+    var body: some View {
+        Canvas { context, size in draw(in: &context, size: size) }
+    }
 
     private func draw(in context: inout GraphicsContext, size: CGSize) {
-        let n = max(1, factor)
-        let gap: CGFloat = size.width / CGFloat(n) > 10 ? 2 : 1
-        let width = (size.width - gap * CGFloat(n - 1)) / CGFloat(n)
-        let y = Self.overhang
-        let h = Self.barHeight
-        let radius = min(2, h / 2, width / 2)
-        let color = Theme.levelColor(level)
-        let x = { (i: Int) in CGFloat(i) * (width + gap) }
-        /// Where a phase falls along the bar, gaps included.
-        let position = { (p: Double) -> CGFloat in
-            let s = LadderText.segment(phase: p, factor: n)
-            return x(s.index) + CGFloat(s.frac) * width
-        }
-        let seg = phase.map { LadderText.segment(phase: $0, factor: n) }
-        let clipX = clip.map(position)
+        let geometry = SegmentGeometry(barWidth: size.width, factor: factor)
+        let y = SegmentBar.overhang
+        let h = SegmentBar.barHeight
+        let clipX = clip.map(geometry.position)
 
-        for i in 0..<n {
-            let rect = CGRect(x: x(i), y: y, width: width, height: h)
-            let shape = Path(roundedRect: rect, cornerRadius: radius, style: .continuous)
+        for i in 0..<geometry.n {
+            let rect = CGRect(x: geometry.x(i), y: y, width: geometry.width, height: h)
+            let shape = Path(roundedRect: rect, cornerRadius: geometry.radius, style: .continuous)
             var g = context
-            guard let seg else {
+            guard let current else {
                 g.fill(shape, with: .color(Theme.line))
                 continue
             }
@@ -121,39 +158,65 @@ struct SegmentBar: View {
                 g.fill(shape, with: .color(Theme.levelColor(level, opacity: 0.32)))
                 continue
             }
-            g.fill(shape, with: .color(Theme.levelColor(level, opacity: i < seg.index ? 0.5 : 0.13)))
-            if i == seg.index, seg.frac > 0 {
-                g.clip(to: Path(CGRect(x: rect.minX, y: rect.minY, width: rect.width * CGFloat(seg.frac), height: h)))
-                g.fill(shape, with: .color(color))
-            }
+            g.fill(shape, with: .color(Theme.levelColor(level, opacity: i < current ? 0.5 : 0.13)))
         }
 
         // quarter thresholds: hairline ticks below (and, on the selected row, above) the bar
         let tick = Theme.ink3.opacity(emphasized ? 0.9 : 0.45)
         for q in 1...3 {
-            let qx = (position(Double(q) / 4) * 2).rounded() / 2
+            let qx = (geometry.position(Double(q) / 4) * 2).rounded() / 2
             var path = Path()
             path.move(to: CGPoint(x: qx, y: y + h + 0.5))
-            path.addLine(to: CGPoint(x: qx, y: y + h + Self.overhang))
+            path.addLine(to: CGPoint(x: qx, y: y + h + SegmentBar.overhang))
             if emphasized {
                 path.move(to: CGPoint(x: qx, y: 0))
                 path.addLine(to: CGPoint(x: qx, y: y - 0.5))
             }
             context.stroke(path, with: .color(tick), lineWidth: 1)
         }
+    }
+}
 
-        if let clipX {
-            var end = Path()
-            end.move(to: CGPoint(x: clipX, y: 0))
-            end.addLine(to: CGPoint(x: clipX, y: size.height))
-            context.stroke(end, with: .color(Theme.danger), lineWidth: 1.5)
-        }
+/// What moves over the track: the current segment filled up to the phase, the end of the catalogue and the hairline
+/// at the displayed instant, as shapes of a fixed size that only change place, so a tick redraws nothing.
+private struct SegmentProgress: View {
+    let level: Int
+    let factor: Int
+    /// nil: no fill and no hairline (outside the catalogue, or too fast to follow).
+    let phase: Double?
+    let clip: Double?
 
-        // the displayed instant
-        if let phase, !still {
-            let px = position(phase)
-            let marker = Path(roundedRect: CGRect(x: px - 0.75, y: 0.5, width: 1.5, height: size.height - 1), cornerRadius: 0.75)
-            context.fill(marker, with: .color(Theme.ink))
+    var body: some View {
+        GeometryReader { proxy in
+            let size = proxy.size
+            let geometry = SegmentGeometry(barWidth: size.width, factor: factor)
+            ZStack(alignment: .topLeading) {
+                if let phase {
+                    let seg = LadderText.segment(phase: phase, factor: geometry.n)
+                    if seg.frac > 0 {
+                        // the segment's own shape, uncovered from its leading edge up to the phase
+                        RoundedRectangle(cornerRadius: geometry.radius, style: .continuous)
+                            .fill(Theme.levelColor(level))
+                            .frame(width: geometry.width, height: SegmentBar.barHeight)
+                            .mask(alignment: .leading) {
+                                Rectangle().frame(width: geometry.width * CGFloat(seg.frac))
+                            }
+                            .offset(x: geometry.x(seg.index), y: SegmentBar.overhang)
+                    }
+                }
+                if let clip {
+                    Rectangle()
+                        .fill(Theme.danger)
+                        .frame(width: 1.5, height: size.height)
+                        .offset(x: geometry.position(clip) - 0.75)
+                }
+                if let phase {
+                    RoundedRectangle(cornerRadius: 0.75)
+                        .fill(Theme.ink)
+                        .frame(width: 1.5, height: max(0, size.height - 1))
+                        .offset(x: geometry.position(phase) - 0.75, y: 0.5)
+                }
+            }
         }
     }
 }
