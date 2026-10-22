@@ -325,13 +325,13 @@ enum CalMath {
     static let syncQuarterNames = ["start", "peak", "node", "valley"]
 
     /// The sync quarters overlapping [t0, t1) (month.js `syncQuartersInWindow`).
-    static func syncQuarters(_ clock: FractonicaClock, from t0: Double, to t1: Double, range: ClosedRange<Int>) -> [SyncQuarter] {
+    static func syncQuarters(_ clock: FractonicaClock, from t0: Double, to t1: Double, range: ClosedRange<Int>) -> [CalSyncQuarter] {
         let lo = max(t0, clock.tMin), hi = min(t1, clock.tMax)
         guard hi > lo else { return [] }
         let probe = min(max(lo, clock.tMin + 8 * 86_400), clock.tMax - 8 * 86_400)
         var n = min(max(clock.solar(at: probe)?.sync ?? range.lowerBound, range.lowerBound), range.upperBound)
         while n > range.lowerBound, let previous = clock.solarSync(number: n - 1), previous.end > lo { n -= 1 }
-        var out: [SyncQuarter] = []
+        var out: [CalSyncQuarter] = []
         while n <= range.upperBound {
             defer { n += 1 }
             guard let s = clock.solarSync(number: n) else { continue }
@@ -339,7 +339,7 @@ enum CalMath {
             if s.start >= hi { break }
             let length = s.end - s.start
             for q in 0..<4 {
-                out.append(SyncQuarter(sync: n, quarter: q, start: s.start + Double(q) / 4 * length,
+                out.append(CalSyncQuarter(sync: n, quarter: q, start: s.start + Double(q) / 4 * length,
                                        end: s.start + Double(q + 1) / 4 * length, syncStart: s.start, drift: s.drift))
             }
         }
@@ -405,7 +405,7 @@ struct CalendarError: Error, Equatable, Sendable {
 }
 
 /// One quarter of a solar sync inside a window.
-struct SyncQuarter: Hashable, Sendable {
+struct CalSyncQuarter: Hashable, Sendable {
     let sync: Int
     /// 0 … 3; named by the threshold at its start: start, peak, node, valley.
     let quarter: Int
@@ -450,7 +450,7 @@ enum CalendarBand: Hashable, Sendable, Identifiable {
 /// A Gregorian month of local days (always 6 weeks × 7 days) whose cells carry the cycles of the chosen bands, each
 /// cut at its exact time of day (month.js `monthGrid` + `buildMonth`). Day cells are delimited by real local
 /// midnights, never "+86 400" (DST days are 23 or 25 hours). Built once per (month, zone, week start, bands).
-struct MonthGrid: Sendable {
+struct CalMonthGrid: Sendable {
     struct Segment: Hashable, Sendable {
         /// Where the piece lies inside the day, 0 … 1 by elapsed time.
         let x0: Double
@@ -515,7 +515,7 @@ struct MonthGrid: Sendable {
         let starts = dates.map { CalMath.dayStart(zone, $0.year, $0.month, $0.day) }
         start = starts[0]
         end = starts[42]
-        let pieces = bands.map { band in (band, MonthGrid.items(clock: clock, band: band, from: starts[0], to: starts[42], syncRange: syncRange)) }
+        let pieces = bands.map { band in (band, CalMonthGrid.items(clock: clock, band: band, from: starts[0], to: starts[42], syncRange: syncRange)) }
         var cursor = [Int](repeating: 0, count: pieces.count)
         var out: [Day] = []
         for i in 0..<42 {
@@ -605,7 +605,7 @@ struct MonthGrid: Sendable {
 /// What happens on one local day: the boundaries of every level α … η at their time of day (a boundary of a coarse
 /// level is also one of every finer level: it is listed once, under the coarsest), the solar sync quarters that begin,
 /// the eclipse, and the cycles of the chosen bands that cover the day.
-struct DayEvents: Sendable {
+struct CalDayEvents: Sendable {
     struct Boundary: Identifiable, Hashable, Sendable {
         let time: Double
         /// The coarsest level that begins here, and how many finer levels begin with it.
@@ -617,7 +617,7 @@ struct DayEvents: Sendable {
     }
 
     let boundaries: [Boundary]
-    let syncs: [SyncQuarter]
+    let syncs: [CalSyncQuarter]
 
     init(clock: FractonicaClock, from t0: Double, to t1: Double, levels: ClosedRange<Int> = 0...6, syncRange: ClosedRange<Int>) {
         var byTime: [Int64: Boundary] = [:]
@@ -645,7 +645,7 @@ struct DayEvents: Sendable {
 
 /// The months of a year as fractions of it, with the δ and ε cycle starts inside it (month.js `yearRibbon` and
 /// `yearSummary`).
-struct YearRibbon: Sendable {
+struct CalYearRibbon: Sendable {
     struct Month: Hashable, Sendable {
         let month: Int
         let x0: Double
@@ -682,8 +682,8 @@ struct YearRibbon: Sendable {
             Month(month: m + 1, x0: (starts[m] - starts[0]) / length, x1: (starts[m + 1] - starts[0]) / length,
                   inRange: starts[m + 1] > clock.tMin && starts[m] <= clock.tMax)
         }
-        let delta = MonthGrid.cycles(clock: clock, level: 3, from: start, to: end)
-        let epsilon = MonthGrid.cycles(clock: clock, level: 4, from: start, to: end)
+        let delta = CalMonthGrid.cycles(clock: clock, level: 3, from: start, to: end)
+        let epsilon = CalMonthGrid.cycles(clock: clock, level: 4, from: start, to: end)
         var ticks: [Tick] = []
         for (level, items) in [(3, delta), (4, epsilon)] {
             for c in items where c.start >= starts[0] && c.start < end {
@@ -692,7 +692,7 @@ struct YearRibbon: Sendable {
         }
         self.ticks = ticks
         let (s0, s1) = (start, end)
-        let cover = { (items: [MonthGrid.Item], level: Int) -> Double? in
+        let cover = { (items: [CalMonthGrid.Item], level: Int) -> Double? in
             guard !items.isEmpty else { return nil }
             let mean = clock.levelInfo(level).meanSeconds
             return items.reduce(0) { sum, c in
@@ -703,7 +703,7 @@ struct YearRibbon: Sendable {
         }
         deltaCover = cover(delta, 3)
         epsilonCover = cover(epsilon, 4)
-        let name = { (c: MonthGrid.Item) -> String in
+        let name = { (c: CalMonthGrid.Item) -> String in
             let path = clock.cycleToPath(level: 3, cycle: c.index)
             return "\(CalMath.cycleLabel(level: 2, ordinal: path[2]))·\(CalMath.cycleLabel(level: 3, ordinal: path[3]))"
         }

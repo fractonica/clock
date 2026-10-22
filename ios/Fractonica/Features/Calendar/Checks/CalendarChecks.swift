@@ -4,7 +4,7 @@ import Foundation
 // The calendar's mapping maths against the web app's semantics (src/ui/calendar/convert.js, month.js, pure-conv.js and
 // test/calendar.test.js): position round trips, addresses and landings, local days across clock changes, the month
 // grid and its bands, the day's boundaries, the year ribbon, pure counters, reading pure dates back to their first
-// millisecond, and the Delta page. Run: ios/scripts/check.sh ios/Fractonica/Features/Calendar/Checks
+// millisecond, the Delta page, and fixture.json (make-calendar-fixture.mjs runs the JavaScript itself). Run: ios/scripts/check.sh ios/Fractonica/Features/Calendar/Checks
 
 @main
 struct CalendarChecks {
@@ -22,6 +22,7 @@ struct CalendarChecks {
         pureInputChecks()
         pureWordChecks()
         deltaPageChecks()
+        webFixtureChecks()
         Checks.finish()
     }
 }
@@ -144,9 +145,9 @@ private func wallTimeChecks() {
 }
 
 private func pureWordChecks() {
-    check(PureMath.madeOf(level: 3) == "5ε" && PureMath.madeOf(level: 4) == "77η" && PureMath.madeOf(level: 6) == "36ι", "units are made of the next unit: \(PureMath.madeOf(level: 4))")
-    check(PureMath.madeOf(level: 5) == "11η" && PureMath.madeOf(level: 7) == "4ι", "a depth between units is said in the unit below: \(PureMath.madeOf(level: 5))")
-    check(PureMath.madeOf(level: 13).isEmpty == false && PureMath.madeOf(level: 12) == "", "the Blink is the finest unit; ξ is a fraction of it: \(PureMath.madeOf(level: 13))")
+    check(CalPureMath.madeOf(level: 3) == "5ε" && CalPureMath.madeOf(level: 4) == "77η" && CalPureMath.madeOf(level: 6) == "36ι", "units are made of the next unit: \(CalPureMath.madeOf(level: 4))")
+    check(CalPureMath.madeOf(level: 5) == "11η" && CalPureMath.madeOf(level: 7) == "4ι", "a depth between units is said in the unit below: \(CalPureMath.madeOf(level: 5))")
+    check(CalPureMath.madeOf(level: 13).isEmpty == false && CalPureMath.madeOf(level: 12) == "", "the Blink is the finest unit; ξ is a fraction of it: \(CalPureMath.madeOf(level: 13))")
 }
 
 private func isoChecks() {
@@ -185,12 +186,12 @@ private func dayChecks() {
 
 private func monthChecks() {
     let range = CalMath.syncRange(clock)
-    let grid = MonthGrid(clock: clock, zone: utc, year: 2026, month: 10, weekStart: 1, bands: [.level(4), .level(6), .sync], syncRange: range)
+    let grid = CalMonthGrid(clock: clock, zone: utc, year: 2026, month: 10, weekStart: 1, bands: [.level(4), .level(6), .sync], syncRange: range)
     check(grid.days.count == 42, "six weeks")
     check(grid.days[0].year == 2026 && grid.days[0].month == 9 && grid.days[0].day == 28, "October 2026 starts on Monday 28 September: \(grid.days[0].key)")
     check(grid.days.filter(\.inMonth).count == 31, "31 days in October")
     check(zip(grid.days, grid.days.dropFirst()).allSatisfy { $0.end == $1.start }, "days are contiguous")
-    let sunday = MonthGrid(clock: clock, zone: utc, year: 2026, month: 10, weekStart: 0, bands: [], syncRange: range)
+    let sunday = CalMonthGrid(clock: clock, zone: utc, year: 2026, month: 10, weekStart: 0, bands: [], syncRange: range)
     check(sunday.days[0].weekday == 0 && sunday.days[0].day == 27, "Sunday-first starts on 27 September")
     // every η boundary of the grid appears exactly once as a segment that starts in its day, at its time of day
     let etaStarts = clock.boundaries(level: 6, from: grid.start, to: grid.end - 0.001, limit: 2000).map(\.time)
@@ -217,15 +218,15 @@ private func monthChecks() {
     check(!sync.isEmpty && sync.allSatisfy { (0...3).contains($0.ordinal) }, "the sync band shows quarters")
     check(grid.dayIndex(of: vectorA) == grid.days.firstIndex { $0.day == 8 && $0.inMonth }, "vector A falls on the 8th")
     // the catalogue's first month: days before 19 May 1613 lie outside, the 19th is cut where the catalogue starts
-    let first = MonthGrid(clock: clock, zone: utc, year: 1613, month: 5, weekStart: 1, bands: [.level(4)], syncRange: range)
+    let first = CalMonthGrid(clock: clock, zone: utc, year: 1613, month: 5, weekStart: 1, bands: [.level(4)], syncRange: range)
     let may18 = first.days.first { $0.inMonth && $0.day == 18 }!
     let may19 = first.days.first { $0.inMonth && $0.day == 19 }!
     check(!may18.inRange && may18.tracks.isEmpty, "18 May 1613 lies before the catalogue")
     check(may19.inRange && may19.rangeFrom > 0 && may19.tracks[0].segments.first!.x0 >= may19.rangeFrom - 1e-9, "19 May 1613 starts its band where the catalogue starts")
-    let last = MonthGrid(clock: clock, zone: utc, year: 2857, month: 6, weekStart: 1, bands: [.level(6)], syncRange: range)
+    let last = CalMonthGrid(clock: clock, zone: utc, year: 2857, month: 6, weekStart: 1, bands: [.level(6)], syncRange: range)
     let june14 = last.days.first { $0.inMonth && $0.day == 14 }!
     check(!june14.inRange, "14 June 2857 lies after the catalogue")
-    let berlin = MonthGrid(clock: clock, zone: TimeZone(identifier: "Europe/Berlin")!, year: 2026, month: 3, weekStart: 1, bands: [.level(5)], syncRange: range)
+    let berlin = CalMonthGrid(clock: clock, zone: TimeZone(identifier: "Europe/Berlin")!, year: 2026, month: 3, weekStart: 1, bands: [.level(5)], syncRange: range)
     check(berlin.days.first { $0.inMonth && $0.day == 29 }!.length == 23 * 3600, "a 23-hour day in the grid")
 }
 
@@ -234,7 +235,7 @@ private func dayEventChecks() {
     // a day with a δ boundary: listed once, under δ, with the finer levels beginning with it
     let delta = clock.boundaries(level: 3, from: vectorA, to: vectorA + 120 * 86_400).first!
     let day = CalMath.dayStart(utc, EarthTime.zonedParts(delta.time, zone: utc).year, EarthTime.zonedParts(delta.time, zone: utc).month, EarthTime.zonedParts(delta.time, zone: utc).day)
-    let events = DayEvents(clock: clock, from: day, to: day + 86_400, syncRange: range)
+    let events = CalDayEvents(clock: clock, from: day, to: day + 86_400, syncRange: range)
     let hit = events.boundaries.first { abs($0.time - delta.time) < 0.002 }
     check(hit?.level == 3 && hit?.finest == 6, "a δ boundary is listed once, under δ, down to η: \(String(describing: hit))")
     check(zip(events.boundaries, events.boundaries.dropFirst()).allSatisfy { $0.time < $1.time }, "boundaries in order")
@@ -244,33 +245,33 @@ private func dayEventChecks() {
 }
 
 private func ribbonChecks() {
-    let r = YearRibbon(clock: clock, zone: utc, year: 2026)
+    let r = CalYearRibbon(clock: clock, zone: utc, year: 2026)
     check(r.months.count == 12 && r.months[0].x0 == 0 && abs(r.months[11].x1 - 1) < 1e-12, "12 months span the year")
     check(r.ticks.contains { $0.level == 3 } && r.ticks.filter { $0.level == 4 }.count >= 20, "δ and ε ticks")
     check((4.4...4.6).contains(r.deltaCover ?? 0) && (22...23).contains(r.epsilonCover ?? 0), "a year covers ≈ 4.5 δ and ≈ 22.6 ε: \(r.summary)")
     check(r.summary.hasPrefix("2026 covers 4.5 δ cycles (γ#"), "summary: \(r.summary)")
-    check(YearRibbon(clock: clock, zone: utc, year: 1600).summary == "1600 lies outside the catalogue", "outside the catalogue")
+    check(CalYearRibbon(clock: clock, zone: utc, year: 1600).summary == "1600 lies outside the catalogue", "outside the catalogue")
 }
 
 private func pureCounterChecks() {
     let n = Notation.standard
-    let ranges = PureEntry.allCases.map { $0.range(clock) }
+    let ranges = CalPureEntry.allCases.map { $0.range(clock) }
     check(ranges == [1...18, 1...5, 1...13, 1...5, 1...5, 1...77, 0...35, 0...64, 0...24], "the ranges come from the hierarchy: \(ranges)")
-    let c = PureCounters(n, at: vectorA)!
+    let c = CalPureCounters(n, at: vectorA)!
     check(c[.eta] >= 1 && c[.eta] <= 77, "the Helion is numbered 1–77")
     for t in samples(40, seed: 11) {
-        guard let cur = PureCounters(n, at: t) else { continue }
-        for entry in [PureEntry.epsilon, .eta, .iota, .lambda, .nu, .delta] {
+        guard let cur = CalPureCounters(n, at: t) else { continue }
+        for entry in [CalPureEntry.epsilon, .eta, .iota, .lambda, .nu, .delta] {
             let r = entry.range(clock)
             let target = cur[entry] == r.upperBound ? r.lowerBound : cur[entry] + 1
-            guard case .success(let moved) = PureMath.set(clock, t, entry, to: target), let after = PureCounters(n, at: moved) else { continue }
+            guard case .success(let moved) = CalPureMath.set(clock, t, entry, to: target), let after = CalPureCounters(n, at: moved) else { continue }
             check(after[entry] == target, "setting \(entry.sym) to \(target) shows it")
-            let finer = PureEntry.allCases.filter { $0 > entry && $0 != .nu }
+            let finer = CalPureEntry.allCases.filter { $0 > entry && $0 != .nu }
             check(finer.allSatisfy { after[$0] == cur[$0] }, "what is finer than \(entry.sym) keeps its place")
         }
     }
-    if case .failure = PureMath.set(clock, vectorA, .eta, to: 0) {} else { check(false, "0η is refused") }
-    if case .failure = PureMath.set(clock, vectorA, .iota, to: 36) {} else { check(false, "36ι is refused") }
+    if case .failure = CalPureMath.set(clock, vectorA, .eta, to: 0) {} else { check(false, "0η is refused") }
+    if case .failure = CalPureMath.set(clock, vectorA, .iota, to: 36) {} else { check(false, "36ι is refused") }
 }
 
 private func pureInputChecks() {
@@ -279,7 +280,7 @@ private func pureInputChecks() {
     for t in samples(120, seed: 5) {
         for upTo in ["epsilon", "eta", "iota", "lambda", "nu"] {
             let stamp = n.stamp(at: t, upTo: upTo)
-            guard case .success(let back) = PureInput.read(stamp, clock: clock, ref: nil) else {
+            guard case .success(let back) = CalPureInput.read(stamp, clock: clock, ref: nil) else {
                 check(false, "the stamp \(stamp) reads back")
                 continue
             }
@@ -288,61 +289,61 @@ private func pureInputChecks() {
         }
         // the short date in words reads back inside the shown Gamma
         let words = n.dateText(at: t, upTo: "iota")
-        if case .success(let back) = PureInput.read(words, clock: clock, ref: t) {
+        if case .success(let back) = CalPureInput.read(words, clock: clock, ref: t) {
             check(n.dateText(at: back, upTo: "iota") == words, "\(words) reads back")
         } else {
             check(false, "the short date \(words) reads back")
         }
     }
-    let at = PureCounters(n, at: vectorA)!
-    if case .success(let t) = PureInput.read("34η 17ι", clock: clock, ref: vectorA), let c = PureCounters(n, at: t) {
+    let at = CalPureCounters(n, at: vectorA)!
+    if case .success(let t) = CalPureInput.read("34η 17ι", clock: clock, ref: vectorA), let c = CalPureCounters(n, at: t) {
         check(c[.eta] == 34 && c[.iota] == 17 && c[.lambda] == 0 && c[.epsilon] == at[.epsilon], "counts alone are read in the shown Nuclide")
     } else {
         check(false, "34η 17ι reads")
     }
-    if case .success(let t) = PureInput.read("Delta Trifracton Node", clock: clock, ref: vectorA) {
+    if case .success(let t) = CalPureInput.read("Delta Trifracton Node", clock: clock, ref: vectorA) {
         check(n.quarter(at: t, level: 3) == 1 && n.quarter(at: t - 0.001, level: 3) == 0, "a quarter word on the finest entry is where that quarter begins")
     } else {
         check(false, "Delta Trifracton Node reads")
     }
-    if case .success(let t) = PureInput.read("6.4.9", clock: clock, ref: nil) {
+    if case .success(let t) = CalPureInput.read("6.4.9", clock: clock, ref: nil) {
         check(n.stamp(at: t, upTo: "epsilon").hasPrefix("α#6 β#4 γ#9 δ#1 ε#1"), "6.4.9 is the start of γ#9 of β#4 of α#6: \(n.stamp(at: t, upTo: "epsilon"))")
     }
-    if case .success(let t) = PureInput.read("pos 22.5", clock: clock, ref: nil) {
+    if case .success(let t) = CalPureInput.read("pos 22.5", clock: clock, ref: nil) {
         check(abs((clock.position(at: t) ?? 0) - 22.5) < 1e-9, "pos 22.5")
     }
-    if case .success(let t) = PureInput.read("sync 4820", clock: clock, ref: nil) {
+    if case .success(let t) = CalPureInput.read("sync 4820", clock: clock, ref: nil) {
         check(clock.solar(at: t)?.sync == 4820, "sync 4820")
     }
     for bad in ["2026-10-08", "12:30", "0η", "ζ#5", "Epsilon Trifracton", "δ#3 34η", "hello", "α#19"] {
-        if case .success = PureInput.read(bad, clock: clock, ref: vectorA) { check(false, "“\(bad)” is refused") }
+        if case .success = CalPureInput.read(bad, clock: clock, ref: vectorA) { check(false, "“\(bad)” is refused") }
     }
-    if case .failure(let e) = PureInput.read("2026-10-08", clock: clock, ref: vectorA) {
+    if case .failure(let e) = CalPureInput.read("2026-10-08", clock: clock, ref: vectorA) {
         check(e.message.hasPrefix("Dates and clock times are off"), "Gregorian input gets the pure-mode answer")
     }
 }
 
 private func deltaPageChecks() {
     let range = CalMath.syncRange(clock)
-    check(DeltaPage.count(clock) == 5607, "5607 Delta pages")
-    check(DeltaPage.columnHelion == [1, 12, 23, 34, 45, 56, 67], "columns begin at 1η 12η … 67η")
-    let index = DeltaPage.page(clock, at: vectorA)!
-    let page = DeltaPage(clock: clock, index: index, syncRange: range)
+    check(CalDeltaPage.count(clock) == 5607, "5607 Delta pages")
+    check(CalDeltaPage.columnHelion == [1, 12, 23, 34, 45, 56, 67], "columns begin at 1η 12η … 67η")
+    let index = CalDeltaPage.page(clock, at: vectorA)!
+    let page = CalDeltaPage(clock: clock, index: index, syncRange: range)
     check(page.cells.count == 35, "35 cells")
     check(zip(page.cells, page.cells.dropFirst()).allSatisfy { $0.end == $1.start }, "cells are contiguous")
     let n = Notation.standard
     for cell in page.cells {
-        let c = PureCounters(n, at: cell.start)!
+        let c = CalPureCounters(n, at: cell.start)!
         if c[.epsilon] != cell.epsilon || c[.eta] != cell.firstHelion {
             check(false, "cell \(cell.index) begins at ε#\(cell.epsilon) \(cell.firstHelion)η, the clock says ε#\(c[.epsilon]) \(c[.eta])η")
         }
-        let before = PureCounters(n, at: cell.start - 0.001)!
+        let before = CalPureCounters(n, at: cell.start - 0.001)!
         if before[.eta] == cell.firstHelion, before[.epsilon] == cell.epsilon { check(false, "cell \(cell.index) starts on its first millisecond") }
     }
     check(page.cellIndex(clock, at: vectorA) != nil, "vector A is on its page")
-    let d = PureCounters(n, at: vectorA)!
+    let d = CalPureCounters(n, at: vectorA)!
     check(page.delta == d[.delta] && page.path == [d[.alpha], d[.beta], d[.gamma]], "the page's place is the clock's: \(page.path) δ#\(page.delta)")
-    check(DeltaPage.page(clock, alpha: d[.alpha], beta: d[.beta], gamma: d[.gamma], delta: d[.delta]) == index, "page from its path")
+    check(CalDeltaPage.page(clock, alpha: d[.alpha], beta: d[.beta], gamma: d[.gamma], delta: d[.delta]) == index, "page from its path")
     let quarters = page.cells.flatMap(\.quarters).filter(\.startsHere)
     check(quarters.map(\.quarter) == [0, 1, 2, 3], "four quarters begin on the page")
     let thresholds = page.cells.filter { $0.quarters.contains { $0.startsHere && $0.quarter > 0 } }.map(\.index)
@@ -352,19 +353,149 @@ private func deltaPageChecks() {
     }
     // the eclipses: 70 of them, at the fractions 0, ¾, ½, ¼ of their cell
     var found: [Int: Double] = [:]
-    for p in 0..<DeltaPage.count(clock) {
+    for p in 0..<CalDeltaPage.count(clock) {
         // only pages that can hold one (an eclipse every 2843.75 cells = 81.25 pages)
         let k = Int((Double(p) * 35 / 2843.75).rounded(.down))
         let lo = Int((Double(k) * 2843.75 / 35).rounded(.down)), hi = Int((Double(k + 1) * 2843.75 / 35).rounded(.down))
         guard p == lo || p == hi || p == lo + 1 || p == hi + 1 else { continue }
-        for cell in DeltaPage(clock: clock, index: p, syncRange: range).cells where cell.eclipse != nil {
+        for cell in CalDeltaPage(clock: clock, index: p, syncRange: range).cells where cell.eclipse != nil {
             found[cell.eclipse!] = cell.eclipseFraction
         }
     }
     check(found.count == 70, "70 eclipses on the pages: \(found.count)")
     check(found.allSatisfy { k, f in abs(f - [0, 0.75, 0.5, 0.25][k % 4]) < 1e-9 }, "eclipse k sits at 0, ¾, ½, ¼ of its cell")
-    let lastPage = DeltaPage(clock: clock, index: DeltaPage.count(clock) - 1, syncRange: range)
+    let lastPage = CalDeltaPage(clock: clock, index: CalDeltaPage.count(clock) - 1, syncRange: range)
     check(lastPage.cells.contains { !$0.inRange } && lastPage.cells.contains { $0.cut < 1 }, "the last page ends inside a cell")
     let syncs = page.cells.flatMap(\.syncs)
     check(syncs.count >= 6 && syncs.allSatisfy { (0...1).contains($0.x) }, "solar sync quarters on the page: \(syncs.count)")
+}
+
+// MARK: - Against the web app (fixture.json from make-calendar-fixture.mjs)
+
+private typealias JSON = [String: Any]
+
+private func num(_ v: Any?) -> Double? { (v as? NSNumber)?.doubleValue }
+private func int(_ v: Any?) -> Int? { (v as? NSNumber)?.intValue }
+
+private func webFixtureChecks() {
+    let url = URL(fileURLWithPath: #filePath).deletingLastPathComponent().appendingPathComponent("fixture.json")
+    guard let data = try? Data(contentsOf: url), let fx = try? JSONSerialization.jsonObject(with: data) as? JSON else {
+        check(false, "fixture.json is missing: run node ios/Fractonica/Features/Calendar/Checks/make-calendar-fixture.mjs")
+        return
+    }
+    let range = CalMath.syncRange(clock)
+    let webRange = fx["syncRange"] as? JSON
+    check(range.lowerBound == int(webRange?["first"]) && range.upperBound == int(webRange?["last"]), "sync range \(range) as the web's")
+    check(CalDeltaPage.count(clock) == int(fx["viewCount"]), "Delta page count \(CalDeltaPage.count(clock)) as the web's")
+    webMonthChecks(fx["months"] as? [JSON] ?? [], syncRange: range)
+    webYearChecks(fx["years"] as? [JSON] ?? [])
+    webInstantChecks(fx["instants"] as? [JSON] ?? [])
+    webPageChecks(fx["pages"] as? [JSON] ?? [], syncRange: range)
+}
+
+private func webMonthChecks(_ months: [JSON], syncRange: ClosedRange<Int>) {
+    var cells = 0, segments = 0, bad: [String] = []
+    for m in months {
+        guard let y = int(m["year"]), let mo = int(m["month"]), let z = m["zone"] as? String, let zone = TimeZone(identifier: z),
+              let ws = int(m["weekStart"]), let ov = m["overlay"] as? String, let band = CalendarBand(key: ov),
+              let webCells = m["cells"] as? [JSON] else { bad.append("unreadable month"); continue }
+        let grid = CalMonthGrid(clock: clock, zone: zone, year: y, month: mo, weekStart: ws, bands: [band], syncRange: syncRange)
+        let tag = "\(y)-\(mo) \(z) \(ov)"
+        guard grid.days.count == webCells.count else { bad.append("\(tag): \(grid.days.count) days"); continue }
+        for (day, c) in zip(grid.days, webCells) {
+            cells += 1
+            let dayTag = "\(tag) \(day.key)"
+            if day.year != int(c["y"]) || day.month != int(c["m"]) || day.day != int(c["d"]) || day.inMonth != (c["inMonth"] as? Bool)
+                || day.weekday != int(c["dow"]) { bad.append("\(dayTag): date"); continue }
+            if day.start != num(c["start"]) || day.end != num(c["end"]) { bad.append("\(dayTag): day \(day.start) … \(day.end)") }
+            if day.inRange != (c["inRange"] as? Bool) { bad.append("\(dayTag): inRange \(day.inRange)") }
+            if (day.eclipse ?? -1) != int(c["eclipse"]) { bad.append("\(dayTag): eclipse \(String(describing: day.eclipse))") }
+            let webSegs = c["segs"] as? [JSON] ?? []
+            let segs = day.tracks.first?.segments ?? []
+            guard segs.count == webSegs.count else { bad.append("\(dayTag): \(segs.count) segments, web \(webSegs.count)"); continue }
+            for (s, w) in zip(segs, webSegs) {
+                segments += 1
+                guard Int(s.index) == int(w["idx"]), s.ordinal == int(w["ord"]), s.startsHere == (w["sh"] as? Bool), s.endsHere == (w["eh"] as? Bool),
+                      let ws = num(w["start"]), let we = num(w["end"]), abs(s.start - ws) < 1e-4, abs(s.end - we) < 1e-4 else {
+                    bad.append("\(dayTag): segment \(s.index) #\(s.ordinal) \(s.start)…\(s.end) vs \(w)")
+                    continue
+                }
+                let x0 = max(0, (ws - day.start) / day.length), x1 = min(1, (we - day.start) / day.length)
+                if abs(s.x0 - x0) > 1e-9 || abs(s.x1 - x1) > 1e-9 { bad.append("\(dayTag): segment \(s.index) at \(s.x0)…\(s.x1)") }
+            }
+        }
+    }
+    check(bad.isEmpty, "\(months.count) month grids (\(cells) days, \(segments) segments) match month.js buildMonth: \(bad.prefix(6))")
+}
+
+private func webYearChecks(_ years: [JSON]) {
+    for w in years {
+        guard let y = int(w["year"]), let z = w["zone"] as? String, let zone = TimeZone(identifier: z) else { continue }
+        let r = CalYearRibbon(clock: clock, zone: zone, year: y)
+        check(r.summary == w["text"] as? String, "year \(y) \(z): \"\(r.summary)\" is the web's \"\(w["text"] as? String ?? "")\"")
+        check(r.start == num(w["start"]) && r.end == num(w["end"]), "year \(y) \(z) spans the web's local year")
+        let months = w["months"] as? [JSON] ?? []
+        let monthsMatch = months.count == r.months.count && zip(r.months, months).allSatisfy {
+            abs($0.x0 - (num($1["x0"]) ?? .nan)) < 1e-12 && abs($0.x1 - (num($1["x1"]) ?? .nan)) < 1e-12 && $0.inRange == ($1["inRange"] as? Bool)
+        }
+        check(monthsMatch, "year \(y) \(z): ribbon months as the web's")
+        let ticks = (w["ticks"] as? [JSON] ?? []).map { "\(int($0["level"]) ?? -1):\(int($0["ord"]) ?? -1):\(CalMath.r3(num($0["start"]) ?? .nan))" }
+        let mine = r.ticks.map { "\($0.level):\($0.ordinal):\(CalMath.r3($0.time))" }
+        check(Set(ticks) == Set(mine) && ticks.count == mine.count, "year \(y) \(z): δ and ε ticks as the web's (\(mine.count) vs \(ticks.count))")
+    }
+}
+
+private func webInstantChecks(_ instants: [JSON]) {
+    var bad: [String] = []
+    for w in instants {
+        guard let t = num(w["t"]) else { continue }
+        let pos = CalMath.position(clock, at: t).map { "\($0.ordinal).\($0.fraction)" }
+        if pos != w["position"] as? String { bad.append("\(t): position \(pos ?? "nil") vs \(w["position"] ?? "nil")") }
+        let path = (w["path"] as? [NSNumber])?.map(\.intValue)
+        if CalMath.path(clock, at: t, depth: 14) != path { bad.append("\(t): address") }
+        let solar = clock.solar(at: t)
+        if let s = w["sync"] as? JSON {
+            if solar?.sync != int(s["n"]) || abs((solar?.phase ?? .nan) - (num(s["phase"]) ?? .nan)) > 1e-9 { bad.append("\(t): solar sync \(String(describing: solar?.sync))") }
+            if let n = int(s["n"]), let info = clock.solarSync(number: n), let ws = num(s["start"]), let we = num(s["end"]), let wd = num(s["drift"]) {
+                if abs(info.start - ws) > 1e-4 || abs(info.end - we) > 1e-4 || abs(info.drift - wd) > 1e-4 { bad.append("\(t): sync \(n) facts") }
+            }
+        } else if solar != nil, CalMath.syncRange(clock).contains(solar!.sync) {
+            bad.append("\(t): a solar sync where the web has none")
+        }
+        let e = CalMath.eclipses(clock, around: t)
+        let we = w["eclipse"] as? JSON
+        if e.previous != int(we?["prev"]) || e.next != int(we?["next"]) { bad.append("\(t): eclipses \(String(describing: e))") }
+        if CalDeltaPage.page(clock, at: t) != int(w["view"]) { bad.append("\(t): Delta page") }
+        let c = CalPureCounters(.standard, at: t)
+        if let wc = w["counters"] as? JSON {
+            let keys = ["alpha", "beta", "gamma", "delta", "epsilon", "eta", "iota", "lambda", "nu"]
+            if c?.values != keys.map({ int(wc[$0]) ?? -1 }) { bad.append("\(t): pure counters \(String(describing: c?.values))") }
+        } else if c != nil {
+            bad.append("\(t): pure counters where the web has none")
+        }
+    }
+    check(bad.isEmpty, "\(instants.count) instants: position, address, solar sync, eclipses, Delta page and pure counters as the web's: \(bad.prefix(6))")
+}
+
+private func webPageChecks(_ pages: [JSON], syncRange: ClosedRange<Int>) {
+    var bad: [String] = []
+    for w in pages {
+        guard let hv = int(w["hv"]), let cells = w["cells"] as? [JSON] else { continue }
+        let page = CalDeltaPage(clock: clock, index: hv, syncRange: syncRange)
+        for (c, wc) in zip(page.cells, cells) {
+            let tag = "page \(hv) cell \(c.index)"
+            if Int(c.z) != int(wc["z"]) || c.inRange != (wc["inRange"] as? Bool) { bad.append("\(tag): place"); continue }
+            if abs(c.cut - (num(wc["cut"]) ?? .nan)) > 1e-12 || c.start != num(wc["start"]) || c.end != num(wc["end"]) {
+                bad.append("\(tag): \(c.start) … \(c.end) cut \(c.cut)")
+            }
+            if (c.eclipse ?? -1) != int(wc["eclipse"]) || (c.eclipse != nil && abs(c.eclipseFraction - (num(wc["frac"]) ?? .nan)) > 1e-12) {
+                bad.append("\(tag): eclipse \(String(describing: c.eclipse)) at \(c.eclipseFraction)")
+            }
+            let syncs = (wc["syncs"] as? [JSON] ?? []).map { "\(int($0["n"]) ?? 0):\(int($0["q"]) ?? 0):\(String(format: "%.9f", num($0["x"]) ?? .nan))" }
+            if syncs != c.syncs.map({ "\($0.sync):\($0.quarter):\(String(format: "%.9f", $0.x))" }) { bad.append("\(tag): syncs \(c.syncs) vs \(syncs)") }
+            let dq = (wc["dq"] as? [JSON] ?? []).map { "\(int($0["q"]) ?? 0):\(num($0["x0"]) ?? .nan):\(num($0["x1"]) ?? .nan):\(($0["sh"] as? Bool) == true)" }
+            if dq != c.quarters.map({ "\($0.quarter):\($0.x0):\($0.x1):\($0.startsHere)" }) { bad.append("\(tag): Delta quarters") }
+        }
+    }
+    check(bad.isEmpty, "\(pages.count) Delta pages match pure-conv.js buildPureGrid: \(bad.prefix(6))")
 }

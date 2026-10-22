@@ -5,7 +5,7 @@ import SwiftUI
 // year ribbon (12 months with the δ and ε boundaries of the year, the displayed instant, a summary).
 
 /// A day in detail: an inspector column on iPad and Mac, a sheet on iPhone.
-struct DayDetailView: View {
+struct CalDayDetailView: View {
     let model: MonthModel
     let zone: TimeZone
 
@@ -38,7 +38,7 @@ struct DayDetailView: View {
         VStack(alignment: .leading, spacing: 16) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(EarthNames.weekdays[CalMath.weekday(ref.year, ref.month, ref.day)])
+                    Text(CalEarthNames.weekdays[CalMath.weekday(ref.year, ref.month, ref.day)])
                         .font(.title2.weight(.semibold))
                         .foregroundStyle(Theme.ink)
                     Text("\(ref.day) \(EarthTime.monthsLong[ref.month - 1]) \(String(ref.year))")
@@ -59,11 +59,12 @@ struct DayDetailView: View {
             if inRange {
                 HStack(spacing: 10) {
                     CalActionButton(title: "Go to this day", systemImage: "location.fill", prominent: true) {
-                        // the same time of day as the displayed moment
-                        let t = store.time()
-                        let p = EarthTime.zonedParts(t, zone: zone)
-                        let shown = CalMath.dayStart(zone, p.year, p.month, p.day)
-                        travel(min(end - 0.001, max(start, start + (t - shown))))
+                        // the displayed moment's wall-clock time on that day (monthview.js timeOnDay), inside the day
+                        // when the zone skips that hour
+                        let p = EarthTime.zonedParts(store.time(), zone: zone)
+                        let wall = EarthTime.zonedToUnix(.init(year: ref.year, month: ref.month, day: ref.day, hour: p.hour,
+                                                               minute: p.minute, second: p.second, ms: p.ms), zone: zone)
+                        travel(min(end - 0.001, max(start, wall)))
                     }
                     CalActionButton(title: "Noon", systemImage: "sun.max") {
                         travel(EarthTime.zonedToUnix(.init(year: ref.year, month: ref.month, day: ref.day, hour: 12), zone: zone))
@@ -106,8 +107,8 @@ struct DayDetailView: View {
 
     /// One line of the day: a cycle boundary or a sync quarter, in time order.
     private enum Row: Identifiable {
-        case boundary(DayEvents.Boundary)
-        case sync(SyncQuarter)
+        case boundary(CalDayEvents.Boundary)
+        case sync(CalSyncQuarter)
 
         var time: Double {
             switch self {
@@ -126,7 +127,7 @@ struct DayDetailView: View {
 
     @ViewBuilder
     private func boundaries(_ start: Double, _ end: Double, _ earth: EarthFormatter) -> some View {
-        let events = DayEvents(clock: store.clock, from: start, to: end, syncRange: model.syncRange)
+        let events = CalDayEvents(clock: store.clock, from: start, to: end, syncRange: model.syncRange)
         let rows = (events.boundaries.map(Row.boundary) + events.syncs.map(Row.sync)).sorted { $0.time < $1.time }
         VStack(alignment: .leading, spacing: 8) {
             Text("Begins on this day").font(.footnote.weight(.semibold)).textCase(.uppercase).tracking(0.8).foregroundStyle(Theme.ink3)
@@ -149,7 +150,7 @@ struct DayDetailView: View {
                     rowButton(time: earth.time(q.start), tint: Theme.goldDim.opacity(0.18), label: syncText(q) + " at " + earth.time(q.start)) {
                         travel((q.start * 1000).rounded(.up) / 1000)
                     } content: {
-                        TintChip(text: "S\(q.sync)", color: Theme.gold, filled: q.quarter == 0, compact: true)
+                        CalTintChip(text: "S\(q.sync)", color: Theme.gold, filled: q.quarter == 0, compact: true)
                         Text(verbatim: q.quarter == 0 ? "solar sync begins" : CalMath.syncQuarterNames[q.quarter])
                             .font(.caption)
                             .foregroundStyle(Theme.gold.opacity(0.85))
@@ -159,7 +160,7 @@ struct DayDetailView: View {
         }
     }
 
-    private func syncText(_ q: SyncQuarter) -> String {
+    private func syncText(_ q: CalSyncQuarter) -> String {
         q.quarter == 0 ? "Solar sync \(q.sync) begins" : "Solar sync \(q.sync), \(CalMath.syncQuarterNames[q.quarter])"
     }
 
@@ -202,7 +203,7 @@ struct DayDetailView: View {
                                 if case .level(let l) = track.band {
                                     CalendarLevelChip(text: CalMath.cycleLabel(level: l, ordinal: s.ordinal), level: l, compact: true)
                                 } else {
-                                    TintChip(text: "S\(s.index) \(CalMath.syncQuarterNames[s.ordinal])", color: Theme.gold, compact: true)
+                                    CalTintChip(text: "S\(s.index) \(CalMath.syncQuarterNames[s.ordinal])", color: Theme.gold, compact: true)
                                 }
                             }
                             .frame(minWidth: 52, alignment: .leading)
@@ -224,7 +225,7 @@ struct DayDetailView: View {
     }
 
     /// For a solar sync quarter: how far the sync's start drifts from the civil 4-day grid (month.js tooltip).
-    private func driftText(_ band: CalendarBand, _ s: MonthGrid.Segment) -> String {
+    private func driftText(_ band: CalendarBand, _ s: CalMonthGrid.Segment) -> String {
         guard case .sync = band, let sync = store.clock.solarSync(number: Int(s.index)) else { return "" }
         return " · drift \(sync.drift < 0 ? "−" : "+")\(EarthTime.duration(abs(sync.drift), parts: 2))"
     }
@@ -247,7 +248,7 @@ struct DayDetailView: View {
 
 /// The year of the shown month: twelve months with the δ and ε boundaries as ticks, the displayed instant, and how
 /// many cycles the year covers. Tap a month to show it; ◀ ▶ step by year.
-struct YearRibbonCard: View {
+struct CalYearRibbonCard: View {
     let model: MonthModel
     let zone: TimeZone
 
@@ -257,12 +258,12 @@ struct YearRibbonCard: View {
         let (year, month) = CalMath.yearMonth(model.month)
         let ribbon = model.ribbon(year, zone: zone)
         CalCard("Year \(String(year))", systemImage: "calendar.day.timeline.left") {
-            StepPair(previous: "Previous year", next: "Next year") { model.show(month: model.month + 12 * $0) }
+            CalStepPair(previous: "Previous year", next: "Next year") { model.show(month: model.month + 12 * $0) }
                 .scaleEffect(0.85)
         } content: {
             ZStack(alignment: .topLeading) {
                 ClockTimeline(.periodic(store.isPlaying ? max(3600, abs(store.rate) / 30) : 3600)) { t in
-                    RibbonCanvas(ribbon: ribbon, month: month, t: t)
+                    CalRibbonCanvas(ribbon: ribbon, month: month, t: t)
                 }
                 GeometryReader { geo in
                     ForEach(ribbon.months, id: \.month) { m in
@@ -300,8 +301,8 @@ struct YearRibbonCard: View {
     }
 }
 
-private struct RibbonCanvas: View {
-    let ribbon: YearRibbon
+private struct CalRibbonCanvas: View {
+    let ribbon: CalYearRibbon
     let month: Int
     let t: Double
 

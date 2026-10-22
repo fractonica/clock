@@ -132,7 +132,7 @@ private struct EarthConverterContent: View {
                 HStack(alignment: .top, spacing: 16) {
                     LazyVStack(spacing: 16) {
                         earthCards(snap, earth, zone)
-                        if snap.inRange { SolarCard(model: model, snap: snap, earth: earth, pure: false).id("solar") }
+                        if snap.inRange { ConverterSolarCard(model: model, snap: snap, earth: earth, pure: false).id("solar") }
                     }
                     LazyVStack(spacing: 16) { fractonicaCards(snap, earth) }
                 }
@@ -140,7 +140,7 @@ private struct EarthConverterContent: View {
                 LazyVStack(spacing: 16) {
                     earthCards(snap, earth, zone)
                     fractonicaCards(snap, earth)
-                    if snap.inRange { SolarCard(model: model, snap: snap, earth: earth, pure: false).id("solar") }
+                    if snap.inRange { ConverterSolarCard(model: model, snap: snap, earth: earth, pure: false).id("solar") }
                 }
             }
         }
@@ -149,18 +149,18 @@ private struct EarthConverterContent: View {
 
     @ViewBuilder
     private func earthCards(_ snap: ConverterSnapshot, _ earth: EarthFormatter, _ zone: TimeZone) -> some View {
-        EarthCard(model: model, t: snap.t, earth: earth, zone: zone).id("earth")
-        SarosCard(model: model, t: snap.t, earth: earth)
+        CalEarthCard(model: model, t: snap.t, earth: earth, zone: zone).id("earth")
+        CalSarosCard(model: model, t: snap.t, earth: earth)
     }
 
     @ViewBuilder
     private func fractonicaCards(_ snap: ConverterSnapshot, _ earth: EarthFormatter) -> some View {
         if snap.inRange {
-            PositionCard(model: model, snap: snap).id("position")
-            AddressCard(model: model, snap: snap, earth: earth, pure: false).id("address")
-            GlyphStatesCard(model: model, snap: snap, earth: earth).id("glyphs")
+            ConverterPositionCard(model: model, snap: snap).id("position")
+            ConverterAddressCard(model: model, snap: snap, earth: earth, pure: false).id("address")
+            ConverterGlyphStatesCard(model: model, snap: snap, earth: earth).id("glyphs")
         } else {
-            OutOfRangeCard(model: model, t: snap.t).id("position")
+            CalOutOfRangeCard(model: model, t: snap.t).id("position")
         }
     }
 }
@@ -223,7 +223,7 @@ private struct EarthHero: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.5)
                 .contentTransition(.numericText(value: t))
-            Text("\(EarthNames.weekdays[p.weekday]) \(p.day) \(EarthTime.monthsLong[p.month - 1]) \(String(p.year))")
+            Text("\(CalEarthNames.weekdays[p.weekday]) \(p.day) \(EarthTime.monthsLong[p.month - 1]) \(String(p.year))")
                 .font(.title3)
                 .foregroundStyle(Theme.ink)
             if snap.inRange {
@@ -316,7 +316,7 @@ struct ConverterActions: View {
             Spacer(minLength: 0)
             Menu {
                 ForEach(copyItems, id: \.0) { title, text in
-                    Button(title) { Pasteboard.copy(text) }
+                    Button(title) { CalPasteboard.copy(text) }
                 }
             } label: {
                 Label("Copy", systemImage: "doc.on.doc")
@@ -363,12 +363,12 @@ struct ConverterActions: View {
 }
 
 /// Gregorian names the formatter does not carry.
-enum EarthNames {
+enum CalEarthNames {
     static let weekdays = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
 }
 
 /// The Gregorian side: date and time in a zone, the zone, Unix seconds, ISO 8601, weekday and day of year.
-private struct EarthCard: View {
+private struct CalEarthCard: View {
     let model: ConverterModel
     let t: Double
     let earth: EarthFormatter
@@ -403,19 +403,19 @@ private struct EarthCard: View {
                 .contentShape(.rect)
             }
             .buttonStyle(.plain)
-            CommitField(label: "Unix seconds", value: String(format: "%.3f", t), prompt: "1791460800.000", numeric: true) { text in
+            CalCommitField(label: "Unix seconds", value: String(format: "%.3f", t), prompt: "1791460800.000", numeric: true) { text in
                 let v = Double(text.trimmingCharacters(in: .whitespaces).replacingOccurrences(of: ",", with: "."))
                 guard let v, v.isFinite else { return CalendarError("Type Unix seconds, e.g. 1791460800.000") }
                 return model.set(v, from: .unix) ? nil : CalendarError("Years 1000 to 9999 only")
             }
-            CommitField(label: "ISO 8601", value: iso(p), prompt: "2026-10-08T12:00:00.000+00:00") { text in
+            CalCommitField(label: "ISO 8601", value: iso(p), prompt: "2026-10-08T12:00:00.000+00:00") { text in
                 guard let read = CalMath.readISO(text, zone: zone) else {
                     return CalendarError("Write an ISO date like 2026-10-08T12:00:00+03:00 (without an offset: in the converter's zone)")
                 }
                 guard model.set(read.t, from: .earth) else { return CalendarError("Years 1000 to 9999 only") }
                 // a wall time without an offset may not exist in the zone, or happen twice: say what was converted
                 wall = read.wall.flatMap { fields in
-                    CalMath.wallTimeNote(fields, zone: zone, resolved: read.t, earth: earth, place: TimeZoneWords.city(earth.zone))
+                    CalMath.wallTimeNote(fields, zone: zone, resolved: read.t, earth: earth, place: CalZoneWords.city(earth.zone))
                 }.map { ($0, model.t, zone.identifier) }
                 return nil
             }
@@ -427,7 +427,7 @@ private struct EarthCard: View {
                     .transition(.opacity)
             }
             Divider().overlay(Theme.line)
-            CalValueRow(label: "Day", value: "\(EarthNames.weekdays[p.weekday]) · day \(doy) of \(daysInYear)")
+            CalValueRow(label: "Day", value: "\(CalEarthNames.weekdays[p.weekday]) · day \(doy) of \(daysInYear)")
             CalValueRow(label: "Offset", value: (earth.zone == "UTC" ? "UTC" : "UTC" + EarthTime.offsetLabel(Double(p.offset)))
                 + (abs(dayLength - 86_400) > 1 ? " · a \(EarthTime.duration(dayLength, parts: 2)) day" : ""))
         }
@@ -435,9 +435,9 @@ private struct EarthCard: View {
 
     private var zoneTitle: String {
         switch model.zoneMode {
-        case .app: "App · \(TimeZoneWords.city(EarthFormatter.calendar(settings.timeZone).zone))"
+        case .app: "App · \(CalZoneWords.city(EarthFormatter.calendar(settings.timeZone).zone))"
         case .utc: "UTC"
-        case .zone(let id): TimeZoneWords.city(id)
+        case .zone(let id): CalZoneWords.city(id)
         }
     }
 
@@ -474,14 +474,14 @@ private struct EarthCard: View {
 }
 
 /// "Europe/Moscow" → "Moscow".
-enum TimeZoneWords {
+enum CalZoneWords {
     static func city(_ identifier: String) -> String {
         (identifier.split(separator: "/").last.map(String.init) ?? identifier).replacingOccurrences(of: "_", with: " ")
     }
 }
 
 /// The eclipses around the moment.
-private struct SarosCard: View {
+private struct CalSarosCard: View {
     let model: ConverterModel
     let t: Double
     let earth: EarthFormatter
@@ -518,7 +518,7 @@ private struct SarosCard: View {
 }
 
 /// The Fractonica side of a moment outside the catalogue: a tidy statement and the way back in.
-private struct OutOfRangeCard: View {
+private struct CalOutOfRangeCard: View {
     let model: ConverterModel
     let t: Double
 
@@ -547,7 +547,7 @@ private struct OutOfRangeCard: View {
 /// A text field that commits on Return (or when it loses focus) and shows why it could not, without clearing the
 /// other side. While not editing it shows the model's value directly, so a ticking clock costs no extra state update;
 /// once focused it holds what is being typed.
-struct CommitField: View {
+struct CalCommitField: View {
     let label: String
     let value: String
     var prompt: String = ""
@@ -638,7 +638,7 @@ private struct ConverterZonePicker: View {
     @State private var t: Double?
 
     private static let zones = TimeZone.knownTimeZoneIdentifiers.filter { $0 != "UTC" && $0 != "GMT" }.sorted {
-        (TimeZoneWords.city($0), $0) < (TimeZoneWords.city($1), $1)
+        (CalZoneWords.city($0), $0) < (CalZoneWords.city($1), $1)
     }
 
     var body: some View {
@@ -651,7 +651,7 @@ private struct ConverterZonePicker: View {
             }
             Section {
                 ForEach(matches, id: \.self) { id in
-                    row(.zone(id), title: TimeZoneWords.city(id), detail: id.replacingOccurrences(of: "_", with: " "))
+                    row(.zone(id), title: CalZoneWords.city(id), detail: id.replacingOccurrences(of: "_", with: " "))
                 }
             }
         }

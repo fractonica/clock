@@ -21,6 +21,8 @@ final class MonthModel {
     private(set) var displayedPage: Int?
     /// The day whose detail is open: its date.
     var selectedDay: DayRef?
+    /// The device clock's date in the app zone (today's mark), kept by the screen once a minute.
+    private(set) var today: DayRef?
     var showsDetail = false
 
     var bands: [CalendarBand] {
@@ -46,6 +48,11 @@ final class MonthModel {
     var pageStep: PageStep {
         didSet { UserDefaults.standard.set(pageStep.rawValue, forKey: Self.stepKey) }
     }
+    /// What the cells' band shows (pure-month.js OVERLAYS): 3 the Delta's quarters, 4 the Nuclides, 6 the Helions.
+    var pureBand: Int {
+        didSet { if !launching { UserDefaults.standard.set(pureBand, forKey: Self.pureBandKey) } }
+    }
+    static let pureBands = [3, 4, 6]
 
     /// What ◀ ▶ step by on the Delta page.
     enum PageStep: Int, CaseIterable, Identifiable, Sendable {
@@ -80,14 +87,15 @@ final class MonthModel {
 
     // MARK: Caches
 
-    @ObservationIgnored private var grids: [String: MonthGrid] = [:]
-    @ObservationIgnored private var ribbons: [String: YearRibbon] = [:]
-    @ObservationIgnored private var pages: [Int: DeltaPage] = [:]
+    @ObservationIgnored private var grids: [String: CalMonthGrid] = [:]
+    @ObservationIgnored private var ribbons: [String: CalYearRibbon] = [:]
+    @ObservationIgnored private var pages: [Int: CalDeltaPage] = [:]
     @ObservationIgnored private var syncs: ClosedRange<Int>?
 
     private static let bandsKey = "calendar.month.bands"
     private static let weekKey = "calendar.month.weekStart"
     private static let stepKey = "calendar.pure.step"
+    private static let pureBandKey = "calendar.pure.band"
 
     init() {
         let d = UserDefaults.standard
@@ -96,6 +104,8 @@ final class MonthModel {
         let week = d.object(forKey: Self.weekKey) as? Int
         weekStart = week == 0 || week == 1 ? week! : (Calendar.current.firstWeekday == 1 ? 0 : 1)
         pageStep = PageStep(rawValue: d.integer(forKey: Self.stepKey)) ?? .delta
+        let band = d.integer(forKey: Self.pureBandKey)
+        pureBand = Self.pureBands.contains(band) ? band : 6
     }
 
     /// At most three bands share a cell.
@@ -134,29 +144,29 @@ final class MonthModel {
     }
 
     /// The grid of a month, built once.
-    func grid(_ index: Int, zone: TimeZone) -> MonthGrid {
+    func grid(_ index: Int, zone: TimeZone) -> CalMonthGrid {
         let key = "\(index)|\(zone.identifier)|\(weekStart)|\(bands.map(\.key).joined(separator: ","))"
         if let g = grids[key] { return g }
         if grids.count > 48 { grids.removeAll() }
         let (y, m) = CalMath.yearMonth(index)
-        let g = MonthGrid(clock: .shared, zone: zone, year: y, month: m, weekStart: weekStart, bands: bands, syncRange: syncRange)
+        let g = CalMonthGrid(clock: .shared, zone: zone, year: y, month: m, weekStart: weekStart, bands: bands, syncRange: syncRange)
         grids[key] = g
         return g
     }
 
-    func ribbon(_ year: Int, zone: TimeZone) -> YearRibbon {
+    func ribbon(_ year: Int, zone: TimeZone) -> CalYearRibbon {
         let key = "\(year)|\(zone.identifier)"
         if let r = ribbons[key] { return r }
         if ribbons.count > 24 { ribbons.removeAll() }
-        let r = YearRibbon(clock: .shared, zone: zone, year: year)
+        let r = CalYearRibbon(clock: .shared, zone: zone, year: year)
         ribbons[key] = r
         return r
     }
 
-    func deltaPage(_ index: Int) -> DeltaPage {
+    func deltaPage(_ index: Int) -> CalDeltaPage {
         if let p = pages[index] { return p }
         if pages.count > 48 { pages.removeAll() }
-        let p = DeltaPage(clock: .shared, index: index, syncRange: syncRange)
+        let p = CalDeltaPage(clock: .shared, index: index, syncRange: syncRange)
         pages[index] = p
         return p
     }
@@ -175,6 +185,13 @@ final class MonthModel {
         return CalMath.clampMonth(CalMath.monthIndex(year: p.year, month: p.month))
     }
 
+    /// Today's date in a zone from the device clock (changes once a day, so the cells redraw once a day).
+    func updateToday(zone: TimeZone, now: Double = Date.now.timeIntervalSince1970) {
+        let p = EarthTime.zonedParts(now, zone: zone)
+        let ref = DayRef(year: p.year, month: p.month, day: p.day)
+        if today != ref { today = ref }
+    }
+
     /// Follow the displayed time: the page moves with it while `follows`.
     func follow(_ t: Double, zone: TimeZone) {
         let m = Self.monthIndex(of: t, zone: zone)
@@ -184,13 +201,13 @@ final class MonthModel {
     }
 
     func followPage(_ t: Double) {
-        let p = DeltaPage.page(.shared, at: t)
+        let p = CalDeltaPage.page(.shared, at: t)
         if displayedPage != p { displayedPage = p }
         guard pageFollows, let p else { return }
         if p != page { page = p }
     }
 
-    /// The launch arguments, once (-FXMonth, -FXMonthBands, -FXMonthDay, -FXCalendarScroll).
+    /// The launch arguments, once (-FXMonth, -FXMonthBands, -FXMonthPureBand, -FXMonthDay, -FXCalendarScroll).
     func applyLaunchOptions(zone: TimeZone, displayed t: Double) {
         guard !launched else { return }
         launched = true
@@ -198,6 +215,11 @@ final class MonthModel {
             let b = keys.split(separator: ",").compactMap { CalendarBand(key: String($0)) }
             launching = true
             if !b.isEmpty { bands = Array(b.prefix(Self.maxBands)) }
+            launching = false
+        }
+        if let band = CalendarLaunch.int("FXMonthPureBand"), Self.pureBands.contains(band) {
+            launching = true
+            pureBand = band
             launching = false
         }
         if let ym = CalendarLaunch.string("FXMonth"), let m = ym.wholeMatch(of: /(\d{4})-(\d{1,2})/), let y = Int(m.1), let mo = Int(m.2), (1...12).contains(mo) {
@@ -211,11 +233,11 @@ final class MonthModel {
                 selectedDay = DayRef(year: y, month: m, day: d)
                 showsDetail = true
             }
-            if (0..<DeltaPage.cells).contains(d) {
+            if (0..<CalDeltaPage.cells).contains(d) {
                 selectedCell = d
             }
         }
-        if let p = DeltaPage.page(.shared, at: t) { page = p }
+        if let p = CalDeltaPage.page(.shared, at: t) { page = p }
         scrollTarget = CalendarLaunch.string("FXCalendarScroll")
         launchPick = CalendarLaunch.int("FXMonthPick") == 1
     }

@@ -44,10 +44,10 @@ struct PureConverterContent: View {
 
     @ViewBuilder
     private func cycleCards(_ snap: ConverterSnapshot, _ earth: EarthFormatter) -> some View {
-        PositionCard(model: model, snap: snap).id("cycles")
-        AddressCard(model: model, snap: snap, earth: earth, pure: true).id("address")
-        PhaseCard(model: model, snap: snap).id("glyphs")
-        SolarCard(model: model, snap: snap, earth: earth, pure: true).id("solar")
+        ConverterPositionCard(model: model, snap: snap).id("cycles")
+        ConverterAddressCard(model: model, snap: snap, earth: earth, pure: true).id("address")
+        CalPhaseCard(model: model, snap: snap).id("glyphs")
+        ConverterSolarCard(model: model, snap: snap, earth: earth, pure: true).id("solar")
     }
 }
 
@@ -107,11 +107,11 @@ private struct PureDateCard: View {
 
     var body: some View {
         let clock = store.clock
-        if let c = PureCounters(Notation.standard, at: t) {
+        if let c = CalPureCounters(Notation.standard, at: t) {
             CalCard("Date", systemImage: "calendar") {
                 VStack(spacing: 8) {
-                    ForEach(PureEntry.allCases.filter(\.isMajor)) { entry in
-                        StepRow {
+                    ForEach(CalPureEntry.allCases.filter(\.isMajor)) { entry in
+                        CalStepRow {
                             CalendarLevelChip(text: entry.sym, level: entry.level, compact: true).frame(width: 28)
                             VStack(alignment: .leading, spacing: 1) {
                                 Text(entry.name).font(.subheadline).foregroundStyle(Theme.ink)
@@ -120,14 +120,14 @@ private struct PureDateCard: View {
                                     .foregroundStyle(Theme.ink3)
                             }
                         } control: {
-                            NudgeStepper(value: c[entry], range: entry.range(clock), label: entry.name, display: { Notation.ordinalName($0) },
+                            CalNudgeStepper(value: c[entry], range: entry.range(clock), label: entry.name, display: { Notation.ordinalName($0) },
                                          tint: Theme.levelColor(entry.level)) { set(entry, $0) }
                         }
                     }
                     Divider().overlay(Theme.line)
-                    ForEach(PureEntry.allCases.filter { !$0.isMajor }) { entry in
+                    ForEach(CalPureEntry.allCases.filter { !$0.isMajor }) { entry in
                         let r = entry.range(clock)
-                        StepRow {
+                        CalStepRow {
                             CalendarLevelChip(text: entry.sym, level: entry.level, compact: true).frame(width: 28)
                             VStack(alignment: .leading, spacing: 1) {
                                 Text(entry.unit.name).font(.subheadline).foregroundStyle(Theme.ink)
@@ -136,7 +136,7 @@ private struct PureDateCard: View {
                                     .foregroundStyle(Theme.ink3)
                             }
                         } control: {
-                            NudgeStepper(value: c[entry], range: r, label: entry.unit.name, display: { entry.text($0) },
+                            CalNudgeStepper(value: c[entry], range: r, label: entry.unit.name, display: { entry.text($0) },
                                          tint: Theme.levelColor(entry.level)) { set(entry, $0) }
                         }
                     }
@@ -150,8 +150,8 @@ private struct PureDateCard: View {
         }
     }
 
-    private func set(_ entry: PureEntry, _ n: Int) {
-        switch PureMath.set(store.clock, t, entry, to: n) {
+    private func set(_ entry: CalPureEntry, _ n: Int) {
+        switch CalPureMath.set(store.clock, t, entry, to: n) {
         case .success(let moved): model.set(moved, from: .pure)
         case .failure(let e): ToastCenter.shared.show(e.message)
         }
@@ -171,7 +171,7 @@ private struct PureStampCard: View {
 
     var body: some View {
         CalCard("Read a date", systemImage: "text.cursor") {
-            CommitField(label: "Stamp, words, counts or an offset", value: Notation.standard.stamp(at: t, upTo: "nu"),
+            CalCommitField(label: "Stamp, words, counts or an offset", value: Notation.standard.stamp(at: t, upTo: "nu"),
                         prompt: "δ#3 ε#5 34η 29ι") { text in
                 let context = PureJumpContext(now: t, real: Date.now.timeIntervalSince1970, level: settings.selectedLevel)
                 let candidates = PureJumpParser.parse(text, context, notation: .standard)
@@ -179,7 +179,7 @@ private struct PureStampCard: View {
                     return model.set(time, from: .pure) ? nil : CalendarError("Outside the catalogue")
                 }
                 // the converter's own reader as a fallback, then the parser's own words for what is wrong
-                if case .success(let moved) = PureInput.read(text, clock: store.clock, ref: t) {
+                if case .success(let moved) = CalPureInput.read(text, clock: store.clock, ref: t) {
                     model.set(moved, from: .pure)
                     return nil
                 }
@@ -202,7 +202,7 @@ private struct PureSarosCard: View {
     @Environment(ClockStore.self) private var store
 
     var body: some View {
-        let spans = PureMath.eclipseSpans(store.clock, at: t)
+        let spans = CalPureMath.eclipseSpans(store.clock, at: t)
         CalCard("Saros 141 around it", systemImage: "circle.lefthalf.filled") {
             ForEach([spans.previous.map { ($0.k, $0.text, true) }, spans.next.map { ($0.k, $0.text, false) }].compactMap { $0 }, id: \.0) { k, text, before in
                 Button {
@@ -228,7 +228,7 @@ private struct PureSarosCard: View {
 
 /// The phase at every depth: the major periods say their quarter word (never a pair), every finer depth its glyph pair
 /// (256 states); tap a pair for when its depth shows another.
-private struct PhaseCard: View {
+private struct CalPhaseCard: View {
     let model: ConverterModel
     let snap: ConverterSnapshot
 
@@ -278,7 +278,7 @@ private struct PhaseCard: View {
                     .accessibilityLabel(Text("\(r.name) depth \(r.depth), phase \(pair.hi) and \(pair.lo) of 256"))
                     .accessibilityHint(Text("Shows when this depth shows another pair"))
                     .popover(isPresented: Binding(get: { model.pickLevel == r.level }, set: { if !$0, model.pickLevel == r.level { model.pickLevel = nil } })) {
-                        StatePicker(model: model, level: r.level, current: [pair.hi, pair.lo], pure: true, earth: EarthFormatter(zone: "UTC"))
+                        ConverterStatePicker(model: model, level: r.level, current: [pair.hi, pair.lo], pure: true, earth: EarthFormatter(zone: "UTC"))
                             .presentationCompactAdaptation(.sheet)
                             .presentationDetents([.medium, .large])
                     }
