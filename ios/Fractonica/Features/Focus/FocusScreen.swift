@@ -274,10 +274,14 @@ struct FocusScreen: View {
                 touched()
             }
         } label: {
-            Label(model.length.title, systemImage: "timer")
+            let label = Label(model.length.title, systemImage: "timer")
                 .font(.body.monospacedDigit())
+            if #available(iOS 26.0, macOS 26.0, *) {
+                label
+            } else {
                 // iOS 18's bordered menu measures this font short and cuts the title to "…"
-                .fixedSize()
+                label.fixedSize()
+            }
         }
         .menuIndicator(.hidden)
         .help("Session length")
