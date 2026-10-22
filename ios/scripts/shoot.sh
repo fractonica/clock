@@ -44,8 +44,23 @@ while [ $# -gt 0 ]; do
   esac
 done
 
+# simctl. Xcode's `simctl` wrapper runs `xcodebuild -runFirstLaunch`, which waits for an administrator, whenever the
+# installed CoreSimulator is older than that Xcode expects (right after an Xcode update, until someone runs it once):
+# meanwhile use the installed CoreSimulator's own simctl, which the running simulator service matches.
+SIMCTL_BIN="$(xcrun --find simctl)"
+COSIM=/Library/Developer/PrivateFrameworks/CoreSimulator.framework/Versions/A
+COSIM_EXPECTED="$(sed -n 's/^EXPECTED_VERSION="\(.*\)"$/\1/p' "$SIMCTL_BIN" 2>/dev/null || true)"
+COSIM_CURRENT="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$COSIM/Resources/Info.plist" 2>/dev/null || true)"
+if [ -n "$COSIM_EXPECTED" ] && [ -n "$COSIM_CURRENT" ] && [ "$COSIM_CURRENT" != "$COSIM_EXPECTED" ] \
+    && [ "$(printf '%s\n%s\n' "$COSIM_CURRENT" "$COSIM_EXPECTED" | sort --version-sort | head -n1)" = "$COSIM_CURRENT" ] \
+    && [ -x "$COSIM/Resources/bin/simctl" ]; then
+  echo "note: CoreSimulator $COSIM_CURRENT is older than this Xcode expects ($COSIM_EXPECTED); run 'sudo xcodebuild -runFirstLaunch' once" >&2
+  SIMCTL_BIN="$COSIM/Resources/bin/simctl"
+fi
+simctl() { "$SIMCTL_BIN" "$@"; }
+
 # The device's UDID on the runtime, created when missing.
-UDID="$(xcrun simctl list devices --json | /usr/bin/python3 -c '
+UDID="$(simctl list devices --json | /usr/bin/python3 -c '
 import json, sys
 name, runtime = sys.argv[1], sys.argv[2]
 for d in json.load(sys.stdin)["devices"].get(runtime, []):
@@ -54,19 +69,19 @@ for d in json.load(sys.stdin)["devices"].get(runtime, []):
 ' "$DEVICE" "$RUNTIME")"
 if [ $DELETE -eq 1 ]; then
   if [ -n "$UDID" ]; then
-    xcrun simctl shutdown "$UDID" 2>/dev/null || true
-    xcrun simctl delete "$UDID"
+    simctl shutdown "$UDID" 2>/dev/null || true
+    simctl delete "$UDID"
     echo "deleted simulator \"$DEVICE\""
   fi
   exit 0
 fi
 if [ -z "$UDID" ]; then
-  UDID="$(xcrun simctl create "$DEVICE" "$TYPE" "$RUNTIME")"
+  UDID="$(simctl create "$DEVICE" "$TYPE" "$RUNTIME")"
   echo "created simulator \"$DEVICE\" ($TYPE, $UDID)"
 fi
 
 if [ $UNINSTALL -eq 1 ]; then
-  xcrun simctl uninstall "$UDID" "$BUNDLE_ID" 2>/dev/null || true
+  simctl uninstall "$UDID" "$BUNDLE_ID" 2>/dev/null || true
   echo "uninstalled $BUNDLE_ID from \"$DEVICE\""
   exit 0
 fi
@@ -86,13 +101,13 @@ if [ ! -d "$APP" ]; then
   exit 1
 fi
 
-xcrun simctl boot "$UDID" 2>/dev/null || true
-xcrun simctl bootstatus "$UDID" -b > /dev/null
-xcrun simctl status_bar "$UDID" override --time "9:41" --dataNetwork wifi --wifiMode active --wifiBars 3 \
+simctl boot "$UDID" 2>/dev/null || true
+simctl bootstatus "$UDID" -b > /dev/null
+simctl status_bar "$UDID" override --time "9:41" --dataNetwork wifi --wifiMode active --wifiBars 3 \
   --cellularMode active --cellularBars 4 --batteryState charged --batteryLevel 100 2>/dev/null || true
-xcrun simctl install "$UDID" "$APP"
-xcrun simctl launch --terminate-running-process "$UDID" "$BUNDLE_ID" "$@" > /dev/null
+simctl install "$UDID" "$APP"
+simctl launch --terminate-running-process "$UDID" "$BUNDLE_ID" "$@" > /dev/null
 sleep "$WAIT"
 mkdir -p "$(dirname "$OUT")"
-xcrun simctl io "$UDID" screenshot --type=png "$OUT" > /dev/null 2>&1
+simctl io "$UDID" screenshot --type=png "$OUT" > /dev/null 2>&1
 echo "$OUT"
