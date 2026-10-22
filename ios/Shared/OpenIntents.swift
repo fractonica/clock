@@ -5,8 +5,8 @@ import AppIntents
 // intent type in the extension and in the app: the extension names it, the system brings the app to the front
 // (`supportedModes`; on iOS 18, which has no modes, `openAppWhenRun`) and performs it there. One definition here,
 // compiled into both; `ScreenIntentHandler` is the per-target part: the app's
-// (Fractonica/Features/Intents/OpenScreenIntent.swift) shows the screen, the extension's (Widgets/Controls/Controls.swift)
-// does nothing, as the extension never performs these.
+// (Fractonica/Features/Intents/OpenScreenIntent.swift) shows the screen, the extension's
+// (Widgets/Controls/Controls.swift) does nothing, as the extension never performs these.
 
 /// Opens the app in Focus.
 struct OpenFocusIntent: AppIntent {

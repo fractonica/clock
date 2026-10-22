@@ -116,8 +116,8 @@ private struct CompactRoot: View {
 
 /// The Jump field of the iPhone layout, bound to `JumpSearch`: applied to the search tab's navigation stack (from
 /// outside it), so the system presents it as the search tab's field — over the tab's content with a close button while
-/// it has focus. (Applied to the whole `TabView`, the field would also show in every other tab's navigation bar.) iOS 18
-/// has no such field: there it stays in the tab's navigation bar, always in view under the title.
+/// it has focus. (Applied to the whole `TabView`, the field would also show in every other tab's navigation bar.)
+/// iOS 18 has no such field: there it stays in the tab's navigation bar, always in view under the title.
 private struct TabSearchField: ViewModifier {
     @Environment(AppSettings.self) private var settings
     @FocusState private var searchFocused: Bool
@@ -336,8 +336,8 @@ private struct ScreenStack: View {
 
 extension View {
     /// The backdrop and the toolbar items every screen shares: on iOS, Sound (iPhone; iPad while it plays), Focus and
-    /// Settings on Now (and on iOS 18 the transport at the foot); on macOS, the transport, Sound (while it plays), Focus
-    /// and Settings in every window toolbar.
+    /// Settings on Now (and on iOS 18 the transport at the foot); on macOS, the transport, Sound (while it plays),
+    /// Focus and Settings in every window toolbar.
     fileprivate func screenChrome(_ screen: Screen) -> some View {
         modifier(ScreenChrome(screen: screen))
     }

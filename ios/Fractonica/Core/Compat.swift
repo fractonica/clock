@@ -1,8 +1,9 @@
 import SwiftUI
 
-// iOS 18 compatibility. The iOS app runs from iOS 18.6 (the Mac app from macOS 26): on iOS 26 and later, and always on
-// the Mac, each wrapper here is exactly the Liquid Glass API it names; on iOS 18 it draws that system's own equivalent —
-// a material in the same shape with a hairline, bordered buttons — so the screens look intentional there too.
+// iOS 18 compatibility. The iOS app runs from iOS 18.6 (the Mac app from macOS 26): on iOS 26 and later, and always
+// on the Mac, each wrapper here is exactly the Liquid Glass API it names; on iOS 18 it draws that system's own
+// equivalent — a material in the same shape with a hairline, bordered buttons — so the screens look intentional there
+// too.
 //
 // Never call an iOS 26-only API directly: use these (or add one here), or guard a one-off use with
 // `if #available(iOS 26.0, macOS 26.0, *)` and give it an iOS 18 branch. The compiler refuses unguarded uses, but not

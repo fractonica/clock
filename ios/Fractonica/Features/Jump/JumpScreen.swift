@@ -5,8 +5,9 @@ import UIKit
 #endif
 
 /// Jump: go to any moment by typing it (src/ui/jump.js, docs/design/60-calendar.md §1). The search tab of the app: on
-/// iPhone its field is the tab bar's own (the compact root's `.searchable`, shared through `JumpSearch`); on iPad and Mac
-/// it is the sidebar's search item and draws its field under the title or in the toolbar. ⌘K focuses the field.
+/// iPhone its field is the tab bar's own (the compact root's `.searchable`, shared through `JumpSearch`; under the
+/// title on iOS 18); on iPad and Mac it is the sidebar's search item and draws its field under the title or in the
+/// toolbar. ⌘K focuses the field.
 ///
 /// As you type, the best reading shows the moment it lands on — in Earth and Fractonica terms (side by side on a wide
 /// screen), or only Fractonica terms in pure mode — with the other readings below and a precise message for text that
