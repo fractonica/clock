@@ -58,10 +58,14 @@ struct Wording: Sendable {
         pure ? notation.stamp(at: t, upTo: "eta") : earth.short(t, refYear: refYear)
     }
 
-    /// A time of day when `t` falls on the same day as `ref`, else a short date (SPEC §8 info labels) · pure: the
-    /// clock within the same Nuclide, else the short letter date.
+    /// A time of day when `t` falls on the same day as `ref`, else a short date (SPEC §8 info labels): "14:23:07",
+    /// "Oct 9 14:23", and "Oct 9 2027 14:23" in another year (the web app's `label` leaves the year out, which makes a
+    /// moment years away read like one this year) · pure: the clock within the same Nuclide, else the short letter date.
     func label(_ t: Double, relativeTo ref: Double) -> String {
-        guard pure else { return earth.label(t, ref: ref) }
+        guard pure else {
+            let year = earth.parts(ref).year
+            return earth.parts(t).year == year ? earth.label(t, ref: ref) : earth.short(t, refYear: year)
+        }
         if notation.stamp(at: t, upTo: "epsilon") == notation.stamp(at: ref, upTo: "epsilon") {
             return notation.clockText(at: t)
         }

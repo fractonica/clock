@@ -14,6 +14,7 @@ struct CoreChecks {
         await edgeStopChecks()
         scheduleChecks()
         linkChecks()
+        wordingChecks()
         Checks.finish()
     }
 }
@@ -187,4 +188,20 @@ private func linkChecks() {
     check(AppLink(url: URL(string: "fractonica://Timeline?t=nan")!) == AppLink(screen: .timeline), "case and bad times")
     check(AppLink(url: URL(string: "fractonica://bogus")!) == AppLink(screen: .now), "an unknown screen opens Now")
     check(AppLink(url: URL(string: "https://fractonica.app/rings")!) == nil, "other schemes are not links")
+}
+
+/// Wording's SPEC §8 labels: the year joins the short date only for a moment in another year.
+@MainActor
+private func wordingChecks() {
+    let words = Wording(pure: false, zone: "UTC")
+    let ref = 1_791_460_800.0                                   // 2026-10-08 12:00:00 UTC
+    check(words.label(ref + 3_723, relativeTo: ref) == "13:02:03", "same day: the time with seconds")
+    check(words.label(ref + 86_400 + 600, relativeTo: ref) == "Oct 9 12:10", "another day: month, day and time")
+    let nextYear = words.label(ref + 365 * 86_400, relativeTo: ref)
+    check(nextYear == "Oct 8 2027 12:00", "another year: with the year (\(nextYear))")
+    let lastYear = words.label(ref - 300 * 86_400, relativeTo: ref)
+    check(lastYear.hasSuffix(" 2025 12:00") || lastYear.contains(" 2025 "), "a past year too (\(lastYear))")
+    let pure = Wording(pure: true, zone: "UTC")
+    let far = pure.label(ref + 365 * 86_400, relativeTo: ref)
+    check(!far.contains("2027") && !far.contains("Oct"), "pure labels stay in Fractonica terms (\(far))")
 }
