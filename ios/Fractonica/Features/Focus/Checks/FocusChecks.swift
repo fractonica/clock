@@ -233,6 +233,15 @@ struct FocusChecks {
         check(model.session?.start == now - 100, "start with elapsed time")
         model.detach()
         check(model.session == nil && !model.isShowing, "the last viewer ends the session")
+        let left = now - 100
+        now += 0.4
+        model.attach()
+        check(model.session?.start == left, "a view appearing just after the last one left carries on its session")
+        model.detach()
+        now += 2
+        model.attach()
+        check(model.session?.start == now, "later, a new session starts")
+        model.detach()
     }
 
     // MARK: Chime
