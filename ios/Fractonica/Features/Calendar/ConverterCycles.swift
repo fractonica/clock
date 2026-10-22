@@ -152,7 +152,7 @@ struct AddressCard: View {
                 withAnimation(.snappy) { model.depth = d }
             }
         } content: {
-            FlowLayout(spacing: 4, lineSpacing: 6) {
+            CalFlowLayout(spacing: 4, lineSpacing: 6) {
                 ForEach(Array(numbered.enumerated()), id: \.offset) { level, n in
                     HStack(spacing: 4) {
                         if level > 0 { Text(verbatim: "›").font(.code(15)).foregroundStyle(Theme.ink3).accessibilityHidden(true) }

@@ -314,7 +314,7 @@ struct EclipseMark: View {
 }
 
 /// Lays its children out in rows, wrapping where the width ends (the address chain).
-struct FlowLayout: Layout {
+struct CalFlowLayout: Layout {
     var spacing: CGFloat = 6
     var lineSpacing: CGFloat = 6
 
