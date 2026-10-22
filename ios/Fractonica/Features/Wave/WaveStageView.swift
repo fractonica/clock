@@ -8,6 +8,8 @@ struct WaveStageView: View {
     let control: WaveController
     /// About sits on the stage (iPhone) instead of in the toolbar.
     var infoOnStage = false
+    /// The depth bar floats at the foot of the stage (else the side panel holds it).
+    var depthBarOnStage = true
 
     @Environment(AppSettings.self) private var settings
     @State private var drag: DragState?
@@ -58,7 +60,8 @@ struct WaveStageView: View {
             size: stageSize,
             avoid: ([barFrame, zoomFrame] + (infoOnStage ? [CGRect(x: 10, y: 12, width: 40, height: 40)] : []))
                 .filter { $0.width > 0 }.map { WaveRect(x0: $0.minX - 6, y0: $0.minY - 6, x1: $0.maxX + 6, y1: $0.maxY + 6) },
-            bottomInset: barHeight + 12, topInset: zoomFrame.maxY > 0 ? zoomFrame.maxY - 6 : 60, trailingInset: compact ? 0 : 52
+            bottomInset: depthBarOnStage ? barHeight + 12 : 0, topInset: zoomFrame.maxY > 0 ? zoomFrame.maxY - 6 : 60, trailingInset: compact ? 0 : 52,
+            leadingControl: infoOnStage
         )
         #if os(macOS)
         // the wheel acts on this evaluation's controller (its depth and selection)
@@ -84,14 +87,20 @@ struct WaveStageView: View {
         .onContinuousHover(coordinateSpace: .local) { phase in hover(phase) }
         .onGeometryChange(for: CGSize.self) { $0.size } action: { stageSize = $0 }
         .overlay(alignment: .bottom) {
-            WaveDepthBar(model: model, control: control)
-                .frame(maxWidth: 680)
-                .padding(.horizontal, compact ? 10 : 16)
-                .padding(.bottom, 10)
-                .onGeometryChange(for: CGRect.self) { $0.frame(in: .named("wave.stage")) } action: { r in
-                    barFrame = r
-                    barHeight = r.height
-                }
+            if depthBarOnStage {
+                WaveDepthBar(model: model, control: control)
+                    .frame(maxWidth: 680)
+                    .padding(.horizontal, compact ? 10 : 16)
+                    .padding(.bottom, 10)
+                    .onGeometryChange(for: CGRect.self) { $0.frame(in: .named("wave.stage")) } action: { r in
+                        barFrame = r
+                        barHeight = r.height
+                    }
+                    .onDisappear {
+                        barFrame = .zero
+                        barHeight = 0
+                    }
+            }
         }
         .overlay(alignment: .topTrailing) {
             zoomControls

@@ -621,7 +621,9 @@ extension WaveStage {
                 let pe = sa.point(e.fraction)
                 dots.addPath(circle(pe.x, pe.y, 2.2))
                 if !quiet {
-                    label(g, years.end, at: pe.x + 5, pe.y + (e.idx % 2 == 0 ? -11 : 12), color: Theme.ink3, font: .small, opacity: alpha, anchor: .leading)
+                    // the catalogue's end: beside the last point, wherever the packed rows leave room
+                    placedLabel(g, key: "end", years.end, at: pe.x, pe.y, normal: WavePoint(x: 0.8, y: e.idx % 2 == 0 ? -0.6 : 0.6),
+                                color: Theme.ink3, font: .small, opacity: alpha, clearance: 3, weight: WaveLabelPlacer.soft)
                 }
             }
         }

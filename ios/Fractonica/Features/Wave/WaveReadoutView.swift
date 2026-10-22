@@ -34,26 +34,40 @@ struct WaveHeader: View {
 struct WaveSidePanel: View {
     let model: WaveModel
     let control: WaveController
+    /// The depth bar sits at the panel's foot (a short screen keeps the stage clear).
+    var depthBar = false
 
     var body: some View {
+        VStack(spacing: 0) {
+            scroll
+            if depthBar {
+                WaveDepthBar(model: model, control: control)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 8)
+            }
+        }
+        .background(Theme.background2.opacity(0.55))
+        .animation(control.reduceMotion ? nil : .snappy, value: model.solar)
+    }
+
+    private var scroll: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 ClockTimeline(.periodic(control.readoutInterval)) { t in
+                    // a short panel (an iPhone in landscape) uses the compact reading, its share up top
                     WaveReadoutCard(readout: WaveReadout.make(t: control.shown(t), overview: model.overview, level: control.level, eff: control.eff, words: control.words),
-                                    control: control, wide: true)
+                                    control: control, wide: true, short: depthBar)
                 }
                 if model.solar {
-                    WaveSolarStrip(model: model, control: control, wide: true)
+                    WaveSolarStrip(model: model, control: control, wide: !depthBar)
                         .transition(.opacity)
                 }
                 WaveLegend(words: control.words, overview: model.overview, solar: model.solar, tint: Theme.levelColor(model.overview ? 0 : control.eff))
                     .padding(.top, 4)
             }
-            .padding(20)
+            .padding(depthBar ? 14 : 20)
         }
         .scrollIndicators(.hidden)
-        .background(Theme.background2.opacity(0.55))
-        .animation(control.reduceMotion ? nil : .snappy, value: model.solar)
     }
 }
 
@@ -85,11 +99,13 @@ struct WaveReadoutCard: View {
     let wide: Bool
     /// One row across a wide header (iPad portrait).
     var row = false
+    /// A narrow, short panel (an iPhone in landscape): the essentials first, in little height.
+    var short = false
 
     var body: some View {
         switch readout.kind {
         case .outOfRange: outOfRange
-        default: wide ? AnyView(column) : row ? AnyView(rowLayout) : AnyView(header)
+        default: short ? AnyView(shortLayout) : wide ? AnyView(column) : row ? AnyView(rowLayout) : AnyView(header)
         }
     }
 
@@ -112,7 +128,7 @@ struct WaveReadoutCard: View {
 
     private var titleRow: some View {
         HStack(spacing: 6) {
-            Text(readout.title).font(wide || row ? .title3.weight(.semibold) : .headline).foregroundStyle(Theme.ink)
+            Text(readout.title).font(row ? .title3.weight(.semibold) : .headline).foregroundStyle(Theme.ink)
             if !readout.note.isEmpty {
                 Text(readout.note)
                     .font(.caption2.weight(.medium))
@@ -251,6 +267,59 @@ struct WaveReadoutCard: View {
             glyph
         }
         .accessibilityElement(children: .combine)
+    }
+
+    // MARK: Short: a narrow panel with little height
+
+    private var shortLayout: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            HStack(alignment: .top, spacing: 8) {
+                VStack(alignment: .leading, spacing: 2) {
+                    // the depth bar below shows the level too; the letter leads the title instead of a badge
+                    ViewThatFits(in: .horizontal) {
+                        HStack(spacing: 6) {
+                            shortTitle
+                            if !readout.note.isEmpty {
+                                Text(readout.note).font(.caption2.weight(.medium)).foregroundStyle(Theme.ink2)
+                                    .padding(.horizontal, 6).padding(.vertical, 2)
+                                    .background(Capsule().strokeBorder(Theme.line2, lineWidth: 1)).lineLimit(1)
+                            }
+                        }
+                        shortTitle
+                    }
+                    fastLine
+                    Text(WaveReadoutCard.glue(readout.span)).font(.caption2.monospaced()).foregroundStyle(Theme.ink2)
+                        .lineLimit(2).minimumScaleFactor(0.8).fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 4)
+                VStack(alignment: .trailing, spacing: 2) {
+                    WaveShareView(share: readout.primary, size: 22, label: "half-arc phase")
+                    Text(readout.primaryWhat).font(.caption2).foregroundStyle(Theme.ink3)
+                        .multilineTextAlignment(.trailing).lineLimit(2).frame(maxWidth: 92, alignment: .trailing)
+                    bar.frame(width: 60)
+                }
+                .fixedSize(horizontal: false, vertical: true)
+            }
+            nextLines
+            HStack(alignment: .center, spacing: 8) {
+                Text([readout.loop, readout.cycle].compactMap { $0 }.joined(separator: " · "))
+                    .font(.caption).foregroundStyle(Theme.ink3).fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 0)
+                glyph
+            }
+            if let s = readout.secondary {
+                HStack(spacing: 4) {
+                    WaveShareView(share: s, size: 13, color: Theme.ink2, label: "cycle phase")
+                    Text(readout.secondaryWhat).font(.caption2).foregroundStyle(Theme.ink3).lineLimit(1)
+                }
+            }
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    private var shortTitle: some View {
+        Text("\(Text(readout.badge).foregroundStyle(tint)) \(Text(readout.title).foregroundStyle(Theme.ink))")
+            .font(.headline).lineLimit(1)
     }
 
     // MARK: Wide: a column
