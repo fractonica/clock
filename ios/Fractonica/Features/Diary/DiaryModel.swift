@@ -78,6 +78,8 @@ final class DiaryModel {
     @ObservationIgnored private var lastExport: (key: String, url: URL)?
     @ObservationIgnored private let defaults: UserDefaults
     @ObservationIgnored private var thumbnails: [String: Data] = [:]
+    /// False while the options come from a launch argument.
+    @ObservationIgnored private var persists = true
 
     private static let optionsKey = "diary.options.v1"
     private static let uiKey = "diary.ui.v1"
@@ -91,7 +93,15 @@ final class DiaryModel {
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
-        options = defaults.data(forKey: Self.optionsKey).flatMap { try? JSONDecoder().decode(DiaryOptions.self, from: $0) }?.sanitized() ?? DiaryOptions()
+        // `-FXDiaryOptions64 <base64 of the web app's options JSON>`: options for this launch only, never saved (base64,
+        // as the argument domain reads a value in braces as a property list and drops it when it is not one)
+        if let data = DiaryLaunch.base64("FXDiaryOptions64"), let launched = try? JSONDecoder().decode(DiaryOptions.self, from: data) {
+            options = launched.sanitized()
+            persists = false
+            diaryLog.notice("options from the launch arguments")
+        } else {
+            options = defaults.data(forKey: Self.optionsKey).flatMap { try? JSONDecoder().decode(DiaryOptions.self, from: $0) }?.sanitized() ?? DiaryOptions()
+        }
         let ui = defaults.data(forKey: Self.uiKey).flatMap { try? JSONDecoder().decode(UIState.self, from: $0) } ?? UIState()
         follow = ui.follow
         delta = min(range.upperBound, max(range.lowerBound, ui.delta ?? range.lowerBound))
@@ -327,6 +337,7 @@ final class DiaryModel {
     // MARK: Persistence
 
     private func saveOptions() {
+        guard persists else { return }
         if let data = try? JSONEncoder().encode(options) { defaults.set(data, forKey: Self.optionsKey) }
     }
 
@@ -340,6 +351,12 @@ final class DiaryModel {
 enum DiaryLaunch {
     static func string(_ name: String) -> String? {
         UserDefaults.standard.volatileDomain(forName: UserDefaults.argumentDomain)[name].map { "\($0)" }
+    }
+
+    /// Base64 data, its "=" padding optional (an argument with "=" is not a plain property-list string).
+    static func base64(_ name: String) -> Data? {
+        guard let text = string(name) else { return nil }
+        return Data(base64Encoded: text + String(repeating: "=", count: (4 - text.count % 4) % 4))
     }
 
     static func int(_ name: String) -> Int? {

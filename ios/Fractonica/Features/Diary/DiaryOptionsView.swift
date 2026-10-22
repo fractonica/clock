@@ -71,11 +71,11 @@ struct DiaryOptionsView: View {
             if let plan = model.plan {
                 VStack(alignment: .leading, spacing: 6) {
                     HStack(alignment: .firstTextBaseline) {
-                        Text("\(plan.pages.count)")
+                        Text(verbatim: "\(plan.pages.count)")
                             .font(.reading(28, weight: .semibold))
                             .foregroundStyle(Theme.ink)
                             .contentTransition(.numericText())
-                        Text("pages · \((plan.pages.count + 1) / 2) sheets")
+                        Text(verbatim: "pages · \((plan.pages.count + 1) / 2) sheets")
                             .font(.subheadline)
                             .foregroundStyle(Theme.ink2)
                         Spacer()

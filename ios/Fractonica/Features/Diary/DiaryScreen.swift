@@ -260,6 +260,8 @@ private struct DiaryHeader: View {
                         Text(DiaryDelta.name(level: 3, ordinal: path[3]))
                             .font(.title3.weight(.semibold))
                             .foregroundStyle(Theme.ink)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.7)
                         Image(systemName: "chevron.down")
                             .font(.caption.weight(.bold))
                             .foregroundStyle(Theme.ink3)
@@ -285,8 +287,10 @@ private struct DiaryHeader: View {
                 } label: {
                     HStack(spacing: 5) {
                         Circle().fill(Theme.cursor).frame(width: 7, height: 7)
-                        Text("p. \(shown)").font(.reading(13, weight: .medium))
+                        Text(verbatim: "p. \(shown)").font(.reading(13, weight: .medium))
                     }
+                    .lineLimit(1)
+                    .fixedSize()
                     .foregroundStyle(Theme.ink2)
                     .padding(.horizontal, 9)
                     .padding(.vertical, 5)

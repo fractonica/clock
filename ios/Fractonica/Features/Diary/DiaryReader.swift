@@ -65,7 +65,7 @@ struct DiaryReader: View {
         Button("Previous page", systemImage: "chevron.left") { turn(-1, count: count) }
             .disabled(no <= 1)
             .keyboardShortcut(.leftArrow, modifiers: [])
-        Text("\(no) of \(count)")
+        Text(verbatim: "\(no) of \(count)")
             .font(.reading(14, weight: .medium))
             .foregroundStyle(Theme.ink2)
             .fixedSize()

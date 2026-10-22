@@ -88,24 +88,40 @@ struct DiaryOptionForm: View {
     @ViewBuilder
     private var print: some View {
         Section {
-            Toggle(isOn: $model.options.print.twoUp) {
+            Toggle(isOn: $model.options.print.twoUp.animation()) {
                 DiaryRowLabel("Two pages per sheet of paper", hint: DiaryPrint.twoUpLabel(o, pure: pure))
             }
-            Picker("Pairing", selection: $model.options.print.pairing) {
-                Text("Facing pages, as an open book (–|1, 2|3 …)").tag("spreads")
-                Text("In order (1|2, 3|4 …)").tag("sequential")
-                Text("Double-sided, cut and stack").tag("duplex")
-            }
-            .disabled(!o.print.twoUp)
-            Picker("Backs", selection: $model.options.print.turn) {
-                Text("Turned over sideways (flip on short edge)").tag("side")
-                Text("Turned top over bottom (flip on long edge)").tag("top")
-            }
-            .disabled(!o.print.twoUp || o.print.pairing != "duplex")
         } footer: {
-            Text(o.print.twoUp && o.print.pairing == "duplex"
-                 ? "Print the odd pages, put the printed stack back in, print the even pages on the other side. Cut every sheet in half along the marks and lay the left halves on the right halves: the pages are in order."
-                 : "Facing pages print each spread on one sheet; cut or fold the sheets to bind them.")
+            if !o.print.twoUp { Text("Every page of the diary is a page of the PDF.") }
+        }
+        if o.print.twoUp {
+            Section {
+                Picker("Pairing", selection: $model.options.print.pairing.animation()) {
+                    DiaryRowLabel("Facing pages", hint: "As the open book: –|1, 2|3 …").tag("spreads")
+                    DiaryRowLabel("In order", hint: "1|2, 3|4 …").tag("sequential")
+                    DiaryRowLabel("Double-sided", hint: "Cut and stack: the halves fall in order").tag("duplex")
+                }
+                .pickerStyle(.inline)
+                .labelsHidden()
+            } header: {
+                Text("Pairing")
+            } footer: {
+                if o.print.pairing != "duplex" { Text("Each sheet carries two pages side by side; cut or fold the sheets to bind them.") }
+            }
+            if o.print.pairing == "duplex" {
+                Section {
+                    Picker("Backs", selection: $model.options.print.turn) {
+                        DiaryRowLabel("Flip on the short edge", hint: "The sheet turns over sideways").tag("side")
+                        DiaryRowLabel("Flip on the long edge", hint: "The sheet turns top over bottom").tag("top")
+                    }
+                    .pickerStyle(.inline)
+                    .labelsHidden()
+                } header: {
+                    Text("Backs")
+                } footer: {
+                    Text("Print the odd pages, put the printed stack back in, print the even pages on the other side. Cut every sheet in half along the marks and lay the left halves on the right halves: the pages are in order.")
+                }
+            }
         }
         if let plan = model.plan {
             Section("The PDF") {
@@ -379,3 +395,4 @@ struct DiaryOptionForm: View {
         }
     }
 }
+

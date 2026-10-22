@@ -187,7 +187,7 @@ struct DiaryLockSheetRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
-                Text("Sheet \(index + 1)").font(.subheadline.weight(.semibold))
+                Text(verbatim: "Sheet \(index + 1)").font(.subheadline.weight(.semibold))
                 Spacer()
                 Text(kind).font(.caption).foregroundStyle(Theme.teal)
             }

@@ -10,6 +10,8 @@ struct DiaryDeltaPicker: View {
     @Environment(ClockStore.self) private var store
     @Environment(\.dismiss) private var dismiss
 
+    @State private var day: Date?
+
     private static let levelNames = ["Alpha", "Beta", "Gamma", "Delta"]
 
     var body: some View {
@@ -23,6 +25,17 @@ struct DiaryDeltaPicker: View {
                     .tint(Theme.teal)
                 } footer: {
                     Text(followNote)
+                }
+
+                if !settings.pure, let days = dayRange {
+                    Section {
+                        DatePicker(selection: dayBinding, in: days, displayedComponents: .date) {
+                            Label("Holding the day", systemImage: "calendar")
+                        }
+                        .environment(\.timeZone, settings.timeZone)
+                    } footer: {
+                        Text("The diary becomes the Delta that holds this day.")
+                    }
                 }
 
                 Section("Delta") {
@@ -86,6 +99,31 @@ struct DiaryDeltaPicker: View {
         #if os(macOS)
         .frame(minWidth: 420, minHeight: 460)
         #endif
+    }
+
+    /// The days a Delta of the catalogue can hold.
+    private var dayRange: ClosedRange<Date>? {
+        guard let first = DiaryDelta.span(model.range.lowerBound), let last = DiaryDelta.span(model.range.upperBound) else { return nil }
+        return Date(timeIntervalSince1970: first.t0)...Date(timeIntervalSince1970: last.t1 - 1)
+    }
+
+    /// The day picked here while it lies in the diary's Delta, else the Delta's first day.
+    private var dayBinding: Binding<Date> {
+        Binding {
+            if let day, let span = model.span, day.timeIntervalSince1970 >= span.t0, day.timeIntervalSince1970 < span.t1 { return day }
+            return Date(timeIntervalSince1970: model.span?.t0 ?? store.time())
+        } set: { date in
+            day = date
+            // noon of the picked day, so a Delta that turns over during that day goes to the one holding most of it
+            var calendar = Calendar(identifier: .gregorian)
+            calendar.timeZone = settings.timeZone
+            let noon = calendar.date(bySettingHour: 12, minute: 0, second: 0, of: date) ?? date
+            let index = DiaryDelta.index(at: noon.timeIntervalSince1970, range: model.range)
+            if index != model.delta || model.follow {
+                model.choose(delta: index)
+                Haptics.play(.selection)
+            }
+        }
     }
 
     private func pick(level: Int, ordinal: Int) {
