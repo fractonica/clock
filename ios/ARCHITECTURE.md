@@ -15,10 +15,10 @@ isolation: annotate stores `@MainActor`; every FractonicaKit type is `Sendable`.
 | `FractonicaKit/` | The clock engine, a Swift package with golden tests against the JavaScript (its README) | everything |
 | `Fractonica/App/` | Entry point, root layouts, scenes, menu commands, launch hooks, links, notifications | iOS + macOS app |
 | `Fractonica/Core/` | Shared app state and UI parts: the clock, settings, router, wording, transport, toasts, haptics | iOS + macOS app |
-| `Fractonica/Features/<Feature>/` | One folder per feature, with its screen(s) | iOS + macOS app |
+| `Fractonica/Features/<Feature>/` | One folder per feature, with its screen(s); `Features/Intents` holds the App Shortcuts | iOS + macOS app |
 | `Fractonica/Resources/` | App asset catalog (icon, accent, launch colour) | iOS + macOS app |
 | `Shared/` | Theme, backdrop, glyph views, `Screen`, `AppLink`, the timer's `ActivityAttributes` | apps + widget extensions |
-| `Widgets/` | The WidgetKit extension (clock widgets; the timer's Live Activity on iOS) | iOS + macOS widgets |
+| `Widgets/` | The WidgetKit extension: widgets, controls, the timer's Live Activity on iOS (see "Widgets and App Shortcuts") | iOS + macOS widgets |
 | `Support/` | Info.plists and entitlements, **generated** by xcodegen from project.yml | — |
 | `project.yml` | XcodeGen spec: the only source of the Xcode project, plists and entitlements | — |
 | `scripts/` | build.sh, shoot.sh, check.sh, fixture generators, icon generator, copy-web.sh | — |
@@ -97,6 +97,13 @@ background. Pick the slowest cadence that keeps the finest visible thing honest 
 ~7.8 s, the η pair every ~71 s). Never run your own `Timer` for the clock. Content that needs the real instant (an
 animation that runs while the clock is paused) reads `Date.now`, which is the tick's moment.
 
+**Nothing ticks inside a macOS toolbar item through SwiftUI.** Any update of a toolbar item's SwiftUI content makes
+SwiftUI rebuild the toolbar's platform items and AppKit re-lay out the toolbar and update the window's constraints:
+the transport's moment ticking at 30 Hz there during a time-lapse cost ~30 % of a core with an empty screen. The
+transport draws it with `ToolbarTicker` (Core/ToolbarTicker.swift), an AppKit view on the same `ClockTickSchedule`
+that SwiftUI only updates when the clock's base, the wording or the colour change (~4 %). Use it (or keep toolbar
+items static) for any reading in a Mac toolbar.
+
 ### AppSettings — what screens share (src/core/store.js, settings half)
 
 Persisted in UserDefaults (`settings.v1`, one JSON value); every write is validated like the web store (invalid values
@@ -115,6 +122,9 @@ settings = settings` inside `body`.
 | `showLetters` | Bool, false | Watch face period letters |
 | `haptics` | Bool, true | Haptic feedback |
 
+Test hooks never write saved settings: `settings.override(pure:zone:selectedLevel:minDepth:maxDepth:)` shows values
+for this launch only (validated like any write; the `-FXPure` / `-FXZone` arguments and Ladder's hooks use it).
+
 A feature's own preferences (timer presets, alert rules, sound mix …) belong to the feature: its own `@MainActor
 @Observable` store in its folder, persisted under its own UserDefaults key prefixed with the feature name
 (`timer.`, `alerts.`, `sound.` …) or in a file in Application Support.
@@ -124,7 +134,8 @@ A feature's own preferences (timer presets, alert rules, sound mix …) belong t
 `let words = settings.wording` (reading it makes the view follow both pure mode and the zone). Going through it
 guarantees pure mode never prints a Gregorian date or "3 h 20 min":
 
-`date(t)`, `time(t)`, `dateTime(t)`, `long(t)`, `short(t)`, `label(t, relativeTo:)`, `day(t)`, `tag(t)`,
+`date(t)`, `time(t)`, `dateTime(t)`, `long(t)`, `short(t)`, `label(t, relativeTo:)` (SPEC §8: "14:23:07" the same day,
+"Oct 9 14:23" another day, "Oct 9 2027 14:23" another year — the web app leaves that year out), `day(t)`, `tag(t)`,
 `duration(_:at:)`, `countdown(_:at:)`, `relative(_:to:)`, `rates`, `rateLabel(_:)`, `levelChip(_:)` ("η 7"),
 `levelName(_:)`, `levelLabel(_:)`, `levelLength(_:)`; `words.earth` (`EarthFormatter` in the zone) and
 `words.notation` for anything mode-specific.
@@ -168,7 +179,7 @@ stopwatch alerts).
 |---|---|---|
 | Layout | Tabs Now · Cycles · Calendar · Clock · Jump (search role). A group's tab shows its screens behind a segmented control in the navigation bar's centre | `TabView(.sidebarAdaptable)`: every screen in the sidebar under its group; Sound and Focus are screens of their own; Jump is the search item. iPad can collapse the sidebar into a top tab bar |
 | Transport | The tab bar's bottom accessory (Liquid Glass); minimised with the tab bar on scroll | iPad: bottom accessory. Mac: the window toolbar's centre |
-| Now's toolbar | Sound, Focus, Settings | iPad: Focus, Settings. Mac: Focus, Settings in every screen's toolbar |
+| Now's toolbar | Sound, Focus, Settings | iPad: Sound (while it plays), Focus, Settings. Mac: Sound (while it plays), Focus, Settings in every screen's toolbar |
 | Sound | A sheet over Now (medium / large) | A screen |
 | Settings | A sheet | iPad: a sheet. Mac: the Settings window (⌘,) |
 | Focus | A full-screen cover | iPad: a full-screen cover (and a sidebar screen). Mac: its own window that enters full screen (and a sidebar screen) |
@@ -176,7 +187,11 @@ stopwatch alerts).
 `router.show(.timeline)` brings any screen forward in the right way for the layout (tab, segment, sheet, cover,
 window); `router.selection` is the screen in the content area; `router.isCompact` tells which layout is up;
 `router.open(AppLink)` travels to a link's moment and shows its screen. Jump is the `Tab(role: .search)` in both
-layouts (and ⌘K): JumpScreen brings its own `.searchable` field, which iOS 26 shows in the tab bar's place on iPhone.
+layouts. Its field's text, focus and Return live in `JumpSearch.shared` (Core/JumpSearch.swift): on iPhone the compact
+root applies `.searchable` to the search tab's navigation stack (from outside it, so iOS presents it as the search
+tab's field; on the whole `TabView` it would also show in every other tab), and JumpScreen only reads the query; on
+iPad (under the title) and Mac (window toolbar) JumpScreen draws its own field bound to the same query. ⌘K sets
+`JumpSearch.shared.isFocused`, which focuses the field even while Jump already shows.
 
 The shell gives every screen (`ScreenContent` in App/RootView.swift) its own `NavigationStack`, the backdrop, full
 size and the shared toolbar items. A screen therefore:
@@ -224,18 +239,56 @@ requires; Alerts registers its `BGAppRefreshTask` (`app.fractonica.clock.refresh
 platforms. Features never set the delegate. They post with identifier prefixes — `timer.` (Timer and Stopwatch),
 `alert.` (Alerts) — attach an `AppLink`, request authorization themselves at a moment of intent, and share the
 system's budget of 64 pending requests: Alerts keeps at most 60 `alert.` requests pending, so Timer always has room.
+Never call `UNUserNotificationCenter` on the main thread (except `NotificationRouter.install()`, which must set the
+delegate there before launch finishes): it answers over synchronous XPC, and a slow daemon freezes the interface.
+Make the calls from a nonisolated async function, a detached task or a serial queue of your own (Alerts'
+`AlertScheduling`, `TimerNotifications`, `FocusHooks`).
 
 ### macOS
 
 - Scenes (App/FractonicaApp.swift, App/MacScenes.swift): the main `Window` ("main"), the Focus window ("focus",
   hidden title bar, opens full screen), `Settings`, and a `MenuBarExtra` showing the live minor clock ("34η 29ι")
-  with a panel (reading, Open, Focus, Timer, pure mode, Quit). Open windows with `openWindow(id: WindowID.main)`.
+  with a panel (reading, Open, Focus, Timer, Sound on / off, pure mode, Quit). Open windows with
+  `openWindow(id: WindowID.main)`.
 - Menu commands (App/AppCommands.swift), mirroring the web app's keys: Space play / pause, N live, [ ] previous /
-  next cycle, P pure mode, ⌘K Jump, ⇧⌘F Focus, ⌘1…⌘9 Now … Sound, ⌥⌘1…⌥⌘3 Timer, Stopwatch, Alerts, ⌘, Settings.
-  Bare keys yield to a focused text field (verified with AppKit). A feature's own shortcuts go on its controls
+  next cycle, P pure mode, M sound on / off (⇧⌘M on iPad), ⌘K Jump, ⇧⌘F Focus, ⌘1…⌘9 Now … Sound, ⌥⌘1…⌥⌘3 Timer,
+  Stopwatch, Alerts, ⌘, Settings. Bare keys yield to a focused text field (verified with AppKit; on an iPad hardware
+  keyboard that is unverified, which is why Sound takes ⇧⌘M there). A feature's own shortcuts go on its controls
   (`.keyboardShortcut`) or `.onKeyPress` inside its screen and must not reuse these.
+- The window toolbar (every screen): the transport in the centre, then Sound while it plays (its indicator), Focus
+  and Settings. On iOS the Now toolbar has Sound (iPhone always, iPad while it plays), Focus and Settings; the Sound
+  button and sidebar item show `waveform.circle.fill` while the sound plays.
 - The app is sandboxed (user-selected files read-write, printing); widgets are sandboxed too. Dark appearance
   everywhere. No App Group: widgets configure themselves through their own App Intents, not the app's settings.
+
+## Widgets and App Shortcuts
+
+`Widgets/` is one WidgetKit extension compiled for iOS (`FractonicaWidgets`) and macOS (`FractonicaWidgetsMac`) from
+the same sources plus `Shared/`; `FractonicaWidgetsBundle.swift` lists what it offers. Kinds (keep them stable: they
+identify the widgets people have placed):
+
+| Kind | Widget | Families |
+|---|---|---|
+| `app.fractonica.clock.journal` | The journal face | small, large |
+| `app.fractonica.clock.now` | The clock | medium |
+| `app.fractonica.clock.upnext` | Up next: the coming turnovers | small, medium, large |
+| `app.fractonica.clock.rings` | The rings | small, large |
+| `app.fractonica.clock.overview` | The overview (iPad and Mac) | extra large |
+| `app.fractonica.clock.lock` | Lock Screen accessories (iOS) | circular, rectangular, inline |
+| `app.fractonica.clock.control.focus` | Control: open Focus | Control Center (iPhone: also Lock Screen, Action button) |
+| `app.fractonica.clock.control.timer` | Control: open the Timer | Control Center (iPhone: also Lock Screen, Action button) |
+
+On iOS the extension also hosts the timer's Live Activity (Lock Screen and Dynamic Island; its attributes and views
+are in Shared/TimerActivity.swift, shared with the app). Widgets configure themselves through their own App Intents
+(Widgets/Intents: pure mode, the level …), not the app's settings (there is no App Group), and open the app with
+`AppLink`s. Their timelines are pure logic, checked by `Widgets/Checks`; `Widgets/Checks/Render/render.sh OUT_DIR
+[unix time [zone]]` renders every family of every widget at its exact size into contact sheets on the Mac (no Home
+Screen needed), the way to look at a widget change.
+
+`Fractonica/Features/Intents` holds the app's App Intents and App Shortcuts (`FractonicaShortcuts`, available in Siri
+and Spotlight from installation): "What's the Fractonica time?" (`FractonicaTimeIntent`, answered in the background
+in the app's wording, with a snippet), Open Focus and Open Screen (`OpenFocusIntent`, `OpenTimerIntent`,
+`OpenScreenIntent`). `TimeReply`, the answer's pure logic, is checked by its Checks folder.
 
 ## Launch arguments (App/LaunchOptions.swift)
 
@@ -249,14 +302,34 @@ Read from UserDefaults' argument domain, never persisted; they work on iOS (simc
 | `-FXPure 1\|0` | Pure mode for this launch |
 | `-FXZone <IANA id>` | Time zone for this launch (UTC for reproducible shots) |
 | `-FXLink <url>` | Open an `AppLink` as a widget or notification tap does; replaces `-FXTab`, its `t` replaces `-FXTime` |
+| `-FXRate <rate>` | Run a time-lapse at that many displayed seconds per real second (from `-FXTime`, or from now), for profiling and animated shots; negative runs backwards |
+
+Features add their own (`-FXJump…`, `-FXLadder…`, `-FXAlerts…`, `-FXSound…`, `-FXFocus…`; each feature's file lists
+them). How the argument domain reads values:
+
+- A value that starts with `-` is read as the next flag, not as the value: `-FXTime -11253795000` needs the raw-argument
+  fallback LaunchOptions has; prefer values that start otherwise.
+- A value that starts with `{`, `(`, `<` or `"` is parsed as an old-style property list: `"{a = 1;}"` arrives as a
+  dictionary, `"(x, y)"` as an array, `"<41>"` as data, `'"quoted"'` as the string without its quotes, and one that
+  does not parse (`"{1}"`) is dropped, so `string(forKey:)` returns nil. Read raw `CommandLine.arguments` when a hook
+  must take such text (`"plain {x}"` is fine).
+- In zsh (the agents' shell), `$ARGS` does not split into words: write the arguments out or use `${=ARGS}`.
+- zsh has a `log` builtin: read the unified log with `/usr/bin/log show --predicate 'process == "Fractonica"' --info`.
 
 ## Info.plist keys and entitlements in place
 
 iOS app: `UIBackgroundModes` audio + fetch, `BGTaskSchedulerPermittedIdentifiers` [app.fractonica.clock.refresh],
-`NSSupportsLiveActivities`, `CFBundleURLTypes` (fractonica), dark `UIUserInterfaceStyle`, all orientations on iPad,
-portrait + landscape on iPhone. macOS app: `CFBundleURLTypes`; entitlements app-sandbox, files.user-selected.read-write,
-print. Widget extensions: the WidgetKit extension point (macOS: app-sandbox). Notifications, local audio output,
-WKWebView with a custom scheme, `UIApplication.isIdleTimerDisabled` and haptics need nothing more.
+`NSSupportsLiveActivities`, `CADisableMinimumFrameDurationOnPhone` (120 Hz on ProMotion iPhones), `CFBundleURLTypes`
+(fractonica), dark `UIUserInterfaceStyle`, all orientations on iPad, portrait + landscape on iPhone; entitlement
+`com.apple.developer.usernotifications.time-sensitive`. macOS app: `CFBundleURLTypes`; entitlements app-sandbox,
+files.user-selected.read-write, print, `network.client` (the sandboxed WebContent process of any WKWebView dies at
+launch without it, even for a custom-scheme page such as the Diary's), time-sensitive notifications. Widget
+extensions: the WidgetKit extension point (macOS: app-sandbox). Local notifications, local audio output,
+`UIApplication.isIdleTimerDisabled` and haptics need nothing more.
+
+`com.apple.developer.*` entitlements need a provisioning profile: Xcode signing with the team keeps them, while
+`scripts/build.sh mac` signs ad hoc with copies of each target's entitlements without them (resolved per target through
+`$(TARGET_NAME)`), so the ad-hoc app posts time-sensitive notifications as ordinary ones.
 
 ### Numbers in Text
 
@@ -306,10 +379,16 @@ cycle stepping, edge stops, tick scheduling, links). Engine changes are tested w
    ios/scripts/shoot.sh --no-build --device "fx-<agent>" /path/pure.png -FXTab <screen> -FXTime 1791460800 -FXPure 1
    ios/scripts/shoot.sh --no-build --device "fx-<agent>-ipad" --type "iPad Pro 13-inch (M5)" /path/ipad.png -FXTab <screen>
    ```
-   Also try other instants (946684800, 2886085800, near `tMin` / `tMax`), live (no `-FXTime`) and `-FXLink`.
-   `--wait N` gives slow screens time to settle. Launch the Mac app once:
+   Also try other instants (946684800, 2886085800, near `tMin` / `tMax`), live (no `-FXTime`), a time-lapse
+   (`-FXRate 3600`) and `-FXLink`. `--wait N` gives slow screens time to settle. After an Xcode update Xcode's `simctl`
+   waits for an administrator to run `xcodebuild -runFirstLaunch`; shoot.sh notices and uses the installed
+   CoreSimulator's own simctl meanwhile. Launch the Mac app once:
    `open "$DERIVED_DATA/Build/Products/Debug/Fractonica.app" --args -FXTab <screen> -FXTime 1791460800`
    (quit it afterwards; `screencapture` needs Screen Recording permission and may be unavailable).
+   To measure the Mac app's CPU, launch it through `open` (children of the agents' shell run at background priority
+   and starve while other builds run) and keep its window visible: an occluded window stops ticking, and every copy
+   of the app shares one container, window position included. `ps -o cputime= -p PID` twice, 10 s apart, gives the
+   CPU share; `sample PID 3` shows where it goes.
 6. **Check the logic** in a `Checks` folder (above) and run it with `ios/scripts/check.sh`.
 7. **Info.plist keys or entitlements.** First check "Info.plist keys and entitlements in place" above. If your feature
    truly needs another, request it: the target, the key or entitlement, its value and why, as the exact project.yml
