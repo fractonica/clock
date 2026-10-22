@@ -27,6 +27,8 @@ struct DiaryScreen: View {
     @State private var share: DiaryFileRef?
     @State private var saving: DiaryPDFFile?
     @State private var launchExportDone = false
+    @State private var askPage = false
+    @State private var pageText = ""
 
     var body: some View {
         VStack(spacing: 0) {
@@ -80,7 +82,37 @@ struct DiaryScreen: View {
         .onChange(of: model.export) { _, state in
             if case .failed(let why) = state { toasts.show("No PDF: \(why)", for: 4) }
         }
+        .alert("Go to page", isPresented: $askPage) {
+            TextField("Page", text: $pageText)
+                #if os(iOS)
+                .keyboardType(.numberPad)
+                #endif
+            Button("Go") { goToTypedPage() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text(verbatim: "1 – \(model.plan?.pages.count ?? 1)")
+        }
+        .onChange(of: askPage) { _, on in if on { pageText = "" } }
+        #if os(macOS)
+        .background { DiaryKeys(model: model) }
+        #else
+        .onAppear(perform: launchLandscape)
+        #endif
     }
+
+    private func goToTypedPage() {
+        guard let no = Int(pageText.trimmingCharacters(in: .whitespaces)) else { return }
+        model.go(to: no, smooth: false)
+    }
+
+    #if os(iOS)
+    /// `-FXDiaryLandscape 1`: turns an iPhone to landscape when the screen appears (screenshots).
+    private func launchLandscape() {
+        guard DiaryLaunch.flag("FXDiaryLandscape") else { return }
+        let scene = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first
+        scene?.requestGeometryUpdate(.iOS(interfaceOrientations: .landscapeRight)) { _ in }
+    }
+    #endif
 
     private var isCompact: Bool {
         #if os(iOS)
@@ -99,7 +131,7 @@ struct DiaryScreen: View {
                 .accessibilityLabel("Diary pages")
                 .accessibilityHint("Swipe to turn the pages; tap a page to read it large")
             status
-            DiaryPageBar(model: model, showPages: $showPages, export: { exportPDF() })
+            DiaryPageBar(model: model, showPages: $showPages, askPage: $askPage, export: { exportPDF() })
                 .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { barHeight = $0 }
                 .padding(.bottom, 10)
                 .padding(.horizontal, 16)
@@ -371,10 +403,12 @@ private struct DiaryHeader: View {
 
 // MARK: - Page bar
 
-/// The floating glass bar under the pages: all pages, previous / next with the page readout, export.
+/// The floating glass bar under the pages: all pages, previous / next with the page readout (a menu of the book's
+/// sections and "Go to page…"), the open-book switch where there is room, export.
 private struct DiaryPageBar: View {
     let model: DiaryModel
     @Binding var showPages: Bool
+    @Binding var askPage: Bool
     let export: () -> Void
 
     var body: some View {
@@ -392,29 +426,23 @@ private struct DiaryPageBar: View {
                 Image(systemName: "chevron.left").frame(width: 40, height: 40)
             }
             .disabled(first <= 1)
+            #if os(iOS)
             .keyboardShortcut(.leftArrow, modifiers: [])
+            #endif
             .accessibilityLabel("Previous page")
+            .help("Previous page (←)")
 
-            VStack(spacing: 1) {
-                Text(count == 0 ? " " : first == last ? "\(first) of \(count)" : "\(first)–\(last) of \(count)")
-                    .font(.reading(15, weight: .semibold))
-                    .foregroundStyle(Theme.ink)
-                    .contentTransition(.numericText())
-                Text(caption)
-                    .font(.caption2)
-                    .foregroundStyle(Theme.ink2)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-            }
-            .frame(minWidth: 150, maxWidth: model.spread ? 480 : 300)
-            .accessibilityElement(children: .combine)
+            sectionsMenu(first: first, last: last, count: count)
 
             Button { model.step(1) } label: {
                 Image(systemName: "chevron.right").frame(width: 40, height: 40)
             }
             .disabled(count == 0 || last >= count)
+            #if os(iOS)
             .keyboardShortcut(.rightArrow, modifiers: [])
+            #endif
             .accessibilityLabel("Next page")
+            .help("Next page (→)")
 
             if model.wide {
                 Button {
@@ -440,6 +468,49 @@ private struct DiaryPageBar: View {
         .glassEffect(.regular.interactive(), in: .capsule)
         .disabled(model.plan == nil)
         .animation(.snappy, value: model.page)
+    }
+
+    /// The readout; tapping it lists the book's sections (the web preview's section picker) and "Go to page…".
+    private func sectionsMenu(first: Int, last: Int, count: Int) -> some View {
+        Menu {
+            if let plan = model.plan {
+                Section("Sections") {
+                    ForEach(plan.sections) { section in
+                        Button {
+                            model.go(to: section.page, smooth: false)
+                        } label: {
+                            Text(section.title)
+                            Text(verbatim: "p. \(section.page)")
+                        }
+                    }
+                }
+            }
+            Button("Go to Page…", systemImage: "arrow.right.to.line") { askPage = true }
+            Button("All Pages", systemImage: "square.grid.2x2") { showPages = true }
+        } label: {
+            VStack(spacing: 1) {
+                Text(verbatim: count == 0 ? " " : first == last ? "\(first) of \(count)" : "\(first)–\(last) of \(count)")
+                    .font(.reading(15, weight: .semibold))
+                    .foregroundStyle(Theme.ink)
+                    .contentTransition(.numericText())
+                Text(caption)
+                    .font(.caption2)
+                    .foregroundStyle(Theme.ink2)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
+                    .truncationMode(.middle)
+            }
+            .frame(minWidth: 150, maxWidth: model.spread ? 480 : 300)
+            .contentShape(.rect)
+        }
+        .menuStyle(.button)
+        .buttonStyle(.plain)
+        #if os(macOS)
+        .menuIndicator(.hidden)
+        #endif
+        .accessibilityLabel(count == 0 ? "Pages" : "Page \(first == last ? "\(first)" : "\(first) to \(last)") of \(count), \(caption)")
+        .accessibilityHint("Lists the sections of the diary")
+        .help("Sections and pages")
     }
 
     private var caption: String {
@@ -491,7 +562,7 @@ private struct OptionsPresentation: ViewModifier {
             }
         } else {
             content.inspector(isPresented: $isPresented) {
-                DiaryOptionsView(model: .shared)
+                DiaryOptionsView(model: .shared, showsDone: false)
                     #if os(iOS)
                     // the transport floats over the bottom of the inspector on iPad: the last rows scroll clear of it
                     .contentMargins(.bottom, 72, for: .scrollContent)

@@ -29,16 +29,15 @@ struct DiaryReader: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background { Backdrop() }
             .task(id: no) { svg = await model.svg(page: no) }
+            // however the reader closes (Done, a swipe down, Escape), the pages behind it turn to the page read last
+            .onDisappear { model.go(to: no, smooth: false) }
             .navigationTitle(title)
             #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
             #endif
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") {
-                        model.go(to: no, smooth: false)
-                        dismiss()
-                    }
+                    Button("Done") { dismiss() }
                 }
                 #if os(iOS)
                 ToolbarItemGroup(placement: .bottomBar) {

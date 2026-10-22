@@ -74,7 +74,8 @@ final class DiaryModel {
     @ObservationIgnored private lazy var engine: DiaryWebEngine = makeEngine()
     @ObservationIgnored private var pending: Task<Void, Never>?
     @ObservationIgnored private var token = 0
-    @ObservationIgnored private var exportTask: Task<Void, Never>?
+    /// The export being made: Export, Save and Print asked for while it runs all get its PDF.
+    @ObservationIgnored private var exporting: Task<URL?, Never>?
     @ObservationIgnored private var lastExport: (key: String, url: URL)?
     @ObservationIgnored private let defaults: UserDefaults
     @ObservationIgnored private var thumbnails: [String: Data] = [:]
@@ -287,9 +288,18 @@ final class DiaryModel {
 
     // MARK: Export
 
-    /// Makes the PDF of the planned diary (or returns the one made for the same plan) in the temporary folder.
+    /// Makes the PDF of the planned diary (or returns the one made for the same plan) in the temporary folder. A call
+    /// while a PDF is being made waits for that one instead of starting a second.
     func makePDF(method: DiaryPDFMaker.Method = .automatic) async -> URL? {
-        exportTask?.cancel()
+        if let running = exporting { return await running.value }
+        let task = Task { await producePDF(method: method) }
+        exporting = task
+        let url = await task.value
+        exporting = nil
+        return url
+    }
+
+    private func producePDF(method: DiaryPDFMaker.Method) async -> URL? {
         export = .working(nil)
         let key = "\(delta)|\(pure)|\(appZone)|\(optionsJSON)"
         if let last = lastExport, last.key == key, FileManager.default.fileExists(atPath: last.url.path), plan?.final == true {
@@ -304,6 +314,8 @@ final class DiaryModel {
                 if Date.now > deadline { throw DiaryError.pdf("The diary could not be planned.") }
                 try await Task.sleep(for: .milliseconds(100))
             }
+            // the key of what is exported: the options may have changed while waiting
+            let key = "\(delta)|\(pure)|\(appZone)|\(optionsJSON)"
             let doc = try await engine.printDocument()
             let maker = DiaryPDFMaker()
             let result = try await maker.make(doc, method: method) { [weak self] p in self?.export = .working(p) }

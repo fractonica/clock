@@ -5,6 +5,8 @@ import SwiftUI
 /// values, each opening its own form. Changes replan the book at once; the pages behind the sheet follow.
 struct DiaryOptionsView: View {
     let model: DiaryModel
+    /// A sheet has a Done button; the inspector is closed with its toolbar button.
+    var showsDone = true
 
     @Environment(AppSettings.self) private var settings
     @Environment(ToastCenter.self) private var toasts
@@ -53,8 +55,10 @@ struct DiaryOptionsView: View {
             }
             #if os(iOS)
             .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") { dismiss() }
+                if showsDone {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Done") { dismiss() }
+                    }
                 }
             }
             #endif

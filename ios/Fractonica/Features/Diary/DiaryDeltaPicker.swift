@@ -73,8 +73,8 @@ struct DiaryDeltaPicker: View {
                         Text(DiaryDelta.stamp(path)).font(.code(14)).foregroundStyle(Theme.teal)
                     }
                     if let span = model.span {
-                        LabeledContent("Begins") { Text(moment(span.t0)).multilineTextAlignment(.trailing) }
-                        LabeledContent("Ends") { Text(moment(span.t1)).multilineTextAlignment(.trailing) }
+                        LabeledContent("Begins") { momentView(span.t0) }
+                        LabeledContent("Ends") { momentView(span.t1) }
                     }
                     LabeledContent("Holds", value: "5 Nuclides · 385 Helions")
                 } header: {
@@ -133,15 +133,29 @@ struct DiaryDeltaPicker: View {
         Haptics.play(.selection)
     }
 
-    /// A moment in full: "Tue 28 Jul 2026, 07:39" · pure "α#6 β#4 γ#9 δ#3 ε#1 1η 0ι".
-    private func moment(_ t: Double) -> String {
+    /// A moment in full: "Tue 28 Jul 2026, 12:59" over "Delta Trifracton Peak ε#1 1η 0ι" (the web head's
+    /// Fractonica span) · pure "α#6 β#4 γ#9 δ#3 ε#1 1η 0ι".
+    private func momentView(_ t: Double) -> some View {
         let words = settings.wording
-        return words.pure ? words.notation.stamp(at: min(t + 1e-3, store.clock.tMax), upTo: "iota") : words.earth.long(t, seconds: false)
+        let at = min(t + 1e-3, store.clock.tMax)
+        return VStack(alignment: .trailing, spacing: 2) {
+            if words.pure {
+                Text(words.notation.stamp(at: at, upTo: "iota")).font(.code(13))
+            } else {
+                Text(words.earth.long(t, seconds: false))
+                Text(words.notation.dateText(at: at)).font(.caption).foregroundStyle(Theme.ink3)
+            }
+        }
+        .multilineTextAlignment(.trailing)
     }
 
     private var followNote: String {
         let t = store.time()
         if !store.clock.inRange(t) { return "The shown moment is outside the catalogue: the nearest Delta is shown." }
+        // the catalogue's last Delta is cut short by its end: it has no diary
+        if let last = DiaryDelta.span(model.range.upperBound), t >= last.t1 {
+            return "The shown moment lies in the catalogue’s last Delta, which the catalogue cuts short: the diary is the whole Delta before it."
+        }
         return model.follow ? "The diary changes with the displayed time." : "The diary stays on the Delta chosen here."
     }
 }

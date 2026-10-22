@@ -378,6 +378,31 @@ track.addEventListener('keydown', (e) => {
   }
 });
 
+// A mouse wheel (or a vertical swipe on a trackpad) turns one page per gesture: the strip only scrolls sideways, so
+// vertical wheel motion would otherwise do nothing. A turn waits until the wheel has been still for a moment, so the
+// momentum of one swipe never turns several pages. Sideways motion keeps scrolling the strip natively.
+let wheelSum = 0;
+let wheelQuietAt = 0;
+track.addEventListener(
+  'wheel',
+  (e) => {
+    if (e.ctrlKey || Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
+    e.preventDefault();
+    const now = performance.now();
+    const busy = now < wheelQuietAt;
+    wheelQuietAt = now + 180;
+    if (busy) return;
+    wheelSum += e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY;
+    if (Math.abs(wheelSum) < 24) {
+      wheelQuietAt = 0;
+      return;
+    }
+    step(Math.sign(wheelSum));
+    wheelSum = 0;
+  },
+  { passive: false },
+);
+
 // ---- export -------------------------------------------------------------------------------------------------------
 
 function printDoc() {

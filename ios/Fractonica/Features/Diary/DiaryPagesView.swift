@@ -11,6 +11,12 @@ struct DiaryPagesView: View {
         var title: String
         var pages: [DiaryPlan.Page]
         var id: Int { pages.first?.no ?? 0 }
+
+        /// "pp. 12–49" · "p. 1".
+        var range: String {
+            guard let a = pages.first?.no, let b = pages.last?.no else { return "" }
+            return a == b ? "p. \(a)" : "pp. \(a)–\(b)"
+        }
     }
 
     var body: some View {
@@ -38,7 +44,7 @@ struct DiaryPagesView: View {
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 92, maximum: 132), spacing: 14, alignment: .top)],
-                              alignment: .leading, spacing: 16) {
+                              alignment: .leading, spacing: 16, pinnedViews: [.sectionHeaders]) {
                         ForEach(groups(plan)) { group in
                             Section {
                                 ForEach(group.pages) { page in
@@ -53,12 +59,25 @@ struct DiaryPagesView: View {
                                     .id(page.no)
                                 }
                             } header: {
-                                Text(group.title)
-                                    .font(.subheadline.weight(.semibold))
-                                    .foregroundStyle(Theme.ink)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .padding(.top, 10)
-                                    .padding(.horizontal, 2)
+                                // pinned while its pages scroll by, so a page deep in the book still says where it is
+                                HStack(alignment: .firstTextBaseline) {
+                                    Text(group.title)
+                                        .font(.subheadline.weight(.semibold))
+                                        .foregroundStyle(Theme.ink)
+                                    Spacer(minLength: 8)
+                                    Text(verbatim: group.range)
+                                        .font(.reading(12))
+                                        .foregroundStyle(Theme.ink3)
+                                }
+                                .padding(.top, 10)
+                                .padding(.bottom, 6)
+                                .padding(.horizontal, 2)
+                                .background {
+                                    Rectangle()
+                                        .fill(Theme.background.opacity(0.94))
+                                        .padding(.horizontal, -16)
+                                }
+                                .accessibilityAddTraits(.isHeader)
                             }
                         }
                     }
