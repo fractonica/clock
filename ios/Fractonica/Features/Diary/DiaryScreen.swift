@@ -33,6 +33,8 @@ struct DiaryScreen: View {
             DiaryHeader(model: model, showPicker: $showPicker)
             preview
         }
+        // the inspector's column is opaque: the backdrop goes inside it
+        .background { Backdrop() }
         .background {
             ClockTimeline(.periodic(600)) { t in
                 Color.clear.onChange(of: t, initial: true) { _, t in sync(t) }

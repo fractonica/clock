@@ -69,6 +69,8 @@ final class DiaryModel {
     private(set) var appZone = TimeZone.current.identifier
 
     @ObservationIgnored private var started = false
+    /// The displayed time of the last update, for marking its page once a new plan is in.
+    @ObservationIgnored private var lastTime: Double?
     @ObservationIgnored private lazy var engine: DiaryWebEngine = makeEngine()
     @ObservationIgnored private var pending: Task<Void, Never>?
     @ObservationIgnored private var token = 0
@@ -136,7 +138,8 @@ final class DiaryModel {
             if let override = DiaryLaunch.string("FXDiaryLayout"), let l = Layout(rawValue: override) { layout = l }
         }
         if changed { schedule(immediately: plan == nil) }
-        Task { shownPage = await engine.setShown(t) }
+        lastTime = t
+        refreshShown()
     }
 
     func setFollow(_ on: Bool, time t: Double) {
@@ -219,9 +222,11 @@ final class DiaryModel {
             if t == token { phase = .planning }
         case .plan(let p):
             guard p.token == token else { return }
+            diaryLog.notice("plan \(p.token): \(p.pages.count) pages, final \(p.final)")
             if plan?.delta.idx != p.delta.idx || plan?.pages.count != p.pages.count { thumbnails.removeAll() }
             plan = p
             phase = .ready
+            refreshShown()
         case .page(let no, let pair, let spread, let wide):
             page = no
             self.pair = pair
@@ -231,7 +236,17 @@ final class DiaryModel {
         case .tap(let no):
             tapped = no
         case .error(let t, let message):
+            diaryLog.error("host error (\(t ?? -1)): \(message, privacy: .public)")
             if t == nil || t == token { phase = .failed(message) }
+        }
+    }
+
+    /// Marks the page that holds the displayed time (none when it lies outside the planned Delta).
+    private func refreshShown() {
+        let t = lastTime
+        Task { [engine] in
+            let no = await engine.setShown(t)
+            if no != shownPage { shownPage = no }
         }
     }
 
@@ -288,9 +303,11 @@ final class DiaryModel {
             let url = folder.appending(path: Self.fileName(doc.title))
             try result.data.write(to: url, options: .atomic)
             lastExport = (key, url)
+            diaryLog.notice("PDF \(result.pages) pages, \(result.method.rawValue, privacy: .public): \(url.path, privacy: .public)")
             export = .done(url)
             return url
         } catch {
+            diaryLog.error("PDF failed: \(error.localizedDescription, privacy: .public)")
             export = .failed(error.localizedDescription)
             return nil
         }

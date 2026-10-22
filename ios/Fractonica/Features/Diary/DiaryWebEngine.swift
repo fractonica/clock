@@ -59,6 +59,7 @@ final class DiaryWebEngine: NSObject {
     fileprivate func receive(_ body: Any) {
         guard let json = body as? String, let message = DiaryHostMessage(json: json) else { return }
         if case .ready = message {
+            diaryLog.notice("host ready")
             isReady = true
             for script in [insetsScript, layoutScript].compactMap({ $0 }) { run(script) }
             let resumed = waiting
@@ -145,6 +146,7 @@ final class DiaryWebEngine: NSObject {
 
 extension DiaryWebEngine: WKNavigationDelegate {
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        diaryLog.error("web content process terminated")
         isReady = false
         // reload after memory pressure, but never loop when the web process cannot start at all
         let now = Date.now
@@ -160,6 +162,16 @@ extension DiaryWebEngine: WKNavigationDelegate {
     func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction) async -> WKNavigationActionPolicy {
         // the host page only: nothing inside it navigates anywhere else
         navigationAction.request.url?.scheme == DiaryResources.scheme ? .allow : .cancel
+    }
+
+    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: any Error) {
+        diaryLog.error("host page failed to load: \(error.localizedDescription, privacy: .public)")
+        onMessage?(.error(token: nil, message: error.localizedDescription))
+    }
+
+    func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: any Error) {
+        diaryLog.error("host page failed: \(error.localizedDescription, privacy: .public)")
+        onMessage?(.error(token: nil, message: error.localizedDescription))
     }
 }
 

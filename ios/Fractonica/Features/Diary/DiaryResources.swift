@@ -1,4 +1,8 @@
 import Foundation
+import os
+
+/// The Diary's log (`log stream --predicate 'subsystem == "app.fractonica.clock" AND category == "diary"'`).
+let diaryLog = Logger(subsystem: "app.fractonica.clock", category: "diary")
 
 /// Where the diary host's files come from: `fxdiary://app/diary-host.html` and `diary-host.js` are this feature's
 /// Resources/DiaryWeb files (flattened into the bundle root by the build), `fxdiary://app/web/…` is the copy of the web
