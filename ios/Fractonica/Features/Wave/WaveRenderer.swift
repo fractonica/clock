@@ -279,6 +279,44 @@ extension WaveStage {
         let fcur = cur?[level]
         let markers = cur.map { engine.markers(s, $0) } ?? []
         let trF = fcur.map { min(s.fraction, WaveGeometry.travelled(s.idx, $0)) } ?? 0
+
+        // where the markers land, and the badges of those off the stage (or under a floating control), worked out
+        // before any label so the labels keep clear of the badges
+        let inset = 15.0
+        struct Pt {
+            var m: WaveMarker
+            var x: Double
+            var y: Double
+            var inside: Bool
+        }
+        let pts: [Pt] = markers.map { m in
+            let p = view.point(m.x, m.y)
+            let onStage = p.x >= inset && p.x <= size.width - inset && p.y >= inset && p.y <= size.height - inset
+            return Pt(m: m, x: p.x, y: p.y, inside: onStage && !input.avoid.contains { $0.contains(p.x, p.y) })
+        }
+        var badges: [(x: Double, y: Double, m: WaveMarker)] = []
+        var tethers: [(x0: Double, y0: Double, x1: Double, y1: Double, level: Int)] = []
+        for i in 1..<max(1, pts.count) {
+            let a = pts[i - 1]
+            let b = pts[i]
+            if !a.inside && !b.inside { continue }
+            var (x0, y0, x1, y1) = (a.x, a.y, b.x, b.y)
+            if !a.inside {
+                (x0, y0) = dodge(clipToStage(b.x, b.y, a.x, a.y, inset: inset), input.avoid, inset: inset)
+                badges.append((x0, y0, a.m))
+            } else if !b.inside {
+                (x1, y1) = dodge(clipToStage(a.x, a.y, b.x, b.y, inset: inset), input.avoid, inset: inset)
+                badges.append((x1, y1, b.m))
+            }
+            tethers.append((x0, y0, x1, y1, b.m.level))
+        }
+        /// A fixed label at (x, y) would sit on a badge: it gives way (the badge is a control).
+        func underBadge(_ x: Double, _ y: Double) -> Bool {
+            badges.contains { abs($0.x - x) < 26 && abs($0.y - y) < 19 }
+        }
+        if !quiet {
+            for b in badges { labels.occupy(WaveRect(x0: b.x - 12, y0: b.y - 12, x1: b.x + 12, y1: b.y + 12)) }
+        }
         if visible(sf) {
             var rest = Path()
             addArc(&rest, sf, trF, s.fraction)
@@ -305,7 +343,7 @@ extension WaveStage {
                 let n = sf.normal(t)
                 ticks.move(to: CGPoint(x: p.x - n.x * 6, y: p.y - n.y * 6))
                 ticks.addLine(to: CGPoint(x: p.x + n.x * 6, y: p.y + n.y * 6))
-                if !quiet, !(fm.map { hypot(p.x - $0.x, p.y - $0.y) < 22 } ?? false) {
+                if !quiet, !(fm.map { hypot(p.x - $0.x, p.y - $0.y) < 22 } ?? false), !underBadge(p.x + n.x * 17, p.y + n.y * 17) {
                     label(g, s.info.marks[k], at: p.x + n.x * 17, p.y + n.y * 17, color: Theme.ink2, font: .small, opacity: alpha)
                 }
             }
@@ -325,6 +363,7 @@ extension WaveStage {
                 guard sa.r >= 7, visible(sa) else { continue }
                 let p = sa.point(c.fraction / 2)
                 let n = sa.normal(c.fraction / 2)
+                if underBadge(p.x + n.x * 12, p.y + n.y * 12) { continue }
                 let lit = (cc.map { c.idx == $0.idx } ?? false) || hovered(.child, c.level, c.idx)
                 label(g, WaveGeometry.signedLabel(c.j + 1, sweep: c.arc.sweep), at: p.x + n.x * 12, p.y + n.y * 12,
                       color: lit ? .white : color(c.level, 0.9, 74, grey: grey), font: lit ? .labelBold : .label, opacity: alpha)
@@ -339,39 +378,14 @@ extension WaveStage {
 
         // markers and tethers, coarse to fine
         guard !markers.isEmpty else { return }
-        let inset = 15.0
-        struct Pt {
-            var m: WaveMarker
-            var x: Double
-            var y: Double
-            var inside: Bool
-        }
-        let pts: [Pt] = markers.map { m in
-            let p = view.point(m.x, m.y)
-            // a dot under a floating control counts as off the stage: it becomes a badge beside the control
-            let onStage = p.x >= inset && p.x <= size.width - inset && p.y >= inset && p.y <= size.height - inset
-            return Pt(m: m, x: p.x, y: p.y, inside: onStage && !input.avoid.contains { $0.contains(p.x, p.y) })
-        }
         if interactive {
             for q in pts where q.inside { hitMarkers.append(HitMarker(level: q.m.level, idx: q.m.idx, local: q.m.local, x: q.x, y: q.y)) }
         }
-        var badges: [(x: Double, y: Double, m: WaveMarker)] = []
-        for i in 1..<max(1, pts.count) {
-            let a = pts[i - 1]
-            let b = pts[i]
-            if !a.inside && !b.inside { continue }
-            var (x0, y0, x1, y1) = (a.x, a.y, b.x, b.y)
-            if !a.inside {
-                (x0, y0) = dodge(clipToStage(b.x, b.y, a.x, a.y, inset: inset), input.avoid, inset: inset)
-                badges.append((x0, y0, a.m))
-            } else if !b.inside {
-                (x1, y1) = dodge(clipToStage(a.x, a.y, b.x, b.y, inset: inset), input.avoid, inset: inset)
-                badges.append((x1, y1, b.m))
-            }
+        for t in tethers {
             var tether = Path()
-            tether.move(to: CGPoint(x: x0, y: y0))
-            tether.addLine(to: CGPoint(x: x1, y: y1))
-            stroke(&g, tether, color(b.m.level, 0.6, 68, grey: grey), 1.2, dash: b.m.level <= level ? [3, 3] : [])
+            tether.move(to: CGPoint(x: t.x0, y: t.y0))
+            tether.addLine(to: CGPoint(x: t.x1, y: t.y1))
+            stroke(&g, tether, color(t.level, 0.6, 68, grey: grey), 1.2, dash: t.level <= level ? [3, 3] : [])
         }
         // fine markers first, so the coarse ones stay on top of the cluster
         var nowAt: (Double, Double)?

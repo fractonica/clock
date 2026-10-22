@@ -8,6 +8,7 @@ Fractonica/Features/Wave/WaveLabels.swift
 Fractonica/Features/Wave/WaveReadout.swift
 Fractonica/Features/Wave/WaveStage.swift
 Fractonica/Features/Wave/WaveRenderer.swift
+Fractonica/Features/Wave/WaveWheel.swift
 Shared/Theme.swift
 Fractonica/Core/Formatting.swift
 Fractonica/Core/AppSettings.swift

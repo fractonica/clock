@@ -17,6 +17,9 @@ struct WaveStageView: View {
     @State private var barFrame = CGRect.zero
     @State private var zoomFrame = CGRect.zero
     @FocusState private var focused: Bool
+    #if os(macOS)
+    @State private var wheel = WaveWheel()
+    #endif
 
     private struct DragState {
         var id = UUID()
@@ -31,6 +34,8 @@ struct WaveStageView: View {
         var pan = false
         var panBase = WavePoint(x: 0, y: 0)
         var inspecting = false
+        /// A pinch took over this press: the finger left on the glass does nothing until it lifts.
+        var spent = false
     }
 
     private struct PinchState {
@@ -55,6 +60,10 @@ struct WaveStageView: View {
                 .filter { $0.width > 0 }.map { WaveRect(x0: $0.minX - 6, y0: $0.minY - 6, x1: $0.maxX + 6, y1: $0.maxY + 6) },
             bottomInset: barHeight + 12, topInset: zoomFrame.maxY > 0 ? zoomFrame.maxY - 6 : 60, trailingInset: compact ? 0 : 52
         )
+        #if os(macOS)
+        // the wheel acts on this evaluation's controller (its depth and selection)
+        let _ = wireWheel()
+        #endif
         ZStack {
             if model.visible {
                 ClockTimeline(cadence) { t in
@@ -118,6 +127,10 @@ struct WaveStageView: View {
         .onKeyPress(keys: [.leftArrow, .rightArrow, .upArrow, .downArrow, .home, "+", "-", "="]) { press in
             key(press.key)
         }
+        #if os(macOS)
+        .onAppear { wheel.start() }
+        .onDisappear { wheel.stop() }
+        #endif
         .task(id: model.visible) {
             // the -FXWaveInspect launch hook: the tooltip of what lies at a stage point, once the stage has drawn
             guard model.visible, let p = model.takeLaunchInspect() else { return }
@@ -187,9 +200,15 @@ struct WaveStageView: View {
     }
 
     private func dragChanged(_ v: DragGesture.Value) {
-        guard pinch == nil else { return }
+        guard pinch == nil, !(drag?.spent ?? false) else { return }
         let stage = model.stage
         if drag == nil {
+            // a fresh press reports no movement yet; one that arrives already far from its start is the finger left
+            // over from a pinch
+            if hypot(v.translation.width, v.translation.height) > 8 {
+                drag = DragState(start: v.startLocation, pick: nil, target: false, pin: false, spent: true)
+                return
+            }
             let pick = stage.pick(v.startLocation, touch: touch)
             let target = pick.map { $0.kind == .focus || $0.kind == .alpha } ?? false
             let pin = pick?.kind == .sun && stage.sun != nil
@@ -245,7 +264,7 @@ struct WaveStageView: View {
             }
             model.keepDrawing(for: 0.4)
         }
-        guard pinch == nil, let d = drag, !d.inspecting, !d.pan else { return }
+        guard pinch == nil, let d = drag, !d.inspecting, !d.pan, !d.spent else { return }
         let moved = hypot(v.location.x - d.start.x, v.location.y - d.start.y)
         if touch && d.target && !d.scrub {
             // a tap on the arc: travel to that point
@@ -282,6 +301,9 @@ struct WaveStageView: View {
     }
 
     private func hover(_ phase: HoverPhase) {
+        #if os(macOS)
+        if case .active = phase { wheel.hovering = true } else { wheel.hovering = false }
+        #endif
         guard drag == nil || !(drag?.scrub ?? false) else { return }
         switch phase {
         case .active(let p):
@@ -306,7 +328,9 @@ struct WaveStageView: View {
     private func pinchChanged(_ v: MagnifyGesture.Value) {
         let stage = model.stage
         if pinch == nil {
-            drag = nil
+            // the press that began the pinch is spent: lifting one finger must not start a scrub or a pan (a trackpad
+            // pinch has no press)
+            if let d = drag { drag = DragState(id: d.id, start: d.start, pick: nil, target: false, pin: false, spent: true) }
             stage.scrubbing = false
             stage.hover = nil
             model.tip = nil
@@ -349,6 +373,22 @@ struct WaveStageView: View {
         model.adjusted = false
         model.keepDrawing(for: 0.5)
     }
+
+    #if os(macOS)
+    private func wireWheel() {
+        let control = control
+        let model = model
+        wheel.zoom = { dir in control.zoom(dir, quiet: true) }
+        wheel.pan = { dx, dy in
+            let stage = model.stage
+            var u = stage.user
+            u.translation = WavePoint(x: u.translation.x + dx, y: u.translation.y + dy)
+            stage.setUser(u)
+            if !model.adjusted { model.adjusted = true }
+            model.keepDrawing(for: 0.3)
+        }
+    }
+    #endif
 
     private func key(_ key: KeyEquivalent) -> KeyPress.Result {
         switch key {
