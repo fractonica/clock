@@ -1,0 +1,11 @@
+# The app files AlertsChecks.swift compiles against (relative to ios/).
+Fractonica/Features/Alerts/AlertRule.swift
+Fractonica/Features/Alerts/AlertPlanner.swift
+Fractonica/Features/Alerts/AlertText.swift
+Fractonica/Core/Formatting.swift
+Fractonica/Core/AppSettings.swift
+Fractonica/Core/ClockStore.swift
+Fractonica/Core/ClockTimeline.swift
+Shared/Notation+Standard.swift
+Shared/AppLink.swift
+Shared/Screen.swift
