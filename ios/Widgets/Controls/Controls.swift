@@ -3,8 +3,8 @@ import SwiftUI
 import WidgetKit
 
 // Controls for Control Center, the Lock Screen and the Action button (iOS), and Control Center on the Mac: each opens
-// the app on its screen. Their intents are performed by the app (Fractonica/Features/Intents declares the same types),
-// which brings the screen forward; these copies only let the extension name them.
+// the app on its screen. Their intents (Shared/OpenIntents.swift) are compiled into the app too, which the system
+// brings to the front and performs them in.
 
 /// Opens Focus: the clock's rhythm as moving light.
 struct FocusControl: ControlWidget {
@@ -36,20 +36,9 @@ struct TimerControl: ControlWidget {
     }
 }
 
-/// Opens the app in Focus. The app's copy of this type (same name and shape) performs it.
-struct OpenFocusIntent: AppIntent {
-    static let title: LocalizedStringResource = "Open Focus"
-    static let description = IntentDescription("Opens Fractonica in Focus: the clock's rhythm as moving light.")
-    static let supportedModes: IntentModes = .foreground(.immediate)
-
-    func perform() async throws -> some IntentResult { .result() }
-}
-
-/// Opens the app on the Timer. The app's copy of this type (same name and shape) performs it.
-struct OpenTimerIntent: AppIntent {
-    static let title: LocalizedStringResource = "Open Timer"
-    static let description = IntentDescription("Opens Fractonica on the Timer.")
-    static let supportedModes: IntentModes = .foreground(.immediate)
-
-    func perform() async throws -> some IntentResult { .result() }
+/// The extension's half of the shared open intents (Shared/OpenIntents.swift): the system performs them in the app
+/// (their `supportedModes` bring it to the front), never here, so there is nothing to do.
+enum ScreenIntentHandler {
+    @MainActor
+    static func open(_ screen: Screen) {}
 }

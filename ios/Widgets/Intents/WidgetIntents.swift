@@ -73,8 +73,11 @@ struct TimeZoneQuery: EntityStringQuery {
             .map(TimeZoneEntity.init(id:))
     }
 
+    /// This device's zone first, then UTC, then every other zone.
     func suggestedEntities() async throws -> [TimeZoneEntity] {
-        TimeZone.knownTimeZoneIdentifiers.map(TimeZoneEntity.init(id:))
+        let first = [TimeZone.current.identifier, "UTC"]
+        let rest = TimeZone.knownTimeZoneIdentifiers.filter { !first.contains($0) }
+        return (first + rest).map(TimeZoneEntity.init(id:))
     }
 }
 
