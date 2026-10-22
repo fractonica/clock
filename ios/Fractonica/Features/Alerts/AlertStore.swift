@@ -186,7 +186,7 @@ final class AlertStore {
             if launch.live {
                 // -FXAlertsLive: provisional permission needs no prompt, so the real queue can be checked unattended.
                 _ = await AlertScheduling.within(10) {
-                    try? await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .provisional])
+                    await AlertScheduling.requestAuthorization([.alert, .sound, .provisional])
                 }
             }
             if await refreshAuthorization() { await refill() }
@@ -346,7 +346,7 @@ final class AlertStore {
     /// Asks the system for permission (the user chose to turn alerts on), then schedules.
     func requestAuthorization() async {
         guard !launch.isPreview else { return }
-        _ = try? await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound])
+        await AlertScheduling.requestAuthorization([.alert, .sound])
         await refreshAuthorization()
         await refill()
     }
@@ -356,7 +356,7 @@ final class AlertStore {
         let ids = delivered.map(\.id)
         delivered = []
         guard !launch.isPreview, !ids.isEmpty else { return }
-        UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: ids)
+        AlertScheduling.removeDelivered(ids)
     }
 
     // MARK: - Notifications in front
@@ -394,7 +394,9 @@ struct DeliveredAlert: Identifiable, Hashable, Sendable {
 // MARK: - Scheduling (off the main actor)
 
 /// The work of a refill that needs no main actor: planning and rendering (CPU), and talking to the notification
-/// centre.
+/// centre. Every notification-centre call is made here, never on the main thread: the centre answers over synchronous
+/// XPC, and a daemon that is slow or stuck must not freeze the interface (these functions are nonisolated, so they run
+/// on the global executor; the synchronous removals go to a detached task).
 enum AlertScheduling {
     struct Input: Sendable {
         let rules: [AlertRule]
@@ -492,6 +494,7 @@ enum AlertScheduling {
     /// Makes the pending `alert.` requests equal to `requests`: unchanged ones stay, changed or unwanted ones go,
     /// new ones are added. Returns the identifiers held afterwards.
     static func apply(_ requests: [Request]) async -> Set<String> {
+        assertOffMain()
         let center = UNUserNotificationCenter.current()
         let pending = await center.pendingNotificationRequests()
         var held: [String: String] = [:]
@@ -527,7 +530,29 @@ enum AlertScheduling {
         return kept
     }
 
+    /// Asks for permission; returns when the user has answered (or at once when they did before).
+    static func requestAuthorization(_ options: UNAuthorizationOptions) async {
+        assertOffMain()
+        _ = try? await UNUserNotificationCenter.current().requestAuthorization(options: options)
+    }
+
+    /// Takes alerts off the notification list.
+    static func removeDelivered(_ identifiers: [String]) {
+        Task.detached(priority: .utility) {
+            assertOffMain()
+            UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: identifiers)
+        }
+    }
+
+    /// Debug builds stop here if a notification-centre call ever comes back to the main thread.
+    private static func assertOffMain() {
+        #if DEBUG
+        dispatchPrecondition(condition: .notOnQueue(.main))
+        #endif
+    }
+
     static func authorization() async -> AlertStore.Authorization {
+        assertOffMain()
         let settings = await UNUserNotificationCenter.current().notificationSettings()
         switch settings.authorizationStatus {
         case .notDetermined: return .notDetermined
@@ -540,6 +565,7 @@ enum AlertScheduling {
 
     /// Alerts in the notification list, newest first (at most 20).
     static func delivered() async -> [DeliveredAlert] {
+        assertOffMain()
         let list = await UNUserNotificationCenter.current().deliveredNotifications()
         return list.filter { $0.request.identifier.hasPrefix(AlertPlanner.prefix) }
             .map { n in
