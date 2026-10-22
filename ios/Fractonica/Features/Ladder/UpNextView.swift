@@ -38,13 +38,15 @@ struct UpNextView: View {
             ClockTimeline(.periodic(cadence)) { raw in
                 let t = LadderLaunch.shown(raw)
                 let turnovers = memo.turnovers(store.clock, at: t, importance: importance, maxLevel: maxLevel, revision: store.revision)
-                let threshold = store.clock.level(at: t, settings.selectedLevel)?.next.time
-                let next = [turnovers.first?.time, threshold].compactMap { $0 }.min()
+                // the selected level, read once for the strip and for the cadence
+                let selected = store.clock.level(at: t, settings.selectedLevel)
+                let next = [turnovers.first?.time, selected?.next.time].compactMap { $0 }.min()
                 let wanted = LadderCadence.upNext(untilNext: next.map { $0 - t })
                 let animate = memo.passed && !reduceMotion
                 UpNextContent(
                     t: t,
                     turnovers: turnovers,
+                    selected: selected,
                     rows: memo.rows(pure: words.pure, earth: words.earth, ref: t, text: LadderPureText(notation: words.notation)),
                     importance: importance,
                     maxLevel: maxLevel,
@@ -76,12 +78,18 @@ struct UpNextView: View {
         return "Counting \(importance.label) turnovers · \(importance.id) cycles last about \(EarthTime.duration(mean))"
     }
 
+    #if os(macOS)
+    private static let verb = "Click"
+    #else
+    private static let verb = "Tap"
+    #endif
+
     private func note(_ words: Wording) -> String {
         let text = LadderPureText(notation: words.notation)
         let after = words.pure ? text.blinks(0.001) : "1 ms"
         let before = words.pure ? text.blinks(2) : "2 s"
         return "A turnover is the instant a cycle ends and the next one begins; every finer cycle ends with it. "
-            + "Tap a turnover for Just after (\(after) into the next cycle), or its ▶ for Just before (\(before) ahead, then real time)."
+            + "\(Self.verb) a turnover for Just after (\(after) into the next cycle), or its ▶ for Just before (\(before) ahead, then real time)."
             + (words.pure ? " A Blink is the clock’s real-time tick." : "")
     }
 }
@@ -90,6 +98,8 @@ struct UpNextView: View {
 private struct UpNextContent: View {
     let t: Double
     let turnovers: [Turnover]
+    /// The selected level at t (nil outside the catalogue).
+    let selected: LevelReading?
     /// The turnovers after the first, grouped (`TurnoverMemo.rows`).
     let rows: [TurnoverRow]
     let importance: Importance
@@ -112,7 +122,7 @@ private struct UpNextContent: View {
                 )
             } else if let first = turnovers.first {
                 TurnoverHero(turnover: first, t: t, importance: importance, maxLevel: maxLevel, words: words, navigator: navigator, glow: glow, cadence: cadence)
-                ThresholdStrip(t: t, words: words, navigator: navigator, cadence: cadence)
+                ThresholdStrip(t: t, reading: selected, words: words, navigator: navigator, cadence: cadence)
                 TurnoverList(t: t, rows: rows, words: words, navigator: navigator, cadence: cadence)
                 if turnovers.count < Turnovers.listed {
                     // the catalogue ends before the list is full
@@ -122,7 +132,7 @@ private struct UpNextContent: View {
                         .padding(.top, rows.isEmpty ? 0 : 4)
                 }
             } else {
-                ThresholdStrip(t: t, words: words, navigator: navigator, cadence: cadence)
+                ThresholdStrip(t: t, reading: selected, words: words, navigator: navigator, cadence: cadence)
                 UpNextNote(symbol: "flag.checkered", text: lastWords)
             }
         }
@@ -353,6 +363,8 @@ private struct TurnoverGlow: ViewModifier {
 /// The selected level's next quarter threshold, one tap from Just after it.
 private struct ThresholdStrip: View {
     let t: Double
+    /// The selected level at t.
+    let reading: LevelReading?
     let words: Wording
     let navigator: LadderNavigator
     let cadence: Double
@@ -362,8 +374,7 @@ private struct ThresholdStrip: View {
 
     var body: some View {
         let level = settings.selectedLevel
-        let clock = words.notation.model
-        let lv = clock.level(at: t, level)
+        let lv = reading
         let pure = words.pure
         let text = LadderPureText(notation: words.notation)
         Button {
