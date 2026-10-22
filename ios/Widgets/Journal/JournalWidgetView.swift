@@ -10,6 +10,7 @@ struct JournalWidgetView: View {
 
     var snapshot: JournalSnapshot?
     var size: Size
+    @Environment(\.widgetRenderingMode) private var mode
 
     var body: some View {
         if let snapshot {
@@ -52,7 +53,7 @@ struct JournalWidgetView: View {
                 if large {
                     Text(s.caption)
                         .font(.system(size: 12))
-                        .foregroundStyle(Theme.ink3)
+                        .ink(.tertiary)
                         .lineLimit(1)
                         .minimumScaleFactor(0.7)
                         .padding(.top, 10)
@@ -138,7 +139,7 @@ struct JournalWidgetView: View {
                 let emphasis = i == 1 || i == 2
                 Text(line)
                     .font(.system(size: emphasis ? size : size * 0.78, weight: emphasis ? .semibold : .regular))
-                    .foregroundStyle(emphasis ? leadColor(s) : Theme.ink2)
+                    .foregroundStyle(emphasis ? leadColor(s) : Ink.secondary.color(in: mode))
                     .lineLimit(1)
                     .minimumScaleFactor(0.6)
             }

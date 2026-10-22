@@ -44,38 +44,19 @@ struct ClockWidgetView: View {
         VStack(alignment: .leading, spacing: h * 0.035) {
             Text("\(s.major) · \(s.nuclide)")
                 .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(Theme.ink2)
+                .ink(.secondary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.75)
             TokensText(tokens: s.tokens, size: h * 0.3)
-            nextHelion(s)
-                .font(.system(size: 13))
-                .foregroundStyle(Theme.ink2)
+            NextHelionLine(snapshot: s, size: 13)
             footnote(s)
                 .font(.system(size: 11))
-                .foregroundStyle(Theme.ink3)
+                .ink(.tertiary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.75)
         }
     }
 
-    /// "→ 35η in 7ι" (pure: Preons still to start) or "→ 35η 12:56 · 56:12" (Earth, counting down live).
-    @ViewBuilder
-    private func nextHelion(_ s: ClockSnapshot) -> some View {
-        if let next = s.nextHelion {
-            if s.earthDay == nil {
-                Text("→ \(next) in \(s.nextHelionWhen)").lineLimit(1)
-            } else {
-                HStack(spacing: 0) {
-                    Text("→ \(next) at \(s.nextHelionWhen) · ").lineLimit(1)
-                    LiveCountdown(end: s.helionEnd, size: 13, weight: .regular, color: Theme.ink2)
-                        .fixedSize()
-                }
-            }
-        } else {
-            Text("the catalogue ends with this Helion").lineLimit(1).minimumScaleFactor(0.7)
-        }
-    }
 
     @ViewBuilder
     private func footnote(_ s: ClockSnapshot) -> some View {
@@ -87,5 +68,32 @@ struct ClockWidgetView: View {
                 Text(s.solarText)
             }
         }
+    }
+}
+
+/// What the Helion turns into and when: "→ 35η in 7ι" (pure: the Preons still to start) or "→ 35η at 12:56 · 56:12"
+/// (Earth, counting down live); "→ the catalogue ends in 3ι" in the catalogue's last Helion.
+struct NextHelionLine: View {
+    var snapshot: ClockSnapshot
+    var size: CGFloat
+
+    var body: some View {
+        let s = snapshot
+        let next = s.nextHelion ?? "the catalogue ends"
+        Group {
+            if s.earthDay == nil {
+                Text("→ \(next) in \(s.nextHelionWhen)")
+            } else {
+                HStack(spacing: 0) {
+                    Text("→ \(next) at \(s.nextHelionWhen) · ")
+                    LiveCountdown(end: s.helionEnd, size: size, weight: .regular, ink: .secondary)
+                        .fixedSize()
+                }
+            }
+        }
+        .font(.system(size: size))
+        .ink(.secondary)
+        .lineLimit(1)
+        .minimumScaleFactor(0.75)
     }
 }

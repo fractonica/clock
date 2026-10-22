@@ -9,19 +9,22 @@ import WidgetKit
 // MARK: - Counts
 
 /// A reading such as "34η 29ι": numbers in ink, letters (and the Nuclide's "ε#") in their levels' colours, one line,
-/// monospaced digits so a changing count never shifts the layout.
+/// monospaced digits so a changing count never shifts the layout. In the accented mode the letters keep apart from the
+/// numbers by opacity instead of colour.
 struct TokensText: View {
     var tokens: [CountToken]
     var size: CGFloat
     var weight: Font.Weight = .semibold
-    var ink: Color = Theme.ink
+    var ink: Ink = .primary
+    @Environment(\.widgetRenderingMode) private var mode
 
     var body: some View {
-        tokens.enumerated().reduce(Text(verbatim: "")) { text, item in
+        let accented = mode == .accented
+        return tokens.enumerated().reduce(Text(verbatim: "")) { text, item in
             let (i, token) = item
-            let color = Theme.levelColor(token.level)
+            let color = accented ? Color.white.opacity(0.6) : Theme.levelColor(token.level)
             let prefix = Text(verbatim: token.prefix).foregroundStyle(color)
-            let number = Text(verbatim: token.number).foregroundStyle(ink)
+            let number = Text(verbatim: token.number).foregroundStyle(ink.color(in: mode))
             let suffix = Text(verbatim: token.suffix).foregroundStyle(color)
             return Text("\(text)\(i == 0 ? "" : " ")\(prefix)\(number)\(suffix)")
         }
@@ -29,6 +32,55 @@ struct TokensText: View {
         .lineLimit(1)
         .minimumScaleFactor(0.5)
         .accessibilityLabel(tokens.map(\.text).joined(separator: " "))
+    }
+}
+
+// MARK: - Inks
+
+/// Text by rank. In full colour (and in the vibrant mode, which keeps luminance) the ranks are the theme's greys. In
+/// the accented mode (the tinted and clear Home Screen, iOS 18 on) the system paints everything in one tint and keeps
+/// only opacity, so a grey that is merely darker would print as bright as the primary: there the ranks are opacities.
+enum Ink: Sendable {
+    case primary, secondary, tertiary
+
+    func color(in mode: WidgetRenderingMode) -> Color {
+        if mode == .accented {
+            switch self {
+            case .primary: .white
+            case .secondary: .white.opacity(0.72)
+            case .tertiary: .white.opacity(0.5)
+            }
+        } else {
+            switch self {
+            case .primary: Theme.ink
+            case .secondary: Theme.ink2
+            case .tertiary: Theme.ink3
+            }
+        }
+    }
+}
+
+private struct InkStyle: ViewModifier {
+    var ink: Ink
+    @Environment(\.widgetRenderingMode) private var mode
+
+    func body(content: Content) -> some View {
+        content.foregroundStyle(ink.color(in: mode))
+    }
+}
+
+extension View {
+    /// Text of a rank: `.ink(.secondary)` (see `Ink`).
+    func ink(_ ink: Ink) -> some View { modifier(InkStyle(ink: ink)) }
+}
+
+/// A hairline divider: the theme's line, a faint stroke of the tint in the accented mode (where an opaque line would
+/// print as bright as text).
+struct Hairline: View {
+    @Environment(\.widgetRenderingMode) private var mode
+
+    var body: some View {
+        Rectangle().fill(mode == .accented ? Color.white.opacity(0.2) : Theme.line)
     }
 }
 
@@ -208,7 +260,8 @@ struct LiveCountdown: View {
     var end: Double
     var size: CGFloat
     var weight: Font.Weight = .semibold
-    var color: Color = Theme.ink
+    var ink: Ink = .primary
+    @Environment(\.widgetRenderingMode) private var mode
 
     var body: some View {
         #if WIDGET_RENDER
@@ -217,13 +270,13 @@ struct LiveCountdown: View {
         let mm = String(format: "%02d", left / 60 % 60), ss = String(format: "%02d", left % 60)
         Text(left >= 3600 ? "\(left / 3600):\(mm):\(ss)" : "\(left / 60):\(ss)")
             .font(.reading(size, weight: weight))
-            .foregroundStyle(color)
+            .foregroundStyle(ink.color(in: mode))
             .lineLimit(1)
         #else
         let now = Date.now
         Text(timerInterval: now...max(now, Date(timeIntervalSince1970: end)), countsDown: true)
             .font(.reading(size, weight: weight))
-            .foregroundStyle(color)
+            .foregroundStyle(ink.color(in: mode))
             .lineLimit(1)
         #endif
     }
@@ -258,15 +311,15 @@ struct OutOfRangeView: View {
         VStack(spacing: 4) {
             Image(systemName: "circle.dashed")
                 .font(.system(size: compact ? 16 : 22, weight: .light))
-                .foregroundStyle(Theme.ink3)
+                .ink(.tertiary)
             Text("outside the catalogue")
                 .font(.system(size: compact ? 11 : 13))
-                .foregroundStyle(Theme.ink2)
+                .ink(.secondary)
                 .multilineTextAlignment(.center)
             if !compact {
                 Text(Notation.standard.catalogueText())
                     .font(.code(11))
-                    .foregroundStyle(Theme.ink3)
+                    .ink(.tertiary)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)

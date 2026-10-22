@@ -32,14 +32,12 @@ struct OverviewWidgetView: View {
         VStack(alignment: .leading, spacing: 0) {
             Text("\(c.major) · \(c.nuclide)")
                 .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(Theme.ink2)
+                .ink(.secondary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
             TokensText(tokens: c.tokens, size: min(46, h * 0.17))
                 .padding(.top, 2)
-            nextHelion(c)
-                .font(.system(size: 14))
-                .foregroundStyle(Theme.ink2)
+            NextHelionLine(snapshot: c, size: 14)
                 .padding(.top, 4)
             Spacer(minLength: 8)
             HStack(alignment: .bottom, spacing: 18) {
@@ -61,26 +59,11 @@ struct OverviewWidgetView: View {
                 }
             }
             .font(.system(size: 12))
-            .foregroundStyle(Theme.ink3)
+            .ink(.tertiary)
             .lineLimit(1)
             .minimumScaleFactor(0.7)
         }
         .accessibilityElement(children: .combine)
-    }
-
-    @ViewBuilder
-    private func nextHelion(_ c: ClockSnapshot) -> some View {
-        if let next = c.nextHelion {
-            if c.earthDay == nil {
-                Text("→ \(next) in \(c.nextHelionWhen)").lineLimit(1)
-            } else {
-                HStack(spacing: 0) {
-                    Text("→ \(next) at \(c.nextHelionWhen) · ").lineLimit(1)
-                    LiveCountdown(end: c.helionEnd, size: 14, weight: .regular, color: Theme.ink2)
-                        .fixedSize()
-                }
-            }
-        }
     }
 
     // MARK: Dial
@@ -95,7 +78,7 @@ struct OverviewWidgetView: View {
                         Text(Fractonica.periodName(ring.level).text)
                             .foregroundStyle(Theme.levelColor(ring.level))
                         Text("\(ring.local + 1)/\(ring.siblings)")
-                            .foregroundStyle(Theme.ink2)
+                            .ink(.secondary)
                     }
                     .font(.reading(side * 0.05, weight: .medium))
                 }
@@ -114,7 +97,7 @@ struct OverviewWidgetView: View {
                 .font(.system(size: 11, weight: .semibold))
                 .textCase(.uppercase)
                 .tracking(0.5)
-                .foregroundStyle(Theme.ink3)
+                .ink(.tertiary)
                 .padding(.bottom, 6)
             ForEach(u.turnovers.prefix(5)) { t in
                 WidgetLink(link: AppLink(screen: .ladder, time: t.time + 0.001)) {
@@ -122,12 +105,12 @@ struct OverviewWidgetView: View {
                         LevelChip(level: t.level, size: 11)
                             .widgetAccentable()
                         VStack(alignment: .leading, spacing: 0) {
-                            Text(t.begins ?? "the catalogue ends")
+                            Text(t.begins ?? "The catalogue ends")
                                 .font(.system(size: 13, weight: .semibold))
-                                .foregroundStyle(Theme.ink)
+                                .ink(.primary)
                             Text(t.when)
                                 .font(.system(size: 11))
-                                .foregroundStyle(Theme.ink3)
+                                .ink(.tertiary)
                         }
                         .lineLimit(1)
                         .minimumScaleFactor(0.75)
@@ -137,10 +120,11 @@ struct OverviewWidgetView: View {
                             if let text = t.countdown {
                                 Text(text).font(.reading(13))
                             } else {
-                                LiveCountdown(end: t.time, size: 13, weight: .regular, color: Theme.ink2)
+                                LiveCountdown(end: t.time, size: 13, weight: .regular, ink: .secondary)
                             }
                         }
-                        .foregroundStyle(Theme.ink2)
+                        .ink(.secondary)
+                        .multilineTextAlignment(.trailing) // a live timer is as wide as its longest reading
                         .fixedSize()
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)

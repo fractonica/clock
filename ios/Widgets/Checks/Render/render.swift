@@ -59,6 +59,32 @@ struct LockCell<Content: View>: View {
     }
 }
 
+/// A widget on a tinted or clear Home Screen (iOS 18 on): the accented rendering mode. The system drops the container
+/// background and paints every view in one tint, keeping only its opacity; white masked by the content stands in for
+/// that, so ranks drawn with colour alone show up flattened here, as on the device.
+struct TintCell<Content: View>: View {
+    var title: String
+    var size: CGSize
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title).font(.system(size: 11, weight: .medium)).foregroundStyle(.white.opacity(0.55))
+            ZStack {
+                LinearGradient(colors: [Color(red: 0.2, green: 0.26, blue: 0.36), Color(red: 0.12, green: 0.15, blue: 0.22)],
+                               startPoint: .top, endPoint: .bottom)
+                Color.white.mask {
+                    content
+                        .padding(16)
+                        .environment(\.widgetRenderingMode, .accented)
+                }
+            }
+            .frame(width: size.width, height: size.height)
+            .clipShape(RoundedRectangle(cornerRadius: size.height < 200 ? 22 : 24, style: .continuous))
+        }
+    }
+}
+
 /// A sheet: a dark wallpaper with rows of cells.
 struct Sheet<Content: View>: View {
     var title: String
@@ -187,6 +213,31 @@ enum Render {
                 }
             }
         }, to: out.appendingPathComponent("rings.png"))
+
+        write(Sheet(title: "Tinted Home Screen (accented) · \(tag)") {
+            HStack(alignment: .top, spacing: 18) {
+                TintCell(title: "journal η", size: Size.small[0]) {
+                    JournalWidgetView(snapshot: JournalSnapshot(at: t, unit: 5, words: pure), size: .small)
+                }
+                TintCell(title: "journal δ", size: Size.small[0]) {
+                    JournalWidgetView(snapshot: JournalSnapshot(at: t, unit: 3, words: pure), size: .small)
+                }
+                TintCell(title: "rings", size: Size.small[0]) {
+                    RingsWidgetView(snapshot: RingsSnapshot(at: t, words: pure), size: .small)
+                }
+                TintCell(title: "up next", size: Size.small[0]) {
+                    UpNextWidgetView(snapshot: UpNextSnapshot(at: t, words: earth), size: .small)
+                }
+            }
+            HStack(alignment: .top, spacing: 18) {
+                TintCell(title: "clock · pure", size: Size.medium[0]) {
+                    ClockWidgetView(snapshot: ClockSnapshot(at: t, words: pure))
+                }
+                TintCell(title: "up next · Earth", size: Size.medium[0]) {
+                    UpNextWidgetView(snapshot: UpNextSnapshot(at: t, words: earth), size: .medium)
+                }
+            }
+        }, to: out.appendingPathComponent("tinted.png"))
 
         write(Sheet(title: "Overview · \(tag)") {
             ForEach([pure, earth], id: \.pure) { words in

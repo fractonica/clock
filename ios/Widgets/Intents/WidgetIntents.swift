@@ -175,3 +175,27 @@ struct RingsWidgetIntent: WordingIntent {
         self.wording = wording
     }
 }
+
+struct OverviewWidgetIntent: WordingIntent {
+    static let title: LocalizedStringResource = "Overview"
+    static let description = IntentDescription("The clock, every cycle as a dial, and what turns over next.")
+
+    @Parameter(title: "Wording", default: .earth)
+    var wording: WordingOption
+    @Parameter(title: "Time Zone", description: "Leave empty for this device's zone.")
+    var zone: TimeZoneEntity?
+
+    static var parameterSummary: some ParameterSummary {
+        When(\.$wording, .equalTo, .earth) {
+            Summary { \.$wording; \.$zone }
+        } otherwise: {
+            Summary { \.$wording }
+        }
+    }
+
+    init() {}
+
+    init(wording: WordingOption) {
+        self.wording = wording
+    }
+}

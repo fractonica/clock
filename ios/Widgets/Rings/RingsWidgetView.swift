@@ -74,15 +74,15 @@ struct RingsWidgetView: View {
         if let text = t.countdown {
             Text("→ \(t.begins ?? "end") in \(text)")
                 .font(.system(size: size))
-                .foregroundStyle(Theme.ink2)
+                .ink(.secondary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.6)
         } else {
             VStack(spacing: 0) {
                 Text("→ \(t.begins ?? "end")")
                     .font(.system(size: size))
-                    .foregroundStyle(Theme.ink2)
-                LiveCountdown(end: t.time, size: size, weight: .regular, color: Theme.ink2)
+                    .ink(.secondary)
+                LiveCountdown(end: t.time, size: size, weight: .regular, ink: .secondary)
                     .multilineTextAlignment(.center)
             }
         }
@@ -98,7 +98,7 @@ struct RingsWidgetView: View {
                         .foregroundStyle(Theme.levelColor(ring.level))
                     Text("\(ring.local + 1)/\(ring.siblings)")
                         .font(.reading(10))
-                        .foregroundStyle(Theme.ink3)
+                        .ink(.tertiary)
                 }
                 .frame(maxWidth: .infinity)
             }

@@ -20,14 +20,14 @@ struct UpNextWidgetView: View {
                 HStack(spacing: 14) {
                     hero(first, countdownSize: 28)
                         .frame(maxWidth: .infinity)
-                    Rectangle().fill(Theme.line).frame(width: 1)
+                    Hairline().frame(width: 1)
                     rows(Array(s.turnovers.dropFirst().prefix(3)), compact: true)
                         .frame(maxWidth: .infinity)
                 }
             case .large:
                 VStack(alignment: .leading, spacing: 12) {
                     hero(first, countdownSize: 40)
-                    Rectangle().fill(Theme.line).frame(height: 1)
+                    Hairline().frame(height: 1)
                     rows(Array(s.turnovers.dropFirst().prefix(5)), compact: false)
                     Spacer(minLength: 0)
                 }
@@ -49,7 +49,7 @@ struct UpNextWidgetView: View {
                     .font(.system(size: 11, weight: .semibold))
                     .textCase(.uppercase)
                     .tracking(0.5)
-                    .foregroundStyle(Theme.ink3)
+                    .ink(.tertiary)
             }
             if size == .large {
                 Color.clear.frame(height: 10)
@@ -58,21 +58,21 @@ struct UpNextWidgetView: View {
             }
             Text(t.title)
                 .font(.system(size: size == .large ? 20 : 15, weight: .semibold))
-                .foregroundStyle(Theme.ink)
+                .ink(.primary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
             HStack(alignment: .firstTextBaseline, spacing: 4) {
                 if t.countdown != nil {
-                    Text("in").font(.system(size: countdownSize * 0.45, weight: .medium)).foregroundStyle(Theme.ink3)
+                    Text("in").font(.system(size: countdownSize * 0.45, weight: .medium)).ink(.tertiary)
                 }
-                countdown(t, size: countdownSize, color: Theme.ink)
+                countdown(t, size: countdownSize, ink: .primary)
             }
             .padding(.top, 1)
             LiveBar(range: t.start...t.time, color: Theme.levelColor(t.level), thickness: size == .large ? 4 : 3)
                 .padding(.vertical, size == .large ? 8 : 6)
             Text(t.when)
                 .font(.system(size: 12))
-                .foregroundStyle(Theme.ink3)
+                .ink(.tertiary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
         }
@@ -87,7 +87,7 @@ struct UpNextWidgetView: View {
                 // the closing cycles all end with the catalogue
                 Text("Nothing else turns over before the catalogue ends.")
                     .font(.system(size: 12))
-                    .foregroundStyle(Theme.ink3)
+                    .ink(.tertiary)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
             ForEach(list) { t in
@@ -105,25 +105,26 @@ struct UpNextWidgetView: View {
             LevelChip(level: t.level, size: 11)
                 .widgetAccentable()
             VStack(alignment: .leading, spacing: 1) {
-                Text(t.begins ?? "the catalogue ends")
+                Text(t.begins ?? "The catalogue ends")
                     .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(Theme.ink)
+                    .ink(.primary)
                     .lineLimit(1)
                     .minimumScaleFactor(0.75)
                 if compact {
                     // a narrow column: the countdown under the name
-                    countdown(t, size: 12, color: Theme.ink2, weight: .regular)
+                    countdown(t, size: 12, ink: .secondary, weight: .regular)
                 } else {
                     Text(t.when)
                         .font(.system(size: 11))
-                        .foregroundStyle(Theme.ink3)
+                        .ink(.tertiary)
                         .lineLimit(1)
                 }
             }
             .layoutPriority(1)
             if !compact {
                 Spacer(minLength: 4)
-                countdown(t, size: 15, color: Theme.ink2, weight: .regular)
+                countdown(t, size: 15, ink: .secondary, weight: .regular)
+                    .multilineTextAlignment(.trailing) // a live timer is as wide as its longest reading: keep it right
                     .fixedSize()
             }
         }
@@ -134,15 +135,15 @@ struct UpNextWidgetView: View {
 
     /// Pure: the span still to come ("5η 12ι"); Earth: live under a day ("1:05:12"), a static span beyond ("3 d 04 h").
     @ViewBuilder
-    private func countdown(_ t: Turnover, size: CGFloat, color: Color, weight: Font.Weight = .semibold) -> some View {
+    private func countdown(_ t: Turnover, size: CGFloat, ink: Ink, weight: Font.Weight = .semibold) -> some View {
         if let text = t.countdown {
             Text(text)
                 .font(.reading(size, weight: weight))
-                .foregroundStyle(color)
+                .ink(ink)
                 .lineLimit(1)
                 .minimumScaleFactor(0.6)
         } else {
-            LiveCountdown(end: t.time, size: size, weight: weight, color: color)
+            LiveCountdown(end: t.time, size: size, weight: weight, ink: ink)
                 .minimumScaleFactor(0.6)
         }
     }
