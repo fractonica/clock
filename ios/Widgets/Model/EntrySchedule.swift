@@ -22,6 +22,8 @@ enum WidgetChange: Hashable, Sendable {
     /// A countdown to `end` shown in whole `step`s ("3 d 04 h" for an hour): it changes each time a whole step is
     /// used up.
     case countdown(to: Double, step: Double)
+    /// A fixed instant where nothing drawn changes but the entry's relevance does (the lead before a turnover).
+    case moment(Double)
 
     /// Readings are taken this long after a change, so a boundary computed a hair early (the engine rounds instants
     /// to whole milliseconds) still reads the new state.
@@ -54,6 +56,8 @@ enum WidgetChange: Hashable, Sendable {
             let left = end - at
             let whole = (left / step).rounded(.down)
             next = left > 0 && step > 0 ? end - whole * step : nil
+        case .moment(let moment):
+            next = moment
         }
         guard let next, next > t, next <= clock.tMax else { return nil }
         return next

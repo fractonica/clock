@@ -15,22 +15,24 @@ struct FractonicaTimeIntent: AppIntent {
     @MainActor
     func perform() async throws -> some IntentResult & ReturnsValue<String> & ProvidesDialog & ShowsSnippetView {
         let settings = AppSettings.shared
-        guard let reply = TimeReply(at: Date.now.timeIntervalSince1970, pure: settings.pure, zone: settings.timeZone) else {
-            return .result(value: "", dialog: "The clock is outside its catalogue.", view: TimeSnippet(reply: nil))
+        let now = Date.now.timeIntervalSince1970
+        guard let reply = FractonicaTimeReply(at: now, pure: settings.pure, zone: settings.timeZone) else {
+            return .result(value: "", dialog: "The clock is outside its catalogue.",
+                           view: FractonicaTimeSnippet(reply: nil))
         }
         return .result(
             value: reply.stamp,
             dialog: IntentDialog(full: LocalizedStringResource(stringLiteral: reply.spoken),
                                  supporting: LocalizedStringResource(stringLiteral: "\(reply.clockText) · \(reply.date)")),
-            view: TimeSnippet(reply: reply)
+            view: FractonicaTimeSnippet(reply: reply)
         )
     }
 }
 
 /// The snippet under Siri's answer: the Helion's pair beside the minor clock, the date, the stamp and (Earth words)
 /// the Earth moment.
-struct TimeSnippet: View {
-    let reply: TimeReply?
+struct FractonicaTimeSnippet: View {
+    let reply: FractonicaTimeReply?
 
     var body: some View {
         Group {
@@ -70,7 +72,7 @@ struct TimeSnippet: View {
     }
 
     /// "34η 29ι 21λ": numbers in ink, letters in their levels' colours.
-    private func clockText(_ reply: TimeReply) -> some View {
+    private func clockText(_ reply: FractonicaTimeReply) -> some View {
         reply.clock.enumerated().reduce(Text(verbatim: "")) { text, item in
             let (i, part) = item
             let number = Text(verbatim: "\(part.number)").foregroundStyle(Theme.ink)

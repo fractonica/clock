@@ -34,6 +34,12 @@ enum SnapshotTimeline {
             return SnapshotEntry(date: Date(timeIntervalSince1970: t), snapshot: s, relevance: s.flatMap { relevance($0, t) })
         }
         let full = times.count >= EntrySchedule.maxEntries
+        if !full, start + horizon >= clock.tMax, let last = times.last, last < clock.tMax {
+            // the catalogue ends inside this timeline: from that instant on the tidy out-of-range state, for good
+            // (rather than the last reading standing, its countdowns at zero, until the next reload)
+            let end = SnapshotEntry<Snapshot>(date: Date(timeIntervalSince1970: clock.tMax), snapshot: nil)
+            return Timeline(entries: entries + [end], policy: .never)
+        }
         let reload = full ? times[times.count - 1] : start + horizon
         return Timeline(entries: entries, policy: .after(Date(timeIntervalSince1970: reload)))
     }

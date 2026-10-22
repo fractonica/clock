@@ -83,6 +83,22 @@ enum WidgetChecks {
         check(upE?.turnovers.last?.countdown?.hasSuffix(" d") == true || upE?.turnovers.last?.countdown?.hasSuffix(" h") == true,
               "Earth: a far turnover is a static span: \(upE?.turnovers.last?.countdown ?? "nil")")
 
+        // the shortest unit listed (the web card's importance)
+        let fromDelta = UpNextSnapshot(at: a, words: pure, finest: 3)
+        check(fromDelta?.turnovers.map(\.level) == [3, 2, 1, 0], "from the Delta: δ γ β α: \(fromDelta?.turnovers.map(\.level) ?? [])")
+        check(fromDelta?.turnovers.first?.countdown == "43η 7ι", "from the Delta: \(fromDelta?.turnovers.first?.countdown ?? "nil")")
+        check(UpNextSnapshot.levels(from: 4) == [4, 3, 2, 1, 0] && UpNextSnapshot.levels(from: 2) == [2, 1, 0], "levels from a unit up")
+        let live = 1_792_672_927.0 // ε#1 24η: the Nuclide ends before the Delta
+        let fromNuclide = UpNextSnapshot(at: live, words: earth, finest: 4)
+        check(fromNuclide?.turnovers.first?.level == 4 && fromNuclide?.turnovers.first?.begins == "ε#2",
+              "from the Nuclide: ε#2 first: \(String(describing: fromNuclide?.turnovers.first))")
+        // Earth entries are sparse: one where the Smart Stack lead before the Nuclide's end begins
+        if let end = fromNuclide?.turnovers.first?.time {
+            let times = EntrySchedule.times(from: end - 6 * 3600, horizon: 7 * 3600) { UpNextSnapshot.changes(at: $0, words: earth, finest: 4) }
+            check(times.contains(end - UpNextSnapshot.relevanceLead), "an Earth entry where the lead before a Nuclide's end begins")
+            check(times.contains(end), "an Earth entry at the Nuclide's end")
+        }
+
         let rings = RingsSnapshot(at: a, words: pure)
         check(rings?.rings.map(\.level) == Array(0...6), "rings α … η")
         check(rings?.rings.allSatisfy { $0.phase >= 0 && $0.phase < 1 && $0.local < $0.siblings } == true, "ring readings in range")
@@ -147,6 +163,14 @@ enum WidgetChecks {
                 // Earth turnovers counting down live change nothing at a Preon start
                 expectHonest("up next \(mode)", from: start, exactChanges: words.pure, changes: { UpNextSnapshot.changes(at: $0, words: words) }) { t in
                     UpNextSnapshot(at: t, words: words).map { $0.turnovers.map { "\($0.level) \($0.begins ?? "") \($0.when) \($0.countdown ?? "")" }.joined(separator: "|") }
+                }
+                for finest in [4, 3] {
+                    expectHonest("up next from \(finest) \(mode)", from: start, exactChanges: false,
+                                 changes: { UpNextSnapshot.changes(at: $0, words: words, finest: finest) }) { t in
+                        UpNextSnapshot(at: t, words: words, finest: finest).map {
+                            $0.turnovers.map { "\($0.level) \($0.begins ?? "") \($0.when) \($0.countdown ?? "")" }.joined(separator: "|")
+                        }
+                    }
                 }
                 expectHonest("rings \(mode)", from: start, exactChanges: words.pure, changes: { _ in RingsSnapshot.changes(words: words) }) { t in
                     RingsSnapshot(at: t, words: words).map { "\($0.tokens.map(\.text)) \($0.helionPair) \($0.next?.countdown ?? "") \($0.next?.when ?? "")" }

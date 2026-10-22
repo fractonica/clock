@@ -220,7 +220,7 @@ struct PairGlyphs: View {
 
     var body: some View {
         OdometerView(digits: digits, strokes: 2, color: color, spacing: PairView.gap, lineWidth: lineWidth)
-            .accessibilityLabel(Text("phase \(digits.first ?? 0) and \(digits.last ?? 0) of 256"))
+            .accessibilityLabel(Text(verbatim: "phase \(digits.reduce(0) { $0 * 16 + $1 } + 1) of 256"))
     }
 }
 

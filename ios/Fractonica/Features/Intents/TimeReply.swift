@@ -4,7 +4,7 @@ import Foundation
 /// What "What's the Fractonica time?" answers at an instant: the words Siri speaks, the minor clock, the short date and
 /// the stamp shown in the snippet, and the Earth moment unless pure mode is on. Pure logic (checked by
 /// Features/Intents/Checks).
-struct TimeReply: Hashable, Sendable {
+struct FractonicaTimeReply: Hashable, Sendable {
     /// "It's Helion 34, Preon 29, Flavon 21 of the 5th Nuclide of Delta Trifracton, in its End quarter."
     let spoken: String
     /// "34η 29ι 21λ" as (level, number, letter) parts, for colouring.

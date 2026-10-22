@@ -46,6 +46,29 @@ enum JournalUnitOption: String, AppEnum {
     ]
 }
 
+/// Up next's shortest unit: the list starts there and goes up to the Alpha (the web card's importance, α–η … α–γ).
+enum UpNextUnitOption: String, AppEnum {
+    case helion, nuclide, delta, gamma
+
+    /// The finest level listed (`UpNextSnapshot.levels(from:)`).
+    var level: Int {
+        switch self {
+        case .helion: 6
+        case .nuclide: 4
+        case .delta: 3
+        case .gamma: 2
+        }
+    }
+
+    static let typeDisplayRepresentation: TypeDisplayRepresentation = "Shortest Unit"
+    static let caseDisplayRepresentations: [UpNextUnitOption: DisplayRepresentation] = [
+        .helion: DisplayRepresentation(title: "Helion", subtitle: "η ε δ γ β α: every Helion and up"),
+        .nuclide: DisplayRepresentation(title: "Nuclide", subtitle: "ε δ γ β α: from the Nuclide up"),
+        .delta: DisplayRepresentation(title: "Delta", subtitle: "δ γ β α: from the Delta up"),
+        .gamma: DisplayRepresentation(title: "Gamma", subtitle: "γ β α: from the Gamma up"),
+    ]
+}
+
 /// An IANA time zone.
 struct TimeZoneEntity: AppEntity {
     let id: String
@@ -73,8 +96,11 @@ struct TimeZoneQuery: EntityStringQuery {
             .map(TimeZoneEntity.init(id:))
     }
 
+    /// This device's zone first, then UTC, then every other zone.
     func suggestedEntities() async throws -> [TimeZoneEntity] {
-        TimeZone.knownTimeZoneIdentifiers.map(TimeZoneEntity.init(id:))
+        let first = [TimeZone.current.identifier, "UTC"]
+        let rest = TimeZone.knownTimeZoneIdentifiers.filter { !first.contains($0) }
+        return (first + rest).map(TimeZoneEntity.init(id:))
     }
 }
 
@@ -132,6 +158,8 @@ struct UpNextWidgetIntent: WordingIntent {
     static let title: LocalizedStringResource = "Up Next"
     static let description = IntentDescription("The next turnover of every unit, from the Helion to the Alpha.")
 
+    @Parameter(title: "From", description: "The shortest unit listed; longer ones follow.", default: .helion)
+    var from: UpNextUnitOption
     @Parameter(title: "Wording", default: .earth)
     var wording: WordingOption
     @Parameter(title: "Time Zone", description: "Leave empty for this device's zone.")
@@ -139,16 +167,17 @@ struct UpNextWidgetIntent: WordingIntent {
 
     static var parameterSummary: some ParameterSummary {
         When(\.$wording, .equalTo, .earth) {
-            Summary { \.$wording; \.$zone }
+            Summary { \.$from; \.$wording; \.$zone }
         } otherwise: {
-            Summary { \.$wording }
+            Summary { \.$from; \.$wording }
         }
     }
 
     init() {}
 
-    init(wording: WordingOption) {
+    init(wording: WordingOption, from: UpNextUnitOption = .helion) {
         self.wording = wording
+        self.from = from
     }
 }
 

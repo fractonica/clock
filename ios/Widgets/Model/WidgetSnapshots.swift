@@ -168,43 +168,56 @@ struct Turnover: Hashable, Sendable, Identifiable {
 }
 
 /// The next turnover of every unit from the Helion up (η ε δ γ β α), earliest first: the moments the clock's counts
-/// roll over, from hours to decades away. Where several roll over together the row names the coarsest.
+/// roll over, from hours to decades away. Where several roll over together the row names the coarsest. `finest` drops
+/// the shorter units, like the web card's importance (α–η … α–γ): from the Nuclide up the list starts with ε.
 struct UpNextSnapshot: Hashable, Sendable {
-    /// The levels whose next end is listed, finest first.
+    /// The levels whose next end is listed, finest first: the named units (ζ has no name of its own).
     static let levels = [6, 4, 3, 2, 1, 0]
+
+    /// The levels listed from `finest` up.
+    static func levels(from finest: Int) -> [Int] { levels.filter { $0 <= finest } }
     /// Earth countdowns run live (`Text(timerInterval:)`) when the event is closer than this; farther ones are static
     /// "3 d 04 h" spans, refreshed by the timeline (an entry every Preon).
     static let liveLimit = 86_400.0
     /// The year of Earth countdowns ("4 y 331 d", EarthTime.countdown): 365.25 days.
     static let yearSeconds = 31_557_600.0
+    /// How long before a Nuclide or a longer cycle turns over the widget asks Smart Stacks to come forward.
+    static let relevanceLead = 900.0
 
     let turnovers: [Turnover]
     let pure: Bool
 
     /// What the list shown from t on follows: pure countdowns count Preons (an entry at every Preon start, which is
     /// also where any of the listed cycles ends). Earth countdowns under a day run by themselves, so Earth words
-    /// follow only the Helion's end (where every listed cycle ends), midnight (the labels of moments) and every whole
-    /// hour of a static "3 d 04 h" span: a few dozen entries a day instead of one every Preon.
-    static func changes(at t: Double, words: WidgetWords) -> Set<WidgetChange> {
-        var changes: Set<WidgetChange> = [.cycle(level: words.pure ? 8 : 6)]
+    /// follow only the end of the finest listed cycle (where every listed cycle ends), midnight (the labels of moments)
+    /// and every whole hour of a static "3 d 04 h" span: a few dozen entries a day instead of one every Preon.
+    static func changes(at t: Double, words: WidgetWords, finest: Int = 6) -> Set<WidgetChange> {
+        let listed = levels(from: finest)
+        // the finest listed cycle ends wherever any listed cycle ends
+        var changes: Set<WidgetChange> = [.cycle(level: words.pure ? 8 : listed.first ?? 6)]
         guard !words.pure else { return changes }
         changes.insert(.midnight(zone: words.earth.zone))
         let clock = words.notation.model
-        for level in levels {
+        for level in listed {
             if let end = clock.level(at: t + WidgetChange.settle, level)?.end, end - t >= liveLimit {
                 // "9 d 02 h" drops every hour; "4 y 331 d" once a day, always a whole number of quarter days before
                 // the end (a year of the countdown is 1461 of them)
                 changes.insert(.countdown(to: end, step: end - t > Self.yearSeconds ? 21_600 : 3600))
             }
+            // Earth entries can be hours apart: one where the Smart Stack lead before a major turnover begins (pure
+            // ones come every Preon, inside that lead anyway)
+            if level <= 4, let end = clock.level(at: t + WidgetChange.settle, level)?.end, end - t > Self.relevanceLead {
+                changes.insert(.moment(end - Self.relevanceLead))
+            }
         }
         return changes
     }
 
-    init?(at t: Double, words: WidgetWords) {
+    init?(at t: Double, words: WidgetWords, finest: Int = 6) {
         let clock = words.notation.model
         guard let preon = clock.level(at: t, 8) else { return nil }
         var byTime: [Double: Turnover] = [:]
-        for level in Self.levels {
+        for level in Self.levels(from: finest) {
             guard let reading = clock.level(at: t, level) else { continue }
             // the coarsest level wins where several end together; levels are visited finest first
             let begins = reading.clipped ? nil : words.nextCycleName(level: level, cycle: reading.cycle)
