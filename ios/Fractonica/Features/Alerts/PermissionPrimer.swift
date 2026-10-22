@@ -76,9 +76,10 @@ struct PermissionPrimer: View {
 
     private var explanation: String {
         #if os(iOS)
-        "Your alerts arrive as notifications, on time even while Fractonica is closed. iOS asks you once; you can change it later in Settings."
+        let system = UIDevice.current.userInterfaceIdiom == .pad ? "iPadOS" : "iOS"
+        return "Your alerts arrive as notifications, on time even while Fractonica is closed. \(system) asks you once; you can change it later in Settings."
         #else
-        "Your alerts arrive as notifications, on time even while Fractonica is closed. macOS asks you once; you can change it later in System Settings."
+        return "Your alerts arrive as notifications, on time even while Fractonica is closed. macOS asks you once; you can change it later in System Settings."
         #endif
     }
 
