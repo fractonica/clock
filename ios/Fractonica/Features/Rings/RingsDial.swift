@@ -25,6 +25,8 @@ struct RingsDial: View {
     @FocusState private var focused: Bool
     @State private var scrub: Scrub?
     @State private var lastLongPress = Date.distantPast
+    /// A launch argument's virtual pointer (screenshots of the tooltip).
+    @State private var virtualPointer: RingsVirtualPointer?
 
     private let clock = FractonicaClock.shared
     private let cycles = RingsCycles()
@@ -74,7 +76,10 @@ struct RingsDial: View {
             target: { pointerTarget(at: $0, layout: layout, range: range) },
             onTarget: { pointer = $0 },
             showsTip: scrub == nil && model.preview == nil && !model.outOfRange,
-            tip: { RingsHoverTip(target: $0, selected: $0.level == selected) }
+            tip: { RingsHoverTip(target: $0, selected: $0.level == selected) },
+            virtualPointer: virtualPointer.flatMap { v in
+                v.ring < layout.count ? layout.point(radius: layout.track(v.ring).mid, phase: v.phase) : nil
+            }
         ))
         #if os(macOS)
         .contextMenu { contextMenu(layout: layout, range: range, selected: selected) }
@@ -95,6 +100,7 @@ struct RingsDial: View {
             // after the first layout pass, when the dial has its real size
             try? await Task.sleep(for: .milliseconds(600))
             model.takePendingPreview(range: model.range(settings), at: store.time())
+            virtualPointer = model.takePendingHover(range: model.range(settings))
         }
         .onChange(of: store.revision) { frozen.reset() }
         .focusable()
@@ -391,6 +397,7 @@ private struct DialGestures: ViewModifier {
     let onTarget: (RingsPointerTarget?) -> Void
     let showsTip: Bool
     let tip: (RingsPointerTarget) -> RingsHoverTip
+    var virtualPointer: CGPoint?
 
     /// The pointer and its target live here, so a moving pointer redraws only the tip, not the dial.
     @State private var point: CGPoint?
@@ -404,13 +411,23 @@ private struct DialGestures: ViewModifier {
             .onContinuousHover { phase in
                 if case .active(let p) = phase { track(p) } else { track(nil) }
             }
+            .onChange(of: virtualPointer) { _, p in if let p { track(p) } }
             .overlay(alignment: .topLeading) {
                 if showsTip, let p = point, let c = current {
-                    // beside the pointer, on whichever side keeps it over the dial
-                    tip(c)
-                        .fixedSize()
-                        .alignmentGuide(.leading) { d in p.x > layout.size * 0.55 ? d.width - p.x + 12 : -(p.x + 16) }
-                        .alignmentGuide(.top) { d in p.y > layout.size * 0.6 ? d.height - p.y + 12 : -(p.y + 18) }
+                    // hung from a point-sized anchor at the pointer, on whichever side keeps it over the dial
+                    let left = p.x > layout.size * 0.55
+                    let up = p.y > layout.size * 0.6
+                    Color.clear
+                        .frame(width: 0, height: 0)
+                        .overlay(alignment: Alignment(horizontal: left ? .trailing : .leading, vertical: up ? .bottom : .top)) {
+                            tip(c)
+                                .fixedSize()
+                                .padding(.leading, left ? 0 : 16)
+                                .padding(.trailing, left ? 12 : 0)
+                                .padding(.top, up ? 0 : 18)
+                                .padding(.bottom, up ? 12 : 0)
+                        }
+                        .offset(x: p.x, y: p.y)
                         .allowsHitTesting(false)
                 }
             }
