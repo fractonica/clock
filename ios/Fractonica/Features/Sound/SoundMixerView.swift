@@ -63,8 +63,9 @@ struct SoundMixerView: View {
         let prefs = engine.preferences
         return VStack(spacing: 8) {
             ZStack {
-                // the meters follow the displayed time (they stand still with it)
-                SoundTimeline(.animation(fps: 60)) { t in
+                // the meters follow the displayed time (they stand still with it); the fastest they draw moving is ν's
+                // 3.2 Hz at real time, smooth at 30 frames a second
+                SoundTimeline(.animation(fps: 30)) { t in
                     let live = SoundLive.at(t, rate: store.rate, prefs: prefs)
                     Canvas { context, size in
                         drawMeters(&context, size: size, live: live, prefs: prefs)

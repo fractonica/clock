@@ -76,6 +76,17 @@ struct SoundTimeline<Content: View>: View {
     }
 }
 
+/// Frame rates of the Sound screen's canvases.
+enum SoundTimelineRate {
+    /// The ring's bell ripples: 60 a second on iPhone and iPad; 30 on the Mac, where every redraw of a window's
+    /// content also lays the window out again (measured: the Sound screen in a time-lapse cost most of a core).
+    #if os(macOS)
+    static let smooth = 30.0
+    #else
+    static let smooth = 60.0
+    #endif
+}
+
 /// A rounded panel with an optional header: the cards of the Sound screen.
 struct SoundCard<Content: View, Accessory: View>: View {
     let title: String?

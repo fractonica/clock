@@ -26,15 +26,11 @@ struct SoundTempoView: View {
             }
         } content: {
             VStack(alignment: .leading, spacing: 14) {
-                ViewThatFits(in: .horizontal) {
-                    HStack(spacing: 10) {
-                        sentenceStart(prefs)
-                        sentenceEnd(prefs)
-                    }
-                    VStack(alignment: .leading, spacing: 10) {
-                        sentenceStart(prefs)
-                        sentenceEnd(prefs)
-                    }
+                // one line where it fits, else two (a flow layout: cheap to measure, unlike ViewThatFits, which builds
+                // every candidate again on each layout pass — every frame of the meters above, on the Mac)
+                SoundFlowLayout(spacing: 10, lineSpacing: 10) {
+                    sentenceStart(prefs)
+                    sentenceEnd(prefs)
                 }
                 lockButton
                 Text(words.tempoReadout(depth: prefs.tempoDepth, rate: store.rate))
@@ -59,18 +55,11 @@ struct SoundTempoView: View {
 
     private func sentenceStart(_ prefs: SoundPreferences) -> some View {
         // the words above the picker when they do not fit beside it (large text): never broken letter by letter
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: 8) {
-                Text("One cycle of")
-                    .foregroundStyle(Theme.ink2)
-                    .fixedSize()
-                depthPicker(prefs)
-            }
-            VStack(alignment: .leading, spacing: 4) {
-                Text("One cycle of")
-                    .foregroundStyle(Theme.ink2)
-                depthPicker(prefs)
-            }
+        SoundFlowLayout(spacing: 8, lineSpacing: 4) {
+            Text("One cycle of")
+                .foregroundStyle(Theme.ink2)
+                .fixedSize()
+            depthPicker(prefs)
         }
     }
 
@@ -84,15 +73,27 @@ struct SoundTempoView: View {
     }
 
     private func depthPicker(_ prefs: SoundPreferences) -> some View {
-        Picker("Depth", selection: Binding(get: { engine.preferences.tempoDepth }, set: { d in engine.update { $0.tempoDepth = d } })) {
-            ForEach(Array(SoundPreferences.tempoDepthRange), id: \.self) { depth in
-                Text(words.depthOption(depth - 1)).tag(depth)
+        // a menu with its own label: a menu-style Picker reads every item to size its current-value label, and on the
+        // Mac that runs on every layout pass (each frame of the meters above)
+        Menu {
+            Picker("Depth", selection: Binding(get: { engine.preferences.tempoDepth }, set: { d in engine.update { $0.tempoDepth = d } })) {
+                ForEach(Array(SoundPreferences.tempoDepthRange), id: \.self) { depth in
+                    Text(words.depthOption(depth - 1)).tag(depth)
+                }
             }
+        } label: {
+            HStack(spacing: 4) {
+                Text(words.depthOption(prefs.tempoDepth - 1))
+                Image(systemName: "chevron.up.chevron.down")
+                    .font(.caption2.weight(.semibold))
+            }
+            .lineLimit(2)
+            .foregroundStyle(Theme.levelColor(prefs.tempoDepth - 1, lightness: 0.72))
         }
-        .labelsHidden()
-        .pickerStyle(.menu)
-        .tint(Theme.levelColor(prefs.tempoDepth - 1, lightness: 0.72))
-        .fixedSize()
+        .menuIndicator(.hidden)
+        .buttonStyle(.plain)
+        .accessibilityLabel("Depth")
+        .accessibilityValue(words.depthOption(prefs.tempoDepth - 1))
     }
 
     private func lengthStepper(_ prefs: SoundPreferences) -> some View {
@@ -301,10 +302,13 @@ struct SoundTempoView: View {
     }
 }
 
-/// Chips that wrap onto as many lines as they need.
+/// Chips that wrap onto as many lines as they need. An item wider than the whole line on its own (large text) is
+/// offered the line's width, so a nested flow wraps inside it instead of running off the edge.
 struct SoundFlowLayout: Layout {
     var spacing: CGFloat = 6
     var lineSpacing: CGFloat = 6
+    /// Rows centred in the width instead of starting at its leading edge.
+    var centered = false
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
         let rows = arrange(width: proposal.width ?? .infinity, subviews: subviews)
@@ -316,9 +320,8 @@ struct SoundFlowLayout: Layout {
     func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
         var y = bounds.minY
         for row in arrange(width: bounds.width, subviews: subviews) {
-            var x = bounds.minX
-            for index in row.items {
-                let size = subviews[index].sizeThatFits(.unspecified)
+            var x = centered ? bounds.minX + max(0, (bounds.width - row.width) / 2) : bounds.minX
+            for (index, size) in zip(row.items, row.sizes) {
                 subviews[index].place(at: CGPoint(x: x, y: y + (row.height - size.height) / 2), proposal: ProposedViewSize(size))
                 x += size.width + spacing
             }
@@ -328,6 +331,7 @@ struct SoundFlowLayout: Layout {
 
     private struct Row {
         var items: [Int] = []
+        var sizes: [CGSize] = []
         var width: CGFloat = 0
         var height: CGFloat = 0
     }
@@ -336,7 +340,10 @@ struct SoundFlowLayout: Layout {
         var rows: [Row] = []
         var row = Row()
         for index in subviews.indices {
-            let size = subviews[index].sizeThatFits(.unspecified)
+            var size = subviews[index].sizeThatFits(.unspecified)
+            if size.width > width, width.isFinite {
+                size = subviews[index].sizeThatFits(ProposedViewSize(width: width, height: nil))
+            }
             let needed = row.items.isEmpty ? size.width : row.width + spacing + size.width
             if needed > width, !row.items.isEmpty {
                 rows.append(row)
@@ -345,6 +352,7 @@ struct SoundFlowLayout: Layout {
             row.width = row.items.isEmpty ? size.width : row.width + spacing + size.width
             row.height = max(row.height, size.height)
             row.items.append(index)
+            row.sizes.append(size)
         }
         if !row.items.isEmpty { rows.append(row) }
         return rows

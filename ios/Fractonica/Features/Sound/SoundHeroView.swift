@@ -38,7 +38,8 @@ struct SoundHeroView: View {
     private var ring: some View {
         ZStack {
             // the dots move with the clock; while it stands still only the notes of a ringing moment light up
-            SoundTimeline(momentRinging && !reduceMotion ? .continuous(fps: 60) : .animation(fps: 60)) { t in
+            // (smooth for the bell ripples while the sound plays, 30 frames a second for the dots alone)
+            SoundTimeline(momentRinging && !reduceMotion ? .continuous(fps: SoundTimelineRate.smooth) : .animation(fps: engine.isOn ? SoundTimelineRate.smooth : 30)) { t in
                 let live = SoundLive.at(t, rate: store.rate, prefs: engine.preferences)
                 SoundRingView(live: live, words: words, selected: settings.selectedLevel, running: engine.isOn,
                               reduceMotion: reduceMotion, now: .now)
@@ -66,9 +67,9 @@ struct SoundHeroView: View {
 
     @ViewBuilder
     private var details: some View {
-        ClockTimeline(.periodic(1)) { t in
-            statusLine(t)
-        }
+        // what the status says changes with the sound and at the catalogue's edges (where the clock stops and the
+        // store changes), not with every second: no timeline of its own, no layout pass per tick of a time-lapse
+        statusLine(store.time())
         chips
         MomentButton(words: words, ringing: momentRinging)
     }
@@ -129,14 +130,11 @@ struct SoundHeroView: View {
                               systemImage: store.isPaused ? "pause.fill" : store.isLive ? nil : "forward.fill")
         let depths = SoundChip(text: words.depths(prefs.levels))
         let layers = SoundChip(text: words.layers(prefs))
-        // one row while it fits, else stacked (large text, a narrow window): a chip is never cut short
-        return ViewThatFits(in: .horizontal) {
-            HStack(spacing: 6) { clock; depths; layers }
-            VStack(spacing: 6) {
-                HStack(spacing: 6) { clock; depths }
-                layers
-            }
-            VStack(spacing: 6) { clock; depths; layers }
+        // one row while it fits, else wrapped (large text, a narrow window): a chip is never cut short
+        return SoundFlowLayout(spacing: 6, lineSpacing: 6, centered: true) {
+            clock
+            depths
+            layers
         }
         .frame(maxWidth: .infinity)
         .accessibilityElement(children: .combine)
@@ -213,7 +211,9 @@ private struct MomentButton: View {
                     Text("Hear this moment")
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(Theme.ink)
-                    ClockTimeline(.periodic(1)) { t in
+                    // the moment ticks on the second live; in a time-lapse twice a real second (a caption that
+                    // changed with every frame would only flicker, and relay the screen out every time)
+                    ClockTimeline(.periodic(max(1, abs(store.rate) / 2))) { t in
                         Text(words.moment(t))
                             .font(.caption.monospacedDigit())
                             .foregroundStyle(Theme.ink3)
