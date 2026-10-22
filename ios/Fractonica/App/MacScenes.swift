@@ -64,11 +64,12 @@ struct MenuBarLabel: View {
 }
 
 /// The panel under the menu bar clock: the live reading (the minor clock with the Helion pair, the short date and,
-/// in Earth mode, the local time) and quick actions.
+/// in Earth mode, the local time) and quick actions (open, Focus, Timer, sound on / off, pure mode, quit).
 struct MenuBarPanel: View {
     @Environment(AppSettings.self) private var settings
     @Environment(AppRouter.self) private var router
     @Environment(\.openWindow) private var openWindow
+    private var sound: SoundEngine { .shared }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -85,6 +86,9 @@ struct MenuBarPanel: View {
                     NSApp.activate()
                 }
                 MenuRow("Timer", systemImage: Screen.timer.systemImage) { open(.timer) }
+                MenuRow(sound.isOn ? "Sound Off" : "Sound", systemImage: sound.isOn ? "speaker.slash" : Screen.sound.systemImage) {
+                    sound.toggle()
+                }
                 MenuRow(settings.pure ? "Pure Mode Off" : "Pure Mode", systemImage: "character.book.closed") { settings.pure.toggle() }
                 Divider().padding(.horizontal, 8).padding(.vertical, 4)
                 MenuRow("Quit Fractonica", systemImage: "power") { NSApp.terminate(nil) }

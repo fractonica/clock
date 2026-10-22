@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// Menu commands and keyboard shortcuts, mirroring the web app's keys: Space play / pause the time-lapse, N back to
-/// live, [ ] previous / next cycle of the selected level, P pure mode, ⌘K jump, ⌘1…⌘9 screens. On macOS they fill
+/// live, [ ] previous / next cycle of the selected level, P pure mode, M sound (⇧⌘M on iPad), ⌘K jump, ⌘1…⌘9 screens. On macOS they fill
 /// the Clock and View menus; on iPad they appear in the menu bar and the keyboard shortcut overlay. On macOS the bare
 /// keys yield to a focused text field (AppKit offers a key to the first responder before the menus), so typing a date
 /// or a name does not trigger them.
@@ -20,6 +20,13 @@ struct ClockCommands: Commands {
     private static let numbered: [Screen] = [.now, .rings, .ladder, .wave, .timeline, .converter, .month, .diary, .sound]
     /// The Clock group, on ⌥⌘-number.
     private static let clockScreens: [Screen] = ScreenGroup.clock.screens
+    /// Sound on / off: the bare M on macOS, where bare keys verifiably yield to a focused text field; ⇧⌘M on iPad,
+    /// where a hardware keyboard's bare key could not be verified to do the same.
+    #if os(macOS)
+    private static let soundModifiers: EventModifiers = []
+    #else
+    private static let soundModifiers: EventModifiers = [.command, .shift]
+    #endif
 
     var body: some Commands {
         CommandMenu("Clock") {
@@ -39,6 +46,8 @@ struct ClockCommands: Commands {
             Divider()
             Toggle("Pure Mode", isOn: Bindable(settings).pure)
                 .keyboardShortcut("p", modifiers: [])
+            Toggle("Sound", isOn: Binding(get: { SoundEngine.shared.isOn }, set: { _ in SoundEngine.shared.toggle() }))
+                .keyboardShortcut("m", modifiers: Self.soundModifiers)
             Button("Jump…", systemImage: Screen.jump.systemImage) { show(.jump) }
                 .keyboardShortcut("k")
             Button("Focus", systemImage: Screen.focus.systemImage) { show(.focus) }

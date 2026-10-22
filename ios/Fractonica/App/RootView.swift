@@ -172,7 +172,9 @@ private struct SidebarRoot: View {
                 tab(.month)
                 tab(.diary)
             }
-            tab(.sound)
+            Tab(Screen.sound.title, systemImage: SoundIndicator.systemImage, value: Screen.sound) {
+                ScreenStack(screen: .sound)
+            }
             TabSection(ScreenGroup.clock.title) {
                 tab(.timer)
                 tab(.stopwatch)
@@ -292,7 +294,9 @@ private struct ScreenChrome: ViewModifier {
                 if screen == .now {
                     ToolbarItemGroup(placement: .topBarTrailing) {
                         if router.isCompact {
-                            Button(Screen.sound.title, systemImage: Screen.sound.systemImage) { router.show(.sound) }
+                            Button(Screen.sound.title, systemImage: SoundIndicator.systemImage) { router.show(.sound) }
+                                .foregroundStyle(SoundIndicator.isOn ? Theme.teal : Theme.ink)
+                                .accessibilityValue(SoundIndicator.isOn ? "On" : "Off")
                         }
                         Button(Screen.focus.title, systemImage: Screen.focus.systemImage) { router.show(.focus) }
                         Button(Screen.settings.title, systemImage: Screen.settings.systemImage) { router.show(.settings) }
@@ -313,6 +317,13 @@ private struct ScreenChrome: ViewModifier {
                 #endif
             }
     }
+}
+
+/// Whether the sound plays, for the Sound button and sidebar item: a filled waveform while it does.
+@MainActor
+private enum SoundIndicator {
+    static var isOn: Bool { SoundEngine.shared.isOn }
+    static var systemImage: String { isOn ? "waveform.circle.fill" : Screen.sound.systemImage }
 }
 
 // MARK: - Presentations
