@@ -8,7 +8,8 @@
 #
 # DerivedData goes to $DERIVED_DATA (default ios/build/DerivedData); full logs to $DERIVED_DATA/Logs/fx-*.log.
 # Prints only the errors and warnings and, on success, the .app paths. Exits non-zero when anything fails.
-# Neither build needs a provisioning profile: the simulator build is unsigned, the Mac build is signed ad hoc.
+# Neither build needs a provisioning profile: the simulator build is unsigned, the Mac build is signed ad hoc (without
+# the entitlements that need a profile, which Xcode signing with the team keeps).
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -63,9 +64,30 @@ if [ "$WHAT" = ios ] || [ "$WHAT" = all ]; then
     ARCHS=arm64 ONLY_ACTIVE_ARCH=YES CODE_SIGNING_ALLOWED=NO
 fi
 
+# An ad-hoc signature cannot carry entitlements that need a provisioning profile (com.apple.developer.*, such as
+# time-sensitive notifications): each macOS target signs with a copy of its entitlements without them. The setting is
+# resolved per target through $(TARGET_NAME), so the widget keeps its own sandbox entitlements.
+adhoc_entitlements() {
+  local dir="$DERIVED_DATA/AdHocEntitlements"
+  mkdir -p "$dir"
+  for target in "$@"; do
+    /usr/bin/python3 - "$ROOT/Support/$target.entitlements" "$dir/$target.entitlements" <<'PY'
+import plistlib, sys
+with open(sys.argv[1], 'rb') as f:
+    entitlements = plistlib.load(f)
+kept = {k: v for k, v in entitlements.items() if not k.startswith('com.apple.developer.')}
+with open(sys.argv[2], 'wb') as f:
+    plistlib.dump(kept, f)
+PY
+    echo "FX_ADHOC_ENTITLEMENTS_$target=$dir/$target.entitlements"
+  done
+}
+
 if [ "$WHAT" = mac ] || [ "$WHAT" = all ]; then
   build FractonicaMac 'platform=macOS,arch=arm64' Debug \
-    CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= PROVISIONING_PROFILE_SPECIFIER=
+    CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= PROVISIONING_PROFILE_SPECIFIER= \
+    'CODE_SIGN_ENTITLEMENTS=$(FX_ADHOC_ENTITLEMENTS_$(TARGET_NAME))' \
+    $(adhoc_entitlements FractonicaMac FractonicaWidgetsMac)
 fi
 
 if [ "$WHAT" = kit ] || [ "$WHAT" = all ]; then
