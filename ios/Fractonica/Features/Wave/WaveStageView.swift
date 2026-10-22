@@ -299,7 +299,7 @@ struct WaveStageView: View {
     private func scheduleInspect(_ id: UUID) {
         Task { @MainActor in
             try? await Task.sleep(for: .seconds(0.45))
-            guard var d = drag, d.id == id, !d.scrub, !d.pan, pinch == nil else { return }
+            guard var d = drag, d.id == id, !d.scrub, !d.pan, !d.spent, pinch == nil else { return }
             d.inspecting = true
             drag = d
             inspect(at: d.start)

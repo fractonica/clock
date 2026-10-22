@@ -71,7 +71,10 @@ final class WaveModel {
             overrides.insert(.overview)
             overview = o
         }
-        offset = string("FXWaveOffset").flatMap(Double.init).flatMap { $0.isFinite ? $0 : nil } ?? 0
+        // read from the raw arguments too: the argument domain drops a negative value ("-2e10" looks like a key)
+        let raw = ProcessInfo.processInfo.arguments
+        let rawOffset = raw.firstIndex(of: "-FXWaveOffset").flatMap { $0 + 1 < raw.count ? raw[$0 + 1] : nil }
+        offset = (string("FXWaveOffset") ?? rawOffset).flatMap(Double.init).flatMap { $0.isFinite ? $0 : nil } ?? 0
         forceWide = flag("FXWaveWide")
         landscape = flag("FXWaveLandscape") ?? false
         showInfo = flag("FXWaveInfo") ?? false
