@@ -276,6 +276,8 @@ struct FocusScreen: View {
         } label: {
             Label(model.length.title, systemImage: "timer")
                 .font(.body.monospacedDigit())
+                // iOS 18's bordered menu measures this font short and cuts the title to "…"
+                .fixedSize()
         }
         .menuIndicator(.hidden)
         .help("Session length")
