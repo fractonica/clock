@@ -50,6 +50,13 @@ final class DiaryWebEngine: NSObject {
         webView.load(URLRequest(url: DiaryResources.entry))
     }
 
+    /// Loads the host page afresh (Try again after it failed, or after its process kept stopping).
+    func reload() {
+        terminations.removeAll()
+        isReady = false
+        webView.load(URLRequest(url: DiaryResources.entry))
+    }
+
     /// Returns once the host page has loaded its modules.
     func ready() async {
         if isReady { return }

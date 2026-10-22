@@ -5,6 +5,10 @@ import SwiftUI
 struct DiaryOptionForm: View {
     @Bindable var model: DiaryModel
     let group: DiaryOptionGroup
+    /// In the inspector, which has no navigation stack of its own: the zone list comes up as a sheet.
+    var inspector = false
+
+    @State private var choosingZone = false
 
     @Environment(AppSettings.self) private var settings
 
@@ -30,10 +34,19 @@ struct DiaryOptionForm: View {
         .formStyle(.grouped)
         .scrollContentBackground(.hidden)
         .background { Backdrop() }
-        .navigationTitle(group.title)
-        #if os(iOS)
-        .navigationBarTitleDisplayMode(.inline)
-        #endif
+        .sheet(isPresented: $choosingZone) {
+            NavigationStack {
+                DiaryZoneList(zone: $model.options.gregorian.zone, appZone: model.appZone)
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button("Cancel") { choosingZone = false }
+                        }
+                    }
+            }
+            #if os(macOS)
+            .frame(minWidth: 380, minHeight: 480)
+            #endif
+        }
     }
 
     private var pure: Bool { settings.pure }
@@ -140,15 +153,34 @@ struct DiaryOptionForm: View {
             Toggle(isOn: $model.options.gregorian.on) {
                 DiaryRowLabel("Gregorian dates and times", hint: "Index, timestamps, the date range of every page")
             }
-            NavigationLink {
-                DiaryZoneList(zone: $model.options.gregorian.zone, appZone: model.appZone)
-            } label: {
-                LabeledContent("Zone", value: (model.options.gregorian.zone ?? "App zone · \(model.appZone)").replacingOccurrences(of: "_", with: " "))
+            Group {
+                if inspector {
+                    Button { choosingZone = true } label: {
+                        HStack {
+                            zoneRow
+                            Image(systemName: "chevron.forward")
+                                .font(.footnote.weight(.semibold))
+                                .foregroundStyle(Theme.ink3)
+                        }
+                        .contentShape(.rect)
+                    }
+                    .buttonStyle(.plain)
+                } else {
+                    NavigationLink {
+                        DiaryZoneList(zone: $model.options.gregorian.zone, appZone: model.appZone)
+                    } label: {
+                        zoneRow
+                    }
+                }
             }
             .disabled(!model.options.gregorian.on)
             Toggle("Weekday names", isOn: $model.options.gregorian.weekdays)
                 .disabled(!model.options.gregorian.on)
         }
+    }
+
+    private var zoneRow: some View {
+        LabeledContent("Zone", value: (model.options.gregorian.zone ?? "App zone · \(model.appZone)").replacingOccurrences(of: "_", with: " "))
     }
 
     // MARK: Front matter

@@ -15,6 +15,7 @@ struct DiaryScreen: View {
     @Environment(ToastCenter.self) private var toasts
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var sizeClass
+    @Environment(\.verticalSizeClass) private var heightClass
     #endif
 
     private let model = DiaryModel.shared
@@ -31,9 +32,27 @@ struct DiaryScreen: View {
     @State private var pageText = ""
 
     var body: some View {
-        VStack(spacing: 0) {
-            DiaryHeader(model: model, showPicker: $showPicker)
-            preview
+        Group {
+            if isShort {
+                // iPhone landscape: the bars leave little height, so the Delta and the page controls make a column
+                // beside the pages, which get the whole height
+                HStack(spacing: 0) {
+                    VStack(alignment: .leading, spacing: 10) {
+                        DiaryHeader(model: model, showPicker: $showPicker, stacked: true)
+                        Spacer(minLength: 0)
+                        pageBar(stacked: true)
+                            .padding(.leading, 12)
+                            .padding(.bottom, 14)
+                    }
+                    .frame(width: 272)
+                    preview(withBar: false)
+                }
+            } else {
+                VStack(spacing: 0) {
+                    DiaryHeader(model: model, showPicker: $showPicker)
+                    preview(withBar: true)
+                }
+            }
         }
         // the inspector's column is opaque: the backdrop goes inside it
         .background { Backdrop() }
@@ -124,20 +143,39 @@ struct DiaryScreen: View {
 
     // MARK: Preview
 
-    private var preview: some View {
+    /// iPhone in landscape.
+    private var isShort: Bool {
+        #if os(iOS)
+        heightClass == .compact
+        #else
+        false
+        #endif
+    }
+
+    private func pageBar(stacked: Bool) -> some View {
+        DiaryPageBar(model: model, showPages: $showPages, askPage: $askPage, stacked: stacked, export: { exportPDF() })
+    }
+
+    private func preview(withBar: Bool) -> some View {
         ZStack(alignment: .bottom) {
             DiaryWebPreview(webView: model.webView)
                 .opacity(model.plan == nil ? 0 : 1)
                 .accessibilityLabel("Diary pages")
                 .accessibilityHint("Swipe to turn the pages; tap a page to read it large")
             status
-            DiaryPageBar(model: model, showPages: $showPages, askPage: $askPage, export: { exportPDF() })
-                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { barHeight = $0 }
-                .padding(.bottom, 10)
-                .padding(.horizontal, 16)
+            if withBar {
+                pageBar(stacked: false)
+                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { barHeight = $0 }
+                    .padding(.bottom, 10)
+                    .padding(.horizontal, 16)
+            }
         }
-        .onChange(of: barHeight, initial: true) { _, h in
-            model.setInsets(top: 8, bottom: Double(h) + 22, horizontal: isCompact ? 18 : 28)
+        .onChange(of: withBar ? barHeight : 0, initial: true) { _, h in
+            if withBar {
+                model.setInsets(top: 8, bottom: Double(h) + 22, horizontal: isCompact ? 18 : 28)
+            } else {
+                model.setInsets(top: 6, bottom: 14, horizontal: 14)
+            }
         }
     }
 
@@ -150,7 +188,7 @@ struct DiaryScreen: View {
             } description: {
                 Text(why)
             } actions: {
-                Button("Try again") { sync(store.time()) }
+                Button("Try Again") { model.retry() }
             }
             .frame(maxHeight: .infinity)
         case .loading, .planning:
@@ -280,108 +318,145 @@ struct DiaryScreen: View {
 private struct DiaryHeader: View {
     let model: DiaryModel
     @Binding var showPicker: Bool
+    /// The Delta over its controls (the narrow column of iPhone landscape), instead of side by side.
+    var stacked = false
 
     @Environment(AppSettings.self) private var settings
     @Environment(ClockStore.self) private var store
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
-        let path = model.path
-        HStack(alignment: .center, spacing: 10) {
-            Button { showPicker = true } label: {
-                VStack(alignment: .leading, spacing: 3) {
+        Group {
+            // accessibility text sizes need the whole width for the Delta's name
+            if stacked || typeSize.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: 8) {
+                    deltaButton
                     HStack(spacing: 6) {
-                        Text(DiaryDelta.name(level: 3, ordinal: path[3]))
-                            .font(.title3.weight(.semibold))
-                            .foregroundStyle(Theme.ink)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.7)
-                        Image(systemName: "chevron.down")
-                            .font(.caption.weight(.bold))
-                            .foregroundStyle(Theme.ink3)
+                        shownChip
+                        Spacer(minLength: 0)
+                        followButton
+                        deltaSteps
                     }
-                    ViewThatFits(in: .horizontal) {
-                        HStack(spacing: 8) { stamp(path); span }
-                        VStack(alignment: .leading, spacing: 2) { stamp(path); span }
-                    }
+                    .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
                 }
-                .contentShape(.rect)
-            }
-            .buttonStyle(.plain)
-            .layoutPriority(1)
-            .accessibilityLabel("\(DiaryDelta.name(level: 3, ordinal: path[3])), \(DiaryDelta.stamp(path))")
-            .accessibilityHint("Choose the Delta of the diary")
-
-            Spacer(minLength: 4)
-
-            if let shown = model.shownPage {
-                Button {
-                    model.go(to: shown)
-                } label: {
-                    HStack(spacing: 5) {
-                        Circle().fill(Theme.cursor).frame(width: 7, height: 7)
-                        Text(verbatim: "p. \(shown)").font(.reading(13, weight: .medium))
-                    }
-                    .lineLimit(1)
-                    .fixedSize()
-                    .foregroundStyle(Theme.ink2)
-                    .padding(.horizontal, 9)
-                    .padding(.vertical, 5)
-                    .background(Theme.panel2, in: .capsule)
+            } else {
+                HStack(alignment: .center, spacing: 10) {
+                    deltaButton
+                    Spacer(minLength: 4)
+                    shownChip
+                    followButton
+                    deltaSteps
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Page \(shown) holds the shown moment")
-                .accessibilityHint("Turns to it")
-                .help("The page that holds the shown moment")
-                .transition(.opacity)
             }
-
-            Button {
-                model.setFollow(!model.follow, time: store.time())
-                Haptics.play(.selection)
-            } label: {
-                Image(systemName: "scope")
-                    .symbolVariant(model.follow ? .fill : .none)
-                    .foregroundStyle(model.follow ? Theme.teal : Theme.ink2)
-                    .frame(width: 32, height: 34)
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Delta of the shown moment")
-            .accessibilityValue(model.follow ? "On" : "Off")
-            .help("Follow the displayed time: the diary is the Delta that holds it")
-
-            HStack(spacing: 0) {
-                Button { step(-1) } label: {
-                    Image(systemName: "chevron.left").frame(width: 30, height: 34)
-                }
-                .disabled(model.delta <= model.range.lowerBound)
-                .accessibilityLabel("Previous Delta")
-                Button { step(1) } label: {
-                    Image(systemName: "chevron.right").frame(width: 30, height: 34)
-                }
-                .disabled(model.delta >= model.range.upperBound)
-                .accessibilityLabel("Next Delta")
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(Theme.ink2)
-            .font(.body.weight(.semibold))
         }
         .padding(.horizontal, 16)
         .padding(.top, 6)
         .padding(.bottom, 4)
     }
 
+    /// The Delta's name, stamp and span; it opens the picker.
+    private var deltaButton: some View {
+        let path = model.path
+        return Button { showPicker = true } label: {
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 6) {
+                    Text(DiaryDelta.name(level: 3, ordinal: path[3]))
+                        .font(.title3.weight(.semibold))
+                        .foregroundStyle(Theme.ink)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                    Image(systemName: "chevron.down")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(Theme.ink3)
+                }
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 8) { stamp(path); span }
+                    VStack(alignment: .leading, spacing: 2) { stamp(path); span }
+                }
+            }
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .layoutPriority(1)
+        .accessibilityLabel("\(DiaryDelta.name(level: 3, ordinal: path[3])), \(DiaryDelta.stamp(path))")
+        .accessibilityHint("Choose the Delta of the diary")
+    }
+
+    @ViewBuilder
+    private var shownChip: some View {
+        if let shown = model.shownPage {
+            Button {
+                model.go(to: shown)
+            } label: {
+                HStack(spacing: 5) {
+                    Circle().fill(Theme.cursor).frame(width: 7, height: 7)
+                    Text(verbatim: "p. \(shown)").font(.reading(13, weight: .medium))
+                }
+                .lineLimit(1)
+                .fixedSize()
+                .foregroundStyle(Theme.ink2)
+                .padding(.horizontal, 9)
+                .padding(.vertical, 5)
+                .background(Theme.panel2, in: .capsule)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Page \(shown) holds the shown moment")
+            .accessibilityHint("Turns to it")
+            .help("The page that holds the shown moment")
+            .transition(.opacity)
+        }
+    }
+
+    private var followButton: some View {
+        Button {
+            model.setFollow(!model.follow, time: store.time())
+            Haptics.play(.selection)
+        } label: {
+            Image(systemName: "scope")
+                .symbolVariant(model.follow ? .fill : .none)
+                .foregroundStyle(model.follow ? Theme.teal : Theme.ink2)
+                .frame(width: 32, height: 34)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Delta of the shown moment")
+        .accessibilityValue(model.follow ? "On" : "Off")
+        .help("Follow the displayed time: the diary is the Delta that holds it")
+    }
+
+    private var deltaSteps: some View {
+        HStack(spacing: 0) {
+            Button { step(-1) } label: {
+                Image(systemName: "chevron.left").frame(width: 30, height: 34)
+            }
+            .disabled(model.delta <= model.range.lowerBound)
+            .accessibilityLabel("Previous Delta")
+            .help("Previous Delta")
+            Button { step(1) } label: {
+                Image(systemName: "chevron.right").frame(width: 30, height: 34)
+            }
+            .disabled(model.delta >= model.range.upperBound)
+            .accessibilityLabel("Next Delta")
+            .help("Next Delta")
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(Theme.ink2)
+        .font(.body.weight(.semibold))
+    }
+
     private func stamp(_ path: [Int]) -> some View {
         Text(DiaryDelta.stamp(path))
             .font(.footnote.weight(.medium).monospacedDigit())
             .foregroundStyle(Theme.teal)
-            .fixedSize()
+            .lineLimit(1)
+            .minimumScaleFactor(0.8)
     }
 
     private var span: some View {
         Text(spanText)
             .font(.footnote)
             .foregroundStyle(Theme.ink2)
-            .fixedSize()
+            .lineLimit(1)
+            .minimumScaleFactor(0.8)
     }
 
     private func step(_ d: Int) {
@@ -409,69 +484,107 @@ private struct DiaryPageBar: View {
     let model: DiaryModel
     @Binding var showPages: Bool
     @Binding var askPage: Bool
+    /// The readout over the buttons (the narrow column of iPhone landscape), instead of between them.
+    var stacked = false
     let export: () -> Void
+
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
         let count = model.plan?.pages.count ?? 0
         let first = model.pair.compactMap { $0 }.min() ?? model.page
         let last = model.pair.compactMap { $0 }.max() ?? model.page
-        HStack(spacing: 2) {
-            Button { showPages = true } label: {
-                Image(systemName: "square.grid.2x2").frame(width: 40, height: 40)
-            }
-            .accessibilityLabel("All pages")
-            .help("All pages")
-
-            Button { model.step(-1) } label: {
-                Image(systemName: "chevron.left").frame(width: 40, height: 40)
-            }
-            .disabled(first <= 1)
-            #if os(iOS)
-            .keyboardShortcut(.leftArrow, modifiers: [])
-            #endif
-            .accessibilityLabel("Previous page")
-            .help("Previous page (←)")
-
-            sectionsMenu(first: first, last: last, count: count)
-
-            Button { model.step(1) } label: {
-                Image(systemName: "chevron.right").frame(width: 40, height: 40)
-            }
-            .disabled(count == 0 || last >= count)
-            #if os(iOS)
-            .keyboardShortcut(.rightArrow, modifiers: [])
-            #endif
-            .accessibilityLabel("Next page")
-            .help("Next page (→)")
-
-            if model.wide {
-                Button {
-                    model.setLayout(model.layout == .spread ? .page : .spread)
-                    Haptics.play(.selection)
-                } label: {
-                    Image(systemName: model.layout == .spread ? "book.pages" : "doc")
-                        .contentTransition(.symbolEffect(.replace))
-                        .frame(width: 40, height: 40)
+        Group {
+            // accessibility text sizes: the readout gets a row of its own
+            if stacked || typeSize.isAccessibilitySize {
+                VStack(spacing: 2) {
+                    sectionsMenu(first: first, last: last, count: count, width: stacked ? 220 : 320)
+                        .padding(.top, 6)
+                    HStack(spacing: 2) {
+                        allPagesButton
+                        previousButton(first: first)
+                        nextButton(last: last, count: count)
+                        layoutButton
+                        exportButton
+                    }
+                    // the icons keep to their 40 pt buttons
+                    .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
                 }
-                .accessibilityLabel(model.layout == .spread ? "Showing the open book" : "Showing one page")
-                .accessibilityHint("Switches between one page and the open book")
-                .help(model.layout == .spread ? "Show one page" : "Show the open book")
+                .padding(.horizontal, 6)
+                .padding(.vertical, 4)
+                .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 26))
+            } else {
+                HStack(spacing: 2) {
+                    allPagesButton
+                    previousButton(first: first)
+                    sectionsMenu(first: first, last: last, count: count, width: model.spread ? 480 : 300)
+                    nextButton(last: last, count: count)
+                    layoutButton
+                    exportButton
+                }
+                .padding(.horizontal, 6)
+                .padding(.vertical, 4)
+                .glassEffect(.regular.interactive(), in: .capsule)
             }
-
-            exportButton
         }
         .buttonStyle(.plain)
         .font(.body.weight(.semibold))
         .foregroundStyle(Theme.ink)
-        .padding(.horizontal, 6)
-        .padding(.vertical, 4)
-        .glassEffect(.regular.interactive(), in: .capsule)
         .disabled(model.plan == nil)
         .animation(.snappy, value: model.page)
     }
 
+    private var allPagesButton: some View {
+        Button { showPages = true } label: {
+            Image(systemName: "square.grid.2x2").frame(width: 40, height: 40)
+        }
+        .accessibilityLabel("All pages")
+        .help("All pages")
+    }
+
+    private func previousButton(first: Int) -> some View {
+        Button { model.step(-1) } label: {
+            Image(systemName: "chevron.left").frame(width: 40, height: 40)
+        }
+        .disabled(first <= 1)
+        #if os(iOS)
+        .keyboardShortcut(.leftArrow, modifiers: [])
+        #endif
+        .accessibilityLabel("Previous page")
+        .help("Previous page (←)")
+    }
+
+    private func nextButton(last: Int, count: Int) -> some View {
+        Button { model.step(1) } label: {
+            Image(systemName: "chevron.right").frame(width: 40, height: 40)
+        }
+        .disabled(count == 0 || last >= count)
+        #if os(iOS)
+        .keyboardShortcut(.rightArrow, modifiers: [])
+        #endif
+        .accessibilityLabel("Next page")
+        .help("Next page (→)")
+    }
+
+    @ViewBuilder
+    private var layoutButton: some View {
+        if model.wide {
+            Button {
+                model.setLayout(model.layout == .spread ? .page : .spread)
+                Haptics.play(.selection)
+            } label: {
+                Image(systemName: model.layout == .spread ? "book.pages" : "doc")
+                    .contentTransition(.symbolEffect(.replace))
+                    .frame(width: 40, height: 40)
+            }
+            .accessibilityLabel(model.layout == .spread ? "Showing the open book" : "Showing one page")
+            .accessibilityHint("Switches between one page and the open book")
+            .help(model.layout == .spread ? "Show one page" : "Show the open book")
+        }
+    }
+
     /// The readout; tapping it lists the book's sections (the web preview's section picker) and "Go to page…".
-    private func sectionsMenu(first: Int, last: Int, count: Int) -> some View {
+    private func sectionsMenu(first: Int, last: Int, count: Int, width: CGFloat) -> some View {
         Menu {
             if let plan = model.plan {
                 Section("Sections") {
@@ -500,7 +613,7 @@ private struct DiaryPageBar: View {
                     .minimumScaleFactor(0.85)
                     .truncationMode(.middle)
             }
-            .frame(minWidth: 150, maxWidth: model.spread ? 480 : 300)
+            .frame(minWidth: 150, maxWidth: width)
             .contentShape(.rect)
         }
         .menuStyle(.button)
@@ -562,7 +675,7 @@ private struct OptionsPresentation: ViewModifier {
             }
         } else {
             content.inspector(isPresented: $isPresented) {
-                DiaryOptionsView(model: .shared, showsDone: false)
+                DiaryOptionsView(model: .shared, inspector: true)
                     #if os(iOS)
                     // the transport floats over the bottom of the inspector on iPad: the last rows scroll clear of it
                     .contentMargins(.bottom, 72, for: .scrollContent)

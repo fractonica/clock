@@ -193,6 +193,15 @@ final class DiaryModel {
 
     func resetOptions() { options = DiaryOptions() }
 
+    /// Try again after a failure: the host page loads afresh when it is not running, then the diary is planned again.
+    func retry() {
+        if !engine.isReady {
+            engine.reload()
+            phase = .loading
+        }
+        schedule(immediately: true)
+    }
+
     /// The options as JSON, for `node tools/diary-pdf.mjs --options`.
     var optionsJSON: String {
         let encoder = JSONEncoder()

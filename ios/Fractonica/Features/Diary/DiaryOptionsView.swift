@@ -3,65 +3,140 @@ import SwiftUI
 
 /// Every knob of the diary (src/ui/diary/form.js over `DIARY_DEFAULTS`), as a list of groups with their current
 /// values, each opening its own form. Changes replan the book at once; the pages behind the sheet follow.
+///
+/// In a sheet (iPhone) the groups push in the sheet's own navigation stack. In the inspector (iPad, Mac) they cannot:
+/// the inspector lives inside the screen's navigation stack, and a stack nested in it would push the group over the
+/// whole screen, so the inspector turns its pages itself, with a back button over the group's form.
 struct DiaryOptionsView: View {
     let model: DiaryModel
-    /// A sheet has a Done button; the inspector is closed with its toolbar button.
-    var showsDone = true
+    /// Shown in the inspector column rather than a sheet.
+    var inspector = false
 
     @Environment(AppSettings.self) private var settings
     @Environment(ToastCenter.self) private var toasts
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var confirmReset = false
     @State private var path: [DiaryOptionGroup] = DiaryLaunch.string("FXDiaryGroup").flatMap(DiaryOptionGroup.init).map { [$0] } ?? []
 
     var body: some View {
-        NavigationStack(path: $path) {
-            List {
-                summary
-                Section {
-                    ForEach(DiaryOptionGroup.allCases.filter { $0.isShown(pure: settings.pure) }) { group in
+        if inspector {
+            inspectorBody
+        } else {
+            NavigationStack(path: $path) {
+                list
+                    .navigationTitle("Options")
+                    #if os(iOS)
+                    .navigationBarTitleDisplayMode(.inline)
+                    #endif
+                    .navigationDestination(for: DiaryOptionGroup.self) { group in
+                        DiaryOptionForm(model: model, group: group)
+                            .navigationTitle(group.title)
+                            #if os(iOS)
+                            .navigationBarTitleDisplayMode(.inline)
+                            #endif
+                    }
+                    #if os(iOS)
+                    .toolbar {
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button("Done") { dismiss() }
+                        }
+                    }
+                    #endif
+            }
+        }
+    }
+
+    /// The inspector's own two levels: the list, or one group's form under a back button.
+    private var inspectorBody: some View {
+        ZStack {
+            if let group = path.last {
+                VStack(spacing: 0) {
+                    HStack(spacing: 8) {
+                        Button {
+                            open(nil)
+                        } label: {
+                            Label("Options", systemImage: "chevron.backward")
+                                .font(.body.weight(.medium))
+                                .contentShape(.rect)
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(Theme.teal)
+                        .keyboardShortcut(.cancelAction)
+                        .accessibilityLabel("Back to the options")
+                        Spacer(minLength: 8)
+                        Text(group.title)
+                            .font(.headline)
+                            .foregroundStyle(Theme.ink)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
+                            .accessibilityAddTraits(.isHeader)
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 10)
+                    DiaryOptionForm(model: model, group: group, inspector: true)
+                }
+                .transition(reduceMotion ? .opacity : .move(edge: .trailing))
+            } else {
+                list
+                    .transition(reduceMotion ? .opacity : .move(edge: .leading))
+            }
+        }
+        .clipped()
+        .background { Backdrop() }
+    }
+
+    private func open(_ group: DiaryOptionGroup?) {
+        withAnimation(.snappy(duration: 0.28)) {
+            path = group.map { [$0] } ?? []
+        }
+    }
+
+    private var list: some View {
+        List {
+            summary
+            Section {
+                ForEach(DiaryOptionGroup.allCases.filter { $0.isShown(pure: settings.pure) }) { group in
+                    if inspector {
+                        Button { open(group) } label: {
+                            HStack {
+                                groupRow(group)
+                                Spacer(minLength: 8)
+                                Image(systemName: "chevron.forward")
+                                    .font(.footnote.weight(.semibold))
+                                    .foregroundStyle(Theme.ink3)
+                            }
+                            .contentShape(.rect)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityHint("Opens its options")
+                    } else {
                         NavigationLink(value: group) {
                             groupRow(group)
                         }
                     }
                 }
-                Section {
-                    Button("Copy options", systemImage: "doc.on.doc") {
-                        DiaryClipboard.copy(model.optionsJSON)
-                        toasts.show("Options copied: save them as a file for node tools/diary-pdf.mjs --options")
-                    }
-                    Button("Reset to defaults", systemImage: "arrow.counterclockwise", role: .destructive) {
-                        confirmReset = true
-                    }
-                    .disabled(model.options == DiaryOptions())
-                } footer: {
-                    Text("The options are the web app’s: the same JSON drives the Diary tab and the command line.")
+            }
+            Section {
+                Button("Copy options", systemImage: "doc.on.doc") {
+                    DiaryClipboard.copy(model.optionsJSON)
+                    toasts.show("Options copied: save them as a file for node tools/diary-pdf.mjs --options")
                 }
-            }
-            .scrollContentBackground(.hidden)
-            .background { Backdrop() }
-            .navigationTitle("Options")
-            #if os(iOS)
-            .navigationBarTitleDisplayMode(.inline)
-            #endif
-            .navigationDestination(for: DiaryOptionGroup.self) { group in
-                DiaryOptionForm(model: model, group: group)
-            }
-            .confirmationDialog("Reset every diary option to its default?", isPresented: $confirmReset, titleVisibility: .visible) {
-                Button("Reset", role: .destructive) {
-                    model.resetOptions()
-                    Haptics.play(.warning)
+                Button("Reset to defaults", systemImage: "arrow.counterclockwise", role: .destructive) {
+                    confirmReset = true
                 }
+                .disabled(model.options == DiaryOptions())
+            } footer: {
+                Text("The options are the web app’s: the same JSON drives the Diary tab and the command line.")
             }
-            #if os(iOS)
-            .toolbar {
-                if showsDone {
-                    ToolbarItem(placement: .confirmationAction) {
-                        Button("Done") { dismiss() }
-                    }
-                }
+        }
+        .scrollContentBackground(.hidden)
+        .background { Backdrop() }
+        .confirmationDialog("Reset every diary option to its default?", isPresented: $confirmReset, titleVisibility: .visible) {
+            Button("Reset", role: .destructive) {
+                model.resetOptions()
+                Haptics.play(.warning)
             }
-            #endif
         }
     }
 
