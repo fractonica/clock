@@ -23,9 +23,15 @@ struct WatchFaceView: View {
     var bounce = 0
     var bounceDirection = 0
     var onTap: ((CGPoint) -> Void)? = nil
+    /// The rows' tooltips and press-and-hold menus.
+    var tips: WatchRowTips? = nil
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var hover: FaceRegion?
+    /// The row under the pointer and its tip, taken when the pointer arrived (a tooltip that changed with every glyph
+    /// step would never settle).
+    @State private var hoverRow: WatchGeometry.Row?
+    @State private var hoverTip: RowTip?
 
     var body: some View {
         GeometryReader { geo in
@@ -63,8 +69,17 @@ struct WatchFaceView: View {
             }
             .onContinuousHover(coordinateSpace: .local) { phase in
                 switch phase {
-                case .active(let location): hover = WatchGeometry.region(at: fit.logical(location))
-                case .ended: hover = nil
+                case .active(let location):
+                    hover = WatchGeometry.region(at: fit.logical(location))
+                    let row = WatchGeometry.row(at: fit.logical(location))
+                    if row != hoverRow {
+                        hoverRow = row
+                        hoverTip = row.flatMap { tips?.tip($0) }
+                    }
+                case .ended:
+                    hover = nil
+                    hoverRow = nil
+                    hoverTip = nil
                 }
             }
         }
@@ -109,19 +124,20 @@ struct WatchFaceView: View {
         .accessibilityHidden(true)
     }
 
-    /// Under a pointer (Mac, iPad), each row explains itself after a moment, like the web face's tooltips.
+    /// Each row explains itself like the web face's tooltips: under a pointer (Mac, iPad) after a moment, pressed and
+    /// held (iPhone, iPad) as a card over its menu, right-clicked (Mac) as a menu.
     private func rowHelp(_ f: WatchFrame, _ fit: FaceFit) -> some View {
         ZStack(alignment: .topLeading) {
             let rows = [(WatchGeometry.Row.top, f.top.accessibilityLabel), (.solar, f.solarLabel),
                         (.bottom, f.bottom.accessibilityLabel)]
             ForEach(rows.indices, id: \.self) { i in
                 let (row, label) = rows[i]
-                let r = fit.rect(WatchGeometry.plate(row))
+                let r = fit.rect(WatchGeometry.rowBox(row))
                 Color.clear
                     .contentShape(.rect)
                     .frame(width: r.width, height: r.height)
                     .position(x: r.midX, y: r.midY)
-                    .help(Text(verbatim: label))
+                    .watchRowTip(row, tips: tips, hovered: hoverRow == row ? hoverTip : nil, fallback: label)
             }
         }
     }

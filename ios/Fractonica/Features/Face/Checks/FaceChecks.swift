@@ -16,6 +16,7 @@ struct FaceChecks {
         scheduleChecks()
         frameChecks()
         wordChecks()
+        tipChecks()
         Checks.finish()
     }
 }
@@ -89,6 +90,15 @@ func stepChecks() {
     check(FaceStepper.unit(startingAt: 8) == 6 && FaceStepper.depth(showing: 12) == 11 && FaceStepper.depth(showing: 1) == 2,
           "rail picks clamp to the windows that show them")
     check(WatchGeometry.levels(topDepth: 7) == (6, 7) && WatchGeometry.levels(topDepth: 40) == (10, 11), "depth D over D+1")
+
+    check(WatchGeometry.row(at: CGPoint(x: 96, y: 80)) == .top && WatchGeometry.row(at: CGPoint(x: 96, y: 245)) == .solar
+          && WatchGeometry.row(at: CGPoint(x: 160, y: 410)) == .bottom && WatchGeometry.row(at: CGPoint(x: 96, y: 160)) == nil
+          && WatchGeometry.row(at: CGPoint(x: 12, y: 245)) == nil, "row hit boxes (helpers.js ROW_BOX)")
+    check(WatchGeometry.Row.allCases.allSatisfy { row in
+        let b = WatchGeometry.rowBox(row)
+        let region = WatchGeometry.region(at: CGPoint(x: b.midX, y: row == .top ? b.maxY - 0.1 : b.minY + 0.1))
+        return row == .solar ? region == .middle : region == (row == .top ? .top : .bottom)
+    }, "a period row lies wholly in its tap region, the solar row in the middle")
 
     let first = MiddleTap.resolve(previous: nil, now: 10)
     let second = MiddleTap.resolve(previous: first.remember, now: 10.3)
@@ -208,7 +218,25 @@ func scheduleChecks() {
     check(abs(s.timeIntervalSince1970 - (1005 + ChangeSchedule.lag)) < 1e-6, "rate 2: the change 10 displayed seconds ahead comes in 5 real ones")
     let back = ChangeSchedule(base: ClockStore.TimeBase(t0: 0, real0: 1000, rate: -60), paused: false, minimumStep: 1.0 / 30, next: next)
     let b = back.tick(after: Date(timeIntervalSince1970: 1000), lowFrequency: false)!
-    check(abs(b.timeIntervalSince1970 - (1000 + 1.0 / 30)) < 1e-6, "backwards: steady redraws")
+    check(abs(b.timeIntervalSince1970 - (1000 + 1.0 / 30)) < 1e-6, "backwards, standing on a change: the next frame")
+    let rewind = ChangeSchedule(base: ClockStore.TimeBase(t0: 7, real0: 1000, rate: -2), paused: false, minimumStep: 1.0 / 30, next: next)
+    let r = rewind.tick(after: Date(timeIntervalSince1970: 1000), lowFrequency: false)!
+    check(abs(r.timeIntervalSince1970 - (1003.5 + ChangeSchedule.lag)) < 1e-6,
+          "backwards at −2: the change 7 displayed seconds behind comes in 3.5 real ones: \(r.timeIntervalSince1970)")
+    let fastBack = ChangeSchedule(base: ClockStore.TimeBase(t0: 7, real0: 1000, rate: -3600), paused: false, minimumStep: 1.0 / 30, next: next)
+    check(abs(fastBack.tick(after: Date(timeIntervalSince1970: 1000), lowFrequency: false)!.timeIntervalSince1970 - (1000 + 1.0 / 30)) < 1e-6,
+          "a fast rewind redraws at most 30 times a second")
+    // the journal running backwards at real speed: each redraw lands just after the content changed, never between
+    var tb = vectorA
+    var behind = 0
+    for _ in 0..<30 {
+        guard let c = ChangeSchedule.lastChange(atOrBefore: tb, within: 1.0 / 30, next: { FaceCadence.journal(after: $0, unit: 5) }) else { break }
+        // text that counts on the ladder turns a hair after the boundary (pure spans' margin): compare a lag later
+        let n = FaceCadence.journal(after: c + 1e-5, unit: 5) ?? .infinity
+        if c > tb || n <= tb || journalKey(tb, 5) != journalKey(c + ChangeSchedule.lag, 5) { behind += 1 }
+        tb = c - ChangeSchedule.lag
+    }
+    check(behind == 0, "backwards: the change found is the one that began the shown content (\(behind) wrong)")
     let none = ChangeSchedule(base: .live, paused: false, minimumStep: 1.0 / 30, next: { _ in nil })
     check(abs(none.tick(after: Date(timeIntervalSince1970: 50), lowFrequency: false)!.timeIntervalSince1970 - 51) < 1e-6,
           "no known change: checked once a second")
@@ -299,6 +327,14 @@ func wordChecks() {
     let last = FaceWords.turnover(level: 6, reading: clock.level(at: clock.tMax, 6)!, at: clock.tMax, words: pure)
     check(last.last && FaceWords.sentence(last).contains("catalogue ends"), "the last cycle: \(FaceWords.sentence(last))")
 
+    let nuclide = FaceWords.turnover(level: 4, reading: clock.level(at: a, 4)!, at: a, words: pure)
+    check(nuclide.name == "ε#1 of Delta Tetrafracton", "a Nuclide across a Delta names the Delta: \(nuclide.name)")
+    check(FaceWords.turnover(level: 8, reading: clock.level(at: a, 8)!, at: a, words: pure).name == "30ι", "ι turns to 30ι")
+    let late = 2886085800.0
+    check(FaceWords.follower(level: 11, cycle: clock.level(at: late, 11)!.cycle, notation: pure.notation) == "2λ 0ν"
+          && FaceWords.follower(level: 10, cycle: clock.level(at: -11253700000, 10)!.cycle, notation: pure.notation) == "9ι 0λ",
+          "followers name only what changes (pure.js followerName)")
+
     let oorPure = FaceWords.outOfRange(words: pure)
     check(oorPure.range == ["from α#1", "to α#18"], "pure range: \(oorPure.range)")
     check(FaceWords.outOfRange(words: utc).range.first?.hasPrefix("from 1613") == true, "Earth range: \(FaceWords.outOfRange(words: utc).range)")
@@ -337,4 +373,43 @@ func wordChecks() {
         .compactMap { s in earthLeak(s).map { "\($0) in “\(s)”" } }
     check(leaks.isEmpty, "pure mode says nothing Earth-ish: \(leaks.prefix(5))")
     check(earthLeak(earth.topValue) != nil, "the leak detector does catch Earth text")
+}
+
+// MARK: - Row tips
+
+/// The rows' explanations, line by line as the web's builders print them at vector A (helpers.js `periodTooltip`,
+/// `solarTooltip`; pure.js `purePeriodTooltip`, `pureSolarTooltip`; compared at several more instants by script).
+func tipChecks() {
+    let a = vectorA
+    let earthEta = FaceTips.period(level: 6, at: a, words: utc)
+    check(earthEta?.title == "η · depth 7" && earthEta?.aside == "≈ 5 h 3 min per cycle"
+          && earthEta?.lines == ["State 13 of 16: value −3, rising ↗", "Right (fine) glyph: state 0 of 16, changes at 12:00:33",
+                                 "Next change 12:18:18 (in 18 min 18 s)", "Cycle 1 of 11 in its ζ · ends 12:56:12"],
+          "Earth η tip: \(String(describing: earthEta))")
+    let pureEta = FaceTips.period(level: 6, at: a, words: pure)
+    check(pureEta?.aside == "one Helion = 36ι"
+          && pureEta?.lines == ["34η of 77 in ε#5", "State 13 of 16: value −3, rising ↗",
+                                "Right (fine) glyph: state 0 of 16, changes in 4λ 6ν", "Next change in 2ι 11λ",
+                                "Ends in 6ι 43λ → 35η begins"]
+          && pureEta?.note == FaceTips.fromOne, "pure η tip: \(String(describing: pureEta))")
+    let solar = FaceTips.solar(at: a, words: utc)
+    check(solar?.title == "Solar sync #4820" && solar?.lines == ["Phase 35.8 % of this 4-day sync", "Drift against civil days −13 h 27 min",
+                                                               "Next node Oct 9 01:34", "Sync time Oct 7 01:34"],
+          "Earth solar tip: \(String(describing: solar))")
+    let pureSolar = FaceTips.solar(at: a, words: pure)
+    check(pureSolar?.pairPhase != nil && pureSolar?.aside == "one sync = 19η (19 Helions)"
+          && pureSolar.map { Array($0.lines.dropFirst()) } == ["Drift −6\u{202F}236λ against the solar rhythm", "Next node in 2η 24ι", "Sync began 6η 29ι ago"],
+          "pure solar tip: \(String(describing: pureSolar))")
+    check(FaceTips.solar(at: -11253700000, words: pure)?.lines.first?.contains("not defined") == true
+          && FaceTips.period(level: 6, at: clock.tMax + 10, words: pure) == nil, "near and past the edges")
+
+    var leaks: [String] = []
+    for k in 0..<30 {
+        let t = a + Double(k) * 104_729.7
+        let tips = (1...12).compactMap { FaceTips.period(level: $0, at: t, words: pure) } + [FaceTips.solar(at: t, words: pure)].compactMap { $0 }
+        for tip in tips {
+            leaks += ([tip.title, tip.aside] + tip.allLines).compactMap { s in earthLeak(s).map { "\($0) in “\(s)”" } }
+        }
+    }
+    check(leaks.isEmpty, "pure tips say nothing Earth-ish: \(leaks.prefix(4))")
 }

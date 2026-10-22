@@ -104,14 +104,16 @@ struct PageDots: View {
     let onSelect: (Int) -> Void
 
     var body: some View {
-        HStack(spacing: 7) {
+        HStack(spacing: 0) {
             ForEach(titles.indices, id: \.self) { i in
                 Capsule()
                     .fill(i == page ? Theme.ink2 : Theme.ink3.opacity(0.45))
                     .frame(width: i == page ? 18 : 6, height: 6)
-                    .padding(.vertical, 8)
+                    // a finger-sized target around a 6-point dot; the targets touch, never overlap
+                    .frame(width: (i == page ? 18 : 6) + 12, height: 30)
                     .contentShape(.rect)
                     .onTapGesture { onSelect(i) }
+                    .help(Text(verbatim: titles[i]))
             }
         }
         .animation(.smooth(duration: 0.3), value: page)
@@ -144,9 +146,12 @@ struct UnitRail: View {
     let items: [RailItem]
     /// What VoiceOver calls the rail ("Journal unit", "Watch depth").
     let title: String
+    /// Larger beside a tall face.
+    var scale: CGFloat = 1
     let onSelect: (Int) -> Void
 
-    @ScaledMetric(relativeTo: .footnote) private var row: CGFloat = 21
+    @ScaledMetric(relativeTo: .footnote) private var baseRow: CGFloat = 21
+    private var row: CGFloat { baseRow * scale }
     @State private var scrubbing: Int?
 
     var body: some View {
@@ -163,7 +168,7 @@ struct UnitRail: View {
             VStack(spacing: 0) {
                 ForEach(items) { item in
                     Text(verbatim: item.letter)
-                        .font(.footnote.weight(item.state == .lead ? .bold : .medium))
+                        .font((scale > 1.15 ? Font.body : .footnote).weight(item.state == .lead ? .bold : .medium))
                         .foregroundStyle(color(item))
                         .frame(width: row * 1.25, height: row)
                 }

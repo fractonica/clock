@@ -63,7 +63,7 @@ struct ChangeSchedule: TimelineSchedule, Sendable {
     /// Redraw a little after a change, never on its edge: floating point could read the old value there, and pure spans
     /// count with a margin of 1e-12 Saros (0.6 ms) that moves their changes just past the boundary.
     static let lag = 0.002
-    /// Without a known next change (none ahead, or running backwards) the content is checked this often.
+    /// Without a known next change (none ahead) the content is checked this often.
     static let fallbackStep = 1.0
     /// At most this long between two redraws, whatever `next` says (a device clock that jumps is caught up).
     static let maximumStep = 60.0
@@ -90,13 +90,39 @@ struct ChangeSchedule: TimelineSchedule, Sendable {
         guard rate != 0, rate.isFinite else { return nil }
         let real = date.timeIntervalSince1970
         let floor = lowFrequency ? max(1, minimumStep) : minimumStep
-        // backwards a change ahead in time lies behind: follow at the floor's pace
-        guard rate > 0 else { return Date(timeIntervalSince1970: real + max(floor, Self.defaultMinimumStep)) }
         let t = base.t(atReal: real)
         var step = Self.fallbackStep
-        if let change = next(t), change.isFinite, change > t {
+        if rate > 0 {
+            if let change = next(t), change.isFinite, change > t {
+                step = base.real0 + (change - base.t0) / rate + Self.lag - real
+            }
+        } else if let change = Self.lastChange(atOrBefore: t, within: -rate * Self.defaultMinimumStep, next: next) {
+            // backwards the content changes as the displayed time falls below the change that began it
             step = base.real0 + (change - base.t0) / rate + Self.lag - real
+        } else {
+            step = Self.defaultMinimumStep
         }
         return Date(timeIntervalSince1970: real + min(Self.maximumStep, max(floor, step)))
+    }
+
+    /// The latest change at or before t (what a clock running backwards meets next), from a `next` that only looks
+    /// ahead: probe behind t, doubling the distance from about one frame of displayed time, then walk forward. Nil when
+    /// nothing changes within 2⁴⁰ frames. A change within the last frame returns t itself (the next frame is due anyway).
+    static func lastChange(atOrBefore t: Double, within frame: Double, next: (Double) -> Double?) -> Double? {
+        var distance = max(frame, 1e-3)
+        for probe in 0..<40 {
+            if let change = next(t - distance), change.isFinite, change <= t {
+                guard probe > 0 else { return t }
+                var latest = change
+                for _ in 0..<64 {
+                    // just past the change: exactly on it, a reading may still be the cycle that ends there
+                    guard let later = next(latest + 1e-5), later.isFinite, later > latest, later <= t else { break }
+                    latest = later
+                }
+                return latest
+            }
+            distance *= 2
+        }
+        return nil
     }
 }

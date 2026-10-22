@@ -55,6 +55,7 @@ struct TurnoverLine: View {
     let level: Int
     var fixed: Double?
     var alignment: TextAlignment = .center
+    var font: Font = .subheadline
 
     @Environment(AppSettings.self) private var settings
 
@@ -69,7 +70,7 @@ struct TurnoverLine: View {
                 Text(verbatim: " ")
             }
         }
-        .font(.subheadline)
+        .font(font)
         .monospacedDigit()
         .foregroundStyle(Theme.ink2)
         .lineLimit(1)
@@ -97,6 +98,8 @@ struct ReadingsPanel: View {
     var fixed: Double?
     /// The four major periods and the stamp under the moment (when there is the height for them).
     var showsPeriods = true
+    /// Beside a tall face (a big iPad): everything a size larger.
+    var roomy = false
 
     @Environment(AppSettings.self) private var settings
     @ScaledMetric(relativeTo: .largeTitle) private var bigSize: CGFloat = 50
@@ -106,12 +109,16 @@ struct ReadingsPanel: View {
         let pure = words.pure
         VStack(alignment: .leading, spacing: 22) {
             NowTimeline(fixed: fixed, next: { FaceCadence.readings(after: $0, pure: pure) }) { t in
-                VStack(alignment: .leading, spacing: 22) {
-                    primary(t, words)
-                    if showsPeriods { majors(t, words) }
+                primary(t, words)
+            }
+            // the periods and the stamp turn with the Flavon: their own, slower timeline (a Mac redrew the grid and
+            // its selectable stamp every second otherwise)
+            if showsPeriods {
+                NowTimeline(fixed: fixed, next: { FaceCadence.readings(after: $0, pure: true) }) { t in
+                    majors(t, words)
                 }
             }
-            TurnoverLine(level: leadLevel, fixed: fixed, alignment: .leading)
+            TurnoverLine(level: leadLevel, fixed: fixed, alignment: .leading, font: roomy ? .title3 : .subheadline)
         }
     }
 
@@ -128,17 +135,17 @@ struct ReadingsPanel: View {
                     .foregroundStyle(Theme.ink3)
             } else if words.pure {
                 Text(verbatim: n.clockText(at: t))
-                    .font(.system(size: bigSize, weight: .light))
+                    .font(.system(size: bigSize * (roomy ? 1.4 : 1), weight: .light))
                     .foregroundStyle(Theme.ink)
                 Text(verbatim: n.dateText(at: t, upTo: "epsilon"))
-                    .font(.title3)
+                    .font(roomy ? .title2 : .title3)
                     .foregroundStyle(Theme.ink2)
             } else {
                 Text(verbatim: words.time(t))
-                    .font(.system(size: bigSize, weight: .light))
+                    .font(.system(size: bigSize * (roomy ? 1.4 : 1), weight: .light))
                     .foregroundStyle(Theme.ink)
                 Text(verbatim: "\(words.day(t)) · \(words.tag(t))")
-                    .font(.title3)
+                    .font(roomy ? .title2 : .title3)
                     .foregroundStyle(Theme.ink2)
             }
         }
@@ -160,10 +167,15 @@ struct ReadingsPanel: View {
                     ForEach(0..<4, id: \.self) { level in
                         GridRow {
                             letter(level)
+                            // one line each: a long fracton name ("Gamma Didecafracton") shrinks a little, never wraps
                             Text(verbatim: Notation.periodName(level: level, ordinal: ordinals[level]))
                                 .foregroundStyle(Theme.ink)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.7)
+                                .layoutPriority(1)
                             Text(verbatim: quarters[level])
                                 .foregroundStyle(Theme.ink3)
+                                .lineLimit(1)
                         }
                     }
                     GridRow {
@@ -172,10 +184,10 @@ struct ReadingsPanel: View {
                             .gridCellColumns(2)
                     }
                 }
-                .font(.callout)
+                .font(roomy ? .title3 : .callout)
                 .monospacedDigit()
                 Text(verbatim: n.stamp(at: t, upTo: "lambda"))
-                    .font(.caption)
+                    .font(roomy ? .callout : .caption)
                     .foregroundStyle(Theme.ink3)
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
@@ -187,7 +199,7 @@ struct ReadingsPanel: View {
 
     private func letter(_ level: Int) -> some View {
         Text(verbatim: Fractonica.periodName(level).letter)
-            .font(.callout.weight(.semibold))
+            .font((roomy ? Font.title3 : .callout).weight(.semibold))
             .foregroundStyle(Theme.levelColor(level))
             .frame(minWidth: 14, alignment: .center)
             .accessibilityHidden(true)

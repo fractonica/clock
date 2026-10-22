@@ -16,7 +16,8 @@ struct JournalFrame: Equatable, Sendable {
     /// The longest unit shown: its phase is the top glyphs and the bottom cycle.
     let leadLevel: Int
     let leadLetter: String
-    /// 0 ..< 1 through the lead unit's cycle (the tick on the arcs).
+    /// 0 ..< 1 through the lead unit's cycle (the tick on the arcs), in `FaceCadence.arcSteps` steps: between two
+    /// steps the arcs compare equal and are not redrawn when only the finer digits turn.
     let phase: Double
     /// Minor units: the lead's phase as a 256-state pair, coarse glyph first (SPEC §15.3).
     let pair: [Int]?
@@ -53,7 +54,7 @@ struct JournalFrame: Equatable, Sendable {
             unit: r.unit,
             leadLevel: r.leadLevel,
             leadLetter: r.leadLetter,
-            phase: r.leadPhase,
+            phase: (r.leadPhase * FaceCadence.arcSteps).rounded() / FaceCadence.arcSteps,
             pair: pair.map { [$0.hi, $0.lo] },
             glyph3: r.major?.index3,
             tokens: (r.tokens ?? []).map { Token(level: $0.level, parts: FaceWords.parts(of: $0.text)) },

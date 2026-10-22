@@ -76,6 +76,14 @@ struct NowScreen: View {
             guard !Task.isCancelled else { return }
             withAnimation(.easeInOut(duration: 0.25)) { overlay.mode = .none }
         }
+        .overlay(alignment: .bottom) {
+            if let row = launch.tip, face == .watch {
+                FaceTipPreview(row: row, tips: rowTips(depth: FaceStepper.clampDepth(depth), words: settings.wording))
+                    .clipShape(.rect(cornerRadius: 22))
+                    .shadow(color: .black.opacity(0.5), radius: 20)
+                    .padding(.bottom, 24)
+            }
+        }
         .sheet(isPresented: $guideShown) {
             NavigationStack { FaceGuide() }
                 #if os(iOS)
@@ -101,7 +109,6 @@ struct NowScreen: View {
             TurnoverLine(level: leadLevel, fixed: launch.time)
                 .padding(.horizontal, 20)
             dots
-                .padding(.bottom, 2)
         }
     }
 
@@ -113,7 +120,7 @@ struct NowScreen: View {
                     .frame(width: layout.faceAreaWidth, height: layout.wideFaceHeight)
                 dots
             }
-            ReadingsPanel(leadLevel: leadLevel, fixed: launch.time, showsPeriods: layout.size.height >= 460)
+            ReadingsPanel(leadLevel: leadLevel, fixed: launch.time, showsPeriods: layout.size.height >= 460, roomy: layout.roomy)
                 .frame(width: layout.panelWidth, alignment: .leading)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -128,13 +135,13 @@ struct NowScreen: View {
             FacePage(layout: layout) {
                 journalFace
             } rail: {
-                UnitRail(items: UnitRail.journal(unit: unit), title: "Journal unit") { selectUnit($0) }
+                UnitRail(items: UnitRail.journal(unit: unit), title: "Journal unit", scale: layout.railScale) { selectUnit($0) }
             }
         } second: {
             FacePage(layout: layout) {
                 watchFace
             } rail: {
-                UnitRail(items: UnitRail.watch(topDepth: depth), title: "Watch depth") { selectDepth($0 + 2) }
+                UnitRail(items: UnitRail.watch(topDepth: depth), title: "Watch depth", scale: layout.railScale) { selectDepth($0 + 2) }
             }
         }
     }
@@ -172,7 +179,7 @@ struct NowScreen: View {
             WatchFaceView(frame: frame, overlay: shown, outOfRange: FaceWords.outOfRange(words: words),
                           solarUnavailable: FaceWords.solarUnavailable(pure: words.pure), selectedLevel: settings.selectedLevel,
                           animated: animated, flash: watchFlash, bounce: watchBounce,
-                          bounceDirection: stepDirection, onTap: watchTap)
+                          bounceDirection: stepDirection, onTap: watchTap, tips: rowTips(depth: depth, words: words))
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel(Text(verbatim: frame?.accessibilityLabel ?? FaceWords.outOfRange(words: words).title.joined(separator: " ")))
                 .accessibilityValue(Text(verbatim: watchValue(frame, words: words)))
@@ -181,7 +188,29 @@ struct NowScreen: View {
                 .accessibilityAction(named: Text("Show info labels")) { showInfo() }
                 .accessibilityAction(named: Text(settings.showLetters ? "Hide period letters" : "Keep period letters")) { toggleLetters() }
                 .accessibilityAction(named: Text("Journal face")) { setFace(.journal) }
+                .accessibilityActions {
+                    if let frame {
+                        Button("Select \(frame.top.letter) in Every View") { selectRow(.top) }
+                        Button("Select \(frame.bottom.letter) in Every View") { selectRow(.bottom) }
+                    }
+                }
         }
+    }
+
+    /// What the watch rows' cards and menus say and do.
+    private func rowTips(depth: Int, words: Wording) -> WatchRowTips {
+        WatchRowTips(
+            store: store, words: words, topDepth: depth, fixed: launch.time, lettersKept: settings.showLetters,
+            selectedLevel: settings.selectedLevel,
+            select: { row in
+                selectRow(row)
+                steps += 1
+            },
+            step: { step($0) },
+            canStep: { canStep($0) },
+            showInfo: { showInfo() },
+            toggleLetters: { toggleLetters() }
+        )
     }
 
     private func watchValue(_ frame: WatchFrame?, words: Wording) -> String {
@@ -244,8 +273,9 @@ struct NowScreen: View {
         face == .journal ? FaceStepper.unit(unit, step: dir) != nil : FaceStepper.depth(depth, step: dir) != nil
     }
 
-    /// −1 one unit (or depth) longer, +1 shorter, on the face that shows.
-    private func step(_ dir: Int) {
+    /// −1 one unit (or depth) longer, +1 shorter, on the face that shows. `selected`: the same tap also selected a
+    /// row's level, so a step that cannot happen is no refusal (helpers.js: no red pulse when a row was hit).
+    private func step(_ dir: Int, selected: Bool = false) {
         stepDirection = dir
         let region: FaceRegion = dir < 0 ? .top : .bottom
         switch face {
@@ -253,17 +283,38 @@ struct NowScreen: View {
             guard let next = FaceStepper.unit(unit, step: dir) else { return refuse(region) }
             withAnimation(reduceMotion ? .easeInOut(duration: 0.2) : .smooth(duration: 0.42)) { setUnit(next) }
         case .watch:
-            guard let next = FaceStepper.depth(depth, step: dir) else { return refuse(region) }
+            guard let next = FaceStepper.depth(depth, step: dir) else {
+                guard selected else { return refuse(region) }
+                pulse(region, refused: false)
+                steps += 1
+                return
+            }
             withAnimation(.easeInOut(duration: 0.25)) { setDepth(next) }
         }
         pulse(region, refused: false)
         steps += 1
     }
 
+    /// A period row's level becomes the level every view highlights (face.js `selectRow`); after a step the row stays
+    /// on the face, under its plate.
+    private func selectRow(_ row: WatchGeometry.Row) {
+        let levels = WatchGeometry.levels(topDepth: depth)
+        switch row {
+        case .top: settings.selectedLevel = levels.top
+        case .bottom: settings.selectedLevel = levels.bottom
+        case .solar: break
+        }
+    }
+
     private func refuse(_ region: FaceRegion) {
         pulse(region, refused: true)
         if face == .journal { journalBounce += 1 } else { watchBounce += 1 }
         refusals += 1
+        // what the web says in a toast (face.js `blockedMessage`), for VoiceOver
+        let longer = region == .top
+        let what = face == .journal ? (longer ? "Longest unit shown" : "Shortest units shown")
+            : (longer ? "Longest period shown" : "Shortest periods shown")
+        AccessibilityNotification.Announcement(what).post()
     }
 
     private func pulse(_ region: FaceRegion, refused: Bool) {
@@ -321,12 +372,14 @@ struct NowScreen: View {
     }
 
     /// SPEC §10: top longer, bottom shorter, middle the info labels; a second middle tap within 0.4 s toggles the
-    /// letters.
+    /// letters. A tap on a period row also selects its level (face.js `onTap`).
     private func watchTap(_ p: CGPoint) {
         guard let region = WatchGeometry.region(at: p) else { return }
         if let dir = region.step {
             lastMiddleTap = nil
-            return step(dir)
+            let row = WatchGeometry.row(at: p).flatMap { $0 == .solar ? nil : $0 }
+            if let row { selectRow(row) }
+            return step(dir, selected: row != nil)
         }
         let tap = MiddleTap.resolve(previous: lastMiddleTap, now: ProcessInfo.processInfo.systemUptime)
         lastMiddleTap = tap.remember
@@ -434,12 +487,15 @@ struct NowLayout: Equatable {
     let size: CGSize
 
     /// Room for the rail of letters on each side of the face.
-    let railWidth: CGFloat = 28
-    let railGap: CGFloat = 14
+    var railWidth: CGFloat { 28 * railScale }
+    var railGap: CGFloat { 14 * railScale }
+    /// A tall face (a big iPad) gets a larger rail and readings, so neither looks lost beside it.
+    var roomy: Bool { size.height >= 900 && size.width >= 700 }
+    var railScale: CGFloat { roomy ? 1.3 : 1 }
     /// The face never grows past this height (a 13-inch iPad would make it a wall).
     let maxFaceHeight: CGFloat = 860
     /// Below the face on wide layouts: the page dots.
-    let dotsHeight: CGFloat = 24
+    let dotsHeight: CGFloat = 30
 
     /// Wide enough for a column of readings beside the face.
     var wide: Bool { size.width >= 640 && size.width >= size.height * 0.7 }
@@ -463,5 +519,5 @@ struct NowLayout: Equatable {
     var faceAreaWidth: CGFloat { wideFaceHeight * FaceSpace.aspectRatio + 2 * (railWidth + railGap) }
 
     /// Wide layouts: the readings column, as wide as its longest line wants and the space allows.
-    var panelWidth: CGFloat { max(200, min(360, size.width - faceAreaWidth - 2 * gap)) }
+    var panelWidth: CGFloat { max(200, min(roomy ? 460 : 360, size.width - faceAreaWidth - 2 * gap)) }
 }

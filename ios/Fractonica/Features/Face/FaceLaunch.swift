@@ -10,6 +10,7 @@ import Foundation
 ///     -FXFaceOverlay letters|info  the watch face's letters or info labels, kept until a tap
 ///     -FXFaceTime <unix s>       the screen reads this instant, unclamped (shows the out-of-catalogue state)
 ///     -FXFaceGuide 1             open "How to read"
+///     -FXFaceTip top|solar|bottom  show that watch row's press-and-hold card under the face (to look at it)
 ///     -FXFaceCanvas <W>x<H>      the screen lays itself out in a W × H point box, outlined (to check landscape and Mac
 ///                                window layouts on a portrait simulator)
 ///
@@ -22,6 +23,7 @@ struct FaceLaunch: Equatable, Sendable {
     var time: Double?
     var canvas: CGSize?
     var guide = false
+    var tip: WatchGeometry.Row?
 
     /// The hooks this process was launched with.
     static let current = FaceLaunch(defaults: .standard)
@@ -43,6 +45,7 @@ struct FaceLaunch: Equatable, Sendable {
         overlay = string("FXFaceOverlay").flatMap { ["letters": WatchOverlay.letters, "info": .info][$0.lowercased()] }
         time = string("FXFaceTime").flatMap(Double.init).flatMap { $0.isFinite ? $0 : nil }
         guide = string("FXFaceGuide") == "1"
+        tip = string("FXFaceTip").flatMap { ["top": WatchGeometry.Row.top, "solar": .solar, "bottom": .bottom][$0.lowercased()] }
         canvas = string("FXFaceCanvas").flatMap { value in
             let parts = value.lowercased().split(separator: "x").compactMap { Double($0) }
             return parts.count == 2 && parts.allSatisfy({ $0 > 0 && $0 < 10_000 }) ? CGSize(width: parts[0], height: parts[1]) : nil

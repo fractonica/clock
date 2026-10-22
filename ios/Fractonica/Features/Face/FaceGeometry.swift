@@ -199,8 +199,7 @@ enum WatchGeometry {
 
     /// The highlight plate behind a row.
     static func plate(_ row: Row) -> CGRect {
-        let c = rowCenterY(row)
-        return CGRect(x: 22 + plateInset, y: c - 46, width: 148 - 2 * plateInset, height: 92)
+        rowBox(row).insetBy(dx: plateInset, dy: 0)
     }
 
     /// `count` counter dots on the arc of the top or bottom end, centred on the vertical axis, read left to right
@@ -215,6 +214,18 @@ enum WatchGeometry {
             let y = top ? cy - counterRadius * cos(a) : cy + counterRadius * cos(a)
             return CGPoint(x: x, y: y)
         }
+    }
+
+    /// The hit box of a row (helpers.js `ROW_BOX`): the plate before its inset.
+    static func rowBox(_ row: Row) -> CGRect {
+        CGRect(x: 22, y: rowCenterY(row) - 46, width: 148, height: 92)
+    }
+
+    /// The glyph row under a logical point (helpers.js `hitTest(…).row`); nil between the rows or off the pill. A top
+    /// or bottom row always lies in its tap region.
+    static func row(at p: CGPoint) -> Row? {
+        guard FaceSpace.contains(p) else { return nil }
+        return Row.allCases.first { rowBox($0).contains(p) }
     }
 
     /// The tap region of a logical point; nil off the pill.
