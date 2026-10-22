@@ -63,7 +63,7 @@ struct TimelineScreen: View {
         .focusable()
         .focusEffectDisabled()
         .focused($focused)
-        .onKeyPress(phases: .down, action: keyPress)
+        .onKeyPress(phases: [.down, .repeat], action: keyPress)
         .onAppear(perform: appear)
         .onChange(of: store.revision) { controller.clockChanged() }
         .onChange(of: reduceMotion, initial: true) { _, on in controller.reduceMotion = on }
@@ -239,6 +239,11 @@ struct TimelineScreen: View {
     private func keyPress(_ press: KeyPress) -> KeyPress.Result {
         if press.modifiers.contains(.command) || press.modifiers.contains(.control) || press.modifiers.contains(.option) { return .ignored }
         let shift = press.modifiers.contains(.shift)
+        // held down, the keys that move the view repeat; the others act once
+        if press.phase == .repeat {
+            let moves: [KeyEquivalent] = [.leftArrow, .rightArrow, .pageUp, .pageDown]
+            guard moves.contains(press.key) || ["+", "=", "-", "_"].contains(press.characters) else { return .handled }
+        }
         switch press.key {
         case .leftArrow: controller.pan(fraction: shift ? -0.5 : -0.15)
         case .rightArrow: controller.pan(fraction: shift ? 0.5 : 0.15)

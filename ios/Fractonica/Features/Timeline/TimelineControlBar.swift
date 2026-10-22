@@ -64,8 +64,9 @@ struct TimelineControlBar: View {
                 .contentShape(.rect)
         }
         .disabled(w.span >= lim.maxSpan * 0.999)
+        .keyboardShortcut("-", modifiers: .command)
         .accessibilityLabel("Zoom out")
-        .help("Zoom out (−)")
+        .help("Zoom out (− or ⌘−)")
         let zoomIn = Button {
             controller.zoom(by: 0.5)
         } label: {
@@ -74,8 +75,9 @@ struct TimelineControlBar: View {
                 .contentShape(.rect)
         }
         .disabled(w.span <= lim.minSpan * 1.001)
+        .keyboardShortcut("+", modifiers: .command)
         .accessibilityLabel("Zoom in")
-        .help("Zoom in (+)")
+        .help("Zoom in (+ or ⌘+)")
         let divider = Rectangle().fill(Theme.line2).frame(width: vertical ? 22 : 1, height: vertical ? 1 : 18)
         return stack {
             if vertical { zoomIn } else { zoomOut }

@@ -195,8 +195,13 @@ final class TimelineController {
     /// The screen appears: a jump made while it was away (another tab, a widget's link) is shown as if it had been
     /// watching — the cursor is brought into view.
     func appeared() {
-        guard let store, store.revision != seenRevision else { return }
-        clockChanged()
+        guard let store else { return }
+        // the first visit places the window around the cursor (or where the launch arguments say) by itself
+        guard seenRevision >= 0 else {
+            seenRevision = store.revision
+            return
+        }
+        if store.revision != seenRevision { clockChanged() }
     }
 
     /// The read-out of the selected depth's cycle at the cursor (VoiceOver's "Details" action), anchored on its lane.
