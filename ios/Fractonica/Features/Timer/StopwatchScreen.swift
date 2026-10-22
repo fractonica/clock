@@ -296,9 +296,13 @@ private struct LapRow: View {
     let blink: Double
     let mark: Mark
 
+    /// The readouts grow with the text beside them.
+    @ScaledMetric(relativeTo: .body) private var readoutSize: CGFloat = 19
+    @ScaledMetric(relativeTo: .caption) private var splitSize: CGFloat = 12
+
     var body: some View {
         let span = LadderSpan(blinks: LadderReadout.floorBlinks(lap.span / blink))
-        let split = LadderSpan(blinks: LadderReadout.floorBlinks(lap.split / blink))
+        let splitSpan = LadderSpan(blinks: LadderReadout.floorBlinks(lap.split / blink))
         let color: Color = switch mark {
         case .none: lap.isCurrent ? Theme.ink : Theme.ink2
         case .fastest: Theme.live
@@ -319,16 +323,19 @@ private struct LapRow: View {
             Spacer()
             VStack(alignment: .trailing, spacing: 2) {
                 Text(span.readout(from: LadderReadout.stopwatchLead(elapsed: span), padLead: span.count(.eta) == 0))
-                    .font(.reading(19, weight: .light))
+                    .font(.reading(readoutSize, weight: .light))
                     .foregroundStyle(color)
-                Text("at \(split.name(parts: 3))")
-                    .font(.reading(12))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.6)
+                Text("at \(splitSpan.name(parts: 3))")
+                    .font(.reading(splitSize))
                     .foregroundStyle(Theme.ink3)
             }
         }
         .padding(.vertical, 10)
+        .dynamicTypeSize(...DynamicTypeSize.accessibility2)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Lap \(lap.number)\(mark == .fastest ? ", fastest" : mark == .slowest ? ", slowest" : ""): \(span.spoken), total \(split.spoken)")
+        .accessibilityLabel("Lap \(lap.number)\(mark == .fastest ? ", fastest" : mark == .slowest ? ", slowest" : ""): \(span.spoken), total \(splitSpan.spoken)")
     }
 }
 
