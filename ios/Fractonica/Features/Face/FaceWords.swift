@@ -141,6 +141,24 @@ enum FaceWords {
         return "\(p.count)\(p.symbol) of \(p.of) in \(p.parent)"
     }
 
+    /// What begins when cycle `cycle` of `level` ends, as briefly as the context allows (pure.js `followerName`):
+    /// major "Delta Tetrafracton"; ε "ε#4", or "ε#1 of Delta Tetrafracton" across a Delta; finer only the placing counts
+    /// that change ("35η", "30ι", "35η 0ι"), or the full name ("ε#1 1η") across a Nuclide.
+    static func follower(level: Int, cycle: Int64, notation n: Notation) -> String {
+        let next = cycle + 1
+        if level < 4 { return n.cycleName(level: level, cycle: next) }
+        let a = n.countsAtStart(level: level, cycle: cycle)
+        let b = n.countsAtStart(level: level, cycle: next)
+        if level == 4 {
+            return a.delta == b.delta ? "ε#\(b.epsilon)" : "ε#\(b.epsilon) of \(Notation.periodName(level: 3, ordinal: b.delta))"
+        }
+        if a.delta != b.delta || a.epsilon != b.epsilon { return n.cycleName(level: level, cycle: next) }
+        let was = n.cycleName(level: level, cycle: cycle, short: true).split(separator: " ")
+        let now = n.cycleName(level: level, cycle: next, short: true).split(separator: " ")
+        let i = now.indices.first { $0 >= was.count || now[$0] != was[$0] } ?? 0
+        return now[i...].joined(separator: " ")
+    }
+
     /// The accessible label of a period row ("η depth 7: state 13 of 16, value −3, falling, cycle 1 of 11"; pure:
     /// "η depth 7 · 34η of 77 in ε#5: state 13 of 16, value −3, falling").
     static func rowLabel(level: Int, reading lv: LevelReading, digits: [Int], words: Wording) -> String {
