@@ -420,6 +420,57 @@ final class TimelineController {
         viewport.zoom(by: 2.5, atX: p.x, cursor: cursor, cursorIn: cursorIn, animated: true, reduceMotion: reduceMotion)
     }
 
+    /// A command of the Mac's context menu.
+    struct ContextItem {
+        let title: String
+        let systemImage: String
+        let action: @MainActor () -> Void
+    }
+
+    /// What a secondary click at p offers (the Mac's context menu): on a block its read-out, its start and fitting it;
+    /// on a lane head selecting that depth; anywhere on the plot moving the cursor there and zooming.
+    func contextItems(at p: CGPoint) -> [ContextItem] {
+        guard let (region, gutter) = region(p), let layout else { return [] }
+        if gutter {
+            guard case .lane(let i) = region, i < levels.count, let settings, settings.selectedLevel != levels[i] else { return [] }
+            let level = levels[i], info = clock.levelInfo(level)
+            return [ContextItem(title: "Select depth \(info.depth) (\(info.letter)) in every view", systemImage: "scope") { [weak self] in
+                self?.settings?.selectedLevel = level
+            }]
+        }
+        var items: [ContextItem] = []
+        let scale = viewport.scale(windowNow)
+        if case .lane(let i) = region, let hit = block(lane: i, x: p.x) {
+            let x0 = max(layout.px0, scale.x(hit.block.start)), x1 = min(layout.px1, scale.x(hit.block.end))
+            let anchor = CGRect(x: (x0 + x1) / 2 - 1, y: layout.laneY(i), width: 2, height: layout.laneH)
+            let item = TimelineReadoutItem(selection: .cycle(level: hit.level, idx: hit.block.idx), anchor: anchor)
+            let start = hit.block.start
+            items += [
+                ContextItem(title: "Show Details", systemImage: "info.circle") { [weak self] in self?.readout = item },
+                ContextItem(title: "Travel to Its Start", systemImage: "clock.arrow.trianglehead.counterclockwise.rotate.90") { [weak self] in
+                    self?.travel(to: start + 0.001, reveal: true) // as the read-out's "Travel here"
+                },
+                ContextItem(title: "Fit This Cycle", systemImage: "arrow.left.and.line.vertical.and.arrow.right") { [weak self] in
+                    self?.fit(level: hit.level, idx: hit.block.idx)
+                },
+            ]
+        }
+        let t = scale.t(p.x)
+        if case .overview = region {} else if clock.inRange(t) {
+            items.append(ContextItem(title: "Move the Cursor Here", systemImage: "arrow.down.to.line") { [weak self] in
+                guard let self else { return }
+                viewport.setFollow(false, cursor: cursor, cursorIn: cursorIn)
+                travel(to: t)
+            })
+        }
+        if case .overview = region { return items }
+        items += [
+            ContextItem(title: "Zoom In Here", systemImage: "plus.magnifyingglass") { [weak self] in self?.doubleTap(at: p) },
+            ContextItem(title: "Zoom Out", systemImage: "minus.magnifyingglass") { [weak self] in self?.twoFingerTap(at: p) },
+        ]
+        return items
+    }
+
     /// The pointer (or a finger held down) over the canvas: the plot shows the moment there, the map its own moment, an
     /// eclipse marker that eclipse, and a head in the gutter explains its row.
     func inspect(at p: CGPoint?, touch: Bool) {

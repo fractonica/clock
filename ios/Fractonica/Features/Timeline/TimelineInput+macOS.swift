@@ -150,9 +150,39 @@ final class TimelineMouseView: NSView {
         }
     }
 
+    /// Secondary click: the commands for the point under the pointer.
+    override func menu(for event: NSEvent) -> NSMenu? {
+        guard let controller else { return nil }
+        let items = controller.contextItems(at: point(event))
+        guard !items.isEmpty else { return nil }
+        controller.inspect(at: nil, touch: false)
+        let menu = NSMenu()
+        for (i, item) in items.enumerated() {
+            // the block's own commands, then the ones for the moment under the pointer
+            if i > 0, item.title == "Move the Cursor Here" { menu.addItem(.separator()) }
+            menu.addItem(TimelineMenuItem(item))
+        }
+        return menu
+    }
+
     override func mouseExited(with event: NSEvent) {
         controller?.inspect(at: nil, touch: false)
         NSCursor.arrow.set()
     }
+}
+
+/// A menu item that runs a closure.
+@MainActor
+final class TimelineMenuItem: NSMenuItem {
+    private var handler: (@MainActor () -> Void)?
+
+    convenience init(_ item: TimelineController.ContextItem) {
+        self.init(title: item.title, action: #selector(run), keyEquivalent: "")
+        handler = item.action
+        target = self
+        image = NSImage(systemSymbolName: item.systemImage, accessibilityDescription: nil)
+    }
+
+    @objc private func run() { handler?() }
 }
 #endif
