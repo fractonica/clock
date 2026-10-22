@@ -109,9 +109,13 @@ struct ReadingsPanel: View {
         let pure = words.pure
         VStack(alignment: .leading, spacing: 22) {
             NowTimeline(fixed: fixed, next: { FaceCadence.readings(after: $0, pure: pure) }) { t in
-                VStack(alignment: .leading, spacing: 22) {
-                    primary(t, words)
-                    if showsPeriods { majors(t, words) }
+                primary(t, words)
+            }
+            // the periods and the stamp turn with the Flavon: their own, slower timeline (a Mac redrew the grid and
+            // its selectable stamp every second otherwise)
+            if showsPeriods {
+                NowTimeline(fixed: fixed, next: { FaceCadence.readings(after: $0, pure: true) }) { t in
+                    majors(t, words)
                 }
             }
             TurnoverLine(level: leadLevel, fixed: fixed, alignment: .leading, font: roomy ? .title3 : .subheadline)
