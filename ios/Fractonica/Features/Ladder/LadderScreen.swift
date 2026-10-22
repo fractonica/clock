@@ -71,6 +71,7 @@ struct LadderScreen: View {
                 if includingUpNext {
                     Section {
                         UpNextView()
+                            .clockHeldOutOfSight()
                             .padding(.vertical, 6)
                             .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
                             .listRowBackground(Color.clear)
@@ -123,6 +124,8 @@ struct LadderScreen: View {
             navigator: navigator,
             onTap: { tap(level) }
         )
+        // a row the list keeps out of sight would keep redrawing (and updating the whole list) at its cadence
+        .clockHeldOutOfSight()
         .id(level)
         .listRowInsets(EdgeInsets(top: 2, leading: 12, bottom: 2, trailing: 10))
         .listRowBackground(

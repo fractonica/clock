@@ -25,12 +25,16 @@ enum ClockCadence: Sendable, Equatable {
 ///
 /// Content that also needs the real instant (an animation running while the clock is paused) reads `Date.now`:
 /// it is the moment of the tick.
+///
+/// Content out of sight that stays in the view graph — the rows of a list scrolled away — keeps redrawing, and every
+/// redraw updates the whole window: hold its timelines while it is away with `.clockHeldOutOfSight()`.
 struct ClockTimeline<Content: View>: View {
     private let cadence: ClockCadence
     private let content: (Double) -> Content
 
     @Environment(ClockStore.self) private var store
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.clockHeld) private var held
 
     init(_ cadence: ClockCadence = .periodic(1), @ViewBuilder content: @escaping (Double) -> Content) {
         self.cadence = cadence
@@ -38,21 +42,46 @@ struct ClockTimeline<Content: View>: View {
     }
 
     var body: some View {
-        let background = scenePhase == .background
+        let idle = scenePhase == .background || held
         switch cadence {
         case .animation:
-            TimelineView(.animation(minimumInterval: nil, paused: background || store.isPaused)) { context in
+            TimelineView(.animation(minimumInterval: nil, paused: idle || store.isPaused)) { context in
                 content(store.time(at: context.date))
             }
         case .continuous:
-            TimelineView(.animation(minimumInterval: nil, paused: background)) { context in
+            TimelineView(.animation(minimumInterval: nil, paused: idle)) { context in
                 content(store.time(at: context.date))
             }
         case .periodic(let interval):
-            TimelineView(ClockTickSchedule(base: store.base, interval: interval, paused: background || store.isPaused)) { context in
+            TimelineView(ClockTickSchedule(base: store.base, interval: interval, paused: idle || store.isPaused)) { context in
                 content(store.time(at: context.date))
             }
         }
+    }
+}
+
+extension EnvironmentValues {
+    /// The `ClockTimeline`s inside draw once and wait (`clockHeldOutOfSight()`).
+    @Entry var clockHeld = false
+}
+
+extension View {
+    /// Holds the `ClockTimeline`s inside while the view is out of sight (between `onDisappear` and `onAppear`: a list
+    /// row scrolled away, which stays in the view graph and would keep updating the window); they draw afresh as it
+    /// comes back.
+    func clockHeldOutOfSight() -> some View {
+        modifier(ClockHeldOutOfSight())
+    }
+}
+
+private struct ClockHeldOutOfSight: ViewModifier {
+    @State private var inSight = false
+
+    func body(content: Content) -> some View {
+        content
+            .environment(\.clockHeld, !inSight)
+            .onAppear { inSight = true }
+            .onDisappear { inSight = false }
     }
 }
 
