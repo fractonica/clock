@@ -1,0 +1,9 @@
+# The app files FocusChecks.swift compiles against (relative to ios/).
+Fractonica/Features/Focus/FocusHarmonics.swift
+Fractonica/Features/Focus/FocusModel.swift
+Fractonica/Features/Focus/FocusRenderer.swift
+Fractonica/Features/Focus/FocusShaders.swift
+Fractonica/Features/Focus/FocusPalette.swift
+Fractonica/Features/Focus/FocusChimeSynth.swift
+Shared/Theme.swift
+Shared/Notation+Standard.swift
