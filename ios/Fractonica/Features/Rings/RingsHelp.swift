@@ -14,6 +14,15 @@ enum RingsHelp {
     static let openingLevel = 9
     static let finestLevel = Fractonica.maxLevel
 
+    /// How to work the dial: by touch on iPhone and iPad, by pointer and keyboard on the Mac.
+    static let interaction: Item = {
+        #if os(macOS)
+        Item(title: "Pointer and keys", body: "Click a ring to select it, then click one of its sectors to go to the start of that child cycle. Drag around a ring to wind its hand through the cycle and on into the next. Right-click for what a ring or sector is. With the dial focused, ← → choose a ring, Return restarts the running child cycle and Page Up / Page Down step through them. Drag along the wave (or use ← → on it) to move inside the selected cycle; the thresholds below it jump to that moment.")
+        #else
+        Item(title: "Touch", body: "Tap a ring to select it, then tap one of its sectors to go to the start of that child cycle. Drag around a ring to wind its hand through the cycle and on into the next. Touch and hold for what a ring or sector is. Drag along the wave to move inside the selected cycle; the thresholds below it jump to that moment.")
+        #endif
+    }()
+
     static func items(pure: Bool) -> [Item] {
         let clock = FractonicaClock.shared
         if pure {
@@ -28,7 +37,7 @@ enum RingsHelp {
                 Item(title: "Quarters", body: "Beads at the right, the bottom and the left mark peak, node and valley; they fill in as they are passed. The selected ring is labelled."),
                 Item(title: "Centre", body: "The countdown to the end of the selected cycle on the ladder (6ι 43λ) and what begins there. A minor cycle shows how far through it you are as two glyphs, 256 states; a major one shows its quarter instead."),
                 Item(title: "Counting", body: "Ordinals (Delta Trifracton, δ#3, ε#5) and the Helion of a date are numbered from 1; Preons, Flavons and Blinks (ι λ ν) count completed units from 0. A Nuclide is 77 Helions, a Helion 36 Preons, a Preon 65 Flavons, a Flavon 25 Blinks; the depths between (ζ θ κ μ) are 11η, 4ι, 13λ and 5ν long. Real time is counted in Blinks."),
-                Item(title: "Touch", body: "Tap a ring to select it, then tap one of its sectors to go to the start of that child cycle. Drag around a ring to wind its hand through the cycle and on into the next. Touch and hold for what a ring or sector is. Drag along the wave to move inside the selected cycle; the thresholds below it jump to that moment."),
+                interaction,
             ]
         }
         let opening = clock.levelInfo(openingLevel).meanSeconds
@@ -42,7 +51,7 @@ enum RingsHelp {
             Item(title: "Sectors and funnels", body: "A ring is cut into the child cycles it contains. The tinted sector is the one running now, and the funnel shows it opening up into the whole next ring."),
             Item(title: "Quarters", body: "Beads at 3, 6 and 9 o’clock mark peak, node and valley; they fill in as they are passed. The selected ring is labelled."),
             Item(title: "Centre", body: "The countdown to the end of the selected cycle and its end time in your zone. The wave below shows what the glyph does over the same cycle."),
-            Item(title: "Touch", body: "Tap a ring to select it, then tap one of its sectors to go to the start of that child cycle. Drag around a ring to wind its hand through the cycle and on into the next. Touch and hold for what a ring or sector is. Drag along the wave to move inside the selected cycle; the thresholds below it jump to that moment."),
+            interaction,
         ]
     }
 }

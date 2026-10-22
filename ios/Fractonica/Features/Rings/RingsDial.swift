@@ -91,9 +91,20 @@ struct RingsDial: View {
         .onChange(of: store.revision) { frozen.reset() }
         .focusable()
         .focusEffectDisabled()
-        .onKeyPress(keys: [.leftArrow, .rightArrow, .upArrow, .downArrow]) { press in
-            let d = press.key == .leftArrow || press.key == .upArrow ? -1 : 1
-            selectRelative(d, range: range, selected: selected)
+        .onKeyPress(keys: [.leftArrow, .rightArrow, .upArrow, .downArrow, .home, .end, .pageUp, .pageDown, .return]) { press in
+            guard press.modifiers.isEmpty else { return .ignored }
+            switch press.key {
+            case .home: selectAbsolute(range.minLevel, selected: selected)
+            case .end: selectAbsolute(range.maxLevel, selected: selected)
+            // the keyboard's way to the sectors (rings.js `jumpChild`): Return restarts the running child cycle, Page
+            // Up / Page Down step through the children
+            case .return: goToRunningChild(selected: selected)
+            case .pageUp: stepChild(1, selected: selected)
+            case .pageDown: stepChild(-1, selected: selected)
+            default:
+                let d = press.key == .leftArrow || press.key == .upArrow ? -1 : 1
+                selectRelative(d, range: range, selected: selected)
+            }
             return .handled
         }
         .accessibilityElement()
@@ -200,10 +211,27 @@ struct RingsDial: View {
         Haptics.play(.selection)
     }
 
+    private func selectAbsolute(_ level: Int, selected: Int) {
+        guard level != selected else { return }
+        model.select(level, settings: settings, reduceMotion: reduceMotion)
+        Haptics.play(.selection)
+    }
+
     private func goToRunningChild(selected: Int) {
-        guard selected < Fractonica.maxLevel, let r = clock.level(at: readTime, selected),
+        guard !model.outOfRange, selected < Fractonica.maxLevel, let r = clock.level(at: readTime, selected),
               let child = cycles.child(level: selected, cycle: r.cycle, sector: RingsMath.sector(of: r.phase, factor: r.factor)) else { return }
         store.travel(to: child.start + 0.001)
+        Haptics.play(.step)
+    }
+
+    /// The previous or next child cycle of the selected ring (one sector on).
+    private func stepChild(_ direction: Int, selected: Int) {
+        guard !model.outOfRange, selected < Fractonica.maxLevel else { return }
+        if let edge = store.step(level: selected + 1, direction: direction) {
+            toasts.show(edge)
+        } else {
+            Haptics.play(.step)
+        }
     }
 
     private func accessibilityValue(selected: Int) -> String {

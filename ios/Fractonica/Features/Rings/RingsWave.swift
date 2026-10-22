@@ -13,6 +13,7 @@ struct RingsWave: View {
     @State private var hoverPhase: Double?
     @State private var scrubCycle: Int64?
     @State private var lastIndex: Int?
+    @FocusState private var focused: Bool
     @ScaledMetric(relativeTo: .body) private var height: CGFloat = 176
 
     private let clock = FractonicaClock.shared
@@ -31,10 +32,44 @@ struct RingsWave: View {
                 ))
         }
         .frame(height: max(150, min(height, 240)))
+        .focusable()
+        .focused($focused)
+        .focusEffectDisabled()
+        .onKeyPress(keys: [.leftArrow, .rightArrow, .upArrow, .downArrow, .pageUp, .pageDown, .home, .end]) { press in
+            key(press) ? .handled : .ignored
+        }
         .accessibilityElement()
         .accessibilityLabel(Text("Position inside the selected cycle"))
         .accessibilityValue(Text(accessibilityValue))
         .accessibilityAdjustableAction { direction in step(direction == .increment ? 1 : -1) }
+    }
+
+    /// The keyboard on the focused wave (rings.js): ← → one glyph state (with ⇧ one quarter), Page Up / Page Down one
+    /// quarter, Home / End the cycle's two ends.
+    private func key(_ press: KeyPress) -> Bool {
+        let t = store.time()
+        guard !model.outOfRange, clock.inRange(t), !press.modifiers.contains(.command), !press.modifiers.contains(.option),
+              !RingsMath.isBlur(meanSeconds: clock.levelInfo(level).meanSeconds, speed: RingsScreenModel.speed(of: store)),
+              let r = clock.level(at: min(t, clock.tMax - 0.001), level) else { return false }
+        let states = Double(r.states)
+        let quarterPrev = (r.phase - Double(r.quarter) * 0.25 > 0.004 ? Double(r.quarter) : Double(r.quarter - 1)) * 0.25
+        let quarterNext = Double(r.quarter + 1) * 0.25
+        let shift = press.modifiers.contains(.shift)
+        let target: Double
+        switch press.key {
+        case .leftArrow, .downArrow: target = shift ? quarterPrev : Double(r.index - 1) / states
+        case .rightArrow, .upArrow: target = shift ? quarterNext : Double(r.index + 1) / states
+        case .pageDown: target = quarterPrev
+        case .pageUp: target = quarterNext
+        case .home: target = 0
+        case .end: target = 1
+        default: return false
+        }
+        scrubCycle = r.cycle
+        move(to: target, snap: true)
+        scrubCycle = nil
+        Haptics.play(.selection)
+        return true
     }
 
     @ViewBuilder
@@ -81,7 +116,7 @@ struct RingsWave: View {
             layout: layout, level: level, state: .reading,
             phase: r.phase, index: r.index, quarter: r.quarter, limit: limit,
             passed: (0...4).map { times[$0] != nil && $0 <= r.quarter },
-            next: next, countdown: countdown, scrubbing: model.scrubbingWave, hover: hover
+            next: next, countdown: countdown, scrubbing: model.scrubbingWave || focused, hover: hover
         )
     }
 
@@ -89,7 +124,14 @@ struct RingsWave: View {
 
     private func scrub(_ step: DragStep, x: CGFloat, layout: WaveLayout, single: Bool) {
         let t = store.time()
-        guard !model.outOfRange, clock.inRange(t), !RingsMath.isBlur(meanSeconds: clock.levelInfo(level).meanSeconds, speed: RingsScreenModel.speed(of: store)) else { return }
+        guard !model.outOfRange, clock.inRange(t), !RingsMath.isBlur(meanSeconds: clock.levelInfo(level).meanSeconds, speed: RingsScreenModel.speed(of: store)) else {
+            // a drag that can no longer move the clock still ends
+            if step == .ended || step == .cancelled {
+                scrubCycle = nil
+                model.scrubbingWave = false
+            }
+            return
+        }
         switch step {
         case .began:
             guard let r = clock.level(at: min(t, clock.tMax - 0.001), level) else { return }

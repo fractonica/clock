@@ -286,6 +286,21 @@ private func nativeChecks() {
     check(r.widened(to: 12) == DepthRange(minLevel: 0, maxLevel: 12) && DepthRange(minLevel: 4, maxLevel: 6).widened(to: 1) == DepthRange(minLevel: 1, maxLevel: 6), "widening takes the level in")
     check(r.clamp(12) == 9 && r.clamp(3) == 3, "the selection follows the range")
 
+    // screen layout: the dial (and the strip under it) always fits the window
+    for size in [CGSize(width: 750, height: 204), CGSize(width: 750, height: 330), CGSize(width: 1336, height: 900),
+                 CGSize(width: 960, height: 700), CGSize(width: 620, height: 520), CGSize(width: 1180, height: 480)] {
+        let wide = RingsScreenLayout.isWide(size)
+        check(wide, "\(size) is laid out side by side")
+        let l = RingsScreenLayout.wide(size)
+        let column = l.dial + (l.stripWithCard ? 0 : 56)
+        check(column <= size.height + 0.5 || l.dial == 120, "the dial column fits \(size): \(column)")
+        check(l.dial + l.card + l.spacing <= size.width, "dial and card fit side by side in \(size)")
+        check(l.stripWithCard == (size.height < RingsScreenLayout.shortHeight), "the strip joins the card only in a short window (\(size))")
+    }
+    check(!RingsScreenLayout.isWide(CGSize(width: 402, height: 700)) && !RingsScreenLayout.isWide(CGSize(width: 1032, height: 1300)), "portrait windows scroll")
+    check(RingsScreenLayout.wide(CGSize(width: 750, height: 204)).dial == 196, "iPhone landscape: the dial takes the whole height")
+    check(RingsScreenLayout.tallDial(CGSize(width: 402, height: 700)) == 378, "iPhone portrait: the dial takes the width")
+
     // phases and points
     let c = CGPoint(x: 100, y: 100)
     for phase in stride(from: 0.0, to: 1.0, by: 0.0625) {

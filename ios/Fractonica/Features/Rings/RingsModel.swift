@@ -16,6 +16,7 @@ import SwiftUI
 ///     -FXRingsScroll 1          scroll the iPhone page down to the bottom of the cycle card
 ///     -FXRingsRate <rate>       start a time-lapse at this many displayed seconds per real second (blurred rings)
 ///     -FXRingsWide 1            lay the screen out side by side whatever the window's shape (landscape checks)
+///     -FXRingsLandscape 1       turn an iPhone to landscape when the screen appears (iOS)
 @MainActor @Observable
 final class RingsScreenModel {
     var selectionOverride: Int?
@@ -28,6 +29,8 @@ final class RingsScreenModel {
     var scrollsToCard = false
     /// Launch: the side-by-side layout whatever the window's shape.
     var forcesWide = false
+    /// Launch: turn the device to landscape.
+    @ObservationIgnored var turnsLandscape = false
     /// The ring index a drag is winding.
     var scrubbingRing: Int?
     /// The wave's cursor is being dragged.
@@ -105,6 +108,7 @@ final class RingsScreenModel {
         if let options = string("FXRingsOptions"), options == "1" { pendingOptions = true }
         if string("FXRingsScroll") == "1" { scrollsToCard = true }
         if string("FXRingsWide") == "1" { forcesWide = true }
+        if string("FXRingsLandscape") == "1" { turnsLandscape = true }
         if let rate = string("FXRingsRate").flatMap(Double.init), rate.isFinite, rate != 0 { pendingRate = rate }
         if let help = string("FXRingsHelp"), help == "1" {
             pendingOptions = true
