@@ -245,7 +245,7 @@ Read from UserDefaults' argument domain, never persisted; they work on iOS (simc
 | Argument | Effect |
 |---|---|
 | `-FXTab <screen>` | Open a screen (presented the way it normally appears) |
-| `-FXTime <unix s>` | Travel there, paused (1791460800 is SPEC §12 vector A, 2026-10-08 12:00 UTC); clamped to the catalogue |
+| `-FXTime <unix s>` | Travel there, paused (1791460800 is SPEC §12 vector A, 2026-10-08 12:00 UTC); clamped to the catalogue; negative (pre-1970) values work |
 | `-FXPure 1\|0` | Pure mode for this launch |
 | `-FXZone <IANA id>` | Time zone for this launch (UTC for reproducible shots) |
 | `-FXLink <url>` | Open an `AppLink` as a widget or notification tap does; replaces `-FXTab`, its `t` replaces `-FXTime` |
@@ -257,6 +257,11 @@ iOS app: `UIBackgroundModes` audio + fetch, `BGTaskSchedulerPermittedIdentifiers
 portrait + landscape on iPhone. macOS app: `CFBundleURLTypes`; entitlements app-sandbox, files.user-selected.read-write,
 print. Widget extensions: the WidgetKit extension point (macOS: app-sandbox). Notifications, local audio output,
 WKWebView with a custom scheme, `UIApplication.isIdleTimerDisabled` and haptics need nothing more.
+
+### Numbers in Text
+
+`Text("S\(n)")` is a localized string key: SwiftUI formats the interpolated number with locale grouping ("S4 820", a year
+"2 026"). Use `Text(verbatim:)` (or a `String`) for sync numbers, years, counts and anything the web app prints raw.
 
 ## Logic checks (scripts/check.sh)
 
