@@ -65,7 +65,7 @@ struct HelionArcGeometry: Sendable {
     static let preons = 36
     /// How many times as long as the others the running Preon is drawn.
     static let magnification = 7.0
-    /// The share of the double arc the running Preon's wave takes: 5/40.
+    /// The share of the double arc the running Preon's wave takes: 7/42, a sixth.
     static let window = magnification / (Double(preons - 1) + magnification)
     /// The wave's half-arcs in radii of the Helion's: a double arc as long as its stretch of the Helion's (4 of its own
     /// radii across) — how far it reaches off the Helion's arc.
