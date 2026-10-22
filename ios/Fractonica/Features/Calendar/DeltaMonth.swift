@@ -20,15 +20,15 @@ struct DeltaMonthView: View {
 
     var body: some View {
         @Bindable var model = model
-        let metrics = DeltaMetrics(width: width, short: short)
+        let metrics = CalDeltaMetrics(width: width, short: short)
         let page = model.deltaPage(model.page)
         ScrollViewReader { proxy in
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
                     DeltaHeader(model: model, page: page)
-                    QuarterBar(page: page)
-                    ColumnHeader(metrics: metrics)
-                    CalendarPager(index: $model.page, range: 0...(DeltaPage.count(store.clock) - 1), onSwipe: {
+                    CalQuarterBar(page: page)
+                    CalColumnHeader(metrics: metrics)
+                    CalendarPager(index: $model.page, range: 0...(CalDeltaPage.count(store.clock) - 1), onSwipe: {
                         model.pageFollows = false
                         Haptics.play(.selection)
                     }) { index in
@@ -37,7 +37,7 @@ struct DeltaMonthView: View {
                     .frame(height: metrics.gridHeight)
                     VStack(alignment: .leading, spacing: 4) {
                         Text("A cell is 11 Helions. Gold diamonds mark the quarters of a solar sync (19η); a line in the Delta colour marks where a quarter of the Delta begins. Tap a cell for its Helions.")
-                        if let last = page.cells.last(where: \.inRange), last.index < DeltaPage.cells - 1 || last.cut < 1 {
+                        if let last = page.cells.last(where: \.inRange), last.index < CalDeltaPage.cells - 1 || last.cut < 1 {
                             Label("The catalogue ends with eclipse #\(store.clock.extent), in ε#\(last.epsilon) \(last.firstHelion)η: the rest of this Delta lies after it.", systemImage: "moon.zzz")
                                 .foregroundStyle(Theme.ink2)
                         }
@@ -89,7 +89,7 @@ struct DeltaMonthView: View {
                     }
                     Button("Show the live clock's Delta", systemImage: "dot.radiowaves.left.and.right") {
                         // the page of the device clock, without travelling there
-                        if let p = DeltaPage.page(store.clock, at: Date.now.timeIntervalSince1970) {
+                        if let p = CalDeltaPage.page(store.clock, at: Date.now.timeIntervalSince1970) {
                             model.pageFollows = store.isLive
                             model.page = p
                             Haptics.play(.selection)
@@ -103,7 +103,7 @@ struct DeltaMonthView: View {
     }
 }
 
-struct DeltaMetrics: Equatable {
+struct CalDeltaMetrics: Equatable {
     let width: CGFloat
     var short = false
     var gap: CGFloat { width < 500 ? 4 : 6 }
@@ -118,7 +118,7 @@ struct DeltaMetrics: Equatable {
 /// The page in words and letters, with the arrows.
 private struct DeltaHeader: View {
     let model: MonthModel
-    let page: DeltaPage
+    let page: CalDeltaPage
 
     @Environment(ClockStore.self) private var store
     @State private var picking = false
@@ -178,7 +178,7 @@ private struct DeltaHeader: View {
                 .accessibilityLabel(Text("Show the shown moment's Delta"))
             }
             VStack(spacing: 4) {
-                StepPair(previous: "Previous \(model.pageStep.name)", next: "Next \(model.pageStep.name)", shortcuts: true, step: step)
+                CalStepPair(previous: "Previous \(model.pageStep.name)", next: "Next \(model.pageStep.name)", shortcuts: true, step: step)
                 Text("by \(model.pageStep.name)")
                     .font(.caption2)
                     .foregroundStyle(Theme.levelColor(model.pageStep.level))
@@ -188,7 +188,7 @@ private struct DeltaHeader: View {
 
     private func step(_ direction: Int) {
         let clock = store.clock
-        let next = DeltaPage.clampPage(clock, model.page + direction * model.pageStep.rawValue)
+        let next = CalDeltaPage.clampPage(clock, model.page + direction * model.pageStep.rawValue)
         guard next != model.page else {
             Haptics.play(.warning)
             return
@@ -200,8 +200,8 @@ private struct DeltaHeader: View {
 }
 
 /// The four quarters of the page's Delta and its five Nuclides; tap a quarter to go where it begins.
-private struct QuarterBar: View {
-    let page: DeltaPage
+private struct CalQuarterBar: View {
+    let page: CalDeltaPage
 
     @Environment(ClockStore.self) private var store
     @Environment(ToastCenter.self) private var toasts
@@ -209,7 +209,7 @@ private struct QuarterBar: View {
     var body: some View {
         ClockTimeline(.periodic(store.isPlaying ? max(60, abs(store.rate) / 8) : 60)) { t in
             let clock = store.clock
-            let onPage = DeltaPage.page(clock, at: t) == page.index
+            let onPage = CalDeltaPage.page(clock, at: t) == page.index
             let current = onPage ? Notation.standard.quarter(at: t, level: 3) : nil
             let fraction = onPage ? (clock.level(at: t, 3)?.phase ?? 0) : nil
             VStack(spacing: 3) {
@@ -264,13 +264,13 @@ private struct QuarterBar: View {
     }
 }
 
-private struct ColumnHeader: View {
-    let metrics: DeltaMetrics
+private struct CalColumnHeader: View {
+    let metrics: CalDeltaMetrics
 
     var body: some View {
         HStack(spacing: metrics.gap) {
             Color.clear.frame(width: metrics.rowLabel, height: 1)
-            ForEach(DeltaPage.columnHelion, id: \.self) { h in
+            ForEach(CalDeltaPage.columnHelion, id: \.self) { h in
                 Text("\(h)η")
                     .font(.caption.weight(.semibold).monospacedDigit())
                     .foregroundStyle(Theme.levelColor(6, opacity: 0.9))
@@ -288,14 +288,14 @@ private struct ColumnHeader: View {
 /// One Delta: 5 rows of 7 cells.
 private struct DeltaPageGrid: View {
     let model: MonthModel
-    let page: DeltaPage
-    let metrics: DeltaMetrics
+    let page: CalDeltaPage
+    let metrics: CalDeltaMetrics
 
     @Environment(ClockStore.self) private var store
 
     var body: some View {
         VStack(spacing: metrics.gap) {
-            ForEach(0..<DeltaPage.rows, id: \.self) { row in
+            ForEach(0..<CalDeltaPage.rows, id: \.self) { row in
                 HStack(spacing: metrics.gap) {
                     Text("ε#\(row + 1)")
                         .font(.caption.weight(.semibold).monospacedDigit())
@@ -305,8 +305,8 @@ private struct DeltaPageGrid: View {
                         .dynamicTypeSize(...DynamicTypeSize.xLarge)
                         .frame(width: metrics.rowLabel, alignment: .leading)
                         .accessibilityHidden(true)
-                    ForEach(0..<DeltaPage.columns, id: \.self) { col in
-                        let cell = page.cells[row * DeltaPage.columns + col]
+                    ForEach(0..<CalDeltaPage.columns, id: \.self) { col in
+                        let cell = page.cells[row * CalDeltaPage.columns + col]
                         Button {
                             Haptics.play(.selection)
                             withAnimation(.snappy) { model.selectedCell = model.selectedCell == cell.index ? nil : cell.index }
@@ -329,7 +329,7 @@ private struct DeltaPageGrid: View {
         }
     }
 
-    private func label(_ cell: DeltaPage.Cell) -> String {
+    private func label(_ cell: CalDeltaPage.Cell) -> String {
         var parts = ["ε#\(cell.epsilon), \(cell.firstHelion)η to \(cell.firstHelion + 10)η"]
         if let q = cell.quarters.first(where: \.startsHere), cell.inRange {
             parts.append("\(Notation.periodName(level: 3, ordinal: page.delta)) \(Notation.quarterWords[q.quarter]) begins")
@@ -343,8 +343,8 @@ private struct DeltaPageGrid: View {
 
 /// A cell: its corner facts (eclipse, sync) and the band of its 11 Helions.
 private struct DeltaCell: View, Equatable {
-    let cell: DeltaPage.Cell
-    let metrics: DeltaMetrics
+    let cell: CalDeltaPage.Cell
+    let metrics: CalDeltaMetrics
     let isSelected: Bool
 
     var body: some View {
@@ -367,12 +367,12 @@ private struct DeltaCell: View, Equatable {
             }
             if cell.inRange, let q = cell.quarters.first(where: \.startsHere) {
                 // a quarter of the Delta begins in this cell: its word flies as a flag from the line
-                QuarterFlag(word: Notation.quarterWords[q.quarter], x: q.x0, cellWidth: metrics.cellWidth,
+                CalQuarterFlag(word: Notation.quarterWords[q.quarter], x: q.x0, cellWidth: metrics.cellWidth,
                             padding: metrics.regular ? 6 : 4, regular: metrics.regular)
             }
             Spacer(minLength: 0)
             if cell.inRange {
-                HelionBand(cell: cell, regular: metrics.regular)
+                CalHelionBand(cell: cell, regular: metrics.regular)
                     .frame(height: metrics.regular ? 28 : 13)
             }
         }
@@ -414,7 +414,7 @@ private struct DeltaCell: View, Equatable {
 
 /// The word of a Delta quarter flying from the line where the quarter begins: attached to the line's right when the
 /// line is in the cell's left half, to its left otherwise, the pole side square.
-private struct QuarterFlag: View {
+private struct CalQuarterFlag: View {
     let word: String
     /// Where the line is, 0 … 1 of the cell.
     let x: Double
@@ -459,7 +459,7 @@ private struct QuarterFlag: View {
 /// Choose a Delta by the fracton names of its Alpha, Beta, Gamma and its own.
 private struct DeltaPagePicker: View {
     let model: MonthModel
-    let page: DeltaPage
+    let page: CalDeltaPage
 
     @Environment(ClockStore.self) private var store
     @Environment(\.dismiss) private var dismiss
@@ -498,7 +498,7 @@ private struct DeltaPagePicker: View {
                 Spacer()
                 Button("Show") {
                     model.pageFollows = false
-                    model.page = DeltaPage.page(clock, alpha: path[0], beta: path[1], gamma: path[2], delta: path[3])
+                    model.page = CalDeltaPage.page(clock, alpha: path[0], beta: path[1], gamma: path[2], delta: path[3])
                     Haptics.play(.selection)
                     dismiss()
                 }
@@ -515,8 +515,8 @@ private struct DeltaPagePicker: View {
 }
 
 /// The 11 Helions of a cell, alternating, with the node of each and the solar sync quarters as gold diamonds.
-private struct HelionBand: View {
-    let cell: DeltaPage.Cell
+private struct CalHelionBand: View {
+    let cell: CalDeltaPage.Cell
     let regular: Bool
 
     var body: some View {
@@ -524,12 +524,12 @@ private struct HelionBand: View {
             let barH: CGFloat = regular ? 7 : 5
             let y = size.height - barH
             let w = size.width * cell.cut
-            let step = size.width / CGFloat(DeltaPage.helionsPerCell)
-            for j in 0..<DeltaPage.helionsPerCell {
+            let step = size.width / CGFloat(CalDeltaPage.helionsPerCell)
+            for j in 0..<CalDeltaPage.helionsPerCell {
                 let x0 = CGFloat(j) * step
                 guard x0 < w else { break }
                 let rect = CGRect(x: x0 + (j > 0 ? 0.5 : 0), y: y, width: min(step, w - x0) - (j > 0 ? 0.5 : 0), height: barH)
-                let even = (Int(cell.z) * DeltaPage.helionsPerCell + j) % 2 == 0
+                let even = (Int(cell.z) * CalDeltaPage.helionsPerCell + j) % 2 == 0
                 context.fill(Path(roundedRect: rect, cornerRadius: 1.2), with: .color(Theme.levelColor(6, opacity: even ? 0.85 : 0.45)))
                 if regular {
                     let nx = x0 + step / 2
@@ -562,8 +562,8 @@ private struct HelionBand: View {
 
 /// The shown moment's cell ringed, and where in it the moment is; the live clock's cell marked in red while travelling.
 private struct DeltaCursor: View {
-    let page: DeltaPage
-    let metrics: DeltaMetrics
+    let page: CalDeltaPage
+    let metrics: CalDeltaMetrics
     let t: Double
     let live: Double?
 
@@ -585,7 +585,7 @@ private struct DeltaCursor: View {
             let radius: CGFloat = metrics.regular ? 12 : 9
             context.stroke(RoundedRectangle(cornerRadius: radius, style: .continuous).path(in: r.insetBy(dx: 0.75, dy: 0.75)), with: .color(Theme.cursor), lineWidth: 1.5)
             let pad: CGFloat = metrics.regular ? 6 : 4
-            let x = r.minX + pad + CGFloat(DeltaPage.fraction(clock, cell: cell, at: t)) * (r.width - 2 * pad)
+            let x = r.minX + pad + CGFloat(CalDeltaPage.fraction(clock, cell: cell, at: t)) * (r.width - 2 * pad)
             let bottom = r.maxY - pad
             let top = bottom - (metrics.regular ? 22 : 17)
             var line = Path()
@@ -601,21 +601,21 @@ private struct DeltaCursor: View {
 /// The five Deltas of the page's Gamma, with their Nuclides; tap one to show it.
 private struct GammaRibbon: View {
     let model: MonthModel
-    let page: DeltaPage
+    let page: CalDeltaPage
 
     @Environment(ClockStore.self) private var store
 
     var body: some View {
         let clock = store.clock
-        let first = Int(page.gamma) * DeltaPage.pagesPerGamma
+        let first = Int(page.gamma) * CalDeltaPage.pagesPerGamma
         CalCard(Notation.periodName(level: 2, ordinal: page.path[2]), systemImage: "rectangle.split.3x1") {
             ClockTimeline(.periodic(store.isPlaying ? max(600, abs(store.rate) / 8) : 600)) { t in
-                let shownPage = DeltaPage.page(clock, at: t)
+                let shownPage = CalDeltaPage.page(clock, at: t)
                 let phase = clock.level(at: t, 3)?.phase ?? 0
                 HStack(spacing: 4) {
-                    ForEach(0..<DeltaPage.pagesPerGamma, id: \.self) { i in
+                    ForEach(0..<CalDeltaPage.pagesPerGamma, id: \.self) { i in
                         let index = first + i
-                        let exists = index < DeltaPage.count(clock)
+                        let exists = index < CalDeltaPage.count(clock)
                         Button {
                             model.pageFollows = false
                             model.page = index
@@ -683,7 +683,7 @@ private struct CellDetailView: View {
     }
 
     @ViewBuilder
-    private func content(_ cell: DeltaPage.Cell) -> some View {
+    private func content(_ cell: CalDeltaPage.Cell) -> some View {
         let clock = store.clock
         let n = Notation.standard
         let page = model.deltaPage(model.page)
@@ -709,8 +709,8 @@ private struct CellDetailView: View {
                     .textSelection(.enabled)
                 HStack(spacing: 8) {
                     // the Nuclide's phase where the cell begins: a cell is a seventh of its Nuclide
-                    PairView(fraction: Double(cell.column) / Double(DeltaPage.columns), color: Theme.teal, height: 16)
-                    Text(verbatim: "Nuclide phase at \(cell.firstHelion)η · \(Notation.pairText(Double(cell.column) / Double(DeltaPage.columns)))")
+                    PairView(fraction: Double(cell.column) / Double(CalDeltaPage.columns), color: Theme.teal, height: 16)
+                    Text(verbatim: "Nuclide phase at \(cell.firstHelion)η · \(Notation.pairText(Double(cell.column) / Double(CalDeltaPage.columns)))")
                         .font(.footnote.monospacedDigit())
                         .foregroundStyle(Theme.ink2)
                 }
@@ -743,8 +743,8 @@ private struct CellDetailView: View {
             }
             Text("Helions").font(.footnote.weight(.semibold)).textCase(.uppercase).tracking(0.8).foregroundStyle(Theme.ink3)
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 3), spacing: 8) {
-                ForEach(0..<DeltaPage.helionsPerCell, id: \.self) { j in
-                    let start = DeltaPage.helionStart(clock, cell: cell, j)
+                ForEach(0..<CalDeltaPage.helionsPerCell, id: \.self) { j in
+                    let start = CalDeltaPage.helionStart(clock, cell: cell, j)
                     Button {
                         if let start { travel(start, "\(cell.firstHelion + j)η") }
                     } label: {
@@ -794,7 +794,7 @@ private struct CellDetailView: View {
 
     /// Where the cell lies from the shown moment: "Begins 2ε 5η after the shown moment", "The shown moment is in this
     /// cell; it ends in 4η 2ι", "Began 3η before the shown moment".
-    private func relative(_ cell: DeltaPage.Cell, at t: Double) -> String {
+    private func relative(_ cell: CalDeltaPage.Cell, at t: Double) -> String {
         let n = Notation.standard
         let end = cell.cut < 1 ? store.clock.tMax : cell.end
         guard store.clock.inRange(t) else { return "" }

@@ -80,9 +80,9 @@ final class MonthModel {
 
     // MARK: Caches
 
-    @ObservationIgnored private var grids: [String: MonthGrid] = [:]
-    @ObservationIgnored private var ribbons: [String: YearRibbon] = [:]
-    @ObservationIgnored private var pages: [Int: DeltaPage] = [:]
+    @ObservationIgnored private var grids: [String: CalMonthGrid] = [:]
+    @ObservationIgnored private var ribbons: [String: CalYearRibbon] = [:]
+    @ObservationIgnored private var pages: [Int: CalDeltaPage] = [:]
     @ObservationIgnored private var syncs: ClosedRange<Int>?
 
     private static let bandsKey = "calendar.month.bands"
@@ -134,29 +134,29 @@ final class MonthModel {
     }
 
     /// The grid of a month, built once.
-    func grid(_ index: Int, zone: TimeZone) -> MonthGrid {
+    func grid(_ index: Int, zone: TimeZone) -> CalMonthGrid {
         let key = "\(index)|\(zone.identifier)|\(weekStart)|\(bands.map(\.key).joined(separator: ","))"
         if let g = grids[key] { return g }
         if grids.count > 48 { grids.removeAll() }
         let (y, m) = CalMath.yearMonth(index)
-        let g = MonthGrid(clock: .shared, zone: zone, year: y, month: m, weekStart: weekStart, bands: bands, syncRange: syncRange)
+        let g = CalMonthGrid(clock: .shared, zone: zone, year: y, month: m, weekStart: weekStart, bands: bands, syncRange: syncRange)
         grids[key] = g
         return g
     }
 
-    func ribbon(_ year: Int, zone: TimeZone) -> YearRibbon {
+    func ribbon(_ year: Int, zone: TimeZone) -> CalYearRibbon {
         let key = "\(year)|\(zone.identifier)"
         if let r = ribbons[key] { return r }
         if ribbons.count > 24 { ribbons.removeAll() }
-        let r = YearRibbon(clock: .shared, zone: zone, year: year)
+        let r = CalYearRibbon(clock: .shared, zone: zone, year: year)
         ribbons[key] = r
         return r
     }
 
-    func deltaPage(_ index: Int) -> DeltaPage {
+    func deltaPage(_ index: Int) -> CalDeltaPage {
         if let p = pages[index] { return p }
         if pages.count > 48 { pages.removeAll() }
-        let p = DeltaPage(clock: .shared, index: index, syncRange: syncRange)
+        let p = CalDeltaPage(clock: .shared, index: index, syncRange: syncRange)
         pages[index] = p
         return p
     }
@@ -184,7 +184,7 @@ final class MonthModel {
     }
 
     func followPage(_ t: Double) {
-        let p = DeltaPage.page(.shared, at: t)
+        let p = CalDeltaPage.page(.shared, at: t)
         if displayedPage != p { displayedPage = p }
         guard pageFollows, let p else { return }
         if p != page { page = p }
@@ -211,11 +211,11 @@ final class MonthModel {
                 selectedDay = DayRef(year: y, month: m, day: d)
                 showsDetail = true
             }
-            if (0..<DeltaPage.cells).contains(d) {
+            if (0..<CalDeltaPage.cells).contains(d) {
                 selectedCell = d
             }
         }
-        if let p = DeltaPage.page(.shared, at: t) { page = p }
+        if let p = CalDeltaPage.page(.shared, at: t) { page = p }
         scrollTarget = CalendarLaunch.string("FXCalendarScroll")
         launchPick = CalendarLaunch.int("FXMonthPick") == 1
     }

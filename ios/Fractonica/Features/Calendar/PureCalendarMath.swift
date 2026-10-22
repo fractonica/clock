@@ -9,11 +9,11 @@ import Foundation
 
 /// One entry of a pure date, coarse to fine: α β γ δ ε are ordinals (from 1), η is numbered from 1 in its Nuclide,
 /// ι λ ν are counts (from 0).
-enum PureEntry: Int, CaseIterable, Identifiable, Sendable, Comparable {
+enum CalPureEntry: Int, CaseIterable, Identifiable, Sendable, Comparable {
     case alpha, beta, gamma, delta, epsilon, eta, iota, lambda, nu
 
     var id: Int { rawValue }
-    static func < (a: PureEntry, b: PureEntry) -> Bool { a.rawValue < b.rawValue }
+    static func < (a: CalPureEntry, b: CalPureEntry) -> Bool { a.rawValue < b.rawValue }
 
     var unit: FUnit { Notation.units[rawValue] }
     var sym: String { unit.sym }
@@ -28,7 +28,7 @@ enum PureEntry: Int, CaseIterable, Identifiable, Sendable, Comparable {
     /// The printed range, derived from the hierarchy: α 1–18, β 1–5, γ 1–13, δ 1–5, ε 1–5, η 1–77, ι 0–35, λ 0–64, ν 0–24.
     func range(_ clock: FractonicaClock) -> ClosedRange<Int> {
         if self == .alpha { return 1...Int(clock.count(0)) }
-        let parent = PureEntry(rawValue: rawValue - 1)!
+        let parent = CalPureEntry(rawValue: rawValue - 1)!
         let n = Int((Notation.standard.unitPos(parent.unit) / Notation.standard.unitPos(unit)).rounded())
         return isNumbered ? 1...n : 0...(n - 1)
     }
@@ -46,12 +46,12 @@ enum PureEntry: Int, CaseIterable, Identifiable, Sendable, Comparable {
 }
 
 /// The pure date and clock at a moment (`Notation.date` + `Notation.clock`), entry by entry.
-struct PureCounters: Hashable, Sendable {
+struct CalPureCounters: Hashable, Sendable {
     var values: [Int]
     /// The quarter (0 Peak … 3 End) of the four major periods.
     var quarters: [Int]
 
-    subscript(entry: PureEntry) -> Int { values[entry.rawValue] }
+    subscript(entry: CalPureEntry) -> Int { values[entry.rawValue] }
 
     init?(_ notation: Notation, at t: Double) {
         guard let d = notation.date(at: t), let c = notation.clock(at: t) else { return nil }
@@ -63,19 +63,19 @@ struct PureCounters: Hashable, Sendable {
 }
 
 /// A date entry as typed: an entry, its number and, for a major period, an optional quarter word (0 Peak … 3 End).
-struct PurePart: Hashable, Sendable {
-    let entry: PureEntry
+struct CalPurePart: Hashable, Sendable {
+    let entry: CalPureEntry
     let n: Int
     var quarter: Int? = nil
 }
 
-enum PureMath {
+enum CalPureMath {
     static let epsPos = 1e-12
 
-    static func length(_ entry: PureEntry) -> Double { Notation.standard.unitPos(entry.unit) }
+    static func length(_ entry: CalPureEntry) -> Double { Notation.standard.unitPos(entry.unit) }
 
     /// Move t by k units of an entry (k may be negative); nil when it leaves the catalogue.
-    static func shift(_ clock: FractonicaClock, _ t: Double, by k: Double, of entry: PureEntry) -> Double? {
+    static func shift(_ clock: FractonicaClock, _ t: Double, by k: Double, of entry: CalPureEntry) -> Double? {
         guard let pos = clock.position(at: CalMath.r3(t)) else { return nil }
         let p = pos + k * length(entry)
         guard p >= 0, p < Double(clock.extent) else { return nil }
@@ -83,9 +83,9 @@ enum PureMath {
     }
 
     /// Edit one entry in place: what is finer keeps its place (the odometer way); the moment moves by whole units.
-    static func set(_ clock: FractonicaClock, _ t: Double, _ entry: PureEntry, to n: Int) -> Result<Double, CalendarError> {
+    static func set(_ clock: FractonicaClock, _ t: Double, _ entry: CalPureEntry, to n: Int) -> Result<Double, CalendarError> {
         let notation = Notation.standard
-        guard let current = PureCounters(notation, at: t) else { return .failure(CalendarError("This moment is outside the catalogue")) }
+        guard let current = CalPureCounters(notation, at: t) else { return .failure(CalendarError("This moment is outside the catalogue")) }
         let range = entry.range(clock)
         guard range.contains(n) else {
             if entry.isMajor {
@@ -97,31 +97,31 @@ enum PureMath {
         guard var out = shift(clock, t, by: Double(n - current[entry]), of: entry) else {
             return .failure(CalendarError("That lies outside the catalogue \(notation.catalogueText())"))
         }
-        for _ in 0..<3 where PureCounters(notation, at: out)?[entry] != n { out = CalMath.r3(out + 0.001) }
+        for _ in 0..<3 where CalPureCounters(notation, at: out)?[entry] != n { out = CalMath.r3(out + 0.001) }
         return .success(out)
     }
 
     /// A date read back as a moment (pure-conv.js `resolveParts`): `parts` are consecutive entries coarse to fine; the
     /// entries above the first come from `ref`. The result is the FIRST MILLISECOND that shows the finest entry. A
     /// quarter word on a major entry only has to meet the date; on the finest entry it is the start of that quarter.
-    static func resolve(_ clock: FractonicaClock, parts: [PurePart], ref: Double?) -> Result<Double, CalendarError> {
+    static func resolve(_ clock: FractonicaClock, parts: [CalPurePart], ref: Double?) -> Result<Double, CalendarError> {
         let notation = Notation.standard
         guard let firstPart = parts.first, let finestPart = parts.last else { return .failure(CalendarError("Nothing to read")) }
         for i in 1..<max(1, parts.count) {
             let a = parts[i - 1].entry, b = parts[i].entry
             if b <= a { return .failure(CalendarError("Write the entries from the longest to the shortest, e.g. α#6 β#4 γ#9 δ#3 ε#5 34η")) }
             if b.rawValue != a.rawValue + 1 {
-                return .failure(CalendarError("\(PureEntry(rawValue: a.rawValue + 1)!.sym) is missing between \(a.sym) and \(b.sym)"))
+                return .failure(CalendarError("\(CalPureEntry(rawValue: a.rawValue + 1)!.sym) is missing between \(a.sym) and \(b.sym)"))
             }
         }
         let first = firstPart.entry
         let finest = finestPart.entry
-        var values = PureEntry.allCases.map { $0.isNumbered ? 1 : 0 }
+        var values = CalPureEntry.allCases.map { $0.isNumbered ? 1 : 0 }
         if first > .alpha {
-            guard let ref, let base = PureCounters(notation, at: ref) else {
+            guard let ref, let base = CalPureCounters(notation, at: ref) else {
                 return .failure(CalendarError("The shown moment is outside the catalogue: start the date with the Alpha, e.g. α#6 β#4 γ#9"))
             }
-            for e in PureEntry.allCases where e < first { values[e.rawValue] = base[e] }
+            for e in CalPureEntry.allCases where e < first { values[e.rawValue] = base[e] }
         }
         for p in parts {
             let range = p.entry.range(clock)
@@ -165,9 +165,9 @@ enum PureMath {
         guard target >= 0, target < Double(clock.extent) else {
             return .failure(CalendarError("That moment lies after the catalogue ends \(notation.catalogueText())"))
         }
-        let given = PureEntry.allCases.filter { $0 >= (bare ? .eta : .alpha) && $0 <= finest }
+        let given = CalPureEntry.allCases.filter { $0 >= (bare ? .eta : .alpha) && $0 <= finest }
         let want = { (c: Double) -> Bool in
-            guard let cs = PureCounters(notation, at: c) else { return false }
+            guard let cs = CalPureCounters(notation, at: c) else { return false }
             if bare, clock.level(at: c, 4)?.cycle != Int64(nuclide) { return false }
             for p in quartered where notation.quarter(at: c, level: p.entry.level) != p.quarter { return false }
             return given.allSatisfy { cs[$0] == values[$0.rawValue] }
@@ -204,7 +204,7 @@ enum PureMath {
 /// (pure-parse.js) that fits a converter field: the stamp or any tail of it (`α#6 β#4 γ#9 δ#3 ε#5 34η 29ι 21λ 3ν`,
 /// `δ#3 ε#5 34η`, `34η 29ι`), majors in words with an optional quarter (`Delta Trifracton Node ε#2 5η`), `a6 b4 g9`,
 /// `6.4.9`, a position (`pos 22.9278`) and a solar sync (`sync 4820`, `S4820 node`).
-enum PureInput {
+enum CalPureInput {
     static func read(_ text: String, clock: FractonicaClock, ref: Double?) -> Result<Double, CalendarError> {
         let raw = String(text.prefix(200)).trimmingCharacters(in: .whitespacesAndNewlines)
         guard !raw.isEmpty else { return .failure(CalendarError("Type a date, e.g. δ#3 ε#5 34η 29ι")) }
@@ -228,24 +228,24 @@ enum PureInput {
         // 6.4.9: ordinals from the Alpha
         if lower.wholeMatch(of: /\d+(\.\d+){2,4}/) != nil {
             let numbers = lower.split(separator: ".").compactMap { Int($0) }
-            let parts = numbers.enumerated().map { PurePart(entry: PureEntry(rawValue: $0.offset)!, n: $0.element) }
-            return PureMath.resolve(clock, parts: parts, ref: ref)
+            let parts = numbers.enumerated().map { CalPurePart(entry: CalPureEntry(rawValue: $0.offset)!, n: $0.element) }
+            return CalPureMath.resolve(clock, parts: parts, ref: ref)
         }
         switch parts(raw) {
         case .failure(let e): return .failure(e)
-        case .success(let parts): return PureMath.resolve(clock, parts: parts, ref: ref)
+        case .success(let parts): return CalPureMath.resolve(clock, parts: parts, ref: ref)
         }
     }
 
-    private static let majorWords = ["alpha": PureEntry.alpha, "beta": .beta, "gamma": .gamma, "delta": .delta]
-    private static let latin: [Character: PureEntry] = ["a": .alpha, "b": .beta, "g": .gamma, "d": .delta, "e": .epsilon]
-    private static let greek: [String: PureEntry] = ["α": .alpha, "β": .beta, "γ": .gamma, "δ": .delta, "ε": .epsilon]
-    private static let counts: [String: PureEntry] = ["η": .eta, "ι": .iota, "λ": .lambda, "ν": .nu]
+    private static let majorWords = ["alpha": CalPureEntry.alpha, "beta": .beta, "gamma": .gamma, "delta": .delta]
+    private static let latin: [Character: CalPureEntry] = ["a": .alpha, "b": .beta, "g": .gamma, "d": .delta, "e": .epsilon]
+    private static let greek: [String: CalPureEntry] = ["α": .alpha, "β": .beta, "γ": .gamma, "δ": .delta, "ε": .epsilon]
+    private static let counts: [String: CalPureEntry] = ["η": .eta, "ι": .iota, "λ": .lambda, "ν": .nu]
 
     /// The entries of a date in letters or words.
-    static func parts(_ text: String) -> Result<[PurePart], CalendarError> {
+    static func parts(_ text: String) -> Result<[CalPurePart], CalendarError> {
         let tokens = text.split(whereSeparator: { $0 == " " || $0 == "," || $0 == "\t" || $0 == "›" }).map(String.init)
-        var out: [PurePart] = []
+        var out: [CalPurePart] = []
         var i = 0
         while i < tokens.count {
             let token = tokens[i]
@@ -256,7 +256,7 @@ enum PureInput {
                 guard let n = Notation.ordinalNames.firstIndex(where: { $0.lowercased() == name && !$0.isEmpty }) else {
                     return .failure(CalendarError("“\(String(tokens[i + 1].prefix(24)))” is not a fracton name (Monofracton, Difracton, Trifracton …)"))
                 }
-                var part = PurePart(entry: entry, n: n)
+                var part = CalPurePart(entry: entry, n: n)
                 i += 2
                 if i < tokens.count, let q = Notation.quarterWords.firstIndex(where: { $0.lowercased() == tokens[i].lowercased() }) {
                     part.quarter = q
@@ -269,11 +269,11 @@ enum PureInput {
                 return .failure(CalendarError("Only Alpha, Beta, Gamma and Delta have fracton names: write ε#2, 34η, 29ι"))
             }
             if let m = token.wholeMatch(of: /([αβγδε])#?(\d+)/), let entry = greek[String(m.1)], let n = Int(m.2) {
-                out.append(PurePart(entry: entry, n: n))
+                out.append(CalPurePart(entry: entry, n: n))
             } else if let m = lower.wholeMatch(of: /([abgde])#?(\d+)/), let entry = latin[m.1.first!], let n = Int(m.2) {
-                out.append(PurePart(entry: entry, n: n))
+                out.append(CalPurePart(entry: entry, n: n))
             } else if let m = token.wholeMatch(of: /(\d+)([ηιλν])/), let entry = counts[String(m.2)], let n = Int(m.1) {
-                out.append(PurePart(entry: entry, n: n))
+                out.append(CalPurePart(entry: entry, n: n))
             } else if token.wholeMatch(of: /[ζθκμ]#?\d+|\d+[ζθκμ]/) != nil {
                 return .failure(CalendarError("ζ θ κ μ are depths, not units: a ζ is 11η, a θ 4ι, a κ 13λ, a μ 5ν"))
             } else {
@@ -290,7 +290,7 @@ enum PureInput {
 /// The pure month page: one Delta = 5 Nuclide rows (ε#1–5) × 7 columns of 11 Helions (the ζ cycles, labelled by their
 /// first Helion 1η 12η … 67η). Pages are global Delta indices. Quarters of the Delta fall at 1¼, 2½ and 3¾ Nuclides;
 /// eclipse k sits at k × 2843.75 cells (pure-conv.js `buildPureGrid`).
-struct DeltaPage: Sendable {
+struct CalDeltaPage: Sendable {
     static let rows = 5
     static let columns = 7
     static let cells = 35
@@ -324,7 +324,7 @@ struct DeltaPage: Sendable {
 
         var id: Int { index }
         var epsilon: Int { row + 1 }
-        var firstHelion: Int { DeltaPage.columnHelion[column] }
+        var firstHelion: Int { CalDeltaPage.columnHelion[column] }
     }
 
     struct Mark: Hashable, Sendable {
@@ -386,7 +386,7 @@ struct DeltaPage: Sendable {
         if posOf(z0) < extent {
             for q in CalMath.syncQuarters(clock, from: pageStart, to: min(clock.tMax, pageEnd) + 1, range: syncRange) {
                 guard let pos = clock.position(at: q.start) else { continue }
-                let z = Int64(((pos + PureMath.epsPos) * zN / 4).rounded(.down))
+                let z = Int64(((pos + CalPureMath.epsPos) * zN / 4).rounded(.down))
                 let i = Int(z - z0)
                 guard i >= 0, i < Self.cells else { continue }
                 let x = max(0, (pos - posOf(z)) / (posOf(z + 1) - posOf(z)))

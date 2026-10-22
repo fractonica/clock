@@ -128,7 +128,7 @@ struct CalValueRow: View {
             .textSelection(.enabled)
             .contextMenu {
                 if copyable {
-                    Button("Copy", systemImage: "doc.on.doc") { Pasteboard.copy(value) }
+                    Button("Copy", systemImage: "doc.on.doc") { CalPasteboard.copy(value) }
                 }
             }
     }
@@ -136,7 +136,7 @@ struct CalValueRow: View {
 
 /// A labelled row with a control on its right (an address entry, a date entry); at accessibility text sizes the
 /// control moves under the label, so neither is squeezed into a column of single words.
-struct StepRow<Label: View, Control: View>: View {
+struct CalStepRow<Label: View, Control: View>: View {
     @ViewBuilder var label: Label
     @ViewBuilder var control: Control
     @Environment(\.dynamicTypeSize) private var typeSize
@@ -166,12 +166,12 @@ struct CalendarLevelChip: View {
     var compact = false
 
     var body: some View {
-        TintChip(text: text, color: Theme.levelColor(level), filled: filled, compact: compact)
+        CalTintChip(text: text, color: Theme.levelColor(level), filled: filled, compact: compact)
     }
 }
 
 /// A small capsule label in a colour (a level, the gold of the sun).
-struct TintChip: View {
+struct CalTintChip: View {
     let text: String
     let color: Color
     var filled = false
@@ -191,7 +191,7 @@ struct TintChip: View {
 
 /// − value + with repeat on hold: the converter's way to step an entry. `onChange` gets the new value (already
 /// clamped); a step past the end plays the warning haptic.
-struct NudgeStepper: View {
+struct CalNudgeStepper: View {
     let value: Int
     let range: ClosedRange<Int>
     var label: String
@@ -379,7 +379,7 @@ extension EarthFormatter {
 }
 
 /// The system pasteboard on both platforms.
-enum Pasteboard {
+enum CalPasteboard {
     @MainActor
     static func copy(_ text: String) {
         #if os(iOS)

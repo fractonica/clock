@@ -37,22 +37,22 @@ private struct EarthMonthView: View {
     var body: some View {
         @Bindable var model = model
         let zone = settings.timeZone
-        let metrics = MonthMetrics(width: width, bands: model.bands.count, short: short)
+        let metrics = CalMonthMetrics(width: width, bands: model.bands.count, short: short)
         ScrollViewReader { proxy in
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
                     header(zone)
-                    BandChooser(model: model)
-                    WeekdayRow(weekStart: model.weekStart, compact: metrics.cellWidth < 60)
+                    CalBandChooser(model: model)
+                    CalWeekdayRow(weekStart: model.weekStart, compact: metrics.cellWidth < 60)
                     CalendarPager(index: $model.month, range: CalMath.firstMonth...CalMath.lastMonth, onSwipe: {
                         model.follows = false
                         Haptics.play(.selection)
                     }) { index in
-                        MonthPage(model: model, grid: model.grid(index, zone: zone), metrics: metrics, zone: zone)
+                        CalMonthPage(model: model, grid: model.grid(index, zone: zone), metrics: metrics, zone: zone)
                     }
                     .frame(height: metrics.gridHeight + 2) // the page's 1 pt above and below keep the rings unclipped
-                    MonthFootnote(model: model, zone: zone)
-                    YearRibbonCard(model: model, zone: zone).id("ribbon")
+                    CalMonthFootnote(model: model, zone: zone)
+                    CalYearRibbonCard(model: model, zone: zone).id("ribbon")
                 }
                 .padding(.horizontal, 16)
                 .padding(.top, 6)
@@ -88,7 +88,7 @@ private struct EarthMonthView: View {
         }
         // never an empty inspector: it shows a chosen day (a column restored by the system without one stays shut)
         .inspector(isPresented: Binding(get: { model.showsDetail && model.selectedDay != nil }, set: { model.showsDetail = $0 })) {
-            DayDetailView(model: model, zone: zone)
+            CalDayDetailView(model: model, zone: zone)
                 .inspectorColumnWidth(min: 300, ideal: 340, max: 420)
                 .presentationDetents([.medium, .large])
         }
@@ -145,7 +145,7 @@ private struct EarthMonthView: View {
             .buttonStyle(.plain)
             .accessibilityLabel(Text("\(EarthTime.monthsLong[m - 1]) \(String(y)), choose a month"))
             .popover(isPresented: $picking) {
-                MonthPicker(model: model)
+                CalMonthPicker(model: model)
                     .presentationCompactAdaptation(.popover)
             }
             Spacer(minLength: 4)
@@ -161,7 +161,7 @@ private struct EarthMonthView: View {
                 .accessibilityLabel(Text("Show the displayed day"))
                 .transition(.scale.combined(with: .opacity))
             }
-            StepPair(previous: "Previous month", next: "Next month", shortcuts: true, step: step)
+            CalStepPair(previous: "Previous month", next: "Next month", shortcuts: true, step: step)
         }
         .animation(.snappy, value: model.month != displayedMonth)
     }
@@ -184,7 +184,7 @@ private struct EarthMonthView: View {
 }
 
 /// ◀ ▶ in one glass capsule, repeating while held.
-struct StepPair: View {
+struct CalStepPair: View {
     let previous: String
     let next: String
     /// ⌘← and ⌘→ (one pair per screen).
@@ -217,7 +217,7 @@ struct StepPair: View {
 }
 
 /// The geometry of a month page for a width: cells about 1.2 times as tall as wide.
-struct MonthMetrics: Equatable {
+struct CalMonthMetrics: Equatable {
     let width: CGFloat
     let bands: Int
     /// A short window (iPhone in landscape): flatter cells so the month fits.
@@ -234,7 +234,7 @@ struct MonthMetrics: Equatable {
     var regular: Bool { cellWidth >= 72 && !short }
 }
 
-private struct WeekdayRow: View {
+private struct CalWeekdayRow: View {
     let weekStart: Int
     let compact: Bool
 
@@ -253,7 +253,7 @@ private struct WeekdayRow: View {
 }
 
 /// Which bands the day cells show: γ δ ε ζ η and the solar sync, up to three at once.
-private struct BandChooser: View {
+private struct CalBandChooser: View {
     let model: MonthModel
 
     var body: some View {
@@ -331,10 +331,10 @@ extension CalendarBand {
 }
 
 /// One month: 6 weeks of day cells, with the displayed moment's day ringed and its time of day marked.
-private struct MonthPage: View {
+private struct CalMonthPage: View {
     let model: MonthModel
-    let grid: MonthGrid
-    let metrics: MonthMetrics
+    let grid: CalMonthGrid
+    let metrics: CalMonthMetrics
     let zone: TimeZone
 
     @Environment(ClockStore.self) private var store
@@ -351,7 +351,7 @@ private struct MonthPage: View {
                         Button {
                             select(day, ref)
                         } label: {
-                            DayCell(day: day, metrics: metrics, isToday: today == day.index, isSelected: model.showsDetail && model.selectedDay == ref,
+                            CalDayCell(day: day, metrics: metrics, isToday: today == day.index, isSelected: model.showsDetail && model.selectedDay == ref,
                                     events: metrics.regular ? events(day, earth) : [])
                         }
                         .buttonStyle(.plain)
@@ -365,7 +365,7 @@ private struct MonthPage: View {
         .overlay {
             // the displayed moment: its day ringed, its time of day marked across the bands
             ClockTimeline(.periodic(store.isPlaying ? max(120, abs(store.rate) / 30) : 120)) { t in
-                DisplayedCursor(grid: grid, metrics: metrics, t: t, bands: grid.days.first?.tracks.count ?? 0)
+                CalDisplayedCursor(grid: grid, metrics: metrics, t: t, bands: grid.days.first?.tracks.count ?? 0)
             }
             .allowsHitTesting(false)
         }
@@ -373,18 +373,18 @@ private struct MonthPage: View {
     }
 
     /// What begins on a day, for the roomy cells of iPad and Mac: the coarse cycles, the syncs, the eclipse.
-    private func events(_ day: MonthGrid.Day, _ earth: EarthFormatter) -> [CellEvent] {
-        var out: [CellEvent] = []
+    private func events(_ day: CalMonthGrid.Day, _ earth: EarthFormatter) -> [CalCellEvent] {
+        var out: [CalCellEvent] = []
         if let e = day.eclipse {
-            out.append(CellEvent(label: "#\(e)", time: earth.time(store.clock.catalogue[e], seconds: false), level: nil))
+            out.append(CalCellEvent(label: "#\(e)", time: earth.time(store.clock.catalogue[e], seconds: false), level: nil))
         }
         for track in day.tracks {
             for s in track.segments where s.startsHere {
                 switch track.band {
                 case .level(let l) where l <= 5:
-                    out.append(CellEvent(label: CalMath.cycleLabel(level: l, ordinal: s.ordinal), time: earth.time(s.start, seconds: false), level: l))
+                    out.append(CalCellEvent(label: CalMath.cycleLabel(level: l, ordinal: s.ordinal), time: earth.time(s.start, seconds: false), level: l))
                 case .sync where s.ordinal == 0:
-                    out.append(CellEvent(label: "S\(s.index)", time: earth.time(s.start, seconds: false), level: nil))
+                    out.append(CalCellEvent(label: "S\(s.index)", time: earth.time(s.start, seconds: false), level: nil))
                 default:
                     break
                 }
@@ -393,7 +393,7 @@ private struct MonthPage: View {
         return out
     }
 
-    private func select(_ day: MonthGrid.Day, _ ref: MonthModel.DayRef) {
+    private func select(_ day: CalMonthGrid.Day, _ ref: MonthModel.DayRef) {
         Haptics.play(.selection)
         withAnimation(.snappy) {
             if model.selectedDay == ref, model.showsDetail {
@@ -406,8 +406,8 @@ private struct MonthPage: View {
     }
 
     /// The day for VoiceOver and the pointer's tooltip: "Thursday 8 October, today, ε#5 begins at 09:09, 5 η cycles begin".
-    private func label(_ day: MonthGrid.Day, today: Bool, earth: EarthFormatter) -> String {
-        var parts = ["\(EarthNames.weekdays[day.weekday]) \(day.day) \(EarthTime.monthsLong[day.month - 1])"]
+    private func label(_ day: CalMonthGrid.Day, today: Bool, earth: EarthFormatter) -> String {
+        var parts = ["\(CalEarthNames.weekdays[day.weekday]) \(day.day) \(EarthTime.monthsLong[day.month - 1])"]
         if today { parts.append("today") }
         if !day.inRange { parts.append("outside the catalogue") }
         for track in day.tracks {
@@ -428,18 +428,18 @@ private struct MonthPage: View {
 
 /// A day: its number, the eclipse if one falls on it, and the bands with every boundary at its time of day.
 /// A line of a roomy day cell: "ε#5 07:12" (level nil: the gold of an eclipse or a sync).
-struct CellEvent: Hashable {
+struct CalCellEvent: Hashable {
     let label: String
     let time: String
     let level: Int?
 }
 
-private struct DayCell: View, Equatable {
-    let day: MonthGrid.Day
-    let metrics: MonthMetrics
+private struct CalDayCell: View, Equatable {
+    let day: CalMonthGrid.Day
+    let metrics: CalMonthMetrics
     let isToday: Bool
     let isSelected: Bool
-    var events: [CellEvent] = []
+    var events: [CalCellEvent] = []
 
     var body: some View {
         let dim = !day.inMonth
@@ -468,8 +468,8 @@ private struct DayCell: View, Equatable {
             }
             Spacer(minLength: 2)
             if day.inRange {
-                BandsCanvas(tracks: day.tracks, rangeFrom: day.rangeFrom, rangeTo: day.rangeTo, regular: metrics.regular, labelsContinuing: day.index % 7 == 0)
-                    .frame(height: BandsCanvas.height(day.tracks, regular: metrics.regular))
+                CalBandsCanvas(tracks: day.tracks, rangeFrom: day.rangeFrom, rangeTo: day.rangeTo, regular: metrics.regular, labelsContinuing: day.index % 7 == 0)
+                    .frame(height: CalBandsCanvas.height(day.tracks, regular: metrics.regular))
                     .opacity(dim ? 0.45 : 1)
             } else {
                 Capsule().fill(Theme.line.opacity(0.5)).frame(height: 2)
@@ -487,8 +487,8 @@ private struct DayCell: View, Equatable {
 }
 
 /// The bands of a day, drawn at once: coarse levels (γ δ ε ζ) and the sync as labelled pills, η as a fine rhythm.
-struct BandsCanvas: View {
-    let tracks: [MonthGrid.Track]
+struct CalBandsCanvas: View {
+    let tracks: [CalMonthGrid.Track]
     var rangeFrom: Double = 0
     var rangeTo: Double = 1
     var regular = false
@@ -500,7 +500,7 @@ struct BandsCanvas: View {
         return regular ? 14 : 10
     }
 
-    static func height(_ tracks: [MonthGrid.Track], regular: Bool) -> CGFloat {
+    static func height(_ tracks: [CalMonthGrid.Track], regular: Bool) -> CGFloat {
         tracks.reduce(0) { $0 + barHeight($1.band, regular: regular) } + CGFloat(max(0, tracks.count - 1)) * 2
     }
 
@@ -516,7 +516,7 @@ struct BandsCanvas: View {
         .accessibilityHidden(true)
     }
 
-    private func draw(_ track: MonthGrid.Track, in context: inout GraphicsContext, y: CGFloat, h: CGFloat, width: CGFloat) {
+    private func draw(_ track: CalMonthGrid.Track, in context: inout GraphicsContext, y: CGFloat, h: CGFloat, width: CGFloat) {
         let color = track.band.color
         let fine = h < 8
         for s in track.segments {
@@ -560,9 +560,9 @@ struct BandsCanvas: View {
 }
 
 /// The ring around the displayed moment's day and the line at its time of day.
-private struct DisplayedCursor: View {
-    let grid: MonthGrid
-    let metrics: MonthMetrics
+private struct CalDisplayedCursor: View {
+    let grid: CalMonthGrid
+    let metrics: CalMonthMetrics
     let t: Double
     let bands: Int
 
@@ -581,7 +581,7 @@ private struct DisplayedCursor: View {
                            with: .color(Theme.cursor), lineWidth: 1.5)
             guard day.inRange else { return }
             let pad: CGFloat = metrics.regular ? 6 : 4
-            let tracksHeight = BandsCanvas.height(day.tracks, regular: metrics.regular)
+            let tracksHeight = CalBandsCanvas.height(day.tracks, regular: metrics.regular)
             let fx = CGFloat((t - day.start) / day.length)
             let cx = cell.minX + pad + fx * (w - 2 * pad)
             let bottom = cell.maxY - pad
@@ -597,7 +597,7 @@ private struct DisplayedCursor: View {
 }
 
 /// A month and a year to jump to.
-private struct MonthPicker: View {
+private struct CalMonthPicker: View {
     let model: MonthModel
 
     @Environment(\.dismiss) private var dismiss
@@ -650,7 +650,7 @@ private struct MonthPicker: View {
 }
 
 /// Under the grid: what the bands are, and the catalogue's edge when the month reaches it.
-private struct MonthFootnote: View {
+private struct CalMonthFootnote: View {
     let model: MonthModel
     let zone: TimeZone
 

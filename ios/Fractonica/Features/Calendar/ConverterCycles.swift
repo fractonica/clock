@@ -7,7 +7,7 @@ import SwiftUI
 
 // MARK: - Position
 
-struct PositionCard: View {
+struct ConverterPositionCard: View {
     let model: ConverterModel
     let snap: ConverterSnapshot
 
@@ -30,7 +30,7 @@ struct PositionCard: View {
                 SarosRuler(position: value, extent: store.clock.extent) { pos in
                     model.set(store.clock.time(atPosition: pos), from: .position)
                 }
-                CommitField(label: "Exact position", value: "\(p.ordinal).\(p.fraction)", prompt: "22.927850216635", numeric: true) { text in
+                CalCommitField(label: "Exact position", value: "\(p.ordinal).\(p.fraction)", prompt: "22.927850216635", numeric: true) { text in
                     switch CalMath.time(store.clock, positionText: text.replacingOccurrences(of: "pos", with: "")) {
                     case .success(let t):
                         model.set(t, from: .position)
@@ -129,7 +129,7 @@ private struct SarosRuler: View {
 
 // MARK: - Address
 
-struct AddressCard: View {
+struct ConverterAddressCard: View {
     let model: ConverterModel
     let snap: ConverterSnapshot
     let earth: EarthFormatter
@@ -148,7 +148,7 @@ struct AddressCard: View {
         let place = pure && level >= 5 ? index : nil
         let point = pointTime(path, index: index)
         CalCard("Cycle address", systemImage: "point.3.connected.trianglepath.dotted") {
-            NudgeStepper(value: model.depth, range: 1...14, label: "Depth", display: { "depth \($0)" }) { d in
+            CalNudgeStepper(value: model.depth, range: 1...14, label: "Depth", display: { "depth \($0)" }) { d in
                 withAnimation(.snappy) { model.depth = d }
             }
         } content: {
@@ -205,7 +205,7 @@ struct AddressCard: View {
         let nominal = CalMath.nominalCount(clock, parent: parent)
         let of = level == 0 ? "of \(maximum) in the catalogue" : "of \(nominal) in its \(CalMath.letter(level - 1))"
         let clipped = level > 0 && maximum < nominal ? " · the catalogue ends after #\(maximum)" : ""
-        return StepRow {
+        return CalStepRow {
             CalendarLevelChip(text: "\(CalMath.letter(level)) \(level + 1)", level: level, compact: true)
                 .fixedSize()
                 .frame(minWidth: 46, alignment: .leading)
@@ -217,7 +217,7 @@ struct AddressCard: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
         } control: {
-            NudgeStepper(value: n, range: 1...maximum, label: name(level, n), display: { "#\($0)" }, tint: Theme.levelColor(level),
+            CalNudgeStepper(value: n, range: 1...maximum, label: name(level, n), display: { "#\($0)" }, tint: Theme.levelColor(level),
                          carry: { step(path, level: level, by: $0) }, canStep: canStep(path, level: level)) { v in
                 edit(path, level: level, to: v)
             }
@@ -229,7 +229,7 @@ struct AddressCard: View {
     private func placeRow(_ path: [Int], level: Int, index: Int64) -> some View {
         let n = Notation.standard
         let name = Notation.unit(level: level)?.name ?? "\(CalMath.letter(level)) cycle"
-        return StepRow {
+        return CalStepRow {
             CalendarLevelChip(text: "\(CalMath.letter(level)) \(level + 1)", level: level, compact: true)
                 .fixedSize()
                 .frame(minWidth: 46, alignment: .leading)
@@ -238,7 +238,7 @@ struct AddressCard: View {
                 Text("where it begins in its Nuclide").font(.caption).foregroundStyle(Theme.ink3)
             }
         } control: {
-            NudgeStepper(value: 0, range: 0...0, label: name, display: { _ in n.cycleName(level: level, cycle: index, short: true) },
+            CalNudgeStepper(value: 0, range: 0...0, label: name, display: { _ in n.cycleName(level: level, cycle: index, short: true) },
                          tint: Theme.levelColor(level), menu: false,
                          carry: { step(path, level: level, by: $0) }, canStep: canStep(path, level: level)) { _ in }
         }
@@ -307,7 +307,7 @@ struct AddressCard: View {
                         Text(verbatim: n.dateText(at: t, upTo: level <= 3 ? "delta" : Notation.resolutionOf(level)))
                             .font(.footnote)
                             .foregroundStyle(Theme.ink2)
-                        let made = PureMath.madeOf(level: level)
+                        let made = CalPureMath.madeOf(level: level)
                         Text(verbatim: [clock.position(at: t).map { String(format: "pos %.12f", $0) },
                                         made.isEmpty ? nil : "\(level <= 3 ? Notation.levelNames[level] : CalMath.letter(level)) lasts \(made)\(facts.clipped ? " (clipped)" : "")",
                                         "global index \(index)"].compactMap { $0 }.joined(separator: " · "))
@@ -368,7 +368,7 @@ struct AddressCard: View {
 // MARK: - Glyph states
 
 /// The glyph of every depth (Earth mode): the state its cycle shows, tap for when it shows any other.
-struct GlyphStatesCard: View {
+struct ConverterGlyphStatesCard: View {
     let model: ConverterModel
     let snap: ConverterSnapshot
     let earth: EarthFormatter
@@ -380,11 +380,11 @@ struct GlyphStatesCard: View {
                     Button {
                         model.pickLevel = r.level
                     } label: {
-                        GlyphTile(reading: r)
+                        CalGlyphTile(reading: r)
                     }
                     .buttonStyle(.plain)
                     .popover(isPresented: Binding(get: { model.pickLevel == r.level }, set: { if !$0, model.pickLevel == r.level { model.pickLevel = nil } })) {
-                        StatePicker(model: model, level: r.level, current: [r.index], pure: false, earth: earth)
+                        ConverterStatePicker(model: model, level: r.level, current: [r.index], pure: false, earth: earth)
                             .presentationCompactAdaptation(.sheet)
                             .presentationDetents([.medium, .large])
                     }
@@ -398,7 +398,7 @@ struct GlyphStatesCard: View {
     }
 }
 
-private struct GlyphTile: View {
+private struct CalGlyphTile: View {
     let reading: LevelReading
 
     var body: some View {
@@ -412,7 +412,7 @@ private struct GlyphTile: View {
             }
             GlyphView(index: r.index, strokes: 2, color: Theme.teal)
                 .frame(height: 30)
-            Text("\(r.index) · \(GlyphWords.words(value: r.value, derivative: r.derivative))")
+            Text("\(r.index) · \(CalGlyphWords.words(value: r.value, derivative: r.derivative))")
                 .font(.caption2.monospacedDigit())
                 .foregroundStyle(Theme.ink2)
                 .lineLimit(1)
@@ -422,12 +422,12 @@ private struct GlyphTile: View {
         .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Theme.panel2.opacity(0.9)))
         .contentShape(.rect)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(Text("\(r.name) depth \(r.depth), state \(r.index) of \(r.states), \(GlyphWords.meaning(index: r.index))"))
+        .accessibilityLabel(Text("\(r.name) depth \(r.depth), state \(r.index) of \(r.states), \(CalGlyphWords.meaning(index: r.index))"))
         .accessibilityHint(Text("Shows when this depth shows another state"))
     }
 }
 
-enum GlyphWords {
+enum CalGlyphWords {
     /// "rising ↗", "peak ▲" … (convert.js `stateMeaning`).
     static func words(value: Int, derivative: Int) -> String {
         if derivative > 0 { return "rising ↗" }
@@ -444,7 +444,7 @@ enum GlyphWords {
 }
 
 /// Choose a state of a depth (a glyph; in pure mode a glyph pair) and see the next and previous times it shows.
-struct StatePicker: View {
+struct ConverterStatePicker: View {
     let model: ConverterModel
     let level: Int
     /// The state now: one glyph index, or the pair [coarse, fine] in pure mode.
@@ -507,7 +507,7 @@ struct StatePicker: View {
         if pure {
             return chosen.count > 1 ? "Pair \(chosen[0])·\(chosen[1]) of 256\(now)" : "Coarse glyph \(chosen[0]), any fine glyph\(now)"
         }
-        return "State \(chosen[0]) of 16 · \(GlyphWords.meaning(index: chosen[0]))\(now)"
+        return "State \(chosen[0]) of 16 · \(CalGlyphWords.meaning(index: chosen[0]))\(now)"
     }
 
     private func stateGrid(selected: Int, now: Int, choose: @escaping (Int) -> Void) -> some View {
@@ -600,7 +600,7 @@ struct StatePicker: View {
 
 // MARK: - Solar sync
 
-struct SolarCard: View {
+struct ConverterSolarCard: View {
     let model: ConverterModel
     let snap: ConverterSnapshot
     let earth: EarthFormatter
@@ -637,7 +637,7 @@ struct SolarCard: View {
                 HStack {
                     Text("Number").font(.subheadline).foregroundStyle(Theme.ink3)
                     Spacer()
-                    SyncStepper(value: s.sync, range: syncs) { k in
+                    CalSyncStepper(value: s.sync, range: syncs) { k in
                         if let info = clock.solarSync(number: k) { model.set((info.start * 1000).rounded(.up) / 1000, from: .sync) }
                     }
                 }
@@ -677,12 +677,12 @@ struct SolarCard: View {
 }
 
 /// − n + for a sync number (its range is too long for a menu); hold to repeat.
-private struct SyncStepper: View {
+private struct CalSyncStepper: View {
     let value: Int
     let range: ClosedRange<Int>
     let onChange: (Int) -> Void
 
     var body: some View {
-        NudgeStepper(value: value, range: range, label: "Sync number", display: { String($0) }, tint: Theme.gold, menu: false, onChange: onChange)
+        CalNudgeStepper(value: value, range: range, label: "Sync number", display: { String($0) }, tint: Theme.gold, menu: false, onChange: onChange)
     }
 }
