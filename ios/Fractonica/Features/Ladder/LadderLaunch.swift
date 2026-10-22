@@ -1,4 +1,7 @@
 import Foundation
+#if os(iOS) && DEBUG
+import UIKit
+#endif
 
 /// The ladder's own test hooks for screenshots (debug builds only; read from the launch arguments, never persisted):
 ///
@@ -8,6 +11,7 @@ import Foundation
 ///     -FXLadderShift <seconds>      show the ladder that many seconds away from the displayed time (to see the
 ///                                   out-of-catalogue state, which travel never reaches: it clamps)
 ///     -ladder.importance <γ…η>      Up next's importance for this launch (the argument domain shadows the stored value)
+///     -FXLadderLandscape 1          rotate the iPhone to landscape when the ladder appears (simctl cannot rotate)
 ///
 ///     ios/scripts/shoot.sh --device fx-ladder shot.png -FXTab ladder -FXTime 1791460800 -FXLadderExpand 3
 enum LadderLaunch {
@@ -32,6 +36,16 @@ enum LadderLaunch {
     static let depths: ClosedRange<Int>? = nil
     static let scrollToUpNext = false
     #endif
+
+    /// Rotates the window scene to landscape when `-FXLadderLandscape 1` asks for it (debug builds, iOS).
+    @MainActor
+    static func rotateIfAsked() {
+        #if os(iOS) && DEBUG
+        guard string("FXLadderLandscape") == "1",
+              let scene = UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first else { return }
+        scene.requestGeometryUpdate(.iOS(interfaceOrientations: .landscapeRight)) { _ in }
+        #endif
+    }
 
     /// The time the ladder shows for a displayed time.
     static func shown(_ t: Double) -> Double { t + shift }

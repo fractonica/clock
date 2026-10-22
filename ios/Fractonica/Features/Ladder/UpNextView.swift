@@ -4,8 +4,9 @@ import SwiftUI
 /// Up next (src/ui/upnext.js): what turns over soon. A turnover is the instant a cycle ends and the next one begins;
 /// every finer cycle ends with it. The next turnovers whose coarsest rolling level is within the chosen importance,
 /// a hero for the very next one, the selected level's next quarter threshold, then the following turnovers grouped by
-/// civil day (pure: by Nuclide). Countdowns refresh at 4 Hz; the list itself is recomputed only when a turnover
-/// passes or the clock jumps (`TurnoverMemo`).
+/// civil day (pure: by Nuclide). Countdowns refresh once a second, 4 times a second in the last seconds before a
+/// turnover or the strip's threshold (`LadderCadence.upNext`); the list itself is recomputed only when a turnover passes
+/// or the clock jumps, and grouped once per list (`TurnoverMemo`).
 struct UpNextView: View {
     @Environment(AppSettings.self) private var settings
     @Environment(ClockStore.self) private var store
@@ -13,6 +14,8 @@ struct UpNextView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage(Importance.storageKey) private var importanceID = Importance.defaultID
     @State private var memo = TurnoverMemo()
+    /// The card's cadence (`LadderCadence.upNext`): quick near a change, calm otherwise.
+    @State private var cadence = LadderCadence.upNextCalm
 
     var body: some View {
         let importance = Importance.byID(importanceID)
@@ -32,20 +35,29 @@ struct UpNextView: View {
                     .foregroundStyle(Theme.ink3)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            ClockTimeline(.periodic(LadderCadence.readout)) { raw in
+            ClockTimeline(.periodic(cadence)) { raw in
                 let t = LadderLaunch.shown(raw)
-                let turnovers = memo.turnovers(store.clock, at: t, importance: importance, maxLevel: maxLevel)
+                let turnovers = memo.turnovers(store.clock, at: t, importance: importance, maxLevel: maxLevel, revision: store.revision)
+                let threshold = store.clock.level(at: t, settings.selectedLevel)?.next.time
+                let next = [turnovers.first?.time, threshold].compactMap { $0 }.min()
+                let wanted = LadderCadence.upNext(untilNext: next.map { $0 - t })
+                let animate = memo.passed && !reduceMotion
                 UpNextContent(
                     t: t,
                     turnovers: turnovers,
+                    rows: memo.rows(pure: words.pure, earth: words.earth, ref: t, text: LadderPureText(notation: words.notation)),
                     importance: importance,
                     maxLevel: maxLevel,
                     words: words,
-                    navigator: navigator
+                    navigator: navigator,
+                    glow: animate,
+                    cadence: cadence
                 )
-                .animation(memo.advanced > 0 && memo.advanced <= 2 && !reduceMotion ? .snappy(duration: 0.35) : nil, value: turnovers.first?.time)
+                .onChange(of: wanted, initial: true) { _, wanted in cadence = wanted }
+                .animation(animate ? .snappy(duration: 0.35) : nil, value: turnovers.first?.time)
                 .sensoryFeedback(.impact(weight: .light, intensity: 0.6), trigger: turnovers.first?.time) { _, _ in
-                    settings.haptics && memo.advanced > 0 && memo.advanced <= 2
+                    // a turnover passed while the clock ran at about real speed (not a jump, not a time-lapse)
+                    settings.haptics && memo.ranPast && (store.isLive || abs(store.rate) <= 1)
                 }
             }
             Text(note(words))
@@ -78,10 +90,15 @@ struct UpNextView: View {
 private struct UpNextContent: View {
     let t: Double
     let turnovers: [Turnover]
+    /// The turnovers after the first, grouped (`TurnoverMemo.rows`).
+    let rows: [TurnoverRow]
     let importance: Importance
     let maxLevel: Int
     let words: Wording
     let navigator: LadderNavigator
+    let glow: Bool
+    /// The container's cadence, for the countdowns' lookahead.
+    let cadence: Double
 
     var body: some View {
         let clock = words.notation.model
@@ -94,21 +111,27 @@ private struct UpNextContent: View {
                         : "Outside the Saros 141 catalogue (\(words.earth.date(clock.tMin)) to \(words.earth.date(clock.tMax))): there are no turnovers to count down to."
                 )
             } else if let first = turnovers.first {
-                TurnoverHero(turnover: first, t: t, importance: importance, maxLevel: maxLevel, words: words, navigator: navigator)
-                    .id(first.time)
-                    .transition(.asymmetric(insertion: .opacity, removal: .opacity))
-                ThresholdStrip(t: t, words: words, navigator: navigator)
-                TurnoverList(t: t, turnovers: Array(turnovers.dropFirst()), words: words, navigator: navigator)
+                TurnoverHero(turnover: first, t: t, importance: importance, maxLevel: maxLevel, words: words, navigator: navigator, glow: glow, cadence: cadence)
+                ThresholdStrip(t: t, words: words, navigator: navigator, cadence: cadence)
+                TurnoverList(t: t, rows: rows, words: words, navigator: navigator, cadence: cadence)
+                if turnovers.count < Turnovers.listed {
+                    // the catalogue ends before the list is full
+                    Label(lastWords, systemImage: "flag.checkered")
+                        .font(.footnote)
+                        .foregroundStyle(Theme.ink3)
+                        .padding(.top, rows.isEmpty ? 0 : 4)
+                }
             } else {
-                ThresholdStrip(t: t, words: words, navigator: navigator)
-                UpNextNote(
-                    symbol: "flag.checkered",
-                    text: words.pure
-                        ? "No further turnovers of this size before the catalogue ends."
-                        : "No further turnovers of this size before the catalogue ends (\(words.earth.date(clock.tMax)))."
-                )
+                ThresholdStrip(t: t, words: words, navigator: navigator, cadence: cadence)
+                UpNextNote(symbol: "flag.checkered", text: lastWords)
             }
         }
+    }
+
+    private var lastWords: String {
+        words.pure
+            ? "No further turnovers of this size before the catalogue ends."
+            : "No further turnovers of this size before the catalogue ends (\(words.earth.date(words.notation.model.tMax)))."
     }
 }
 
@@ -122,13 +145,17 @@ private struct TurnoverHero: View {
     let maxLevel: Int
     let words: Wording
     let navigator: LadderNavigator
+    /// Glow: the previous hero has just passed (and Reduce Motion is off).
+    let glow: Bool
+    let cadence: Double
 
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ScaledMetric(relativeTo: .largeTitle) private var countSize = 30.0
-    @ScaledMetric(relativeTo: .body) private var badge = 54.0
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     private var pure: Bool { words.pure }
     private var text: LadderPureText { LadderPureText(notation: words.notation) }
+    /// Accessibility text sizes stack what sits side by side, so nothing is cut short.
+    private var stacked: Bool { typeSize.isAccessibilitySize }
 
     var body: some View {
         let top = turnover.top
@@ -150,17 +177,16 @@ private struct TurnoverHero: View {
         }
         .padding(16)
         .background { card }
-        .modifier(TurnoverGlow(level: top, trigger: turnover.time, enabled: !reduceMotion))
+        .modifier(TurnoverGlow(level: top, trigger: turnover.time, enabled: glow))
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Next major turnover")
     }
 
     /// The badge, the countdown and when (Earth) or what begins (pure).
     private var headline: some View {
-        HStack(alignment: .center, spacing: 14) {
-            LevelChip(level: turnover.top, prominent: true)
-                .scaleEffect(badge / 38)
-                .frame(width: badge, height: badge)
+        let layout = stacked ? AnyLayout(VStackLayout(alignment: .leading, spacing: 10)) : AnyLayout(HStackLayout(alignment: .center, spacing: 14))
+        return layout {
+            LevelChip(level: turnover.top, prominent: true, baseSide: stacked ? 38 : 54)
             VStack(alignment: .leading, spacing: 3) {
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
                     Text("in").font(.title3).foregroundStyle(Theme.ink3)
@@ -176,7 +202,7 @@ private struct TurnoverHero: View {
         let end = turnover.time
         let pure = pure
         let text = text
-        return LiveCountdown(target: end, t: t, container: LadderCadence.readout, pure: pure) { now in
+        return LiveCountdown(target: end, t: t, container: cadence, pure: pure) { now in
             pure ? text.heroLeft(from: now, to: end) : LadderText.countdownLong(end - now)
         }
         .font(.reading(countSize, weight: .semibold))
@@ -192,31 +218,38 @@ private struct TurnoverHero: View {
                 .font(.subheadline.weight(.medium))
                 .foregroundStyle(Theme.ink)
             if !info.address.isEmpty {
-                Text(info.address).font(.code(11)).foregroundStyle(Theme.ink3).lineLimit(1).minimumScaleFactor(0.7)
+                Text(info.address).font(.code(11)).foregroundStyle(Theme.ink3).lineLimit(stacked ? nil : 1).minimumScaleFactor(0.7)
             }
         } else {
-            HStack(alignment: .firstTextBaseline, spacing: 5) {
+            let line = stacked
+                ? AnyLayout(VStackLayout(alignment: .leading, spacing: 2))
+                : AnyLayout(HStackLayout(alignment: .firstTextBaseline, spacing: 5))
+            line {
                 Text(LadderText.whenFull(words.earth, turnover.time))
                     .font(.subheadline.monospacedDigit())
                     .foregroundStyle(Theme.ink2)
                 Text(words.tag(turnover.time)).font(.caption).foregroundStyle(Theme.ink3)
             }
-            .lineLimit(1)
+            .lineLimit(stacked ? nil : 1)
             .minimumScaleFactor(0.7)
+            .fixedSize(horizontal: false, vertical: stacked)
         }
     }
 
+    /// The turnover is read afresh when a button is pressed: during a fast time-lapse the hero can be a tick behind,
+    /// and its turnover may already have passed (the clock would jump backwards).
     private func buttons(color: Color) -> some View {
-        HStack(spacing: 10) {
+        let layout = stacked ? AnyLayout(VStackLayout(spacing: 10)) : AnyLayout(HStackLayout(spacing: 10))
+        return layout {
             Button {
-                navigator.before(turnover)
+                navigator.turnoverBefore(importance: importance)
             } label: {
                 HeroButtonLabel(title: "Just before", symbol: "play.fill")
             }
             .buttonStyle(.bordered)
             .tint(color)
             Button {
-                navigator.after(turnover)
+                navigator.turnoverAfter(importance: importance)
             } label: {
                 HeroButtonLabel(title: "Just after", symbol: "forward.end.fill")
             }
@@ -254,10 +287,11 @@ private struct TurnoverHero: View {
             .accessibilityElement()
             .accessibilityLabel("Progress through the current \(pure ? LadderPureText.levelSay(turnover.top) : LadderText.chip(turnover.top)) cycle")
             .accessibilityValue(pure ? progressWords(p) : "\(LadderText.pctWhole(p)) percent")
-            HStack(alignment: .center, spacing: 8) {
+            let caption = stacked ? AnyLayout(VStackLayout(alignment: .leading, spacing: 4)) : AnyLayout(HStackLayout(alignment: .center, spacing: 8))
+            caption {
                 if pure {
                     Text(verbatim: "began \(text.left(from: start, to: t)) ago")
-                    Spacer(minLength: 6)
+                    if !stacked { Spacer(minLength: 6) }
                     if Notation.isMajor(turnover.top) {
                         Text(verbatim: "\(LadderPureText.quarterWord(p)) quarter")
                     } else {
@@ -265,13 +299,13 @@ private struct TurnoverHero: View {
                     }
                 } else {
                     Text(verbatim: "since \(LadderText.whenLabel(words.earth, start, ref: t, span: max(1, span)))")
-                    Spacer(minLength: 6)
+                    if !stacked { Spacer(minLength: 6) }
                     Text(verbatim: "\(LadderText.pctWhole(p))\(LadderText.nnbsp)% of this cycle")
                 }
             }
             .font(.caption.monospacedDigit())
             .foregroundStyle(Theme.ink3)
-            .lineLimit(1)
+            .lineLimit(stacked ? nil : 1)
         }
     }
 
@@ -321,8 +355,10 @@ private struct ThresholdStrip: View {
     let t: Double
     let words: Wording
     let navigator: LadderNavigator
+    let cadence: Double
 
     @Environment(AppSettings.self) private var settings
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
         let level = settings.selectedLevel
@@ -333,33 +369,54 @@ private struct ThresholdStrip: View {
         Button {
             navigator.nextThreshold(level)
         } label: {
-            HStack(spacing: 10) {
-                MiniChip(level: level)
+            Group {
                 if let lv, let when = lv.next.time {
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(verbatim: "next \(Notation.quarterWords[lv.quarter])")
-                            .font(.subheadline.weight(.medium))
-                            .foregroundStyle(Theme.ink)
-                        LiveCountdown(target: when, t: t, container: LadderCadence.readout, pure: pure) { now in
-                            "in " + (pure ? text.left(from: now, to: when) : LadderText.countdown(when - now))
-                        }
-                        .font(.footnote.monospacedDigit())
-                        .foregroundStyle(Theme.ink2)
+                    let quarter = Text(verbatim: "next \(Notation.quarterWords[lv.quarter])")
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(Theme.ink)
+                    let countdown = LiveCountdown(target: when, t: t, container: cadence, pure: pure) { now in
+                        "in " + (pure ? text.left(from: now, to: when) : LadderText.countdown(when - now))
                     }
-                    Spacer(minLength: 6)
-                    Text(place(lv, when: when, text: text))
+                    .font(.footnote.monospacedDigit())
+                    .foregroundStyle(Theme.ink2)
+                    let spot = Text(place(lv, when: when, text: text))
                         .font(.footnote.monospacedDigit())
                         .foregroundStyle(Theme.ink3)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.75)
-                    Image(systemName: "forward.end")
+                    let go = Image(systemName: "forward.end")
                         .font(.footnote.weight(.semibold))
                         .foregroundStyle(Theme.levelColor(level))
+                    if typeSize.isAccessibilitySize {
+                        // accessibility sizes: one fact per line
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack(spacing: 10) {
+                                MiniChip(level: level)
+                                quarter
+                                Spacer(minLength: 6)
+                                go
+                            }
+                            countdown
+                            spot
+                        }
+                    } else {
+                        HStack(spacing: 10) {
+                            MiniChip(level: level)
+                            VStack(alignment: .leading, spacing: 1) {
+                                quarter
+                                countdown
+                            }
+                            Spacer(minLength: 6)
+                            spot.lineLimit(1).minimumScaleFactor(0.75)
+                            go
+                        }
+                    }
                 } else {
-                    Text("No further threshold before the catalogue ends")
-                        .font(.subheadline)
-                        .foregroundStyle(Theme.ink3)
-                    Spacer(minLength: 0)
+                    HStack(spacing: 10) {
+                        MiniChip(level: level)
+                        Text("No further threshold before the catalogue ends")
+                            .font(.subheadline)
+                            .foregroundStyle(Theme.ink3)
+                        Spacer(minLength: 0)
+                    }
                 }
             }
             .padding(.horizontal, 12)
@@ -369,7 +426,19 @@ private struct ThresholdStrip: View {
         }
         .buttonStyle(LadderPressStyle())
         .disabled(lv?.next.time == nil)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(accessibilityText(lv, level: level, text: text))
         .accessibilityHint("Just after this threshold")
+        .accessibilityAddTraits(.isButton)
+    }
+
+    /// "η, depth 7: next End in 56 min 12 s, at 12:56:12" · pure "Eta, depth 7: next End in 6ι 43λ, at 35η 0ι".
+    private func accessibilityText(_ lv: LevelReading?, level: Int, text: LadderPureText) -> String {
+        let head = words.pure ? LadderPureText.depthWords(level) : "\(LadderText.letter(level)), depth \(level + 1)"
+        guard let lv, let when = lv.next.time else { return "\(head): no further threshold before the catalogue ends" }
+        let left = words.pure ? text.left(from: t, to: when) : LadderText.countdown(when - t)
+        let spot = place(lv, when: when, text: text)
+        return "\(head): next \(Notation.quarterWords[lv.quarter]) in \(left)\(spot.isEmpty ? "" : ", \(spot)")"
     }
 
     /// Where the threshold falls: a Gregorian label · pure: the next quarter word (a major) or two stamp tokens.
@@ -385,12 +454,12 @@ private struct ThresholdStrip: View {
 
 private struct TurnoverList: View {
     let t: Double
-    let turnovers: [Turnover]
+    let rows: [TurnoverRow]
     let words: Wording
     let navigator: LadderNavigator
+    let cadence: Double
 
     var body: some View {
-        let rows = groupedRows
         VStack(alignment: .leading, spacing: 0) {
             ForEach(rows) { row in
                 if let heading = row.heading {
@@ -403,17 +472,9 @@ private struct TurnoverList: View {
                 } else if row.separated {
                     Rectangle().fill(Theme.line2).frame(height: 1).padding(.vertical, 6)
                 }
-                TurnoverRowView(row: row, t: t, words: words, navigator: navigator)
+                TurnoverRowView(row: row, t: t, words: words, navigator: navigator, cadence: cadence)
             }
         }
-    }
-
-    private var groupedRows: [TurnoverRow] {
-        if words.pure {
-            let text = LadderPureText(notation: words.notation)
-            return Turnovers.byNuclide(turnovers) { text.turnoverInfo(time: $0.time, top: $0.top) }
-        }
-        return Turnovers.byDay(turnovers, earth: words.earth, ref: t)
     }
 }
 
@@ -422,8 +483,10 @@ private struct TurnoverRowView: View {
     let t: Double
     let words: Wording
     let navigator: LadderNavigator
+    let cadence: Double
 
     @ScaledMetric(relativeTo: .subheadline) private var readingSize = 15.0
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
         let e = row.turnover
@@ -434,15 +497,13 @@ private struct TurnoverRowView: View {
             Button {
                 navigator.after(e)
             } label: {
-                HStack(spacing: 10) {
-                    MiniChip(level: e.top)
-                    LiveCountdown(target: e.time, t: t, container: LadderCadence.readout, pure: pure) { now in
-                        pure ? text.left(from: now, to: e.time) : LadderText.countdown(e.time - now)
-                    }
-                    .font(.reading(readingSize, weight: .medium))
-                    .foregroundStyle(Theme.ink)
-                    .lineLimit(1)
-                    Spacer(minLength: 6)
+                let countdown = LiveCountdown(target: e.time, t: t, container: cadence, pure: pure) { now in
+                    pure ? text.left(from: now, to: e.time) : LadderText.countdown(e.time - now)
+                }
+                .font(.reading(readingSize, weight: .medium))
+                .foregroundStyle(Theme.ink)
+                .lineLimit(1)
+                let when = HStack(spacing: 8) {
                     Text(row.label)
                         .font(.subheadline.monospacedDigit())
                         .foregroundStyle(Theme.ink2)
@@ -454,6 +515,25 @@ private struct TurnoverRowView: View {
                             .padding(.horizontal, 5)
                             .padding(.vertical, 1)
                             .background(Theme.panel3, in: .capsule)
+                    }
+                }
+                Group {
+                    if typeSize.isAccessibilitySize {
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack(spacing: 10) {
+                                MiniChip(level: e.top)
+                                countdown
+                            }
+                            when
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    } else {
+                        HStack(spacing: 10) {
+                            MiniChip(level: e.top)
+                            countdown
+                            Spacer(minLength: 6)
+                            when
+                        }
                     }
                 }
                 .padding(.vertical, 9)
@@ -484,8 +564,8 @@ private struct TurnoverRowView: View {
     private func label(_ e: Turnover, text: LadderPureText) -> String {
         let finer = e.finer > 0 ? ", \(e.finer) finer \(e.finer == 1 ? "cycle ends" : "cycles end") with it" : ""
         if words.pure {
-            let info = text.turnoverInfo(time: e.time, top: e.top)
-            let what = info.name.map { "\($0) begins" } ?? "the catalogue ends"
+            // the row's label is what begins there (`Turnovers.byNuclide`)
+            let what = words.notation.model.inRange(e.time + 0.001) ? "\(row.label) begins" : "the catalogue ends"
             return "\(LadderPureText.depthWords(e.top)) turns over in \(text.left(from: t, to: e.time)): \(what)\(finer)"
         }
         return "\(LadderText.letter(e.top)), depth \(e.top + 1) turns over in \(LadderText.countdown(e.time - t)), "

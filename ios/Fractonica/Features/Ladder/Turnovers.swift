@@ -51,8 +51,11 @@ struct TurnoverRow: Hashable, Identifiable, Sendable {
 }
 
 enum Turnovers {
+    /// How many turnovers Up next lists: the hero and seven more (upnext.js `COUNT`).
+    static let listed = 8
+
     /// The next `count` turnovers after t whose top is within `importance` (lib.js `buildEvents`).
-    static func upcoming(_ clock: FractonicaClock, after t: Double, importance: Importance, maxLevel: Int, count: Int = 8) -> [Turnover] {
+    static func upcoming(_ clock: FractonicaClock, after t: Double, importance: Importance, maxLevel: Int, count: Int = listed) -> [Turnover] {
         clock.upcomingEnds(after: t, fromLevel: 0, toLevel: importance.top, count: count, perLevel: 8).map {
             Turnover(time: $0.time, top: $0.top, finer: max(0, maxLevel - $0.top))
         }
@@ -117,21 +120,48 @@ final class TurnoverMemo {
         var maxLevel: Int
     }
 
+    private struct RowsKey: Equatable {
+        var generation: Int
+        var pure: Bool
+        var zone: String
+        var year: Int
+    }
+
+    /// Real seconds between two animated passes (upnext.js: 600 ms), so a fast time-lapse does not animate, glow and
+    /// tap on every tick.
+    static let passGap = 0.6
+
     private(set) var turnovers: [Turnover] = []
     /// How many turnovers passed at the last recomputation (1 or 2 animate the list; −1 a jump).
     private(set) var advanced = -1
+    /// The last recomputation moved the list on by one or two turnovers, at least `passGap` after the previous such
+    /// move: animate it.
+    private(set) var passed = false
+    /// … and the clock got there by running, not by a jump (`revision` unchanged): the moment for a haptic tap.
+    private(set) var ranPast = false
     /// Bumps on every recomputation.
     private(set) var generation = 0
     private var key: Key?
     private var validFrom = -Double.infinity
     private var validUntil = -Double.infinity
+    private var lastPass = -Double.infinity
+    private var revision: Int?
+    private var rowsKey: RowsKey?
+    private var cachedRows: [TurnoverRow] = []
 
-    /// The turnovers after t (empty outside the catalogue and past the last one).
-    func turnovers(_ clock: FractonicaClock, at t: Double, importance: Importance, maxLevel: Int) -> [Turnover] {
+    /// The turnovers after t (empty outside the catalogue and past the last one). `now` is the real time (for the
+    /// pass animation's pace), `revision` the clock's discontinuity counter (`ClockStore.revision`).
+    func turnovers(_ clock: FractonicaClock, at t: Double, importance: Importance, maxLevel: Int,
+                   now: Double = Date().timeIntervalSince1970, revision: Int = 0) -> [Turnover] {
         let k = Key(importance: importance, maxLevel: maxLevel)
+        let sameRun = revision == self.revision
+        self.revision = revision
         guard k != key || t < validFrom || t >= validUntil else { return turnovers }
         let fresh = clock.inRange(t) ? Turnovers.upcoming(clock, after: t, importance: importance, maxLevel: maxLevel) : []
         advanced = k == key ? Turnovers.advance(from: turnovers, to: fresh) : -1
+        passed = (1...2).contains(advanced) && now - lastPass >= Self.passGap
+        if passed { lastPass = now }
+        ranPast = passed && sameRun
         key = k
         turnovers = fresh
         generation &+= 1
@@ -144,6 +174,19 @@ final class TurnoverMemo {
             validUntil = t < clock.tMin ? clock.tMin : Double.infinity
         }
         return fresh
+    }
+
+    /// The list after the hero, grouped by civil day (Earth, in `earth`'s zone) or by Nuclide (pure): worked out once
+    /// per list, mode, zone and year (a pure grouping places every turnover exactly, ~0.1 ms).
+    func rows(pure: Bool, earth: EarthFormatter, ref: Double, text: LadderPureText) -> [TurnoverRow] {
+        let key = RowsKey(generation: generation, pure: pure, zone: pure ? "" : earth.zone, year: pure ? 0 : earth.parts(ref).year)
+        if key == rowsKey { return cachedRows }
+        let following = Array(turnovers.dropFirst())
+        cachedRows = pure
+            ? Turnovers.byNuclide(following) { text.turnoverInfo(time: $0.time, top: $0.top) }
+            : Turnovers.byDay(following, earth: earth, ref: ref)
+        rowsKey = key
+        return cachedRows
     }
 
     /// Forget the list (a setting it depends on changed).

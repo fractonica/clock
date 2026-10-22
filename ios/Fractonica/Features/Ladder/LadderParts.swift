@@ -11,10 +11,13 @@ struct LevelChip: View {
     let level: Int
     var prominent = false
     var dimmed = false
+    /// The side at the default text size (the ladder's 38, the Up next hero's 54); it follows Dynamic Type.
+    var baseSide: CGFloat = 38
 
-    @ScaledMetric(relativeTo: .body) private var side = 38.0
+    @ScaledMetric(relativeTo: .body) private var scale = 1.0
 
     var body: some View {
+        let side = baseSide * scale
         let color = Theme.levelColor(level)
         VStack(spacing: -2) {
             Text(LadderText.letter(level))

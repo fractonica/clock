@@ -270,6 +270,41 @@ private func memoChecks() {
     check(last.allSatisfy { $0.time <= clock.tMax + 1e-6 }, "never past the catalogue")
     check(Turnovers.advance(from: first, to: Array(first.dropFirst(2))) == 2, "advance by two")
     check(Turnovers.advance(from: first, to: [first[3], first[1]]) == -1, "unrelated lists")
+    paceChecks()
+    rowsCacheChecks()
+}
+
+/// The pass animation and the haptic: paced like upnext.js (600 ms), the haptic only for a pass the clock ran into.
+private func paceChecks() {
+    let memo = TurnoverMemo()
+    let imp = Importance.byID("η")
+    let list = memo.turnovers(clock, at: A, importance: imp, maxLevel: 9, now: 100, revision: 1)
+    check(!memo.passed && !memo.ranPast, "the first list is not a pass")
+    _ = memo.turnovers(clock, at: list[0].time + 0.5, importance: imp, maxLevel: 9, now: 101, revision: 1)
+    check(memo.passed && memo.ranPast, "running past a turnover animates and taps")
+    _ = memo.turnovers(clock, at: list[1].time + 0.5, importance: imp, maxLevel: 9, now: 101.2, revision: 1)
+    check(memo.advanced == 1 && !memo.passed && !memo.ranPast, "a second pass 0.2 s later (a time-lapse) is not animated again")
+    _ = memo.turnovers(clock, at: list[2].time + 0.5, importance: imp, maxLevel: 9, now: 102, revision: 1)
+    check(memo.passed && memo.ranPast, "a pass 0.8 s after the last animated one is animated")
+    _ = memo.turnovers(clock, at: list[3].time + 0.001, importance: imp, maxLevel: 9, now: 110, revision: 2)
+    check(memo.passed && !memo.ranPast, "Just after (a jump) animates the list but does not tap")
+    _ = memo.turnovers(clock, at: list[3].time + 86_400 * 3, importance: imp, maxLevel: 9, now: 120, revision: 3)
+    check(!memo.passed && !memo.ranPast, "a jump over many turnovers is not a pass")
+}
+
+/// The grouped rows are worked out once per list, mode, zone and year.
+private func rowsCacheChecks() {
+    let memo = TurnoverMemo()
+    let imp = Importance.byID("ζ")
+    let utc = EarthFormatter(zone: "UTC"), kyiv = EarthFormatter(zone: "Europe/Kyiv")
+    let list = memo.turnovers(clock, at: A, importance: imp, maxLevel: 9)
+    let earth = memo.rows(pure: false, earth: utc, ref: A, text: pt)
+    check(earth == Turnovers.byDay(Array(list.dropFirst()), earth: utc, ref: A), "Earth rows are the day grouping of the list after the hero")
+    check(memo.rows(pure: true, earth: utc, ref: A, text: pt) == Turnovers.byNuclide(Array(list.dropFirst())) { pt.turnoverInfo(time: $0.time, top: $0.top) },
+          "pure rows are the Nuclide grouping")
+    check(memo.rows(pure: false, earth: kyiv, ref: A + 60, text: pt) == Turnovers.byDay(Array(list.dropFirst()), earth: kyiv, ref: A), "another zone regroups")
+    _ = memo.turnovers(clock, at: list[0].time + 1, importance: imp, maxLevel: 9)
+    check(memo.rows(pure: false, earth: utc, ref: list[0].time + 1, text: pt).first?.turnover == list[2], "a new list regroups")
 }
 
 // MARK: - Cadences
@@ -287,6 +322,32 @@ private func cadenceChecks() {
     check(LadderCadence.countdown(remaining: 2, pure: true, blinkSeconds: blink, container: 0.25) != nil, "decimal Blinks tick fast")
     check(LadderCadence.countdown(remaining: 60, pure: true, blinkSeconds: blink, container: 0.25) == nil, "whole Blinks do not")
     check(LadderCadence.countdown(remaining: -1, pure: false, blinkSeconds: blink, container: 0.25) == nil, "nothing after the end")
+
+    // closed rows redraw as often as their bar or their countdown needs, open ones at least 4 times a second
+    check(LadderCadence.row(meanSeconds: means[0], remaining: 6e8, pure: false) == 60, "an α row redraws once a minute")
+    check(LadderCadence.row(meanSeconds: means[5], remaining: 3 * 86_400, pure: false) == 60, "a ζ row days from its end: once a minute")
+    check(LadderCadence.row(meanSeconds: means[5], remaining: 5 * 3600, pure: false) == 1, "… hours from it: once a second")
+    check(LadderCadence.row(meanSeconds: means[6], remaining: 3000, pure: false) == 1, "an η row: once a second")
+    check(LadderCadence.row(meanSeconds: means[8], remaining: 300, pure: false) == means[8] / 2000, "an ι row: once a bar pixel")
+    check(LadderCadence.row(meanSeconds: means[10], remaining: 3, pure: false) == nil, "a λ row: every frame")
+    check(LadderCadence.row(meanSeconds: means[4], remaining: 2e6, pure: true) == 60, "pure: a span of ε and coarser changes slowly")
+    check(LadderCadence.row(meanSeconds: means[6], remaining: 3000, pure: true) == 1, "pure: an ι λ span ticks every second")
+    check(LadderCadence.row(meanSeconds: means[7], remaining: 10, pure: true) == LadderCadence.readout, "pure: a λ ν span ticks 4 times a second")
+    check(LadderCadence.row(meanSeconds: means[0]) == LadderCadence.readout, "an open α row ticks 4 times a second")
+    for level in 0...9 {
+        for remaining in [0.5, 9, 59, 3599, 86_399, 86_401, 1e7] where remaining < means[level] {
+            for pure in [false, true] {
+                let c = LadderCadence.row(meanSeconds: means[level], remaining: remaining, pure: pure)
+                check(c.map { $0 <= 60 && $0 <= LadderCadence.textStep(remaining: remaining, pure: pure) } ?? true,
+                      "a row never waits longer than its countdown's step (depth \(level + 1), \(remaining) s)")
+            }
+        }
+    }
+    // Up next: calm (1 s) unless a turnover or the strip's threshold is under ten seconds plus one calm tick away
+    check(LadderCadence.upNext(untilNext: nil) == LadderCadence.upNextCalm, "nothing ahead: calm")
+    check(LadderCadence.upNext(untilNext: 3600) == LadderCadence.upNextCalm, "an hour ahead: calm")
+    check(LadderCadence.upNext(untilNext: 10.5) == LadderCadence.readout, "ten seconds ahead (plus a tick): quick")
+    check(LadderCadence.upNext(untilNext: 0.2) == LadderCadence.readout, "about to pass: quick")
 }
 
 // MARK: - Pure mode says nothing Earth-ish

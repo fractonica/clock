@@ -16,9 +16,13 @@ struct LadderScreen: View {
     /// The row whose details are open.
     @State private var expanded: Int?
     @State private var started = false
+    #if os(macOS)
+    /// The ladder takes the keyboard when the screen appears, so ↑ ↓ ↩ work without a click first.
+    @FocusState private var keyboardFocus: Bool
+    #endif
 
     /// Up next gets a column of its own from this width on.
-    private static let wideWidth: CGFloat = 760
+    private static let wideWidth: CGFloat = 700
 
     var body: some View {
         GeometryReader { geo in
@@ -93,8 +97,14 @@ struct LadderScreen: View {
                 }
             }
             #if os(macOS)
+            .focusable()
+            .focusEffectDisabled()
+            .focused($keyboardFocus)
+            .onAppear { keyboardFocus = true }
             .onKeyPress(.upArrow) { move(-1) }
             .onKeyPress(.downArrow) { move(1) }
+            .onKeyPress(.home) { move(-levels.count) }
+            .onKeyPress(.end) { move(levels.count) }
             .onKeyPress(.return, phases: .down) { press in
                 if press.modifiers.contains(.shift) { navigator.justBefore(settings.selectedLevel) } else { navigator.justAfter(settings.selectedLevel) }
                 return .handled
@@ -143,6 +153,7 @@ struct LadderScreen: View {
     private func start() {
         guard !started else { return }
         started = true
+        LadderLaunch.rotateIfAsked()
         #if DEBUG
         if let depths = LadderLaunch.depths { setRange(depths.lowerBound, depths.upperBound) }
         if let level = LadderLaunch.expand {
@@ -195,11 +206,12 @@ private struct LadderHeader: View {
                 Spacer()
                 DepthMenu()
             }
-            ClockTimeline(.periodic(1)) { raw in
-                let t = LadderLaunch.shown(raw)
-                if !store.clock.inRange(t) {
-                    outside(t, words: words)
-                }
+            // the displayed time leaves the catalogue only by a jump (travel clamps, and a time-lapse stops at the
+            // edge), so this is read when the clock changes (`revision`), not on a timer
+            let _ = store.revision
+            let t = LadderLaunch.shown(store.time())
+            if !store.clock.inRange(t) {
+                outside(t, words: words)
             }
         }
         .textCase(nil)
@@ -287,13 +299,14 @@ private struct DepthMenu: View {
 /// The finer depths beyond the range, one tap away; a word on what the bars show.
 private struct LadderFooter: View {
     @Environment(AppSettings.self) private var settings
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             if settings.maxDepth < 14 {
                 let hidden = (settings.maxDepth...13).map(LadderText.letter)
                 Button {
-                    withAnimation(.snappy) { setRange(settings.minDepth, 14) }
+                    withAnimation(reduceMotion ? nil : .snappy) { setRange(settings.minDepth, 14) }
                 } label: {
                     Label {
                         Text(verbatim: "\(hidden.count) finer \(hidden.count == 1 ? "depth" : "depths") (\(hidden.joined(separator: " ")))")
@@ -303,7 +316,7 @@ private struct LadderFooter: View {
                 }
             } else if settings.minDepth <= 10 {
                 Button {
-                    withAnimation(.snappy) { setRange(settings.minDepth, 10) }
+                    withAnimation(reduceMotion ? nil : .snappy) { setRange(settings.minDepth, 10) }
                 } label: {
                     Label("Fewer depths (hide λ μ ν ξ)", systemImage: "minus")
                 }

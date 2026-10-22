@@ -2,8 +2,9 @@ import FractonicaKit
 import SwiftUI
 
 /// One depth of the ladder (src/ui/ladder.js): chip, place in the parent, time left, the segmented bar and the phase;
-/// the selected row opens its details. Each row redraws on its own, at the cadence its bar needs (one device pixel,
-/// at most 4 Hz for slow cycles, every frame for the fast ones), and reads its level once per redraw.
+/// the selected row opens its details. Each row redraws on its own, at the cadence its bar and its countdown need
+/// (`LadderCadence.row`: once a minute for α … ε, once a second for a countdown in seconds, one bar pixel for ι κ, every
+/// frame for the fast ones; an open row at least 4 times a second), and reads its level once per redraw.
 struct LadderRow: View {
     let level: Int
     let isSelected: Bool
@@ -14,20 +15,26 @@ struct LadderRow: View {
     @Environment(AppSettings.self) private var settings
     @Environment(ClockStore.self) private var store
     @ScaledMetric(relativeTo: .subheadline) private var readingSize = 15.0
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     private var info: LevelInfo { FractonicaClock.shared.levelInfo(level) }
     /// Too fast to count down or to follow (ν, ξ).
     private var still: Bool { info.meanSeconds < LadderCadence.stillBelow }
 
-    /// Displayed seconds between redraws; nil every frame.
-    private var cadence: Double? {
+    /// The cadence the row asked for at its last redraw (`cadence(for:)`); it changes with the countdown's resolution.
+    @State private var asked: Double?? = .none
+
+    /// Displayed seconds between redraws for the reading `remaining` seconds before its end; nil every frame.
+    private func cadence(remaining: Double?) -> Double? {
         if still { return isExpanded ? LadderCadence.readout : 60 }
-        return LadderCadence.row(meanSeconds: info.meanSeconds)
+        guard !isExpanded, let remaining else { return LadderCadence.row(meanSeconds: info.meanSeconds) }
+        return LadderCadence.row(meanSeconds: info.meanSeconds, remaining: remaining, pure: settings.pure)
     }
 
     var body: some View {
         let words = settings.wording
-        let cadence = cadence
+        // until the first redraw has asked for its own, the open-row cadence (never too slow)
+        let cadence = asked ?? cadence(remaining: nil)
         ClockTimeline(cadence.map { .periodic($0) } ?? .animation) { raw in
             let t = LadderLaunch.shown(raw)
             let lv = store.clock.level(at: t, level)
@@ -38,6 +45,7 @@ struct LadderRow: View {
                         .transition(.opacity.combined(with: .move(edge: .top)))
                 }
             }
+            .onChange(of: self.cadence(remaining: lv.map { $0.end - t }), initial: true) { _, wanted in asked = .some(wanted) }
         }
     }
 
@@ -48,13 +56,17 @@ struct LadderRow: View {
             HStack(spacing: 12) {
                 LevelChip(level: level, prominent: isSelected, dimmed: lv == nil)
                 VStack(alignment: .leading, spacing: 5) {
-                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    // accessibility text sizes put the time left under the place, so neither is cut short
+                    let line = typeSize.isAccessibilitySize
+                        ? AnyLayout(VStackLayout(alignment: .leading, spacing: 2))
+                        : AnyLayout(HStackLayout(alignment: .firstTextBaseline, spacing: 8))
+                    line {
                         Text(counter(lv, words: words))
                             .font(.subheadline)
                             .foregroundStyle(lv == nil ? Theme.ink3 : Theme.ink2)
                             .lineLimit(1)
                             .truncationMode(.middle)
-                        Spacer(minLength: 4)
+                        if !typeSize.isAccessibilitySize { Spacer(minLength: 4) }
                         left(lv, t: t, words: words, container: container)
                             .font(.reading(readingSize, weight: .medium))
                             .foregroundStyle(lv == nil ? Theme.ink3 : still ? Theme.ink2 : Theme.ink)
@@ -76,7 +88,27 @@ struct LadderRow: View {
         .accessibilityAction(named: "Just after") { navigator.justAfter(level) }
         .accessibilityAction(named: "Just before") { navigator.justBefore(level) }
         .accessibilityAction(named: "Start of this cycle") { navigator.start(level) }
+        #if os(macOS)
+        .help(helpText(lv, words: words))
+        #endif
     }
+
+    #if os(macOS)
+    /// The pointer's tooltip (the web ladder's hover card, in short): when the cycle ends, and how to travel.
+    private func helpText(_ lv: LevelReading?, words: Wording) -> String {
+        guard let lv else { return "Outside the catalogue" }
+        let how = "Click for details · ↩ Just after, ⇧↩ Just before · right-click for more"
+        if still {
+            let length = words.pure ? LadderPureText(notation: words.notation).periodBlinks(info.meanSeconds) : EarthTime.duration(info.meanSeconds)
+            return "Too fast to follow: one cycle lasts \(length)\n\(how)"
+        }
+        if words.pure {
+            let next = LadderPureText(notation: words.notation).nextCycle(level: level, cycle: lv.cycle)?.name
+            return "\(LadderPureText.endsText(next))\n\(how)"
+        }
+        return "\(lv.clipped ? "The catalogue ends" : "Ends") \(LadderText.whenFull(words.earth, lv.end, precise: lv.duration < 10)) \(words.tag(lv.end))\n\(how)"
+    }
+    #endif
 
     /// "6 of 18" · pure "Trifracton Node", "ε#5", "34η".
     private func counter(_ lv: LevelReading?, words: Wording) -> String {
@@ -146,8 +178,12 @@ struct LadderDetail: View {
     let container: Double?
     let navigator: LadderNavigator
 
+    @Environment(\.dynamicTypeSize) private var typeSize
+
     private var level: Int { reading.level }
     private var pure: Bool { words.pure }
+    /// Accessibility text sizes: one fact per line instead of columns, so nothing is cut short or pushed off the row.
+    private var stacked: Bool { typeSize.isAccessibilitySize }
     private var text: LadderPureText { LadderPureText(notation: words.notation) }
     private var clock: FractonicaClock { words.notation.model }
 
@@ -190,7 +226,10 @@ struct LadderDetail: View {
         } else {
             VStack(alignment: .leading, spacing: 3) {
                 DetailKey(text: lv.clipped ? "Catalogue ends" : "Ends")
-                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                let line = stacked
+                    ? AnyLayout(VStackLayout(alignment: .leading, spacing: 2))
+                    : AnyLayout(HStackLayout(alignment: .firstTextBaseline, spacing: 6))
+                line {
                     Text(LadderText.whenFull(words.earth, lv.end, precise: lv.duration < 10))
                         .font(.title3.weight(.semibold).monospacedDigit())
                         .foregroundStyle(Theme.ink)
@@ -199,7 +238,8 @@ struct LadderDetail: View {
                         .font(.caption.monospacedDigit())
                         .foregroundStyle(Theme.ink3)
                 }
-                .lineLimit(1)
+                .lineLimit(stacked ? nil : 1)
+                .fixedSize(horizontal: false, vertical: stacked)
             }
         }
     }
@@ -208,40 +248,73 @@ struct LadderDetail: View {
 
     private var thresholds: some View {
         let lv = reading
-        let names = Notation.quarterWords
-        let fractions = ["¼", "½", "¾", "1"]
         return VStack(alignment: .leading, spacing: 6) {
             DetailKey(text: pure && !still && level < 12 ? "Quarters end at" : "Quarters")
-            Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 10, verticalSpacing: 7) {
-                ForEach(0..<4, id: \.self) { i in
-                    let when = lv.thresholds[i + 1].time
-                    let state = still ? 2 : i < lv.quarter ? 0 : i == lv.quarter ? 1 : 2
-                    GridRow {
-                        Circle()
-                            .fill(state == 0 ? Theme.ink3 : state == 1 ? Theme.levelColor(level) : .clear)
-                            .overlay { Circle().strokeBorder(state == 2 ? Theme.ink3 : .clear, lineWidth: 1) }
-                            .frame(width: 7, height: 7)
-                        HStack(alignment: .firstTextBaseline, spacing: 5) {
-                            Text(names[i]).foregroundStyle(state == 0 ? Theme.ink3 : Theme.ink)
-                            Text(fractions[i]).font(.caption).foregroundStyle(Theme.ink3)
+            if stacked {
+                // accessibility sizes: the quarter on one line, where and when it ends on the next
+                VStack(alignment: .leading, spacing: 10) {
+                    ForEach(0..<4, id: \.self) { i in
+                        let when = lv.thresholds[i + 1].time
+                        let state = quarterState(i)
+                        VStack(alignment: .leading, spacing: 2) {
+                            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                                quarterDot(state)
+                                quarterName(i, state: state)
+                            }
+                            Text(place(when)).monospacedDigit().foregroundStyle(state == 0 ? Theme.ink3 : Theme.ink2)
+                            relative(when, state: state)
+                                .monospacedDigit()
+                                .foregroundStyle(state == 1 ? Theme.levelColor(level) : Theme.ink3)
                         }
-                        Text(place(when))
-                            .monospacedDigit()
-                            .foregroundStyle(state == 0 ? Theme.ink3 : Theme.ink2)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.75)
-                        relative(when, state: state)
-                            .monospacedDigit()
-                            .foregroundStyle(state == 1 ? Theme.levelColor(level) : Theme.ink3)
-                            .lineLimit(1)
-                            .gridColumnAlignment(.trailing)
-                            .frame(maxWidth: .infinity, alignment: .trailing)
+                        .font(.subheadline)
                     }
-                    .font(.subheadline)
+                }
+            } else {
+                Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 10, verticalSpacing: 7) {
+                    ForEach(0..<4, id: \.self) { i in
+                        let when = lv.thresholds[i + 1].time
+                        let state = quarterState(i)
+                        GridRow {
+                            quarterDot(state)
+                            quarterName(i, state: state)
+                            Text(place(when))
+                                .monospacedDigit()
+                                .foregroundStyle(state == 0 ? Theme.ink3 : Theme.ink2)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.75)
+                            relative(when, state: state)
+                                .monospacedDigit()
+                                .foregroundStyle(state == 1 ? Theme.levelColor(level) : Theme.ink3)
+                                .lineLimit(1)
+                                .gridColumnAlignment(.trailing)
+                                .frame(maxWidth: .infinity, alignment: .trailing)
+                        }
+                        .font(.subheadline)
+                    }
                 }
             }
         }
         .accessibilityElement(children: .combine)
+    }
+
+    /// 0 passed, 1 the quarter the displayed time is in, 2 to come (every quarter of a cycle too fast to follow).
+    private func quarterState(_ i: Int) -> Int {
+        still ? 2 : i < reading.quarter ? 0 : i == reading.quarter ? 1 : 2
+    }
+
+    private func quarterDot(_ state: Int) -> some View {
+        Circle()
+            .fill(state == 0 ? Theme.ink3 : state == 1 ? Theme.levelColor(level) : .clear)
+            .overlay { Circle().strokeBorder(state == 2 ? Theme.ink3 : .clear, lineWidth: 1) }
+            .frame(width: 7, height: 7)
+    }
+
+    /// "Peak ¼".
+    private func quarterName(_ i: Int, state: Int) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 5) {
+            Text(Notation.quarterWords[i]).foregroundStyle(state == 0 ? Theme.ink3 : Theme.ink)
+            Text(["¼", "½", "¾", "1"][i]).font(.caption).foregroundStyle(Theme.ink3)
+        }
     }
 
     /// Where a threshold falls: a Gregorian label at the cycle's resolution · pure two stamp tokens ("34η 9ι").
@@ -295,8 +368,7 @@ struct LadderDetail: View {
     @ViewBuilder
     private func pureFacts(_ lv: LevelReading, seg: (index: Int, frac: Double)) -> some View {
         let major = Notation.isMajor(level)
-        GridRow {
-            label(major ? "Quarter" : "Phase")
+        factRow(major ? "Quarter" : "Phase") {
             if still {
                 Text("too fast to follow").foregroundStyle(Theme.ink2)
             } else if major {
@@ -311,8 +383,7 @@ struct LadderDetail: View {
                 }
             }
         }
-        GridRow {
-            label("Sector")
+        factRow("Sector") {
             if still {
                 Text("—").foregroundStyle(Theme.ink2)
             } else {
@@ -324,8 +395,7 @@ struct LadderDetail: View {
                 }
             }
         }
-        GridRow {
-            label("Cycle")
+        factRow("Cycle") {
             VStack(alignment: .leading, spacing: 2) {
                 Text(text.cycleTitle(level: level, cycle: lv.cycle)).foregroundStyle(Theme.ink)
                 Text(text.cycleAddress(level: level, cycle: lv.cycle))
@@ -334,14 +404,12 @@ struct LadderDetail: View {
                     .textSelection(.enabled)
             }
         }
-        GridRow {
-            label("Started")
+        factRow("Started") {
             Text(verbatim: "\(text.left(from: lv.start, to: t)) ago")
                 .monospacedDigit()
                 .foregroundStyle(Theme.ink)
         }
-        GridRow {
-            label("Length")
+        factRow("Length") {
             VStack(alignment: .leading, spacing: 2) {
                 Text(text.length(lv) + (lv.clipped ? " · clipped" : "")).foregroundStyle(Theme.ink)
                 Text(text.unitSentence(level)).font(.caption).foregroundStyle(Theme.ink3)
@@ -349,19 +417,49 @@ struct LadderDetail: View {
         }
     }
 
+    /// A row of the facts: the key beside its value, or above it at accessibility text sizes.
+    @ViewBuilder
+    private func factRow<Value: View>(_ key: String, @ViewBuilder value: () -> Value) -> some View {
+        GridRow {
+            if stacked {
+                VStack(alignment: .leading, spacing: 2) {
+                    label(key)
+                    value()
+                }
+                .gridCellColumns(2)
+            } else {
+                label(key)
+                value()
+            }
+        }
+    }
+
     private func fact(_ key: String, _ value: String, code: Bool = false) -> some View {
         GridRow {
-            label(key)
-            Text(value)
-                .font(code ? .code(12) : nil)
-                .monospacedDigit()
-                .foregroundStyle(Theme.ink)
-                .textSelection(.enabled)
-                .lineLimit(code ? 1 : nil)
-                .minimumScaleFactor(code ? 0.7 : 1)
-                .fixedSize(horizontal: false, vertical: !code)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            if stacked {
+                // accessibility sizes: the key above its value, both across the whole row
+                VStack(alignment: .leading, spacing: 2) {
+                    label(key)
+                    factValue(value, code: code)
+                }
+                .gridCellColumns(2)
+            } else {
+                label(key)
+                factValue(value, code: code)
+            }
         }
+    }
+
+    private func factValue(_ value: String, code: Bool) -> some View {
+        Text(value)
+            .font(code ? .code(12) : nil)
+            .monospacedDigit()
+            .foregroundStyle(Theme.ink)
+            .textSelection(.enabled)
+            .lineLimit(code && !stacked ? 1 : nil)
+            .minimumScaleFactor(code ? 0.7 : 1)
+            .fixedSize(horizontal: false, vertical: !code || stacked)
+            .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func label(_ text: String) -> some View {
@@ -381,6 +479,8 @@ struct LadderDetail: View {
         return ViewThatFits(in: .horizontal) {
             HStack(spacing: 8) { actionButtons(color: color, compact: false, last: last, leadText: leadText) }.fixedSize(horizontal: true, vertical: false)
             HStack(spacing: 8) { actionButtons(color: color, compact: true, last: last, leadText: leadText) }.fixedSize(horizontal: true, vertical: false)
+            // large text: one button per line (the last choice of ViewThatFits is used even when nothing fits)
+            VStack(alignment: .leading, spacing: 8) { actionButtons(color: color, compact: false, last: last, leadText: leadText) }
         }
         .controlSize(.small)
         .padding(.top, 2)
