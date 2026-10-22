@@ -70,7 +70,7 @@ struct SoundHeroView: View {
             statusLine(t)
         }
         chips
-        MomentButton(words: words)
+        MomentButton(words: words, ringing: momentRinging)
     }
 
     private func select(at location: CGPoint) {
@@ -96,14 +96,14 @@ struct SoundHeroView: View {
                         dot
                         status
                     }
-                    if bells { bellCount }
+                    if bells { bellCount(lead: false) }
                 }
                 .multilineTextAlignment(.center)
             } else {
                 HStack(spacing: 8) {
                     dot
                     status
-                    if bells { bellCount }
+                    if bells { bellCount(lead: true) }
                 }
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
@@ -114,10 +114,10 @@ struct SoundHeroView: View {
     }
 
     /// The bells ringing now, counted in real time (they ring while the clock runs, not with it).
-    private var bellCount: some View {
+    private func bellCount(lead: Bool) -> some View {
         TimelineView(.periodic(from: .now, by: 0.25)) { _ in
             let bells = engine.isRunning ? engine.soundingBells : 0
-            Text("· \(bells) bell\(bells == 1 ? "" : "s")")
+            Text("\(lead ? "· " : "")\(bells) bell\(bells == 1 ? "" : "s")")
                 .foregroundStyle(Theme.ink3)
         }
     }
@@ -182,10 +182,13 @@ private struct PowerButton: View {
 /// "Hear this moment": the chord of the displayed instant as a short arpeggio, also while the sound is off.
 private struct MomentButton: View {
     let words: SoundWords
+    /// Its notes are ringing now.
+    var ringing = false
 
     @Environment(ClockStore.self) private var store
     @Environment(AppSettings.self) private var settings
     @Environment(ToastCenter.self) private var toasts
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var engine: SoundEngine { .shared }
     @State private var plays = 0
@@ -203,7 +206,9 @@ private struct MomentButton: View {
             HStack(spacing: 10) {
                 Image(systemName: "music.note.list")
                     .font(.body.weight(.semibold))
+                    .foregroundStyle(ringing ? Theme.teal : Theme.ink)
                     .symbolEffect(.bounce, value: plays)
+                    .symbolEffect(.pulse, options: .repeating, isActive: ringing && !reduceMotion)
                 VStack(alignment: .leading, spacing: 1) {
                     Text("Hear this moment")
                         .font(.subheadline.weight(.semibold))
@@ -222,6 +227,7 @@ private struct MomentButton: View {
         }
         .buttonStyle(.glass)
         .sensoryFeedback(.impact(weight: .light), trigger: plays) { _, _ in settings.haptics }
+        .accessibilityValue(ringing ? "Playing" : "")
         .accessibilityHint("Plays the chord of the displayed moment as a short arpeggio")
     }
 }
