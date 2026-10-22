@@ -46,6 +46,11 @@ final class MonthModel {
     var pageStep: PageStep {
         didSet { UserDefaults.standard.set(pageStep.rawValue, forKey: Self.stepKey) }
     }
+    /// What the cells' band shows (pure-month.js OVERLAYS): 3 the Delta's quarters, 4 the Nuclides, 6 the Helions.
+    var pureBand: Int {
+        didSet { if !launching { UserDefaults.standard.set(pureBand, forKey: Self.pureBandKey) } }
+    }
+    static let pureBands = [3, 4, 6]
 
     /// What ◀ ▶ step by on the Delta page.
     enum PageStep: Int, CaseIterable, Identifiable, Sendable {
@@ -88,6 +93,7 @@ final class MonthModel {
     private static let bandsKey = "calendar.month.bands"
     private static let weekKey = "calendar.month.weekStart"
     private static let stepKey = "calendar.pure.step"
+    private static let pureBandKey = "calendar.pure.band"
 
     init() {
         let d = UserDefaults.standard
@@ -96,6 +102,8 @@ final class MonthModel {
         let week = d.object(forKey: Self.weekKey) as? Int
         weekStart = week == 0 || week == 1 ? week! : (Calendar.current.firstWeekday == 1 ? 0 : 1)
         pageStep = PageStep(rawValue: d.integer(forKey: Self.stepKey)) ?? .delta
+        let band = d.integer(forKey: Self.pureBandKey)
+        pureBand = Self.pureBands.contains(band) ? band : 6
     }
 
     /// At most three bands share a cell.
@@ -190,7 +198,7 @@ final class MonthModel {
         if p != page { page = p }
     }
 
-    /// The launch arguments, once (-FXMonth, -FXMonthBands, -FXMonthDay, -FXCalendarScroll).
+    /// The launch arguments, once (-FXMonth, -FXMonthBands, -FXMonthPureBand, -FXMonthDay, -FXCalendarScroll).
     func applyLaunchOptions(zone: TimeZone, displayed t: Double) {
         guard !launched else { return }
         launched = true
@@ -198,6 +206,11 @@ final class MonthModel {
             let b = keys.split(separator: ",").compactMap { CalendarBand(key: String($0)) }
             launching = true
             if !b.isEmpty { bands = Array(b.prefix(Self.maxBands)) }
+            launching = false
+        }
+        if let band = CalendarLaunch.int("FXMonthPureBand"), Self.pureBands.contains(band) {
+            launching = true
+            pureBand = band
             launching = false
         }
         if let ym = CalendarLaunch.string("FXMonth"), let m = ym.wholeMatch(of: /(\d{4})-(\d{1,2})/), let y = Int(m.1), let mo = Int(m.2), (1...12).contains(mo) {

@@ -403,6 +403,7 @@ enum CalPasteboard {
 ///                                    solar, ribbon (Month), cycles (pure converter)
 ///     -FXMonth <yyyy-mm>             show a month (Month) instead of following the displayed time
 ///     -FXMonthBands <keys>           the month's bands for this launch, e.g. "3,4,6,sync"
+///     -FXMonthPureBand 3|4|6         the Delta page's band for this launch (the quarters, the Nuclides, the Helions)
 ///     -FXMonthDay <d>                open the detail of day d of the shown month (pure mode: cell d of the page, 0 … 34)
 ///     -FXConverterDepth <1…14>       the cycle address's depth
 ///     -FXConverterPoint <point>      the point in the cycle: begin, peak, node, valley, end, phase

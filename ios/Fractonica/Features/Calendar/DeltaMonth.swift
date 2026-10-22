@@ -26,6 +26,7 @@ struct DeltaMonthView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
                     DeltaHeader(model: model, page: page)
+                    CalPureBandChooser(model: model)
                     CalQuarterBar(page: page)
                     CalColumnHeader(metrics: metrics)
                     CalendarPager(index: $model.page, range: 0...(CalDeltaPage.count(store.clock) - 1), onSwipe: {
@@ -36,7 +37,7 @@ struct DeltaMonthView: View {
                     }
                     .frame(height: metrics.gridHeight)
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("A cell is 11 Helions. Gold diamonds mark the quarters of a solar sync (19η); a line in the Delta colour marks where a quarter of the Delta begins. Tap a cell for its Helions.")
+                        Text(footnote)
                         if let last = page.cells.last(where: \.inRange), last.index < CalDeltaPage.cells - 1 || last.cut < 1 {
                             Label("The catalogue ends with eclipse #\(store.clock.extent), in ε#\(last.epsilon) \(last.firstHelion)η: the rest of this Delta lies after it.", systemImage: "moon.zzz")
                                 .foregroundStyle(Theme.ink2)
@@ -72,6 +73,12 @@ struct DeltaMonthView: View {
             model.pageFollows = true
             withAnimation(.snappy) { model.followPage(store.time()) }
         }
+        // selecting δ, ε or η anywhere in the app (ladder, face, converter) puts that level in the band (pure-month.js)
+        .onChange(of: settings.selectedLevel) { _, level in
+            if MonthModel.pureBands.contains(level), model.pureBand != level {
+                withAnimation(.snappy) { model.pureBand = level }
+            }
+        }
         .inspector(isPresented: Binding(get: { model.selectedCell != nil }, set: { if !$0 { model.selectedCell = nil } })) {
             CellDetailView(model: model)
                 .inspectorColumnWidth(min: 300, ideal: 340, max: 420)
@@ -101,6 +108,65 @@ struct DeltaMonthView: View {
             }
         }
     }
+}
+
+extension DeltaMonthView {
+    private var footnote: String {
+        let band = switch model.pureBand {
+        case 3: "The band is the Delta's quarters; "
+        case 4: "The band is the Nuclides, one per row; "
+        default: "A cell is 11 Helions, numbered in their Nuclide; "
+        }
+        let tap = model.pureBand == 6 ? "its Helions" : model.pureBand == 4 ? "its Nuclide" : "its quarters"
+        return band + "gold diamonds mark the quarters of a solar sync (19η); a line in the Delta colour marks where a quarter of the Delta begins. Tap a cell for \(tap)."
+    }
+}
+
+/// What the cells' band shows: the Delta's quarters, the Nuclides or the Helions (the app-wide selected level).
+private struct CalPureBandChooser: View {
+    let model: MonthModel
+
+    @Environment(AppSettings.self) private var settings
+
+    var body: some View {
+        HStack(spacing: 6) {
+            ForEach(MonthModel.pureBands, id: \.self) { level in
+                let on = model.pureBand == level
+                let color = Theme.levelColor(level)
+                Button {
+                    withAnimation(.snappy) { model.pureBand = level }
+                    // the band level is the app-wide selected level (pure-month.js)
+                    settings.selectedLevel = level
+                    Haptics.play(.selection)
+                } label: {
+                    HStack(spacing: 5) {
+                        Text(CalMath.letter(level)).font(.subheadline.weight(.bold))
+                        Text(Self.names[level] ?? "").font(.caption).foregroundStyle(on ? color.opacity(0.85) : Theme.ink3)
+                    }
+                    .foregroundStyle(on ? color : Theme.ink3)
+                    .lineLimit(1)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background {
+                        Capsule().fill(on ? color.opacity(0.16) : Theme.panel.opacity(0.6))
+                            .strokeBorder(on ? color.opacity(0.55) : Theme.line, lineWidth: 1)
+                    }
+                    .contentShape(.capsule)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(Text("Band: \(Self.names[level] ?? "")"))
+                .accessibilityAddTraits(on ? .isSelected : [])
+                .help(Self.help[level] ?? "")
+            }
+            Spacer(minLength: 0)
+        }
+        .dynamicTypeSize(...DynamicTypeSize.accessibility1)
+    }
+
+    static let names = [3: "quarters", 4: "Nuclides", 6: "Helions"]
+    static let help = [3: "The band shows the Delta's quarters: Peak, Node, Valley, End",
+                       4: "The band shows the Nuclides, one per row",
+                       6: "The band shows the 11 Helions of each cell"]
 }
 
 struct CalDeltaMetrics: Equatable {
@@ -311,7 +377,7 @@ private struct DeltaPageGrid: View {
                             Haptics.play(.selection)
                             withAnimation(.snappy) { model.selectedCell = model.selectedCell == cell.index ? nil : cell.index }
                         } label: {
-                            DeltaCell(cell: cell, metrics: metrics, isSelected: model.selectedCell == cell.index)
+                            DeltaCell(cell: cell, band: model.pureBand, metrics: metrics, isSelected: model.selectedCell == cell.index)
                         }
                         .buttonStyle(.plain)
                         .disabled(!cell.inRange)
@@ -344,6 +410,8 @@ private struct DeltaPageGrid: View {
 /// A cell: its corner facts (eclipse, sync) and the band of its 11 Helions.
 private struct DeltaCell: View, Equatable {
     let cell: CalDeltaPage.Cell
+    /// The band: 3 the Delta's quarters, 4 the Nuclides, 6 the Helions.
+    let band: Int
     let metrics: CalDeltaMetrics
     let isSelected: Bool
 
@@ -372,8 +440,8 @@ private struct DeltaCell: View, Equatable {
             }
             Spacer(minLength: 0)
             if cell.inRange {
-                CalHelionBand(cell: cell, regular: metrics.regular)
-                    .frame(height: metrics.regular ? 28 : 13)
+                CalHelionBand(cell: cell, band: band, regular: metrics.regular)
+                    .frame(height: CalHelionBand.height(band: band, regular: metrics.regular))
             }
         }
         .padding(metrics.regular ? 6 : 4)
@@ -514,49 +582,116 @@ private struct DeltaPagePicker: View {
     }
 }
 
-/// The 11 Helions of a cell, alternating, with the node of each and the solar sync quarters as gold diamonds.
+/// The band of a cell with the solar sync quarters over it as gold diamonds: its 11 Helions (alternating, the node of
+/// each), the Nuclide of its row, or the Delta quarter(s) it lies in (pure-month.js `bandHtml`).
 private struct CalHelionBand: View {
     let cell: CalDeltaPage.Cell
+    /// 3 the Delta's quarters, 4 the Nuclides, 6 the Helions.
+    var band = 6
     let regular: Bool
+
+    static func height(band: Int, regular: Bool) -> CGFloat {
+        band == 6 ? (regular ? 28 : 13) : (regular ? 26 : 18)
+    }
 
     var body: some View {
         Canvas { context, size in
-            let barH: CGFloat = regular ? 7 : 5
-            let y = size.height - barH
-            let w = size.width * cell.cut
-            let step = size.width / CGFloat(CalDeltaPage.helionsPerCell)
-            for j in 0..<CalDeltaPage.helionsPerCell {
-                let x0 = CGFloat(j) * step
-                guard x0 < w else { break }
-                let rect = CGRect(x: x0 + (j > 0 ? 0.5 : 0), y: y, width: min(step, w - x0) - (j > 0 ? 0.5 : 0), height: barH)
-                let even = (Int(cell.z) * CalDeltaPage.helionsPerCell + j) % 2 == 0
-                context.fill(Path(roundedRect: rect, cornerRadius: 1.2), with: .color(Theme.levelColor(6, opacity: even ? 0.85 : 0.45)))
-                if regular {
-                    let nx = x0 + step / 2
-                    context.fill(Path(ellipseIn: CGRect(x: nx - 1, y: y - 3.5, width: 2, height: 2)), with: .color(Theme.levelColor(6, opacity: 0.6)))
-                    // the Helion's number in its Nuclide: all eleven where they fit, every fifth otherwise (pure-month.js)
-                    let n = cell.firstHelion + j
-                    if step >= 12 || n % 5 == 0 {
-                        context.draw(Text(verbatim: "\(n)").font(.system(size: 8, weight: .medium).monospacedDigit())
-                                        .foregroundStyle(Theme.levelColor(6, opacity: n % 5 == 0 ? 0.9 : 0.55)),
-                                     at: CGPoint(x: nx, y: 4), anchor: .center)
-                    }
-                }
-            }
-            for s in cell.syncs {
-                let x = s.x * size.width
-                let d: CGFloat = s.quarter == 0 ? (regular ? 5 : 4) : (regular ? 3.5 : 2.8)
-                let cy = y - (regular ? 7 : 5)
-                var p = Path()
-                p.move(to: CGPoint(x: x, y: cy - d))
-                p.addLine(to: CGPoint(x: x + d, y: cy))
-                p.addLine(to: CGPoint(x: x, y: cy + d))
-                p.addLine(to: CGPoint(x: x - d, y: cy))
-                p.closeSubpath()
-                context.fill(p, with: .color(Theme.gold.opacity(s.quarter == 0 ? 1 : 0.7)))
+            if band == 6 {
+                helions(&context, size)
+            } else {
+                wide(&context, size)
             }
         }
         .accessibilityHidden(true)
+    }
+
+    /// The Nuclide of the row, or the Delta quarter(s) of the cell: wide labelled segments, a white tick where one begins.
+    private func wide(_ context: inout GraphicsContext, _ size: CGSize) {
+        let barH: CGFloat = regular ? 14 : 10
+        let y = size.height - barH
+        let w = size.width * cell.cut
+        var pieces: [(x0: Double, x1: Double, odd: Bool, startsHere: Bool, endsHere: Bool, label: String?)] = []
+        if band == 4 {
+            // a Nuclide is a row
+            let nuclide = cell.z / Int64(CalDeltaPage.columns)
+            let first = cell.column == 0, last = cell.column == CalDeltaPage.columns - 1
+            pieces = [(0, 1, nuclide % 2 == 1, first, last, first ? "ε#\(cell.epsilon)" : nil)]
+        } else {
+            // a quarter that begins here is named by its flag above; a row that opens inside one says which it is
+            pieces = cell.quarters.map { q in
+                (q.x0, q.x1, q.quarter % 2 == 1, q.startsHere, q.x1 < 1 || cell.index == CalDeltaPage.cells - 1,
+                 !q.startsHere && cell.column == 0 && q.x0 == 0 ? Notation.quarterWords[q.quarter] : nil)
+            }
+        }
+        let color = Theme.levelColor(band)
+        for p in pieces {
+            let x0 = CGFloat(p.x0) * size.width, x1 = min(CGFloat(p.x1) * size.width, w)
+            guard x1 > x0 else { continue }
+            let gap: CGFloat = p.startsHere && p.x0 > 0 ? 0.75 : 0
+            let rect = CGRect(x: x0 + gap, y: y, width: max(0.5, x1 - x0 - gap), height: barH)
+            let radius: CGFloat = 3
+            let ends = p.endsHere || x1 >= w && cell.cut < 1
+            let shape = UnevenRoundedRectangle(topLeadingRadius: p.startsHere ? radius : 0, bottomLeadingRadius: p.startsHere ? radius : 0,
+                                               bottomTrailingRadius: ends ? radius : 0, topTrailingRadius: ends ? radius : 0, style: .continuous)
+            context.fill(shape.path(in: rect), with: .color(color.opacity(p.odd ? 0.42 : 0.82)))
+            if p.startsHere, p.x0 > 0 {
+                var tick = Path()
+                tick.move(to: CGPoint(x: x0, y: y - 1))
+                tick.addLine(to: CGPoint(x: x0, y: y + barH + 1))
+                context.stroke(tick, with: .color(Theme.ink.opacity(0.9)), lineWidth: 1.25)
+            }
+            if let label = p.label {
+                let text = context.resolve(Text(verbatim: label).font(.system(size: regular ? 10 : 8, weight: .bold).monospacedDigit())
+                    .foregroundStyle(Theme.background.opacity(0.9)))
+                let m = text.measure(in: CGSize(width: 200, height: barH))
+                if m.width + 4 <= x1 - x0 {
+                    context.draw(text, at: CGPoint(x: x0 + 2.5 + m.width / 2, y: y + barH / 2))
+                }
+            }
+        }
+        syncs(&context, size, barTop: y)
+    }
+
+    /// The solar sync quarters over the band.
+    private func syncs(_ context: inout GraphicsContext, _ size: CGSize, barTop y: CGFloat) {
+        for s in cell.syncs {
+            let x = s.x * size.width
+            let d: CGFloat = s.quarter == 0 ? (regular ? 5 : 4) : (regular ? 3.5 : 2.8)
+            let cy = y - (regular ? 7 : 5)
+            var p = Path()
+            p.move(to: CGPoint(x: x, y: cy - d))
+            p.addLine(to: CGPoint(x: x + d, y: cy))
+            p.addLine(to: CGPoint(x: x, y: cy + d))
+            p.addLine(to: CGPoint(x: x - d, y: cy))
+            p.closeSubpath()
+            context.fill(p, with: .color(Theme.gold.opacity(s.quarter == 0 ? 1 : 0.7)))
+        }
+    }
+
+    private func helions(_ context: inout GraphicsContext, _ size: CGSize) {
+        let barH: CGFloat = regular ? 7 : 5
+        let y = size.height - barH
+        let w = size.width * cell.cut
+        let step = size.width / CGFloat(CalDeltaPage.helionsPerCell)
+        for j in 0..<CalDeltaPage.helionsPerCell {
+            let x0 = CGFloat(j) * step
+            guard x0 < w else { break }
+            let rect = CGRect(x: x0 + (j > 0 ? 0.5 : 0), y: y, width: min(step, w - x0) - (j > 0 ? 0.5 : 0), height: barH)
+            let even = (Int(cell.z) * CalDeltaPage.helionsPerCell + j) % 2 == 0
+            context.fill(Path(roundedRect: rect, cornerRadius: 1.2), with: .color(Theme.levelColor(6, opacity: even ? 0.85 : 0.45)))
+            if regular {
+                let nx = x0 + step / 2
+                context.fill(Path(ellipseIn: CGRect(x: nx - 1, y: y - 3.5, width: 2, height: 2)), with: .color(Theme.levelColor(6, opacity: 0.6)))
+                // the Helion's number in its Nuclide: all eleven where they fit, every fifth otherwise (pure-month.js)
+                let n = cell.firstHelion + j
+                if step >= 12 || n % 5 == 0 {
+                    context.draw(Text(verbatim: "\(n)").font(.system(size: 8, weight: .medium).monospacedDigit())
+                                    .foregroundStyle(Theme.levelColor(6, opacity: n % 5 == 0 ? 0.9 : 0.55)),
+                                 at: CGPoint(x: nx, y: 4), anchor: .center)
+                }
+            }
+        }
+        syncs(&context, size, barTop: y)
     }
 }
 
@@ -741,27 +876,21 @@ private struct CellDetailView: View {
                 }
                 .buttonStyle(.plain)
             }
-            Text("Helions").font(.footnote.weight(.semibold)).textCase(.uppercase).tracking(0.8).foregroundStyle(Theme.ink3)
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 3), spacing: 8) {
-                ForEach(0..<CalDeltaPage.helionsPerCell, id: \.self) { j in
-                    let start = CalDeltaPage.helionStart(clock, cell: cell, j)
-                    Button {
-                        if let start { travel(start, "\(cell.firstHelion + j)η") }
-                    } label: {
-                        HStack {
-                            Text("\(cell.firstHelion + j)η").font(.reading(15, weight: .semibold)).foregroundStyle(Theme.levelColor(6))
-                            Spacer(minLength: 0)
-                            Image(systemName: "location").font(.caption).foregroundStyle(Theme.ink3)
-                        }
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 8)
-                        .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Theme.panel2))
-                        .contentShape(.rect)
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(start == nil)
-                    .accessibilityLabel(Text("Go to \(cell.firstHelion + j)η"))
+            if model.pureBand == 4 {
+                Text("Nuclide").font(.footnote.weight(.semibold)).textCase(.uppercase).tracking(0.8).foregroundStyle(Theme.ink3)
+                let nuclide = cell.z / Int64(CalDeltaPage.columns)
+                bandRow(label: "ε#\(cell.epsilon)", level: 4, start: CalMath.landPoint(clock, level: 4, index: nuclide),
+                        detail: "Nuclide \(cell.epsilon) of 5 in \(Notation.periodName(level: 3, ordinal: page.delta))"
+                            + (cell.column > 0 ? " · began before this cell" : ""))
+            } else if model.pureBand == 3 {
+                Text("Delta quarters").font(.footnote.weight(.semibold)).textCase(.uppercase).tracking(0.8).foregroundStyle(Theme.ink3)
+                ForEach(cell.quarters, id: \.quarter) { q in
+                    bandRow(label: Notation.quarterWords[q.quarter], level: 3, start: page.quarterStart(clock, q.quarter),
+                            detail: "\(Notation.periodName(level: 3, ordinal: page.delta)) \(Notation.quarterWords[q.quarter])"
+                                + (q.startsHere ? "" : " · began before this cell"))
                 }
+            } else {
+                helions(cell)
             }
             if !cell.syncs.isEmpty {
                 Text("Solar sync").font(.footnote.weight(.semibold)).textCase(.uppercase).tracking(0.8).foregroundStyle(Theme.ink3)
@@ -784,6 +913,64 @@ private struct CellDetailView: View {
                 }
             }
         }
+    }
+
+    /// The 11 Helions of the cell, each with a go button.
+    @ViewBuilder
+    private func helions(_ cell: CalDeltaPage.Cell) -> some View {
+        let clock = store.clock
+        Text("Helions").font(.footnote.weight(.semibold)).textCase(.uppercase).tracking(0.8).foregroundStyle(Theme.ink3)
+        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 3), spacing: 8) {
+            ForEach(0..<CalDeltaPage.helionsPerCell, id: \.self) { j in
+                let start = CalDeltaPage.helionStart(clock, cell: cell, j)
+                Button {
+                    if let start { travel(start, "\(cell.firstHelion + j)η") }
+                } label: {
+                    HStack {
+                        Text("\(cell.firstHelion + j)η").font(.reading(15, weight: .semibold)).foregroundStyle(Theme.levelColor(6))
+                        Spacer(minLength: 0)
+                        Image(systemName: "location").font(.caption).foregroundStyle(Theme.ink3)
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 8)
+                    .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Theme.panel2))
+                    .contentShape(.rect)
+                }
+                .buttonStyle(.plain)
+                .disabled(start == nil)
+                .accessibilityLabel(Text("Go to \(cell.firstHelion + j)η"))
+            }
+        }
+    }
+
+    /// One row of the band's cycle: its name, where it begins (a go button).
+    private func bandRow(label: String, level: Int, start: Double?, detail: String) -> some View {
+        Button {
+            if let start { travel(start, label) }
+        } label: {
+            HStack(spacing: 10) {
+                CalendarLevelChip(text: label, level: level, compact: true)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(verbatim: detail).font(.subheadline).foregroundStyle(Theme.ink)
+                    if let start {
+                        Text(Notation.standard.stamp(at: start, upTo: "iota")).font(.code(12)).foregroundStyle(Theme.ink3)
+                    } else {
+                        Text("after the catalogue ends").font(.caption).foregroundStyle(Theme.ink3)
+                    }
+                }
+                Spacer(minLength: 4)
+                Image(systemName: "location").font(.caption).foregroundStyle(Theme.ink3)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Theme.levelColor(level, opacity: 0.1)))
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .disabled(start == nil)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Text("\(detail): go to where it begins"))
+        .accessibilityAddTraits(.isButton)
     }
 
     private func travel(_ t: Double, _ what: String) {
