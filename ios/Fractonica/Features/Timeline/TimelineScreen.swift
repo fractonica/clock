@@ -13,7 +13,7 @@ import SwiftUI
 ///
 ///     -FXTimelineSpan <seconds>      the window's width (default: about eight cycles of the selected depth)
 ///     -FXTimelineCenter <unix s>     the window's centre (default: the cursor)
-///     -FXTimelineYear <year>         the window's centre on 1 January of a year (for years before 1970)
+///     -FXTimelineYear <year>         the window's centre on 1 January of a year
 ///     -FXTimelinePreset <id>         all, alpha … nu (one unit across), century, decade, year, month, week, day, hour, minute
 ///     -FXTimelineFollow 0|1          Follow on or off at launch
 ///     -FXTimelineReadout <level>     open the read-out of the cursor's cycle at a level (0-based), or e<k> for eclipse k
@@ -291,6 +291,10 @@ private enum LaunchState {
     private static var deferredApplied = false
 
     private static func value(_ key: String) -> String? {
+        // the token after "-<key>" itself, so a negative number ("-FXTimelineCenter -11270000000", before 1970) is
+        // read too: the argument domain takes it for another flag
+        let raw = CommandLine.arguments
+        if let i = raw.firstIndex(of: "-" + key), i + 1 < raw.count { return raw[i + 1] }
         let args = UserDefaults.standard.volatileDomain(forName: UserDefaults.argumentDomain)
         return (args[key] as? String) ?? (args[key] as? NSNumber)?.stringValue
     }
@@ -300,7 +304,7 @@ private enum LaunchState {
         applied = true
         let viewport = controller.viewport
         let t = store.time()
-        // a centre before 1970 is negative, which the argument parser reads as a flag: -FXTimelineYear says it in years
+        // a centre in years (-FXTimelineYear 1612) or in seconds (negative before 1970)
         let year = value("FXTimelineYear").flatMap(Int.init).map { Double(EarthTime.daysFromCivil($0, 1, 1)) * 86_400 }
         let centre = year ?? value("FXTimelineCenter").flatMap(Double.init)
         if let span = value("FXTimelineSpan").flatMap(Double.init) {
