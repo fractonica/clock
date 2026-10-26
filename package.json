@@ -8,6 +8,7 @@
     "start": "node tools/serve.mjs",
     "test": "node --test",
     "check": "node tools/run-checks.mjs",
-    "diary": "node tools/diary-pdf.mjs"
+    "diary": "node tools/diary-pdf.mjs",
+    "hub": "node hub/bin/hub.mjs serve"
   }
 }

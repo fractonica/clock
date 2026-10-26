@@ -1,0 +1,13 @@
+{
+  "name": "fractonica-hub",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Personal hub for Fractonica records: journal entries from every device plus any other data source, with semantic search",
+  "bin": { "fractonica-hub": "bin/hub.mjs" },
+  "engines": { "node": ">=22.13" },
+  "scripts": {
+    "start": "node bin/hub.mjs serve",
+    "test": "node --test test/"
+  }
+}
