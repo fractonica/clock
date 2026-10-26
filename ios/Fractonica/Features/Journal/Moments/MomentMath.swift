@@ -188,7 +188,7 @@ struct MomentCalendar: Sendable {
 
     /// The moment numbered `index`; nil outside the catalogue.
     func moment(_ index: Int64) -> Moment? {
-        guard index >= 0, let time = clock.time(atPositionNumerator: Int128(index), denominator: helionPrefix),
+        guard index >= 0, let time = time(of: index),
               clock.inRange(time), Int128(index) < clock.count(6) * 4 else { return nil }
         let (level, j) = label(index)
         return Moment(index: index, time: time, level: level, boundary: MomentBoundary(quarter: Int(j % 4)), cycle: Int64(j / 4))
@@ -223,8 +223,21 @@ struct MomentCalendar: Sendable {
 
     /// The exact time of moment `index`.
     func time(of index: Int64) -> Double? {
-        guard index >= 0 else { return nil }
-        return clock.time(atPositionNumerator: Int128(index), denominator: helionPrefix)
+        guard index >= 0, let exact = clock.time(atPositionNumerator: Int128(index), denominator: helionPrefix) else { return nil }
+        return settled(exact, index: index)
+    }
+
+    /// The first millisecond at which the engine reads the moment as reached. The engine reads time to the
+    /// millisecond, and the exact boundary usually falls between two: a record stamped a hair early would read as the
+    /// end of the previous period ("ε#5 77η 35ι" for a Delta's start).
+    private func settled(_ exact: Double, index: Int64) -> Double {
+        var t = (exact * 1000).rounded(.up) / 1000
+        for _ in 0..<4 {
+            guard let r = clock.level(at: t, 6) else { return t }
+            if r.cycle * 4 + Int64(r.quarter) >= index { return t }
+            t += 0.001
+        }
+        return t
     }
 
     /// When moment `m` is announced: `leadFlavons` Flavons before it, exactly.

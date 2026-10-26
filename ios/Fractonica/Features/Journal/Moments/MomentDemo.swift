@@ -29,7 +29,7 @@ enum MomentDemo {
         ]
         Task {
             for (i, m) in moments.enumerated() {
-                let line = i < lines.count ? lines[i] : (m.level.letter, "A \(m.rarity.title.lowercased()) one: \(m.title()), captured on the dot.")
+                let line = i < lines.count ? lines[i] : ([MomentLevel.delta: "🪐", .gamma: "🌕", .beta: "☄️", .alpha: "🌌"][m.level] ?? "✨", "\(m.title()), captured on the dot.")
                 var blobs: [BlobRef] = []
                 if i < 2 || i >= lines.count {
                     for photo in MomentStill.make(m, words: AppSettings.shared.wording) {

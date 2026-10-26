@@ -366,13 +366,13 @@ private struct ScreenChrome: ViewModifier {
 
     func body(content: Content) -> some View {
         content
+            .momentsHeader(screen)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             #if os(iOS)
             .transportInset()
             #endif
             .background { Backdrop() }
             .toolbar {
-                MomentsToolbar(screen: screen)
                 #if os(iOS)
                 if screen == .now {
                     ToolbarItemGroup(placement: .topBarTrailing) {

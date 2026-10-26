@@ -58,10 +58,10 @@ private func calendarChecks() {
         check(calendar.index(near: exact + 20) == q && calendar.index(near: exact - 20) == q, "index(near:) rounds to the moment")
     }
     check(calendar.previous(atOrBefore: vectorA)?.index == q - 1, "previous(atOrBefore:)")
-    // the Preon each boundary falls on (read a hair after the exact moment)
+    // the Preon each boundary falls on, read at the moment's own time (the first millisecond the engine reads it)
     var preons = true
     for m in list.prefix(80) {
-        guard let c = notation.clock(at: m.time + 0.05) else { preons = false; continue }
+        guard let c = notation.clock(at: m.time) else { preons = false; continue }
         let expected = m.level == .helion || m.level == .nuclide ? m.boundary.preon : nil
         let quarterOfHelion = Int(m.index % 4)
         if c.iota != [0, 9, 18, 27][quarterOfHelion] || c.lambda != 0 { preons = false; print("  \(m.index): \(c)") }
@@ -98,7 +98,7 @@ private func kitChecks() {
                 check(false, "\(level.name) \(event.name) is a moment")
                 continue
             }
-            check(abs(m.time - t) < 0.002, "\(level.name) \(event.name) is exactly a moment: \(m.time - t) s")
+            check(m.time >= t - 0.001 && m.time - t < 0.005, "\(level.name) \(event.name) is exactly a moment: \(m.time - t) s")
             let longer = MomentLevel.allCases.firstIndex(of: m.level)! >= MomentLevel.allCases.firstIndex(of: level)!
             check(longer, "\(level.name) \(event.name) is labelled \(level.name) or longer: \(m.level)")
             if m.level == level {
@@ -106,6 +106,14 @@ private func kitChecks() {
                 check(m.cycle == facts.cycle, "\(level.name) \(event.name) names its cycle: \(m.cycle) vs \(facts.cycle)")
             }
         }
+    }
+    // a Delta's start reads as the new Delta's first Helion, not the last Preon of the one before
+    if let delta = clock.cycle(at: vectorA, level: 3), let q = calendar.index(near: delta.end), let start = calendar.moment(q),
+       let c = notation.clock(at: start.time) {
+        check(start.boundary == .start, "the next Delta's start: \(start.title())")
+        check(c.epsilon == 1 && c.eta == 1 && c.iota == 0 && c.lambda == 0, "a Delta's start reads ε#1 1η 0ι 0λ: \(c)")
+        let stamp = notation.dateText(at: start.time, letters: true, upTo: "iota")
+        check(stamp.hasSuffix("ε#1 1η 0ι"), "its stamp: \(stamp)")
     }
     // a Delta boundary found with the engine, named in full
     // (the Delta at vector A is a Delta Trifracton, whose node is its Gamma's: take the next one)

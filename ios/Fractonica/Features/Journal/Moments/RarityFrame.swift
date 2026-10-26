@@ -83,8 +83,10 @@ struct RarityFrame: ViewModifier {
                 }
                 .overlay(alignment: .topTrailing) {
                     if badge {
-                        RarityBadge(rarity: rarity, compact: true)
-                            .padding(10)
+                        // on the frame's top edge, like a tab: clear of the card's own title
+                        RarityBadge(rarity: rarity, compact: true, solid: true)
+                            .padding(.trailing, cornerRadius)
+                            .offset(y: -9)
                             .allowsHitTesting(false)
                     }
                 }
@@ -129,6 +131,8 @@ struct RarityStroke: View {
 struct RarityBadge: View {
     let rarity: MomentRarity
     var compact = false
+    /// On an edge: an opaque background, so the border does not show through.
+    var solid = false
 
     var body: some View {
         HStack(spacing: 4) {
@@ -142,6 +146,7 @@ struct RarityBadge: View {
         .padding(.horizontal, compact ? 7 : 9)
         .padding(.vertical, compact ? 3 : 4)
         .background(rarity.color.opacity(0.14), in: .capsule)
+        .background(solid ? Theme.background : .clear, in: .capsule)
         .overlay(Capsule().stroke(rarity.color.opacity(0.45), lineWidth: 0.5))
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(rarity.title) moment")
