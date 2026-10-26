@@ -63,8 +63,8 @@ struct MediaGallery: View {
 
     private var topBar: some View {
         HStack {
-            if visuals.count > 1 {
-                Text(verbatim: "\(index + 1) / \(visuals.count)")
+            if visuals.count > 1 || caption != nil {
+                Text(verbatim: [visuals.count > 1 ? "\(index + 1) / \(visuals.count)" : nil, caption].compactMap { $0 }.joined(separator: "  ·  "))
                     .font(.subheadline.weight(.semibold).monospacedDigit())
                     .foregroundStyle(.white)
                     .padding(.horizontal, 12).padding(.vertical, 7)
@@ -84,6 +84,13 @@ struct MediaGallery: View {
         }
         .padding(.horizontal, 16)
         .padding(.top, 8)
+    }
+
+    /// What a moment's photo is: "Back · 1λ before", "Front" (from its name, `back@-1`, `front`).
+    private var caption: String? {
+        guard visuals.indices.contains(index), let name = visuals[index].name, let p = MomentCaptures.parse(name),
+              ["front", "back", "camera"].contains(p.camera) else { return nil }
+        return [p.camera.capitalized, p.offset.map(MomentCaptures.offsetLabel)].compactMap { $0 }.joined(separator: " · ")
     }
 
     #if os(macOS)

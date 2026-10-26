@@ -1,4 +1,7 @@
 import SwiftUI
+#if os(iOS)
+import UIKit
+#endif
 
 /// The window's content: the iPhone layout (tabs, with grouped screens behind segmented controls) in compact width,
 /// the sidebar layout (every screen listed) on iPad and Mac. It also owns what is presented over the screens — Focus
@@ -78,6 +81,12 @@ struct RootView: View {
 /// live. Jump has no tab: the Cycles tab's leading toolbar button (and ⌘K) opens it as a sheet (`Presentations`).
 private struct CompactRoot: View {
     @Environment(AppRouter.self) private var router
+
+    init() {
+        // The navigation bar's segmented controls size each segment by its title rather than all by the widest: the
+        // Cycles tab's four fit between the Jump button and a screen's own button ("Timeline" was cut off).
+        UISegmentedControl.appearance(whenContainedInInstancesOf: [UINavigationBar.self]).apportionsSegmentWidthsByContent = true
+    }
 
     var body: some View {
         TabView(selection: tabBinding) {

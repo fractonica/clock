@@ -39,14 +39,22 @@ struct EntryDetailView: View {
         let words = settings.wording
         let entry = record.entry ?? JournalEntry()
         let media = record.mediaBlobs
-        let visuals = media.filter { $0.role == "photo" || $0.role == "video" }
+        // several captures of a moment (back@-1, front@-1 …) show capture by capture, and the gallery runs in that order
+        let captures = MomentCaptureGroup<BlobRef>.grouped(media.filter { $0.role == "photo" }, name: \.name)
+        let others = media.filter { $0.role == "video" || ($0.role == "photo" && captures == nil) }
+        let visuals = (captures?.flatMap { $0.items.map(\.item) } ?? []) + others
         let audios = media.filter { $0.role == "audio" }
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
                 header(entry, words).momentHeader(for: record)
-                if !visuals.isEmpty {
-                    DetailGallery(visuals: visuals, words: words, time: record.time) { index in
+                if let captures {
+                    DetailCaptures(groups: captures, words: words, time: record.time) { index in
                         gallery = GalleryStart(index: index)
+                    }
+                }
+                if !others.isEmpty {
+                    DetailGallery(visuals: others, words: words, time: record.time) { index in
+                        gallery = GalleryStart(index: visuals.count - others.count + index)
                     }
                 }
                 ForEach(audios, id: \.hash) { blob in
@@ -151,6 +159,43 @@ struct EntryDetailView: View {
 private struct GalleryStart: Identifiable {
     let index: Int
     var id: Int { index }
+}
+
+/// A moment's several captures, one row each: what it was ("1λ before", "At the moment" …), then its photos side by side
+/// (back, front). A tap opens the gallery on that photo (indices run capture by capture).
+private struct DetailCaptures: View {
+    let groups: [MomentCaptureGroup<BlobRef>]
+    let words: Wording
+    let time: Double
+    let open: (Int) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            ForEach(Array(groups.enumerated()), id: \.element.offset) { g, group in
+                let start = groups.prefix(g).reduce(0) { $0 + $1.items.count }
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(spacing: 6) {
+                        Text(verbatim: MomentCaptures.offsetTag(group.offset))
+                            .font(.reading(12, weight: .bold))
+                            .foregroundStyle(group.offset == 0 ? Theme.teal : Theme.ink2)
+                        Text(verbatim: MomentCaptures.offsetLabel(group.offset))
+                            .font(.footnote.weight(.semibold))
+                            .foregroundStyle(Theme.ink3)
+                    }
+                    HStack(spacing: 6) {
+                        ForEach(Array(group.items.enumerated()), id: \.element.item.hash) { i, item in
+                            Button { open(start + i) } label: {
+                                MediaTile(blob: item.item, words: words, time: time, cornerRadius: 16)
+                                    .aspectRatio(3 / 4, contentMode: .fit)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("\(item.camera.capitalized) camera, \(MomentCaptures.offsetLabel(group.offset).lowercased())")
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 /// The detail's photos and videos: one large, or a grid.

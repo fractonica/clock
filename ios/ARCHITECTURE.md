@@ -190,7 +190,7 @@ guarantees pure mode never prints a Gregorian date or "3 h 20 min":
 ### Screens and navigation
 
 `Screen` (Shared/Screen.swift) lists every screen; its raw value is the id used in links and `-FXTab`:
-`now journal rings ladder wave timeline converter month diary sound timer stopwatch alerts focus jump settings`.
+`now journal moments rings ladder wave timeline converter month diary sound timer stopwatch alerts focus jump settings`.
 `ScreenGroup` bundles `cycles` (rings ladder wave timeline), `journal` (journal month converter) and `clock` (timer
 stopwatch alerts). The printable Diary is a sheet over the Journal on iPhone and a sidebar screen in the Journal section
 on iPad and Mac. The Journal (Features/Journal: local store, composer, timeline; hooks for the hub sync in
@@ -203,13 +203,20 @@ Moments (Features/Journal/Moments) are BeReal-style captures on the clock: every
 by the longest period with a quarter boundary there (its rarity: rare Helion, epic Delta, legendary Gamma,
 mythic Beta, cosmic Alpha; of the Helion ones only nodes are announced, `MomentSettings.asks`); 11 Flavons ahead the app announces it (a notification with a spoken clip from
 Resources/Moments, made by scripts/make-moment-voices.sh, or the instant view itself while the app is in front) and
-at the exact moment the instant view captures both cameras and the voice and saves the entry with `data.capture`
-(hub/API.md). The streak and the collection derive from the records. The Journal shows a Moments bar over its timeline
-(`momentsHeader`, applied by ScreenChrome); cards wear their rarity's frame (`rarityFrame(for:)`).
+the instant view captures it — 1, 3 (the default) or 5 times, one Flavon apart and centred on the moment
+(`MomentCaptures`, `MomentSettings.captures`), each capture both cameras at once — records the voice from opening to
+the last capture, and writes the entry right after the last capture, before the view changes: `time` and
+`data.capture.at` the moment, photos named `back@-1`, `front@-1` … (`front` and `back` for a single capture;
+hub/API.md). Every way the instant view opens without a tap goes through `MomentStore.openByItself`, which "Open by
+itself" and `-FXMomentsAuto 0` turn off. The streak and the collection derive from the records. Moments is a screen of
+its own (`MomentsScreen`: the streak, the next moment, the collection by rarity, recent captures, the settings); cards
+wear their rarity's frame (`rarityFrame(for:)`), and a moment's captures show as `CaptureTiles` (the back photo with
+the front one inset) in the instant view, on the Moments screen and capture by capture in the entry's detail.
 
 | | iPhone (compact width) | iPad, Mac |
 |---|---|---|
-| Layout | Tabs Now · Cycles · Journal · Clock · Jump (search role). A group's tab shows its screens behind a segmented control in the navigation bar's centre | `TabView(.sidebarAdaptable)`: every screen in the sidebar under its group; Sound and Focus are screens of their own; Jump is the search item. iPad can collapse the sidebar into a top tab bar |
+| Layout | Tabs Now · Cycles · Journal · Moments · Clock. A group's tab shows its screens behind a segmented control in the navigation bar's centre; the Cycles tab has the Jump button (magnifying glass) at its leading edge | `TabView(.sidebarAdaptable)`: every screen in the sidebar under its group; Moments, Sound and Focus are screens of their own; Jump is the search item. iPad can collapse the sidebar into a top tab bar |
+| Jump | A sheet, from the Cycles tab's Jump button or ⌘K, its field focused | The sidebar's search item |
 | Transport | On Now only: the tab bar's bottom accessory (Liquid Glass, iOS 26.1 hides it on the other tabs); minimised with the tab bar on scroll. iOS 18 (and 26.0): a capsule on a band of bar material that joins the tab bar. Other screens: `TravelIndicator` while the clock is not live | iPad: on Now, the bottom accessory (iOS 18: a capsule on a bar at the foot of the screen); elsewhere `TravelIndicator`. Mac: the window toolbar's centre, every screen |
 | Now's toolbar | Sound, Focus, Settings | iPad: Sound (while it plays), Focus, Settings. Mac: Sound (while it plays), Focus, Settings in every screen's toolbar |
 | Sound | A sheet over Now (medium / large) | A screen |
@@ -218,13 +225,13 @@ at the exact moment the instant view captures both cameras and the voice and sav
 
 `router.show(.timeline)` brings any screen forward in the right way for the layout (tab, segment, sheet, cover,
 window); `router.selection` is the screen in the content area; `router.isCompact` tells which layout is up;
-`router.open(AppLink)` travels to a link's moment and shows its screen. Jump is the `Tab(role: .search)` in both
-layouts. Its field's text, focus and Return live in `JumpSearch.shared` (Core/JumpSearch.swift): on iPhone the compact
-root applies `.searchable` to the search tab's navigation stack (from outside it, so iOS presents it as the search
-tab's field; on the whole `TabView` it would also show in every other tab; iOS 18, which has no such field, keeps it in
-the tab's navigation bar drawer), and JumpScreen only reads the query; on
-iPad (under the title) and Mac (window toolbar) JumpScreen draws its own field bound to the same query. ⌘K sets
-`JumpSearch.shared.isFocused`, which focuses the field even while Jump already shows.
+`router.open(AppLink)` travels to a link's moment and shows its screen. Jump is the sidebar's `Tab(role: .search)` on
+iPad and Mac and a sheet on iPhone (`router.isJumpPresented`; `show(.jump)` presents it, showing any other screen
+closes it, and `setCompact` moves Jump between the two forms when the layout changes). JumpScreen draws its own field
+in every layout (under the title; the window toolbar on the Mac); its text and focus live in `JumpSearch.shared`
+(Core/JumpSearch.swift), so the sheet keeps the text, and ⌘K and the Cycles tab's button set
+`JumpSearch.shared.isFocused`, which focuses the field even while Jump already shows. The navigation bar's segmented
+controls size their segments by title on iPhone, so the Cycles tab's four fit beside the Jump button.
 
 The shell gives every screen (`ScreenContent` in App/RootView.swift) its own `NavigationStack`, the backdrop, full
 size and the shared toolbar items. A screen therefore:
@@ -260,8 +267,7 @@ API it names on iOS 26 and the Mac:
 Guarded in place: the transport (RootView's `transportAccessory` on iOS 26.1, enabled on Now only; `transportInset`
 and `TransportInsetBar` on iOS 18 and 26.0, applied by `ScreenChrome` inside Now's navigation stack — a safe area inset
 outside the stack does not reach the screen there — so pushed views go without it; it steps aside while the keyboard is up; the inset is a
-still copy of the bar and the live bar lies over it, see "ClockTimeline"), the iPhone Jump
-field's placement (`TabSearchField`), and the open intents (`supportedModes` on iOS 26, `openAppWhenRun` on iOS 18;
+still copy of the bar and the live bar lies over it, see "ClockTimeline"), and the open intents (`supportedModes` on iOS 26, `openAppWhenRun` on iOS 18;
 their App Intents metadata is the same either way). There is no tab bar minimise on iOS 18.
 
 The compiler catches every unguarded API but not SF Symbols: a symbol newer than the system draws nothing. Before using
@@ -324,7 +330,7 @@ Make the calls from a nonisolated async function, a detached task or a serial qu
   with a panel (reading, Open, Focus, Timer, Sound on / off, pure mode, Quit). Open windows with
   `openWindow(id: WindowID.main)`.
 - Menu commands (App/AppCommands.swift), mirroring the web app's keys: Space play / pause, N live, [ ] previous /
-  next cycle, P pure mode, M sound on / off (⇧⌘M on iPad), ⌘K Jump, ⇧⌘F Focus, ⌘1…⌘9 Now … Sound, ⌥⌘1…⌥⌘3 Timer,
+  next cycle, P pure mode, M sound on / off (⇧⌘M on iPad), ⌘K Jump, ⇧⌘F Focus, ⌘1…⌘9 Now … Sound, ⌘0 Moments, ⌥⌘1…⌥⌘3 Timer,
   Stopwatch, Alerts, ⌘, Settings. Bare keys yield to a focused text field (verified with AppKit; on an iPad hardware
   keyboard that is unverified, which is why Sound takes ⇧⌘M there). A feature's own shortcuts go on its controls
   (`.keyboardShortcut`) or `.onKeyPress` inside its screen and must not reuse these.
@@ -396,9 +402,10 @@ Read from UserDefaults' argument domain, never persisted; they work on iOS (simc
 Features add their own (`-FXJump…`, `-FXLadder…`, `-FXAlerts…`, `-FXSound…`, `-FXFocus…`, `-FXHub…`, `-FXMoments…`; each feature's
 file lists them). `-FXHubSettings 1` presents the hub settings page, `-FXHubDemo <n>` attaches a demo journal store with
 n entries to sync, `-FXHubScheme light|dark` sets the hub sheets' appearance (HubSyncHooks.swift). `-FXMomentsInstant <s>` opens the instant view for a moment that many seconds
-away (it captures and saves), `-FXMomentsSheet 1` the Moments sheet, `-FXMomentsDemo 1` fills the journal with captures
-of every rarity (with `-FXJournalStore <dir>`), `-FXMomentsAuto 0` keeps the instant view from opening by itself
-(MomentStore.swift lists them all). How the argument domain reads values:
+away (it captures and saves; `-FXMomentsCaptures 1|3|5` sets the count for the launch), `-FXMomentsSettings 1` the
+Moments screen on its settings, `-FXMomentsDemo 1` fills the journal with captures of every rarity (with
+`-FXJournalStore <dir>`), `-FXMomentsAuto 0` keeps the instant view from opening by itself and the moments' banners
+away (MomentStore.swift lists them all). How the argument domain reads values:
 
 - A value that starts with `-` is read as the next flag, not as the value: `-FXTime -11253795000` needs the raw-argument
   fallback LaunchOptions has; prefer values that start otherwise.
