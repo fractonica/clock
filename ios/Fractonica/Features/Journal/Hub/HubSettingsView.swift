@@ -213,14 +213,13 @@ struct HubSettingsView: View {
         }
 
         Section {
-            TextField("Code", text: $model.code, prompt: Text(verbatim: "XXXX-XXXX"))
+            TextField("Code", text: Binding(get: { model.code }, set: { model.setCode($0) }), prompt: Text(verbatim: "XXXX-XXXX"))
                 .font(.title2.monospaced().weight(.medium))
                 .multilineTextAlignment(.center)
                 .autocorrectionDisabled()
                 #if os(iOS)
                 .textInputAutocapitalization(.characters)
                 #endif
-                .onChange(of: model.code) { model.formatCode() }
                 .accessibilityLabel("Pairing code")
             TextField("Device name", text: $model.name)
                 #if os(iOS)

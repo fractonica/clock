@@ -46,10 +46,9 @@ final class HubPairingModel {
         return true
     }
 
-    /// Re-formats the code field after an edit ("k7qf2" → "K7QF-2").
-    func formatCode() {
-        let formatted = HubPairingCode.formatted(code)
-        if formatted != code { code = formatted }
+    /// The code field's setter: uppercase, the dash after four characters, nothing outside the alphabet.
+    func setCode(_ text: String) {
+        code = HubPairingCode.formatted(text)
         if case .failed = pairing { pairing = .idle }
     }
 

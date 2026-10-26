@@ -128,7 +128,8 @@ final class HubDiscovery {
 
     private nonisolated static func hostString(_ host: NWEndpoint.Host) -> String {
         switch host {
-        case .ipv4(let address): "\(address)"
+        // The dotted quad without the interface scope ("%en0") the description adds.
+        case .ipv4(let address): address.rawValue.map { String($0) }.joined(separator: ".")
         case .ipv6(let address): "[\(address)]"
         case .name(let name, _): name
         @unknown default: "\(host)"
