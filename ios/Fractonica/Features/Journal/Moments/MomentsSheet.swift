@@ -376,6 +376,9 @@ struct MomentSettingsView: View {
         .scrollContentBackground(.hidden)
         .background { Backdrop() }
         .navigationTitle("Moment Settings")
+        #if os(iOS)
+        .navigationBarTitleDisplayMode(.inline)
+        #endif
         .environment(\.timeZone, settings.timeZone)
     }
 

@@ -192,7 +192,14 @@ guarantees pure mode never prints a Gregorian date or "3 h 20 min":
 `ScreenGroup` bundles `cycles` (rings ladder wave timeline), `journal` (journal month converter) and `clock` (timer
 stopwatch alerts). The printable Diary is a sheet over the Journal on iPhone and a sidebar screen in the Journal section
 on iPad and Mac. The Journal (Features/Journal: local store, composer, timeline; hooks for the hub sync in
-JournalHooks.swift) keeps its records and media under Application Support/Journal.
+JournalHooks.swift) keeps its records and media under Application Support/Journal. Moments
+(Features/Journal/Moments) are BeReal-style captures on the clock: every Helion quarter boundary is a moment, labelled
+by the longest period with a quarter boundary there (its rarity: rare Helion and Nuclide, epic Delta, legendary Gamma,
+mythic Beta, cosmic Alpha); 11 Flavons ahead the app announces it (a notification with a spoken clip from
+Resources/Moments, made by scripts/make-moment-voices.sh, or the instant view itself while the app is in front) and
+at the exact moment the instant view captures both cameras and the voice and saves the entry with `data.capture`
+(hub/API.md). The streak and the collection derive from the records. The Journal shows a Moments bar over its timeline
+(`momentsHeader`, applied by ScreenChrome); cards wear their rarity's frame (`rarityFrame(for:)`).
 
 | | iPhone (compact width) | iPad, Mac |
 |---|---|---|
@@ -279,7 +286,7 @@ URLs (`.onOpenURL` → `router.open`). Unknown or empty screens open Now; `t` tr
 ### Lifecycle hooks: FeatureHooks (App/FeatureHooks.swift)
 
 Features that act outside their screens implement the hooks enum already in their folder (`AlertsHooks`,
-`TimerHooks`, `SoundHooks`, `FocusHooks`; listed in `AppHooks.all`), all `@MainActor`, all optional:
+`TimerHooks`, `SoundHooks`, `FocusHooks`, `MomentsHooks`; listed in `AppHooks.all`), all `@MainActor`, all optional:
 
 | Hook | When |
 |---|---|
@@ -296,8 +303,9 @@ requires; Alerts registers its `BGAppRefreshTask` (`app.fractonica.clock.refresh
 
 `NotificationRouter` (App/) is the one `UNUserNotificationCenter` delegate, installed while launching on both
 platforms. Features never set the delegate. They post with identifier prefixes — `timer.` (Timer and Stopwatch),
-`alert.` (Alerts) — attach an `AppLink`, request authorization themselves at a moment of intent, and share the
-system's budget of 64 pending requests: Alerts keeps at most 60 `alert.` requests pending, so Timer always has room.
+`alert.` (Alerts), `moment.` (Moments) — attach an `AppLink`, request authorization themselves at a moment of intent,
+and share the system's budget of 64 pending requests: Alerts keeps at most 50 `alert.` requests pending and Moments at
+most 12 `moment.` ones, so Timer always has room. Alerts' background refresh refills the moments too.
 Never call `UNUserNotificationCenter` on the main thread (except `NotificationRouter.install()`, which must set the
 delegate there before launch finishes): it answers over synchronous XPC, and a slow daemon freezes the interface.
 Make the calls from a nonisolated async function, a detached task or a serial queue of your own (Alerts'
@@ -379,9 +387,12 @@ Read from UserDefaults' argument domain, never persisted; they work on iOS (simc
 | `-FXLink <url>` | Open an `AppLink` as a widget or notification tap does; replaces `-FXTab`, its `t` replaces `-FXTime` |
 | `-FXRate <rate>` | Run a time-lapse at that many displayed seconds per real second (from `-FXTime`, or from now), for profiling and animated shots; negative runs backwards |
 
-Features add their own (`-FXJump…`, `-FXLadder…`, `-FXAlerts…`, `-FXSound…`, `-FXFocus…`, `-FXHub…`; each feature's
+Features add their own (`-FXJump…`, `-FXLadder…`, `-FXAlerts…`, `-FXSound…`, `-FXFocus…`, `-FXHub…`, `-FXMoments…`; each feature's
 file lists them). `-FXHubSettings 1` presents the hub settings page, `-FXHubDemo <n>` attaches a demo journal store with
-n entries to sync, `-FXHubScheme light|dark` sets the hub sheets' appearance (HubSyncHooks.swift). How the argument domain reads values:
+n entries to sync, `-FXHubScheme light|dark` sets the hub sheets' appearance (HubSyncHooks.swift). `-FXMomentsInstant <s>` opens the instant view for a moment that many seconds
+away (it captures and saves), `-FXMomentsSheet 1` the Moments sheet, `-FXMomentsDemo 1` fills the journal with captures
+of every rarity (with `-FXJournalStore <dir>`), `-FXMomentsAuto 0` keeps the instant view from opening by itself
+(MomentStore.swift lists them all). How the argument domain reads values:
 
 - A value that starts with `-` is read as the next flag, not as the value: `-FXTime -11253795000` needs the raw-argument
   fallback LaunchOptions has; prefer values that start otherwise.
