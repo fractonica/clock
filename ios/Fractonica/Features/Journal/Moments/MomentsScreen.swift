@@ -365,7 +365,7 @@ private struct CollectionGrid: View {
         .frame(maxWidth: .infinity)
         .background(Theme.panel, in: .rect(cornerRadius: 16, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Theme.line, lineWidth: 1))
-        .rarityFrame(rarity, cornerRadius: 16)
+        .rarityFrame(rarity, cornerRadius: 16, turns: false)  // the Moments screen stays open: no endless animation
         .contentShape(.rect(cornerRadius: 16, style: .continuous))
         .accessibilityElement(children: .combine)
     }

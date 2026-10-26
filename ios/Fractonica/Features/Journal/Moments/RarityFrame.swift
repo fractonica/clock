@@ -55,9 +55,9 @@ extension View {
         modifier(RarityFrame(rarity: record.rarity, cornerRadius: cornerRadius, badge: badge))
     }
 
-    /// The frame for a rarity, on anything.
-    func rarityFrame(_ rarity: MomentRarity, cornerRadius: CGFloat = 22, badge: Bool = false) -> some View {
-        modifier(RarityFrame(rarity: rarity, cornerRadius: cornerRadius, badge: badge))
+    /// The frame for a rarity, on anything. `turns` false keeps the cosmic rainbow still (a screen that stays open).
+    func rarityFrame(_ rarity: MomentRarity, cornerRadius: CGFloat = 22, badge: Bool = false, turns: Bool = true) -> some View {
+        modifier(RarityFrame(rarity: rarity, cornerRadius: cornerRadius, badge: badge, turns: turns))
     }
 
     /// The detail view's header: for a captured entry, the moment it captured and the rarity's frame around it.
@@ -70,6 +70,7 @@ struct RarityFrame: ViewModifier {
     let rarity: MomentRarity
     var cornerRadius: CGFloat = 22
     var badge = false
+    var turns = true
 
     func body(content: Content) -> some View {
         if rarity == .common {
@@ -77,7 +78,7 @@ struct RarityFrame: ViewModifier {
         } else {
             content
                 .overlay {
-                    RarityStroke(rarity: rarity, cornerRadius: cornerRadius)
+                    RarityStroke(rarity: rarity, cornerRadius: cornerRadius, turns: turns)
                         .allowsHitTesting(false)
                         .accessibilityHidden(true)
                 }
@@ -99,6 +100,8 @@ struct RarityFrame: ViewModifier {
 struct RarityStroke: View {
     let rarity: MomentRarity
     var cornerRadius: CGFloat = 22
+    /// Cosmic turns its rainbow while on screen; false holds it still.
+    var turns = true
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var turning = false
@@ -111,7 +114,7 @@ struct RarityStroke: View {
                 .background(shape.stroke(AngularGradient(colors: MomentRarity.rainbow, center: .center), lineWidth: 3).blur(radius: rarity.glow * 0.8).opacity(0.75))
                 .hueRotation(.degrees(turning ? 360 : 0))
                 .onAppear {
-                    guard !reduceMotion else { return }
+                    guard turns, !reduceMotion else { return }
                     withAnimation(.linear(duration: 8).repeatForever(autoreverses: false)) { turning = true }
                 }
                 .onDisappear {
