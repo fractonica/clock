@@ -136,7 +136,7 @@ final class JournalStore: RecordSyncing {
         // a new entry whose moment nobody chose is stamped when it is saved
         record.time = draft.key == JournalDraft.newKey && draft.timeChosen != true ? now() : draft.time
         record.zone = draft.zone
-        record.data = draft.entry.data
+        record.data = draft.entry.data.keepingFields(of: record.data)
         record.blobs = draft.blobs.isEmpty ? nil : draft.blobs
         record.deleted = nil
         let saved = save(record)
