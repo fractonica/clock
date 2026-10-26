@@ -225,8 +225,15 @@ extension JournalWavePainter {
         let reach = 2 * (size + JournalWaveModel.badgeGap) + layout.zoom.radius
         let visible = model.pins(from: frame.t(h + reach), to: frame.t(-reach))
         let dy = (frame.top - cache.anchor) * frame.k
+        // how far a later point lies above an earlier one (a loop turning back): the placer looks back that much further
+        var lowest = -Double.infinity, slack = 0.0
+        for pin in visible {
+            guard let p = cache.point(pin.time) else { continue }
+            slack = max(slack, lowest - p.y)
+            lowest = max(lowest, p.y)
+        }
         let badges = JournalWavePlacer.place(Array(visible), size: size, gap: JournalWaveModel.badgeGap,
-                                             xRange: (margin + 2)...(w - Self.controlsWidth + 6), slack: layout.zoom.radius) { t in
+                                             xRange: (margin + 2)...(w - Self.controlsWidth + 6), slack: slack) { t in
             cache.point(t).map { JournalWavePoint(x: $0.x, y: $0.y + dy) }
         }
         model.hits.badges = badges
@@ -273,8 +280,7 @@ extension JournalWavePainter {
     func drawLegend(_ context: inout GraphicsContext, _ zoom: JournalArcZoom, h: Double) {
         let letters = zoom.levels.filter { zoom.weight($0) > 0.15 }
             .map { (level: $0, opacity: min(1, ((0.3 + 0.7 * zoom.weight($0)) * 10).rounded() / 10)) }
-        let span = words.duration(frame.span(h), at: frame.t(h / 2))
-        let key = "l|" + letters.map { "\($0.level):\($0.opacity)" }.joined(separator: ",") + "|" + span
+        let key = "l|" + letters.map { "\($0.level):\($0.opacity)" }.joined(separator: ",")
         let label = cache.labels.label(key, scale: context.environment.displayScale) {
             HStack(spacing: 4) {
                 ForEach(letters, id: \.level) { l in
@@ -282,13 +288,19 @@ extension JournalWavePainter {
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(Theme.levelColor(l.level, opacity: l.opacity, lightness: 0.72))
                 }
-                Text(verbatim: span).font(.system(size: 11)).foregroundStyle(Theme.ink2).padding(.leading, 4)
             }
-            .padding(.horizontal, 7)
-            .padding(.vertical, 3)
-            .background(Theme.background.opacity(0.82), in: .capsule)
         }
-        context.draw(label.image, in: CGRect(x: 8, y: h - 10 - label.size.height, width: label.size.width, height: label.size.height))
+        // the span changes with every frame of a zoom: drawn as text, not made into a picture each time
+        let span = context.resolve(Text(verbatim: words.duration(frame.span(h), at: frame.t(h / 2)))
+            .font(.system(size: 11)).foregroundStyle(Theme.ink2))
+        let spanSize = span.measure(in: CGSize(width: 400, height: 40))
+        let height = max(label.size.height, spanSize.height) + 6
+        let width = 7 + label.size.width + 8 + spanSize.width + 7
+        let y = h - 10 - height
+        context.fill(Path(roundedRect: CGRect(x: 8, y: y, width: width, height: height), cornerRadius: height / 2),
+                     with: .color(Theme.background.opacity(0.82)))
+        context.draw(label.image, in: CGRect(x: 15, y: y + (height - label.size.height) / 2, width: label.size.width, height: label.size.height))
+        context.draw(span, at: CGPoint(x: 15 + label.size.width + 8, y: y + height / 2), anchor: .leading)
     }
 }
 

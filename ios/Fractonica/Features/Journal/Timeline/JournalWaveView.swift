@@ -258,8 +258,12 @@ final class JournalWaveCache {
     /// Adds an arc to a path: a true arc, or the stretch of a huge one inside `yRange` as a polyline.
     static func add(_ path: inout Path, _ a: WaveArc, yRange: ClosedRange<Double>) {
         if a.radius <= bigRadius {
+            // a level's arcs follow on from each other: one stroke runs on through their joins (no caps piling up
+            // into beads where a translucent line meets itself)
             let p = a.point(0)
-            path.move(to: CGPoint(x: p.x, y: p.y))
+            if let c = path.currentPoint, abs(c.x - p.x) < 0.01, abs(c.y - p.y) < 0.01 {} else {
+                path.move(to: CGPoint(x: p.x, y: p.y))
+            }
             path.addArc(center: CGPoint(x: a.cx, y: a.cy), radius: a.radius, startAngle: .radians(a.start),
                         endAngle: .radians(a.start + a.sweep), clockwise: a.sweep < 0)
             return
