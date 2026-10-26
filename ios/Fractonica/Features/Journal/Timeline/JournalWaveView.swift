@@ -36,6 +36,10 @@ struct JournalWaveView: View {
             JournalWaveHitches.startIfAsked(model)
         }
         .onChange(of: reduceMotion) { model.reduceMotion = reduceMotion }
+        .popover(item: $model.skyChoice, attachmentAnchor: .rect(.rect(skyAnchor)), arrowEdge: .top) { choice in
+            SkyEventCard(events: [choice.event], words: settings.wording)
+                .presentationCompactAdaptation(.popover)
+        }
         .confirmationDialog("Entries at this moment", isPresented: chooserShown, titleVisibility: .visible, presenting: model.chooser) { choice in
             ForEach(choice.ids, id: \.self) { id in
                 Button(title(id)) { open(id) }
@@ -53,6 +57,12 @@ struct JournalWaveView: View {
         .accessibilityChildren {
             if voiceOver { accessibilityItems }
         }
+    }
+
+    /// Where a tapped sky event's popover points: its mark.
+    private var skyAnchor: CGRect {
+        guard let c = model.skyChoice else { return .zero }
+        return CGRect(x: c.x - c.radius, y: c.y - c.radius, width: 2 * c.radius, height: 2 * c.radius)
     }
 
     private var chooserShown: Binding<Bool> {
@@ -105,6 +115,10 @@ struct JournalWaveView: View {
         ForEach(Array(visible), id: \.id) { pin in
             Button(accessibilityText(pin)) { open(pin.id) }
         }
+        let words = settings.wording
+        ForEach(Array(model.hits.sky.prefix(30)), id: \.event.id) { mark in
+            Text(verbatim: "\(mark.event.label(pure: words.pure)), \(words.pure ? words.notation.clockText(at: mark.event.time, upTo: "iota") : words.earth.short(mark.event.time))")
+        }
     }
 
     private func accessibilityText(_ pin: JournalWavePin) -> String {
@@ -121,6 +135,7 @@ struct JournalWaveCanvas: View {
     let words: Wording
 
     @Environment(ClockStore.self) private var store
+    @State private var sky = SkyDisplay.shared
 
     var body: some View {
         ClockTimeline(.periodic(cadence)) { now in
@@ -128,8 +143,11 @@ struct JournalWaveCanvas: View {
                 let frame = model.frame(at: timeline.date)
                 let pins = model.pins
                 let live = store.isLive
+                let hidden = sky.hidden
+                let solar = sky.solarTicks
                 Canvas(opaque: false, rendersAsynchronously: false) { context, size in
-                    JournalWavePainter(frame: frame, now: now, live: live, words: words, pins: pins, model: model, cache: cache)
+                    JournalWavePainter(frame: frame, now: now, live: live, words: words, pins: pins, model: model, cache: cache,
+                                       skyHidden: hidden, solarTicks: solar)
                         .draw(&context, size)
                 } symbols: {
                     ForEach(model.symbols, id: \.self) { key in
@@ -192,6 +210,8 @@ final class JournalWaveCache {
     }
 
     private(set) var key: Key?
+    /// Bumped on every rebuild: what is laid out over the window (the sky's marks) follows it.
+    private(set) var generation = 0
     private(set) var zoom = JournalArcs.zoom(k: 0.001, radius: 100)
     private(set) var lines: [Line] = []
     /// The half-arcs in the window, per level from the spine down, in the cache's coordinates.
@@ -207,6 +227,11 @@ final class JournalWaveCache {
     let clock = FractonicaClock.shared
     /// The texts as pictures.
     let labels = JournalWaveLabels()
+    /// The sky events and the solar sync's ticks laid out over the window.
+    let sky = JournalWaveSkyLayer()
+
+    /// The moments the cached window spans.
+    var window: (lo: Double, hi: Double) { (lo, hi) }
 
     /// Arcs with a radius above this many points are drawn as polylines (a spine opening into a straight line).
     static let bigRadius = 3000.0
@@ -228,6 +253,7 @@ final class JournalWaveCache {
         // while a zoom changes it every frame, the window is only a little taller than the screen
         let zooming = self.key.map { $0.k != key.k && $0.width == key.width && $0.height == key.height } ?? false
         self.key = key
+        generation &+= 1
         let span = key.height / f.k
         let extra = (zooming ? 0.25 : 0.75) * span
         lo = max(clock.tMin, f.t(key.height) - extra)
@@ -293,6 +319,16 @@ final class JournalWaveCache {
         return p
     }
 
+    /// A moment's point on the wave traced to `level` (the deepest by default) in the cache's coordinates and the
+    /// curve's outward normal there (not memoised: for what is laid out once per rebuild).
+    func trace(_ t: Double, through level: Int? = nil) -> (point: JournalWavePoint, normal: CGPoint)? {
+        guard let last = layout?.trace(t, through: level).last else { return nil }
+        let a = last.arc.arc
+        let p = a.point(last.local)
+        let angle = a.start + a.sweep * last.local
+        return (JournalWavePoint(x: p.x, y: p.y), CGPoint(x: cos(angle), y: sin(angle)))
+    }
+
     /// "δ#3", "23η": a cycle start's short label.
     func short(level: Int, cycle: Int64, notation: Notation) -> String {
         name(level: level, cycle: cycle, salt: 0) { notation.cycleShort(level: level, cycle: cycle) }
@@ -327,6 +363,9 @@ struct JournalWavePainter {
     let pins: [JournalWavePin]
     let model: JournalWaveModel
     let cache: JournalWaveCache
+    /// The sky families switched off, and whether the solar sync's ticks show.
+    var skyHidden: Set<SkyFamily> = []
+    var solarTicks = true
 
     /// The label margin on the left.
     static func margin(_ width: Double) -> Double { width > 700 ? 92 : 64 }
@@ -379,6 +418,7 @@ struct JournalWavePainter {
                          style: StrokeStyle(lineWidth: line.width, lineCap: .round, lineJoin: .round))
         }
         drawMarks(&context, zoom, arcs, dy: dy, w: w, h: h)
+        drawSky(&context, zoom, dy: dy, w: w, h: h, margin: margin)
 
         drawNow(&context, layout, w: w, h: h, margin: margin)
         let badges = drawBadges(&context, layout, w: w, h: h, margin: margin)

@@ -28,6 +28,8 @@ final class JournalWaveModel {
     private(set) var symbols: [String] = []
     /// A cluster whose entries share their moment too closely to zoom apart: the screen offers them as a list.
     var chooser: JournalWaveChoice?
+    /// A tapped sky event: the screen shows its name and moments in a popover at its mark.
+    var skyChoice: JournalWaveSkyChoice?
 
     /// The canvas's size (set by the view).
     @ObservationIgnored private(set) var size = CGSize(width: 390, height: 700)
@@ -346,7 +348,14 @@ final class JournalWaveModel {
 
     /// A tap: an entry opens; a cluster zooms in until its entries come apart (or lists them when they cannot).
     func tap(at p: CGPoint, touch: Bool) {
-        guard let badge = hits.badge(at: p, slop: touch ? 8 : 2) else { return }
+        guard let badge = hits.badge(at: p, slop: touch ? 8 : 2) else {
+            // an entry wins over a sky event under it
+            if let mark = hits.skyMark(at: p, slop: touch ? 8 : 3) {
+                Haptics.play(.selection)
+                skyChoice = JournalWaveSkyChoice(event: mark.event, x: mark.x, y: mark.y, radius: mark.radius)
+            }
+            return
+        }
         Haptics.play(.selection)
         if !badge.isCluster, let id = badge.ids.first {
             open?(id)
@@ -395,6 +404,21 @@ struct JournalWaveChoice: Identifiable, Equatable {
 @MainActor
 final class JournalWaveHits {
     var badges: [JournalWaveBadge] = []
+    /// The sky events drawn, in the view's coordinates.
+    var sky: [JournalWaveSkyHit] = []
+
+    func skyMark(at p: CGPoint, slop: Double) -> JournalWaveSkyHit? {
+        var best: JournalWaveSkyHit?
+        var bestD = Double.infinity
+        for m in sky {
+            let d = hypot(m.x - p.x, m.y - p.y)
+            if d <= m.radius + slop, d < bestD {
+                bestD = d
+                best = m
+            }
+        }
+        return best
+    }
 
     func badge(at p: CGPoint, slop: Double) -> JournalWaveBadge? {
         JournalWavePlacer.hit(badges, x: p.x, y: p.y, radius: JournalWaveModel.badge / 2 + slop)

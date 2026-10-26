@@ -137,6 +137,8 @@ struct JournalPeriodBlock: View {
     let period: JournalPeriod
     let words: Wording
 
+    @State private var sky = SkyDisplay.shared
+
     var body: some View {
         VStack(alignment: .leading, spacing: 11) {
             HStack(alignment: .top, spacing: 10) {
@@ -165,6 +167,10 @@ struct JournalPeriodBlock: View {
             if !period.emojis.isEmpty {
                 JournalEmojiRow(emojis: period.emojis, more: period.emojiCount - period.emojis.count)
             }
+            let notable = SkyEvents.shared.notable(from: period.start, to: period.end, limit: JournalPeriods.skyLimit, hiding: sky.hidden)
+            if !notable.shown.isEmpty {
+                SkyBlockRow(shown: notable.shown, more: notable.more, words: words)
+            }
             if !period.media.isEmpty {
                 JournalCollage(media: period.media, more: period.mediaCount - period.media.count)
             }
@@ -192,6 +198,8 @@ struct JournalPeriodBlock: View {
         if let secondary { parts.append(secondary) }
         parts.append(JournalPeriods.entries(period.count))
         if period.mediaCount > 0 { parts.append(period.mediaCount == 1 ? "1 picture" : "\(period.mediaCount) pictures") }
+        let notable = SkyEvents.shared.notable(from: period.start, to: period.end, limit: 3, hiding: sky.hidden)
+        if !notable.shown.isEmpty { parts.append("sky: " + SkyStyle.spoken(notable.shown, pure: words.pure)) }
         return parts.joined(separator: ", ")
     }
 }
