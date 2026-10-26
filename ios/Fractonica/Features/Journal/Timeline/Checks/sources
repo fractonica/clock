@@ -4,3 +4,4 @@ Fractonica/Features/Journal/Timeline/JournalWaveLayout.swift
 Fractonica/Features/Journal/Store/HubRecord.swift
 Fractonica/Features/Journal/Store/JournalRecords.swift
 Shared/Notation+Standard.swift
+Fractonica/Features/Wave/WaveGeometry.swift

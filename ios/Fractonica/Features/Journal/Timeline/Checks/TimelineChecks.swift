@@ -2,8 +2,9 @@ import FractonicaKit
 import Foundation
 
 // The journal timeline's zoom and wave: periods (grouping, emoji and pictures, sections, words), the pinch's steps, the
-// wave's frame and limits, its strands (which levels show at a zoom, their sizes), the half-arc profile, the sampled
-// lines, the cycle starts, and the emoji placement (fanning, clusters, hits, the zoom that opens a cluster).
+// wave's frame and limits, its arc geometry (the spine and its band at every zoom, regular arcs of one radius joining
+// smoothly, children perpendicular to their parent, emoji exactly on the curve, no jump anywhere across the zoom), the
+// cycle starts, and the emoji placement (fanning, clusters, hits, the zoom that opens a cluster).
 // Run: ios/scripts/check.sh ios/Fractonica/Features/Journal/Timeline/Checks
 
 @main
@@ -15,9 +16,11 @@ struct TimelineChecks {
         wordChecks()
         pinchChecks()
         limitChecks()
-        strandChecks()
-        profileChecks()
-        lineChecks()
+        arcZoomChecks()
+        spineChecks()
+        perpendicularChecks()
+        onCurveChecks()
+        continuityChecks()
         tickChecks()
         placementChecks()
         Checks.finish()
@@ -192,106 +195,238 @@ private func limitChecks() {
     check(abs(shown.y(vectorA - 1e6) - 350) < 1e-6, "a frame can put a moment at a height")
 }
 
-// MARK: - Strands
+// MARK: - The arc geometry
 
-private func strandChecks() {
-    let h = 700.0, half = 160.0
+private let radius = 105.0
+private let axis = 210.0
+
+/// Every zoom of the wave, from the widest to the closest, in small steps.
+private func zooms(height h: Double = 700, step: Double = 0.02) -> [Double] {
     let lim = JournalWaveLimits(height: h, newest: vectorA, oldest: vectorA)
-    let close = JournalWave.strands(k: lim.kMax, height: h, half: half)
-    check(close.contains { $0.level == 8 && $0.weight > 0.99 } && !close.contains { $0.level == 10 } && !close.contains { $0.level <= 5 },
-          "closest zoom: Preons in full, no Flavons, nothing coarse: \(close.map(\.level))")
-    let wide = JournalWave.strands(k: lim.kMin, height: h, half: half)
-    check(wide.contains { $0.level == 1 && $0.weight > 0.99 } && !wide.contains { $0.level >= 4 }, "widest zoom: Betas in full, nothing fine: \(wide.map(\.level))")
-    for k in stride(from: log(lim.kMin), through: log(lim.kMax), by: 0.25).map(exp) {
-        let ss = JournalWave.strands(k: k, height: h, half: half)
-        let sum = ss.reduce(0) { $0 + $1.amplitude }
-        let full = ss.filter { $0.weight > 0.99 }
-        let nested = zip(full, full.dropFirst()).allSatisfy { $0.amplitude >= $1.amplitude - 1e-9 }
-        let readable = ss.allSatisfy { $0.cyclePoints >= JournalWave.fadeIn.lowerBound && $0.cyclePoints <= JournalWave.fadeOut * 2.6 * h }
-        check(!ss.isEmpty && ss.count <= 5 && sum <= 0.94 * half + 1e-9 && nested && readable,
-              "k \(k): 1–5 readable levels, coarser swings wider, inside the column (\(ss.map(\.level)), \(sum))")
-        check(zip(ss, ss.dropFirst()).allSatisfy { $0.level < $1.level }, "strands coarsest first")
-    }
-    // fine strands are true semicircles: radius a quarter of the cycle
-    let mid = JournalWave.strands(k: lim.kMax / 3, height: h, half: 400)
-    if let finest = mid.last, finest.weight > 0.99 {
-        check(abs(finest.amplitude - finest.cyclePoints / 4) < 1e-6 || finest.amplitude < finest.cyclePoints / 4, "fine half-arcs are semicircles (or flatter)")
-    }
-    // the fade is continuous: a small zoom changes amplitudes a little
-    var worst = 0.0
-    for k in stride(from: log(lim.kMin), through: log(lim.kMax), by: 0.01).map(exp) {
-        let a = JournalWave.strands(k: k, height: h, half: half), b = JournalWave.strands(k: k * 1.01, height: h, half: half)
-        for s in a {
-            let other = b.first { $0.level == s.level }?.amplitude ?? 0
-            worst = max(worst, abs(other - s.amplitude))
-        }
-    }
-    check(worst < 4, "amplitudes change smoothly with the zoom (worst step \(worst) points for 1 %)")
+    return stride(from: log(lim.kMin), through: log(lim.kMax), by: step).map(exp) + [lim.kMax]
 }
 
-private func profileChecks() {
-    check(abs(JournalWave.profile(0)) < 1e-12 && abs(JournalWave.profile(0.5)) < 1e-12, "the wave is on its axis at the start and the node")
-    check(abs(JournalWave.profile(0.25) - 1) < 1e-12 && abs(JournalWave.profile(0.75) + 1) < 1e-12, "crest at the peak, trough at the valley")
-    check(JournalWave.profile(0.1) > 0 && JournalWave.profile(0.6) < 0 && abs(JournalWave.profile(1.25) - 1) < 1e-12, "first half out, second in, periodic")
-    // a semicircle: x² + (2u − 1)² = 1 over a half-cycle
-    let u = 0.3
-    check(abs(pow(JournalWave.profile(u / 2), 2) + pow(2 * u - 1, 2) - 1) < 1e-12, "half-arcs are semicircles")
-    // the sum over strands at a cycle start of the finest is the coarser levels' alone
-    let ss = JournalWave.strands(k: 0.05, height: 700, half: 160)
-    if let p = clock.position(at: vectorA) {
-        let x = JournalWave.offset(p, ss, through: ss.count - 1)
-        check(abs(x) <= 0.94 * 160 + 1e-9, "the offset stays inside the column")
-    }
+private func layout(_ k: Double, top: Double = vectorA + 300_000_000) -> (JournalArcLayout, JournalWaveFrame) {
+    let f = JournalWaveFrame(top: min(top, vectorA + 350 / k), k: k)
+    return (JournalArcLayout(zoom: JournalArcs.zoom(k: k, radius: radius), x0: axis, y: f.y), f)
 }
 
-// MARK: - Lines
+private func near(_ a: WavePoint, _ b: WavePoint, _ eps: Double) -> Bool { hypot(a.x - b.x, a.y - b.y) < eps }
 
-private func lineChecks() {
-    let h = 700.0
-    for k in [0.0006, 0.004, 0.05, 0.6] {
-        let frame = JournalWaveFrame(top: vectorA, k: k)
-        let ss = JournalWave.strands(k: k, height: h, half: 160)
-        guard let p0 = clock.position(at: frame.t(h)), let p1 = clock.position(at: frame.t(0)), !ss.isEmpty else {
-            check(false, "positions for k \(k)")
-            continue
-        }
-        let line = JournalWave.line(ss, through: ss.count - 1, from: p0, to: p1, x0: 200, y: frame.y)
-        guard let first = line.first, let last = line.last else {
-            check(false, "a line at k \(k)")
-            continue
-        }
-        let maxStep = zip(line, line.dropFirst()).map { $1.y - $0.y }.max() ?? 0
-        let monotonic = zip(line, line.dropFirst()).allSatisfy { $1.y >= $0.y - 1e-6 }
-        check(first.y < 4 && abs(last.y - h) < 1e-3 && monotonic, "k \(k): the line runs top to bottom (\(first.y) … \(last.y))")
-        check(maxStep < 4, "k \(k): sampled every few points at most (\(maxStep))")
-        check(line.allSatisfy { abs($0.x - 200) <= 0.94 * 160 + 1e-6 }, "k \(k): inside the column")
-        // the line goes through the wave's own offset at each sample
-        let t = frame.t(h / 3)
-        if let p = clock.position(at: t) {
-            let x = 200 + JournalWave.offset(p, ss, through: ss.count - 1)
-            let near = line.min { abs($0.y - h / 3) < abs($1.y - h / 3) }!
-            check(abs(near.y - h / 3) < 4 && abs(near.x - x) < max(12, ss.last!.amplitude), "k \(k): the line passes its offset")
+private func arcChecks(_ a: WaveArc, _ name: String) -> Bool {
+    // every point of a WaveArc is on its circle by construction; what can go wrong is a degenerate one
+    a.radius.isFinite && a.radius > 0 && abs(a.sweep) > 0 && abs(a.sweep) < 2 * .pi
+}
+
+private func arcZoomChecks() {
+    let lim = JournalWaveLimits(height: 700, newest: vectorA, oldest: vectorA)
+    let c0 = 2 * radius
+    var spines = Set<Int>()
+    var ok = true, okWeights = true
+    for k in zooms() {
+        let z = JournalArcs.zoom(k: k, radius: radius)
+        spines.insert(z.spine)
+        let m = Double(clock.levelInfo(z.spine).factor)
+        // the band: the spine's chord between one and `factor` diameters, its children's under one
+        ok = ok && z.lambda >= 0 && z.lambda < 1 && z.sweep > 0 && z.sweep <= .pi + 1e-12
+            && z.chord(z.spine + 1) < c0 && (z.spine == 0 || z.chord(z.spine) >= c0 - 1e-9) && z.chord(z.spine) < m * c0
+            && abs(z.chord(z.spine) / z.chord(z.spine + 1) - m) < 1e-6
+        okWeights = okWeights && abs(z.weight(z.spine + 1) - JournalArcs.depthOpacity(1 - z.lambda) * JournalArcs.smoothstep(1.5, 7, z.chord(z.spine + 1))) < 1e-12
+            && z.drawn.first.map { $0 >= z.spine } ?? false && !z.drawn.isEmpty && z.drawn.count <= 4
+    }
+    check(ok, "every zoom: the spine's chord lies within its band, its children's below one diameter")
+    check(okWeights, "every zoom draws one to four levels from the spine down")
+    check(spines.contains(8) == false && spines.contains(7) && spines.contains(0), "the spines run from α (widest) to θ (closest): \(spines.sorted())")
+    // sweep: a semicircle at the start of a band, opening towards a straight line at its end, monotonically
+    for m in [4, 5, 7, 9, 11, 13] {
+        let s = stride(from: 0.0, through: 1, by: 0.05).map { JournalArcs.sweep(lambda: $0, factor: m) }
+        check(abs(s[0] - .pi) < 1e-12 && s.last! <= JournalArcs.minSweep * 1.0001 && zip(s, s.dropFirst()).allSatisfy { $0 > $1 - 1e-15 },
+              "m \(m): sweep π → 0 through the band")
+        // the bulge plus the children's loops stay within the radius (plus one child loop at the start of the band)
+        let worst = stride(from: 0.0, through: 1, by: 0.01).map { l -> Double in
+            let c = c0 * pow(Double(m), l)
+            let bulge = c / 2 * tan(JournalArcs.sweep(lambda: l, factor: m) / 4)
+            return (bulge + c / Double(m) / 2) / radius
+        }.max()!
+        check(worst <= 1 + 1 / Double(m) + 1e-9, "m \(m): the spine and its loops stay within the radius (\(worst))")
+    }
+    // the depth curve and widths are continuous
+    let ds = stride(from: -1.5, through: 3.5, by: 0.001)
+    check(zip(ds, ds.dropFirst()).allSatisfy { abs(JournalArcs.depthOpacity($0) - JournalArcs.depthOpacity($1)) < 0.003 && abs(JournalArcs.depthWidth($0) - JournalArcs.depthWidth($1)) < 0.003 },
+          "a level's opacity and width change continuously with its depth")
+    check(JournalArcs.depthOpacity(0) == 1 && JournalArcs.depthOpacity(-1) == 0 && JournalArcs.depthOpacity(3) == 0, "the spine full, gone when straight and at depth 3")
+    _ = lim
+}
+
+private func spineChecks() {
+    var regular = true, smooth = true, sides = true, chords = true
+    for k in zooms(step: 0.15) {
+        let (lay, f) = layout(k)
+        let z = lay.zoom
+        guard let s = lay.spineHalf(at: f.t(350)) else { return check(false, "spine at k \(k)") }
+        let pp = clock.levelInfo(z.spine).prefixDouble
+        var prev: WaveArc?
+        for h in (s.idx - 2)...(s.idx + 2) {
+            guard let a = lay.spine(h) else { continue }
+            let t0 = clock.time(atPosition: 2 * Double(h) / pp), t1 = clock.time(atPosition: 2 * Double(h + 1) / pp)
+            // its chord is its stretch of time on the axis, its sweep the zoom's: a regular arc of the radius that chord asks
+            chords = chords && near(a.point(0), WavePoint(x: axis, y: f.y(t0)), 1e-6 * max(1, a.radius)) && near(a.point(1), WavePoint(x: axis, y: f.y(t1)), 1e-6 * max(1, a.radius))
+            let c = (t1 - t0) * k
+            regular = regular && abs(abs(a.sweep) - z.sweep) < 1e-12 && abs(a.radius - c / (2 * sin(z.sweep / 2))) < 1e-9 * a.radius
+            // samples all at that radius from the centre
+            for u in stride(from: 0.0, through: 1, by: 0.125) {
+                let p = a.point(u)
+                regular = regular && abs(hypot(p.x - a.cx, p.y - a.cy) - a.radius) < 1e-9 * a.radius
+            }
+            // crests (moving up the screen, later is higher) bulge left, troughs right
+            let mid = a.point(0.5)
+            sides = sides && (h % 2 == 0 ? mid.x < axis : mid.x > axis) && a.point(0.25).y > a.point(0.75).y
+            // the arcs join smoothly at the nodes
+            if let prev {
+                let t = prev.tangent(1), u = a.tangent(0)
+                smooth = smooth && abs(t.x * u.y - t.y * u.x) < 1e-6 && t.x * u.x + t.y * u.y > 0
+            }
+            prev = a
         }
     }
-    check(JournalWave.line([], through: 0, from: 1, to: 2, x0: 0, y: { $0 }).isEmpty, "no strands, no line")
+    check(chords, "spine arcs span their time on the axis")
+    check(regular, "spine arcs are regular: every one the zoom's sweep, its radius from its chord (no squashing)")
+    check(sides, "crests bulge left, troughs right, later moments higher")
+    check(smooth, "consecutive spine arcs join with one tangent")
+    // the aspect is the zoom's alone: a taller screen shows more arcs, each the same shape
+    let a = JournalArcs.spineArc(from: 300, to: 0, x0: 0, sweep: 1.2, crest: true)
+    let b = JournalArcs.spineArc(from: 700, to: 100, x0: 0, sweep: 1.2, crest: true)
+    check(abs((a.point(0.5).x) / 300 - (b.point(0.5).x) / 600) < 1e-12, "an arc's bulge is a fixed share of its chord at a zoom")
+}
+
+private func perpendicularChecks() {
+    var perpendicular = true, onParent = true, smooth = true, alternate = true, count = 0
+    for k in zooms(step: 0.2) {
+        let (lay, f) = layout(k)
+        let z = lay.zoom
+        let arcs = lay.arcs(from: f.t(700), to: f.t(0), through: z.spine + 2, yRange: -50...750)
+        guard arcs.count == 3 else { return check(false, "three levels of arcs at k \(k)") }
+        for depth in 1...2 {
+            let level = z.spine + depth
+            let m = clock.levelInfo(level - 1).factor
+            let parents = Dictionary(arcs[depth - 1].map { ($0.idx, $0.arc) }, uniquingKeysWith: { a, _ in a })
+            var prev: JournalArc?
+            for c in arcs[depth].prefix(200) {
+                guard let p = parents[c.idx / Int64(m)] else { continue }
+                count += 1
+                let j = Double(c.idx % Int64(m))
+                // it starts and ends on its parent, at its stretch of it
+                onParent = onParent && near(c.arc.point(0), p.point(j / Double(m)), 1e-6 * max(1, p.radius))
+                    && near(c.arc.point(1), p.point((j + 1) / Double(m)), 1e-6 * max(1, p.radius))
+                // and leaves and rejoins it at right angles
+                for (u, v) in [(0.0, j / Double(m)), (1.0, (j + 1) / Double(m))] {
+                    let a = c.arc.tangent(u), b = p.tangent(v)
+                    perpendicular = perpendicular && abs(a.x * b.x + a.y * b.y) < 1e-6
+                }
+                // the loops alternate sides of their parent (on a crest the crests loop out past it and the troughs
+                // dip back in, the other way round on a trough); across a node the parent itself turns the other way,
+                // so its last loop and the next one's first lie on one side
+                let apex = c.arc.point(0.5)
+                let out = hypot(apex.x - p.cx, apex.y - p.cy) > p.radius
+                alternate = alternate && out == ((c.idx % 2 == 0) == (p.sweep > 0))
+                if let prev, prev.idx + 1 == c.idx {
+                    let pa = prev.arc.point(0.5)
+                    if prev.idx / Int64(m) == c.idx / Int64(m) {
+                        alternate = alternate && (hypot(pa.x - p.cx, pa.y - p.cy) > p.radius) != out
+                    }
+                    let t = prev.arc.tangent(1), u = c.arc.tangent(0)
+                    smooth = smooth && t.x * u.x + t.y * u.y > 1 - 1e-6
+                }
+                prev = c
+            }
+        }
+    }
+    check(count > 500, "children checked: \(count)")
+    check(onParent, "each loop starts and ends on its parent arc, at its share of it")
+    check(perpendicular, "each loop leaves and rejoins its parent perpendicularly")
+    check(alternate, "loops alternate sides of the curve they ride (crest out, trough in)")
+    check(smooth, "a level's loops join with one tangent")
+}
+
+private func onCurveChecks() {
+    var onArc = true, drawnToo = true, ordered = true, nodes = true
+    for k in zooms(step: 0.3) {
+        let (lay, f) = layout(k)
+        let z = lay.zoom
+        let arcs = lay.arcs(from: f.t(760), to: f.t(-60), through: z.deepest, yRange: -60...760)
+        let deepest = Dictionary((arcs.last ?? []).map { ($0.idx, $0.arc) }, uniquingKeysWith: { a, _ in a })
+        for i in 0..<40 {
+            let t = f.t(Double(i) * 17 + 3)
+            let chain = lay.trace(t)
+            guard let last = chain.last, let p = lay.point(t) else { onArc = false; continue }
+            // the emoji's point is on the deepest level's arc, at the moment's progress through it
+            onArc = onArc && chain.count == 4 && last.arc.level == z.deepest && last.local >= 0 && last.local <= 1
+                && abs(hypot(p.x - last.arc.arc.cx, p.y - last.arc.arc.cy) - last.arc.arc.radius) < 1e-6 * max(1, last.arc.arc.radius)
+            // …which is the very arc the canvas draws
+            if let drawn = deepest[last.arc.idx] { drawnToo = drawnToo && drawn == last.arc.arc } else { drawnToo = false }
+            // a little later is a little further along
+            if let q = lay.trace(t + 1e-3 / k).last, q.arc.idx == last.arc.idx { ordered = ordered && q.local > last.local }
+        }
+        // a spine half-arc's start is a node on the axis, for any of its moments' chains
+        if let s = lay.spineHalf(at: f.t(350)) {
+            let t0 = clock.time(atPosition: 2 * Double(s.idx + 1) / clock.levelInfo(z.spine).prefixDouble)
+            if let p = lay.point(t0 + 1e-6, through: z.spine) { nodes = nodes && abs(p.x - axis) < 1e-3 }
+        }
+    }
+    check(onArc, "an emoji's point lies exactly on the deepest level's arc")
+    check(drawnToo, "and on the arc drawn")
+    check(ordered, "moments advance along the arc")
+    check(nodes, "half-arc starts are nodes on the axis")
+}
+
+private func continuityChecks() {
+    // zooming by a hair moves every moment's point by a hair, across every band boundary
+    let ts = (0..<60).map { vectorA - Double($0) * 7919.3 }
+    var worst = 0.0, worstK = 0.0
+    var spineChanges = 0
+    var last: Int?
+    for k in zooms(step: 0.004) {
+        let k2 = k * 1.0001
+        let a = JournalArcs.zoom(k: k, radius: radius), b = JournalArcs.zoom(k: k2, radius: radius)
+        if let l = last, l != a.spine { spineChanges += 1 }
+        last = a.spine
+        // the frames share the moment at the top, so the zoom alone moves points
+        let fa = JournalWaveFrame(top: vectorA + 20, k: k), fb = JournalWaveFrame(top: vectorA + 20, k: k2)
+        let la = JournalArcLayout(zoom: a, x0: axis, y: fa.y), lb = JournalArcLayout(zoom: b, x0: axis, y: fb.y)
+        for t in ts where fa.y(t) < 900 {
+            guard let p = la.point(t), let q = lb.point(t) else { continue }
+            let d = hypot(p.x - q.x, p.y - q.y)
+            if d > worst { worst = d; worstK = k }
+        }
+        for level in max(0, a.spine - 1)...(a.spine + 4) {
+            let wa = a.levels.contains(level) ? a.weight(level) : 0, wb = b.levels.contains(level) ? b.weight(level) : 0
+            if abs(wa - wb) > 0.01 { worst = max(worst, 99); worstK = k }
+        }
+    }
+    check(spineChanges >= 6, "the spine passes level to level across the zoom (\(spineChanges) changes)")
+    check(worst < 1.5, "no jump: a 0.01 % zoom moves any emoji's point under 1.5 points and any level's weight under 0.01 (worst \(worst) at k \(worstK))")
 }
 
 private func tickChecks() {
-    let ss = JournalWave.strands(k: 0.002, height: 700, half: 160)
-    guard let s = ss.first(where: { $0.level == 6 }) else { return check(false, "η strand at k 0.002: \(ss.map(\.level))") }
-    let frame = JournalWaveFrame(top: vectorA, k: 0.002)
+    let k = 0.002
+    let frame = JournalWaveFrame(top: vectorA, k: k)
     guard let p0 = clock.position(at: frame.t(700)), let p1 = clock.position(at: frame.t(0)) else { return check(false, "positions") }
-    let ticks = JournalWave.ticks(s, from: p0, to: p1)
+    let ticks = JournalArcs.ticks(level: 6, from: p0, to: p1)
     let starts = clock.boundaries(level: 6, from: frame.t(700), to: frame.t(0)).filter { $0.time >= frame.t(700) && $0.time <= frame.t(0) }
     check(ticks.count == starts.count && !ticks.isEmpty, "every Helion start in view: \(ticks.count) of \(starts.count)")
     let exact = zip(ticks.reversed(), starts).allSatisfy { abs($0.time - $1.time) < 1e-3 && $0.cycle == $1.idx }
     check(exact, "ticks are the engine's cycle starts")
     check(zip(ticks, ticks.dropFirst()).allSatisfy { $0.time > $1.time }, "latest first")
-    check(JournalWave.frameLevel(ss, height: 700).map { $0.cyclePoints <= 1.6 * 700 } ?? false, "the framing level's cycles fit the screen")
+    for k in zooms(step: 0.3) {
+        let z = JournalArcs.zoom(k: k, radius: radius)
+        if let l = JournalArcs.frameLevel(z, height: 700) {
+            check(l <= z.spine && clock.levelInfo(l).meanSeconds * k <= 1.6 * 700, "k \(k): the framing level lies on the axis and fits the screen")
+        }
+    }
     let utc = EarthFormatter(zone: "UTC")
-    check(JournalWave.earthTick(vectorA, level: 2, earth: utc) == "Oct 2026" && JournalWave.earthTick(vectorA, level: 3, earth: utc) == "8 Oct 2026"
-          && JournalWave.earthTick(vectorA, level: 6, earth: utc) == "Thu 8 Oct 12:00" && JournalWave.earthTick(vectorA, level: 8, earth: utc) == "12:00",
-          "Earth labels by level: \(JournalWave.earthTick(vectorA, level: 6, earth: utc))")
+    check(JournalArcs.earthTick(vectorA, level: 2, earth: utc) == "Oct 2026" && JournalArcs.earthTick(vectorA, level: 3, earth: utc) == "8 Oct 2026"
+          && JournalArcs.earthTick(vectorA, level: 6, earth: utc) == "Thu 8 Oct 12:00" && JournalArcs.earthTick(vectorA, level: 8, earth: utc) == "12:00",
+          "Earth labels by level: \(JournalArcs.earthTick(vectorA, level: 6, earth: utc))")
 }
 
 // MARK: - Placement
@@ -325,10 +460,8 @@ private func placementChecks() {
     // hundreds of entries on a real wave: no two badges overlap, every entry is in exactly one badge
     let k = 0.004
     let wave = JournalWaveFrame(top: vectorA, k: k)
-    let ss = JournalWave.strands(k: k, height: 700, half: 160)
-    let point: (Double) -> JournalWavePoint = { t in
-        JournalWavePoint(x: 210 + JournalWave.offset(clock.position(at: t) ?? 0, ss, through: ss.count - 1), y: wave.y(t))
-    }
+    let layout = JournalArcLayout(zoom: JournalArcs.zoom(k: k, radius: 105), x0: 210, y: wave.y)
+    let point: (Double) -> JournalWavePoint = { layout.point($0)! }
     var rng: UInt64 = 0x9E37_79B9
     func random() -> Double {
         rng ^= rng << 13; rng ^= rng >> 7; rng ^= rng << 17
@@ -340,10 +473,10 @@ private func placementChecks() {
         t -= random() < 0.3 ? random() * 300 : random() * 9000
         pins.append(JournalWavePin(id: "r\(i)", time: t, symbol: "e:x"))
     }
-    let placed = JournalWavePlacer.place(pins, size: size, gap: gap, xRange: 50...370, point: point)
+    let placed = JournalWavePlacer.place(pins, size: size, gap: gap, xRange: 50...370, slack: 105, point: point)
     var overlap = false
     for i in placed.indices {
-        for j in placed.indices where j > i && placed[j].y - placed[i].y < d {
+        for j in placed.indices where j > i && abs(placed[j].y - placed[i].y) < d {
             if hypot(placed[i].x - placed[j].x, placed[i].y - placed[j].y) < d - 1e-6 { overlap = true }
         }
     }
@@ -357,7 +490,7 @@ private func placementChecks() {
     let placed2 = JournalWavePlacer.place(Array(pins.prefix(30)), size: size, gap: gap, xRange: 50...370) { t in
         JournalWavePoint(x: 210, y: wave2.y(t))
     }
-    let clustered1 = JournalWavePlacer.place(Array(pins.prefix(30)), size: size, gap: gap, xRange: 50...370, point: point).filter(\.isCluster).count
+    let clustered1 = JournalWavePlacer.place(Array(pins.prefix(30)), size: size, gap: gap, xRange: 50...370, slack: 105, point: point).filter(\.isCluster).count
     check(placed2.filter(\.isCluster).count <= clustered1, "closer, fewer clusters (\(placed2.filter(\.isCluster).count) ≤ \(clustered1))")
 
     // hits
