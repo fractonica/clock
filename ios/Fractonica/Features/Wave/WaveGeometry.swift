@@ -68,8 +68,8 @@ struct WaveArc: Equatable, Sendable {
 
     /// The library's child half-arc (fractonica.js `child()`): half-arc `local` of the `m` this arc divides into, whose
     /// index in its level is `index` (its parity picks crest or trough). The child is a circle orthogonal to this one
-    /// through the ends of its stretch: it leaves and rejoins this arc at right angles, a crest looping out past it
-    /// and a trough dipping back in, so a level rides its parent as loops perpendicular to it.
+    /// through the ends of its stretch: it leaves and rejoins this arc at right angles, crests and troughs on
+    /// alternate sides of it, so a level rides its parent as loops perpendicular to it.
     func child(m: Int, local: Int, index: Int64) -> WaveArc {
         if m == 1 { return self }
         let delta = sweep / Double(m)

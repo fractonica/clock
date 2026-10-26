@@ -10,8 +10,14 @@ extension JournalWavePainter {
     /// The event names of the half-arcs that read as the wave (the spine, or its children as they grow into the next
     /// spine): a tick across each start, apex and end, named "peak" or "valley" at the apex and "node" or "end" where a
     /// half ends; and the loop numbers of the finer half-arcs big enough to carry one (signed: + crest, − trough).
-    func drawMarks(_ context: inout GraphicsContext, _ zoom: JournalArcZoom, _ arcs: [[JournalArc]], dy: Double, h: Double) {
+    func drawMarks(_ context: inout GraphicsContext, _ zoom: JournalArcZoom, _ arcs: [[JournalArc]], dy: Double, w: Double, h: Double) {
         let scale = context.environment.displayScale
+        let left = Self.margin(w) + 2, right = w - 6
+        /// A label's rectangle centred at c, kept inside the column.
+        func box(_ c: CGPoint, _ size: CGSize) -> CGRect {
+            let x = min(right - size.width, max(left, c.x - size.width / 2))
+            return CGRect(x: x, y: c.y - size.height / 2, width: size.width, height: size.height)
+        }
         var budget = 90
         for (i, list) in arcs.enumerated() {
             let level = zoom.spine + i
@@ -24,7 +30,7 @@ extension JournalWavePainter {
             let reach = 14 + 0.5 * zoom.chord(level + 1) * min(1, 3 * zoom.weight(level + 1))
             var ticks = Path()
             var faded = context
-            faded.opacity = max(named, numbered)
+            faded.opacity = named > 0.05 ? named : numbered
             for item in list {
                 let a = item.arc
                 let top = min(a.cy - a.radius, a.point(0).y, a.point(1).y) + dy
@@ -45,11 +51,7 @@ extension JournalWavePainter {
                             Text(verbatim: text).font(.system(size: 10, weight: .medium, design: .monospaced)).foregroundStyle(Theme.ink2)
                                 .padding(.horizontal, 3).background(Theme.background.opacity(0.72), in: .capsule)
                         }
-                        let c = CGPoint(x: p.x + n.x * reach, y: y + n.y * reach)
-                        var l = context
-                        l.opacity = named
-                        l.draw(label.image, in: CGRect(x: c.x - label.size.width / 2, y: c.y - label.size.height / 2,
-                                                       width: label.size.width, height: label.size.height))
+                        faded.draw(label.image, in: box(CGPoint(x: p.x + n.x * reach, y: y + n.y * reach), label.size))
                     }
                 } else if numbered > 0.05, budget > 0 {
                     let p = a.point(0.5)
@@ -61,8 +63,7 @@ extension JournalWavePainter {
                     let label = cache.labels.label("o|\(level)|\(text)", scale: scale) {
                         Text(verbatim: text).font(.system(size: 11, weight: .semibold)).foregroundStyle(Theme.levelColor(level, lightness: 0.74))
                     }
-                    faded.draw(label.image, in: CGRect(x: p.x + n.x * 11 - label.size.width / 2, y: y + n.y * 11 - label.size.height / 2,
-                                                       width: label.size.width, height: label.size.height))
+                    faded.draw(label.image, in: box(CGPoint(x: p.x + n.x * 11, y: y + n.y * 11), label.size))
                 }
             }
             if named > 0.05 {
@@ -206,8 +207,11 @@ extension JournalWavePainter {
         let size = JournalWaveModel.badge
         let reach = 2 * (size + JournalWaveModel.badgeGap) + layout.zoom.radius
         let visible = model.pins(from: frame.t(h + reach), to: frame.t(-reach))
+        let dy = (frame.top - cache.anchor) * frame.k
         let badges = JournalWavePlacer.place(Array(visible), size: size, gap: JournalWaveModel.badgeGap,
-                                             xRange: (margin + 2)...(w - Self.controlsWidth + 6), slack: layout.zoom.radius) { layout.point($0) }
+                                             xRange: (margin + 2)...(w - Self.controlsWidth + 6), slack: layout.zoom.radius) { t in
+            cache.point(t).map { JournalWavePoint(x: $0.x, y: $0.y + dy) }
+        }
         model.hits.badges = badges
         guard !badges.isEmpty else { return badges }
         var tethers = Path()

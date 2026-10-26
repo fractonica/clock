@@ -130,14 +130,15 @@ struct JournalArcZoom: Equatable, Sendable {
 
     /// How strongly a level shows (0 … 1): by its depth, and faded out while its loops are too small to see.
     func weight(_ level: Int) -> Double {
-        JournalArcs.depthOpacity(depth(level)) * JournalArcs.smoothstep(1.5, 7, chord(level))
+        JournalArcs.depthOpacity(depth(level)) * JournalArcs.sizeFade(chord(level))
     }
 
     /// Its line width, by depth.
     func lineWidth(_ level: Int) -> Double { JournalArcs.depthWidth(depth(level)) }
 
-    /// The levels worth drawing, coarsest first.
-    var drawn: [Int] { levels.filter { weight($0) > 0.004 } }
+    /// The levels worth drawing, coarsest first (a level too faint to see is not drawn: its tiny loops would cost
+    /// the most to stroke).
+    var drawn: [Int] { levels.filter { weight($0) > 0.03 } }
 }
 
 /// One half-arc of the wave as laid out: its level, its index in the level (crest even, trough odd) and its circle.
@@ -182,6 +183,9 @@ enum JournalArcs {
         return JournalArcZoom(spine: spine, lambda: lambda, sweep: sweep(lambda: lambda, factor: m), radius: radius, k: k,
                               chords: (0...3).map { chord(spine + $0) })
     }
+
+    /// A level fades in as its half-arcs grow from 2 to 8 points.
+    static func sizeFade(_ chord: Double) -> Double { smoothstep(2, 8, chord) }
 
     /// A level's opacity by its depth below the spine: the spine full, its children a little over half, the
     /// grandchildren a quarter, nothing at depth 3; a spine opening into a straight line fades into the axis.

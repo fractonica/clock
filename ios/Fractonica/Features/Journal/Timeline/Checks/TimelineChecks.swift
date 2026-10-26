@@ -231,7 +231,7 @@ private func arcZoomChecks() {
         ok = ok && z.lambda >= 0 && z.lambda < 1 && z.sweep > 0 && z.sweep <= .pi + 1e-12
             && z.chord(z.spine + 1) < c0 && (z.spine == 0 || z.chord(z.spine) >= c0 - 1e-9) && z.chord(z.spine) < m * c0
             && abs(z.chord(z.spine) / z.chord(z.spine + 1) - m) < 1e-6
-        okWeights = okWeights && abs(z.weight(z.spine + 1) - JournalArcs.depthOpacity(1 - z.lambda) * JournalArcs.smoothstep(1.5, 7, z.chord(z.spine + 1))) < 1e-12
+        okWeights = okWeights && abs(z.weight(z.spine + 1) - JournalArcs.depthOpacity(1 - z.lambda) * JournalArcs.sizeFade(z.chord(z.spine + 1))) < 1e-12
             && z.drawn.first.map { $0 >= z.spine } ?? false && !z.drawn.isEmpty && z.drawn.count <= 4
     }
     check(ok, "every zoom: the spine's chord lies within its band, its children's below one diameter")

@@ -201,6 +201,9 @@ final class JournalWaveCache {
     private var lo = 0.0
     private var hi = 0.0
     private var names: [Int64: String] = [:]
+    /// The layout in the cache's coordinates, and the wave points of moments worked out so far (kept while it lasts).
+    private var layout: JournalArcLayout?
+    private var points: [Double: JournalWavePoint] = [:]
     let clock = FractonicaClock.shared
     /// The texts as pictures.
     let labels = JournalWaveLabels()
@@ -222,14 +225,19 @@ final class JournalWaveCache {
     private func rebuild(_ f: JournalWaveFrame, key: Key) {
         let signpost = JournalWaveSignposts.signposter.beginInterval("wave paths")
         defer { JournalWaveSignposts.signposter.endInterval("wave paths", signpost) }
+        // while a zoom changes it every frame, the window is only a little taller than the screen
+        let zooming = self.key.map { $0.k != key.k && $0.width == key.width && $0.height == key.height } ?? false
         self.key = key
         let span = key.height / f.k
-        lo = max(clock.tMin, f.t(key.height) - 0.75 * span)
-        hi = min(clock.tMax, f.top + 0.75 * span)
+        let extra = (zooming ? 0.25 : 0.75) * span
+        lo = max(clock.tMin, f.t(key.height) - extra)
+        hi = min(clock.tMax, f.top + extra)
         anchor = f.top
+        points.removeAll(keepingCapacity: true)
         zoom = JournalArcs.zoom(k: f.k, radius: key.radius, clock: clock)
         let k = f.k, a = anchor
         let layout = JournalArcLayout(zoom: zoom, x0: key.x0, clock: clock) { t in (a - t) * k }
+        self.layout = layout
         let drawn = zoom.drawn
         guard hi > lo, let last = drawn.last else {
             lines = []
@@ -269,6 +277,16 @@ final class JournalWaveCache {
             let p = a.point(a0 + (a1 - a0) * Double(i) / Double(n))
             if i == 0 { path.move(to: CGPoint(x: p.x, y: p.y)) } else { path.addLine(to: CGPoint(x: p.x, y: p.y)) }
         }
+    }
+
+    /// A moment's point on the wave in the cache's coordinates (add `dy` for the frame's), memoised until the next
+    /// rebuild: scrolling then places the emoji without tracing them again.
+    func point(_ t: Double) -> JournalWavePoint? {
+        if let p = points[t] { return p }
+        guard let p = layout?.point(t) else { return nil }
+        if points.count > 4000 { points.removeAll(keepingCapacity: true) }
+        points[t] = p
+        return p
     }
 
     /// "δ#3", "23η": a cycle start's short label.
@@ -345,16 +363,17 @@ struct JournalWavePainter {
         // the levels, coarsest first; the one nearest the spine's place glows
         var moved = context
         moved.translateBy(x: 0, y: dy)
+        let glowing = lines.min { abs($0.depth) < abs($1.depth) }?.level
         for line in lines {
             let glow = line.weight * max(0, 1 - abs(line.depth))
-            if glow > 0.05 {
+            if glow > 0.05, line.level == glowing {
                 moved.stroke(line.path, with: .color(Theme.levelColor(line.level, opacity: 0.16 * glow)),
                              style: StrokeStyle(lineWidth: line.width + 4.5, lineCap: .round, lineJoin: .round))
             }
             moved.stroke(line.path, with: .color(Theme.levelColor(line.level, opacity: 0.95 * line.weight, lightness: 0.6 + 0.08 * glow)),
                          style: StrokeStyle(lineWidth: line.width, lineCap: .round, lineJoin: .round))
         }
-        drawMarks(&context, zoom, arcs, dy: dy, h: h)
+        drawMarks(&context, zoom, arcs, dy: dy, w: w, h: h)
 
         drawNow(&context, layout, w: w, h: h, margin: margin)
         let badges = drawBadges(&context, layout, w: w, h: h, margin: margin)
