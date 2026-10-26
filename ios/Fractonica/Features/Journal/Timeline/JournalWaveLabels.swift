@@ -12,12 +12,15 @@ extension JournalWavePainter {
     /// half ends; and the loop numbers of the finer half-arcs big enough to carry one (signed: + crest, − trough).
     func drawMarks(_ context: inout GraphicsContext, _ zoom: JournalArcZoom, _ arcs: [[JournalArc]], dy: Double, w: Double, h: Double) {
         let scale = context.environment.displayScale
-        let left = Self.margin(w) + 2, right = w - 6
-        /// A label's rectangle centred at c, kept inside the column.
+        let left = Self.margin(w) + 2
+        /// A label's rectangle centred at c, kept inside the column (and off the zoom buttons at the bottom right).
         func box(_ c: CGPoint, _ size: CGSize) -> CGRect {
+            let right = c.y > h - Self.controlsHeight ? w - Self.controlsWidth - 6 : w - 6
             let x = min(right - size.width, max(left, c.x - size.width / 2))
             return CGRect(x: x, y: c.y - size.height / 2, width: size.width, height: size.height)
         }
+        // the event names come first; a loop number that would sit on one gives way
+        var names: [CGRect] = []
         var budget = 90
         for (i, list) in arcs.enumerated() {
             let level = zoom.spine + i
@@ -31,6 +34,8 @@ extension JournalWavePainter {
             var ticks = Path()
             var faded = context
             faded.opacity = named > 0.05 ? named : numbered
+            // the names go on after the ticks, so their halo keeps a tick from crossing them
+            var queued: [(image: Image, rect: CGRect)] = []
             for item in list {
                 let a = item.arc
                 let top = min(a.cy - a.radius, a.point(0).y, a.point(1).y) + dy
@@ -38,7 +43,8 @@ extension JournalWavePainter {
                 guard bottom > -20, top < h + 20 else { continue }
                 if named > 0.05 {
                     let crest = item.idx % 2 == 0
-                    for (u, text) in [(0.5, crest ? "peak" : "valley"), (1.0, crest ? "node" : "end")] {
+                    // the apex carries the level's letter too, so the wave names its levels as it goes
+                    for (u, text, lettered) in [(0.5, crest ? "peak" : "valley", true), (1.0, crest ? "node" : "end", false)] {
                         let p = a.point(u)
                         let n = normal(a, u)
                         let y = p.y + dy
@@ -47,11 +53,19 @@ extension JournalWavePainter {
                         ticks.addLine(to: CGPoint(x: p.x + n.x * 5, y: y + n.y * 5))
                         guard budget > 0 else { continue }
                         budget -= 1
-                        let label = cache.labels.label("e|\(text)", scale: scale) {
-                            Text(verbatim: text).font(.system(size: 10, weight: .medium, design: .monospaced)).foregroundStyle(Theme.ink2)
-                                .padding(.horizontal, 3).background(Theme.background.opacity(0.72), in: .capsule)
+                        let letter = lettered ? Fractonica.periodName(level).text : ""
+                        let label = cache.labels.label("e|\(letter)|\(text)", scale: scale) {
+                            HStack(spacing: 3) {
+                                if !letter.isEmpty {
+                                    Text(verbatim: letter).font(.system(size: 11, weight: .bold)).foregroundStyle(Theme.levelColor(level, lightness: 0.76))
+                                }
+                                Text(verbatim: text).font(.system(size: 10, weight: .medium, design: .monospaced)).foregroundStyle(Theme.ink2)
+                            }
+                            .padding(.horizontal, 3).background(Theme.background.opacity(0.72), in: .capsule)
                         }
-                        faded.draw(label.image, in: box(CGPoint(x: p.x + n.x * reach, y: y + n.y * reach), label.size))
+                        let rect = box(CGPoint(x: p.x + n.x * reach, y: y + n.y * reach), label.size)
+                        names.append(rect)
+                        queued.append((label.image, rect))
                     }
                 } else if numbered > 0.05, budget > 0 {
                     let p = a.point(0.5)
@@ -63,11 +77,14 @@ extension JournalWavePainter {
                     let label = cache.labels.label("o|\(level)|\(text)", scale: scale) {
                         Text(verbatim: text).font(.system(size: 11, weight: .semibold)).foregroundStyle(Theme.levelColor(level, lightness: 0.74))
                     }
-                    faded.draw(label.image, in: box(CGPoint(x: p.x + n.x * 11, y: y + n.y * 11), label.size))
+                    let rect = box(CGPoint(x: p.x + n.x * 11, y: y + n.y * 11), label.size)
+                    if names.contains(where: { $0.intersects(rect) }) { continue }
+                    faded.draw(label.image, in: rect)
                 }
             }
             if named > 0.05 {
                 context.stroke(ticks, with: .color(Theme.levelColor(level, opacity: 0.9 * named, lightness: 0.74)), lineWidth: 1.5)
+                for q in queued { faded.draw(q.image, in: q.rect) }
             }
         }
     }

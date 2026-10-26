@@ -326,8 +326,9 @@ struct JournalWavePainter {
 
     /// The label margin on the left.
     static func margin(_ width: Double) -> Double { width > 700 ? 92 : 64 }
-    /// The floating zoom buttons' strip on the right.
+    /// The floating zoom buttons' strip on the right, and how tall it is from the bottom.
     static let controlsWidth = 60.0
+    static let controlsHeight = 200.0
 
     /// The wave's axis and radius in a view: the middle of the column between the margin and the buttons, and a radius
     /// that leaves room for the loops either side (and lets a few arcs share a tall screen).
