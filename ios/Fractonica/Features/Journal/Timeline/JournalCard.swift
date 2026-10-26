@@ -41,6 +41,7 @@ struct JournalCard: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Theme.panel, in: .rect(cornerRadius: 22, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(Theme.line, lineWidth: 1))
+        .rarityFrame(for: record)
         .contentShape(.rect(cornerRadius: 22, style: .continuous))
         .accessibilityElement(children: .combine)
     }

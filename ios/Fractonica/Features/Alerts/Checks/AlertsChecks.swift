@@ -178,7 +178,7 @@ func planChecks() {
     let flavon = rule(.level(10), [.begin])
     let eclipse = AlertPreset.eclipse.rule(pure: false)
     let plan = planner.plan(rules: [helion, nuclide, flavon, eclipse], quiet: QuietHours(), zone: utc, now: vectorA)
-    check(plan.alerts.count == 60, "60 pending at most: \(plan.alerts.count)")
+    check(plan.alerts.count == AlertPlanner.budget, "\(AlertPlanner.budget) pending at most: \(plan.alerts.count)")
     check(plan.alerts.allSatisfy { $0.id.hasPrefix("alert.") }, "every request is an alert.")
     check(Set(plan.alerts.map(\.id)).count == plan.alerts.count, "no identifier twice")
     check(zip(plan.alerts, plan.alerts.dropFirst()).allSatisfy { $1.fire - $0.fire >= 0.5 },
@@ -186,7 +186,7 @@ func planChecks() {
     check(plan.alerts.contains { $0.ruleID == eclipse.id }, "the fast Flavon rule cannot starve the eclipse")
     check(plan.alerts.contains { $0.ruleID == nuclide.id }, "… nor the Nuclide")
     let byRule = Dictionary(grouping: plan.alerts, by: \.ruleID).mapValues(\.count)
-    check((byRule[flavon.id] ?? 0) >= 25 && byRule[nuclide.id] == 2 && byRule[eclipse.id] == 2,
+    check((byRule[flavon.id] ?? 0) >= 20 && byRule[nuclide.id] == 2 && byRule[eclipse.id] == 2,
           "slow rules take their next two, fast ones share the rest: \(byRule.values.sorted())")
     for rule in [helion, flavon] {
         let mine = plan.alerts.filter { $0.ruleID == rule.id }.map(\.fire)

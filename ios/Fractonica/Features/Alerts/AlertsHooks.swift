@@ -91,6 +91,7 @@ private enum BackgroundRefresh {
                 AlertsHooks.submitRefresh()
                 AlertStore.shared.start()
                 await AlertStore.shared.refill()
+                await MomentsHooks.refill()
                 AlertsHooks.submitRefresh()
                 box.complete(success: !Task.isCancelled)
             }

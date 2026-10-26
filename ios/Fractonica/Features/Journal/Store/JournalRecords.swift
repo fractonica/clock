@@ -76,6 +76,18 @@ extension HubRecord {
     }
 }
 
+extension JSONValue {
+    /// An entry's new `data` (this) with the fields of its `old` data that the composer does not edit kept as they
+    /// were: `capture` (Moments) and anything a newer client added.
+    func keepingFields(of old: JSONValue) -> JSONValue {
+        guard var o = object, let old = old.object else { return self }
+        for (key, value) in old where !["emoji", "title", "markdown", "transcript"].contains(key) && o[key] == nil {
+            o[key] = value
+        }
+        return .object(o)
+    }
+}
+
 /// A record of another kind, as a compact row shows it.
 struct GenericRecordSummary: Hashable, Sendable {
     var emoji: String?

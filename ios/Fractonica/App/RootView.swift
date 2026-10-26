@@ -20,6 +20,7 @@ struct RootView: View {
             .toastOverlay()
             .modifier(Presentations())
             .modifier(HubPresentations())
+            .modifier(MomentsPresentations())
             .onChange(of: isCompact, initial: true) { _, compact in
                 router.isCompact = compact
                 router.openLaunchLink()
@@ -365,6 +366,7 @@ private struct ScreenChrome: ViewModifier {
 
     func body(content: Content) -> some View {
         content
+            .momentsHeader(screen)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             #if os(iOS)
             .transportInset()

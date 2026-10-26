@@ -43,7 +43,7 @@ struct EntryDetailView: View {
         let audios = media.filter { $0.role == "audio" }
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
-                header(entry, words)
+                header(entry, words).momentHeader(for: record)
                 if !visuals.isEmpty {
                     DetailGallery(visuals: visuals, words: words, time: record.time) { index in
                         gallery = GalleryStart(index: index)

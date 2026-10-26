@@ -1,0 +1,8 @@
+# The app files MomentsChecks.swift compiles against (relative to ios/).
+Fractonica/Features/Journal/Moments/MomentMath.swift
+Fractonica/Features/Journal/Store/HubRecord.swift
+Fractonica/Features/Journal/Store/RecordSyncing.swift
+Fractonica/Features/Journal/Store/JournalRecords.swift
+Fractonica/Features/Journal/Store/JournalDisk.swift
+Fractonica/Features/Journal/Store/JournalStore.swift
+Shared/Notation+Standard.swift
