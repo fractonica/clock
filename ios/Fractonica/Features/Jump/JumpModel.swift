@@ -5,7 +5,7 @@ import Observation
 /// The jump screen's state: the text in the field, what it reads as right now, and the recent jumps of the mode.
 @MainActor @Observable
 final class JumpModel {
-    /// The text in the search field (`JumpSearch`, shared with the field the iPhone tab bar shows).
+    /// The text in the search field (kept in `JumpSearch`, so it outlives the iPhone's Jump sheet).
     var query: String {
         get { search.query }
         set { search.query = newValue }

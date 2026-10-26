@@ -247,6 +247,17 @@ struct MomentCalendar: Sendable {
         return clock.time(atPositionNumerator: n, denominator: prefixes[10]) ?? m.time - 85.5
     }
 
+    /// When moment `m`'s capture `offset` Flavons from it happens: exactly that many Flavons away in position, on the
+    /// first millisecond at or after the exact instant (the moment itself for 0).
+    func captureTime(of m: Moment, offset: Int) -> Double {
+        if offset == 0 { return m.time }
+        let n = Int128(m.index) * flavonsPerQuarter + 4 * Int128(offset)
+        guard let exact = clock.time(atPositionNumerator: n, denominator: prefixes[10]) else {
+            return m.time + Double(offset) * clock.levelInfo(10).meanSeconds
+        }
+        return (exact * 1000).rounded(.up) / 1000
+    }
+
     /// Flavons (with their fraction) from `t` to moment `m`, measured in position as the clock counts them.
     func flavons(from t: Double, to m: Moment) -> Double {
         guard let p = clock.position(at: t) else { return (m.time - t) / clock.levelInfo(10).meanSeconds }
@@ -346,6 +357,8 @@ struct MomentSettings: Hashable, Codable, Sendable {
     var voice = true
     /// Open the instant view by itself when a moment is announced while the app is in front.
     var autoOpen = true
+    /// How many times a moment is captured, one Flavon apart and centred on it (`MomentCaptures`): 1, 3 or 5.
+    var captures = MomentCaptures.defaultCount
 
     init() {}
 
@@ -358,9 +371,11 @@ struct MomentSettings: Hashable, Codable, Sendable {
         quiet = (try? c.decodeIfPresent(MomentQuietHours.self, forKey: .quiet)) ?? d.quiet
         voice = (try? c.decodeIfPresent(Bool.self, forKey: .voice)) ?? d.voice
         autoOpen = (try? c.decodeIfPresent(Bool.self, forKey: .autoOpen)) ?? d.autoOpen
+        captures = (try? c.decodeIfPresent(Int.self, forKey: .captures)).flatMap { $0 }
+            .flatMap { MomentCaptures.choices.contains($0) ? $0 : nil } ?? d.captures
     }
 
-    private enum CodingKeys: String, CodingKey { case enabled, helion, quiet, voice, autoOpen }
+    private enum CodingKeys: String, CodingKey { case enabled, helion, quiet, voice, autoOpen, captures }
 
     /// Whether the settings ask for this kind of moment (quiet hours aside).
     func asks(_ m: Moment) -> Bool {
@@ -375,6 +390,91 @@ struct MomentSettings: Hashable, Codable, Sendable {
     /// Whether moment `m` is announced: asked for and outside quiet hours. Only these count for the streak.
     func prompts(_ m: Moment, zone: TimeZone) -> Bool {
         asks(m) && !quiet.contains(m.time, zone: zone)
+    }
+}
+
+// MARK: - Captures
+
+/// The captures of one moment: `count` of them one Flavon apart, centred on the moment (3: one Flavon before, at the
+/// moment, one Flavon after), each the front and back cameras at once. Their photos are named as hub/API.md says:
+/// `front` and `back` for a single capture; `front@-1`, `back@-1`, `front@0` … (the offset from the moment in Flavons)
+/// for several.
+enum MomentCaptures {
+    static let choices = [1, 3, 5]
+    static let defaultCount = 3
+
+    /// The offsets in Flavons, earliest first: [0], [-1, 0, 1], [-2, -1, 0, 1, 2]. A count that is not one of the
+    /// choices takes the default.
+    static func offsets(count: Int) -> [Int] {
+        let n = choices.contains(count) ? count : defaultCount
+        return Array(-(n / 2)...(n / 2))
+    }
+
+    /// A photo's name: the camera ("front", "back"; "camera" on a Mac), with the offset after "@" when there are
+    /// several captures.
+    static func photoName(camera: String, offset: Int, count: Int) -> String {
+        count <= 1 ? camera : "\(camera)@\(offset)"
+    }
+
+    /// Reads a photo's name: its camera and, for one of several captures, its offset ("front@-1" → front, -1). Nil for
+    /// a name whose "@" is not followed by a whole number.
+    static func parse(_ name: String) -> (camera: String, offset: Int?)? {
+        guard let at = name.lastIndex(of: "@") else { return (name, nil) }
+        guard let offset = Int(name[name.index(after: at)...]) else { return nil }
+        return (String(name[..<at]), offset)
+    }
+
+    /// The order photos keep in a record (its display order): the back camera's captures from the earliest on, then
+    /// the front camera's, so a card's first pictures run through the moment; any other name last.
+    static func sortKey(_ name: String?) -> (Int, Int, String) {
+        guard let name, let p = parse(name) else { return (3, 0, name ?? "") }
+        let camera = p.camera == "back" ? 0 : p.camera == "front" ? 1 : 2
+        return (camera, p.offset ?? 0, name)
+    }
+
+    static func sorted(_ names: [String]) -> [String] {
+        names.sorted { sortKey($0) < sortKey($1) }
+    }
+
+    /// The offset in words: "1λ before", "At the moment", "2λ after".
+    static func offsetLabel(_ offset: Int) -> String {
+        offset == 0 ? "At the moment" : offset < 0 ? "\(-offset)λ before" : "\(offset)λ after"
+    }
+
+    /// The offset as a short tag: "−1λ", "0", "+2λ".
+    static func offsetTag(_ offset: Int) -> String {
+        offset == 0 ? "0" : offset < 0 ? "\u{2212}\(-offset)λ" : "+\(offset)λ"
+    }
+}
+
+/// The photos of one capture of a moment: its offset in Flavons and its photos by camera.
+struct MomentCaptureGroup<Item> {
+    var offset: Int
+    var items: [(camera: String, item: Item)]
+
+    /// The back camera's photo, else the first.
+    var main: Item? { (items.first { $0.camera == "back" } ?? items.first)?.item }
+    /// The other camera's photo (the front one, BeReal's inset), when there are two.
+    var inset: Item? {
+        guard items.count > 1 else { return nil }
+        let main = items.firstIndex { $0.camera == "back" } ?? 0
+        return items.indices.first { $0 != main }.map { items[$0].item }
+    }
+
+    /// Groups named items by capture, earliest first; nil unless every item's name says which of several captures it
+    /// belongs to (a single capture's `front` and `back`, or other media, show as they are).
+    static func grouped(_ list: [Item], name: (Item) -> String?) -> [MomentCaptureGroup]? {
+        var groups: [Int: [(camera: String, item: Item)]] = [:]
+        for item in list {
+            guard let n = name(item), let p = MomentCaptures.parse(n), let offset = p.offset else { return nil }
+            groups[offset, default: []].append((p.camera, item))
+        }
+        guard !groups.isEmpty else { return nil }
+        return groups.keys.sorted().map { offset in
+            MomentCaptureGroup(offset: offset, items: groups[offset]!.sorted {
+                MomentCaptures.sortKey($0.camera) < MomentCaptures.sortKey($1.camera)
+            })
+        }
     }
 }
 

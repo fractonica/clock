@@ -1,11 +1,11 @@
 import SwiftUI
 
 /// Menu commands and keyboard shortcuts, mirroring the web app's keys: Space play / pause the time-lapse, N back to
-/// live, [ ] previous / next cycle of the selected level, P pure mode, M sound (⇧⌘M on iPad), ⌘K jump, ⌘1…⌘9 screens
-/// (Now, Journal, the cycle views, Month, Converter, Sound), ⌘N a new journal entry. On macOS they fill the File,
-/// Clock and View menus; on iPad they appear in the menu bar and the keyboard shortcut overlay. On macOS the bare
-/// keys yield to a focused text field (AppKit offers a key to the first responder before the menus), so typing a date
-/// or a name does not trigger them.
+/// live, [ ] previous / next cycle of the selected level, P pure mode, M sound (⇧⌘M on iPad), ⌘K jump, ⌘1…⌘9 and ⌘0
+/// screens (Now, Journal, the cycle views, Month, Converter, Sound, Moments), ⌘N a new journal entry. On macOS they
+/// fill the File, Clock and View menus; on iPad they appear in the menu bar and the keyboard shortcut overlay. On
+/// macOS the bare keys yield to a focused text field (AppKit offers a key to the first responder before the menus), so
+/// typing a date or a name does not trigger them.
 struct ClockCommands: Commands {
     let store: ClockStore
     let settings: AppSettings
@@ -17,8 +17,8 @@ struct ClockCommands: Commands {
     @Environment(\.openSettings) private var openSettings
     #endif
 
-    /// The screens with ⌘-number shortcuts, in key order.
-    private static let numbered: [Screen] = [.now, .journal, .rings, .ladder, .wave, .timeline, .month, .converter, .sound]
+    /// The screens with ⌘-number shortcuts, in key order: ⌘1 … ⌘9, then ⌘0 for Moments.
+    private static let numbered: [Screen] = [.now, .journal, .rings, .ladder, .wave, .timeline, .month, .converter, .sound, .moments]
     /// The Clock group, on ⌥⌘-number.
     private static let clockScreens: [Screen] = ScreenGroup.clock.screens
     /// Sound on / off: the bare M on macOS, where bare keys verifiably yield to a focused text field; ⇧⌘M on iPad,
@@ -69,7 +69,7 @@ struct ClockCommands: Commands {
         CommandGroup(before: .sidebar) {
             ForEach(Array(Self.numbered.enumerated()), id: \.element) { i, screen in
                 Button(screen.title) { show(screen) }
-                    .keyboardShortcut(KeyEquivalent(Character(String(i + 1))))
+                    .keyboardShortcut(KeyEquivalent(Character(String((i + 1) % 10))))
             }
             Divider()
             ForEach(Array(Self.clockScreens.enumerated()), id: \.element) { i, screen in

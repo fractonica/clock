@@ -6,8 +6,8 @@ import SwiftUI
 ///     @Environment(AppRouter.self) private var router
 ///     Button("Show on the timeline") { router.show(.timeline) }
 ///
-/// `show(_:)` picks the right presentation for the layout: a tab, a segment of a grouped tab, a sheet (Sound on
-/// iPhone, Settings on iOS) or full screen (Focus; on iPad and Mac the sidebar also lists Focus as a screen of its
+/// `show(_:)` picks the right presentation for the layout: a tab, a segment of a grouped tab, a sheet (Sound and Jump
+/// on iPhone, Settings on iOS) or full screen (Focus; on iPad and Mac the sidebar also lists Focus as a screen of its
 /// own, shown inside the window).
 @MainActor @Observable
 final class AppRouter {
@@ -17,8 +17,8 @@ final class AppRouter {
     var selection: Screen = .now
     /// The screen each iPhone group shows when its tab is selected.
     private(set) var groupSelection: [ScreenGroup: Screen] = [.cycles: .rings, .journal: .journal, .clock: .timer]
-    /// Set by the root view: the iPhone layout (tabs with groups) is showing.
-    var isCompact = false
+    /// The iPhone layout (tabs with groups) is showing; the root view sets it through `setCompact(_:)`.
+    private(set) var isCompact = false
 
     /// Focus mode over everything (a full-screen cover on iOS, its own window on macOS).
     var isFocusPresented = false
@@ -34,6 +34,9 @@ final class AppRouter {
     var isHubSettingsPresented = false
     /// The printable Diary as a sheet (iPhone only, opened from the Journal; iPad and Mac show it as a screen).
     var isDiaryPresented = false
+    /// Jump as a sheet (iPhone only, from the Cycles tab's toolbar or ⌘K; iPad and Mac list it in the sidebar as the
+    /// search item).
+    var isJumpPresented = false
     /// A link to open as soon as the root knows its layout (the `-FXTab` and `-FXLink` launch arguments).
     @ObservationIgnored var launchLink: AppLink?
 
@@ -44,8 +47,24 @@ final class AppRouter {
         open(link)
     }
 
+    /// The root view's layout changed. Jump is a sidebar screen on iPad and Mac and a sheet on iPhone: the one showing
+    /// moves over to the other form.
+    func setCompact(_ compact: Bool) {
+        guard compact != isCompact else { return }
+        isCompact = compact
+        if compact, selection == .jump {
+            selection = screen(in: .cycles)
+            isJumpPresented = true
+        } else if !compact, isJumpPresented {
+            isJumpPresented = false
+            selection = .jump
+        }
+    }
+
     /// Bring a screen forward.
     func show(_ screen: Screen) {
+        // on iPhone the Jump sheet gives way to whatever comes next (a jump lands on Now)
+        if isCompact, screen != .jump { isJumpPresented = false }
         switch screen {
         case .focus:
             isFocusPresented = true
@@ -53,6 +72,8 @@ final class AppRouter {
             isSettingsPresented = true
         case .sound where isCompact:
             isSoundPresented = true
+        case .jump where isCompact:
+            isJumpPresented = true
         case .diary where isCompact:
             if let group = Screen.journal.group { groupSelection[group] = .journal }
             selection = .journal

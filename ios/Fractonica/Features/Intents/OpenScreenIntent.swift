@@ -17,7 +17,7 @@ enum ScreenIntentHandler {
 /// Opens the app on any screen.
 struct OpenScreenIntent: AppIntent {
     static let title: LocalizedStringResource = "Open Screen"
-    static let description = IntentDescription("Opens Fractonica on a screen: Now, Rings, the Timeline, the Timer …")
+    static let description = IntentDescription("Opens Fractonica on a screen: Now, Rings, the Timeline, Moments, Jump …")
     @available(iOS 26.0, macOS 26.0, *)
     static let supportedModes: IntentModes = .foreground(.immediate)
     #if os(iOS)
@@ -45,9 +45,10 @@ struct OpenScreenIntent: AppIntent {
     }
 }
 
-/// The screens a shortcut can open (`Screen` without Jump and Settings, which open from inside the app).
+/// The screens a shortcut can open (`Screen` without Settings, which opens from inside the app).
 enum OpenScreenOption: String, AppEnum {
-    case now, journal, rings, ladder, wave, timeline, converter, month, diary, sound, timer, stopwatch, alerts, focus
+    case now, journal, moments, rings, ladder, wave, timeline, converter, month, diary, sound, timer, stopwatch, alerts,
+        focus, jump
 
     var screen: Screen { Screen(rawValue: rawValue) ?? .now }
 
@@ -56,6 +57,7 @@ enum OpenScreenOption: String, AppEnum {
     static let caseDisplayRepresentations: [OpenScreenOption: DisplayRepresentation] = [
         .now: DisplayRepresentation(title: "Now", image: .init(systemName: "clock")),
         .journal: DisplayRepresentation(title: "Journal", image: .init(systemName: "book.pages")),
+        .moments: DisplayRepresentation(title: "Moments", image: .init(systemName: "flame")),
         .rings: DisplayRepresentation(title: "Rings", image: .init(systemName: "circle.circle")),
         .ladder: DisplayRepresentation(title: "Ladder", image: .init(systemName: "chart.bar.doc.horizontal")),
         .wave: DisplayRepresentation(title: "Wave", image: .init(systemName: "water.waves")),
@@ -68,5 +70,6 @@ enum OpenScreenOption: String, AppEnum {
         .stopwatch: DisplayRepresentation(title: "Stopwatch", image: .init(systemName: "stopwatch")),
         .alerts: DisplayRepresentation(title: "Alerts", image: .init(systemName: "bell")),
         .focus: DisplayRepresentation(title: "Focus", image: .init(systemName: "sparkles")),
+        .jump: DisplayRepresentation(title: "Jump", image: .init(systemName: "magnifyingglass")),
     ]
 }

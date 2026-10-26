@@ -17,6 +17,7 @@ struct MomentsChecks {
         settingsChecks()
         streakChecks()
         captureChecks()
+        multiCaptureChecks()
         await storeChecks()
         soundChecks()
         Checks.finish()
@@ -287,6 +288,63 @@ private func captureChecks() {
     check(cleared["emoji"] == nil && cleared["title"] == nil, "an edit may still clear the emoji and the title")
     check(MomentRarity.allCases.sorted() == MomentRarity.allCases && MomentRarity.cosmic > .mythic, "rarities are ordered")
     check(MomentLevel.allCases.map(\.rarity) == [.rare, .rare, .epic, .legendary, .mythic, .cosmic], "levels give rarities")
+}
+
+/// Several captures of a moment: their offsets, times, photo names (hub/API.md) and the setting.
+private func multiCaptureChecks() {
+    check(MomentCaptures.offsets(count: 1) == [0], "one capture: at the moment")
+    check(MomentCaptures.offsets(count: 3) == [-1, 0, 1], "three: a Flavon before, at, a Flavon after")
+    check(MomentCaptures.offsets(count: 5) == [-2, -1, 0, 1, 2], "five: two Flavons either side")
+    check(MomentCaptures.offsets(count: 4) == [-1, 0, 1] && MomentCaptures.offsets(count: 0) == [-1, 0, 1], "another count takes the default")
+    check(MomentSettings().captures == 3, "three captures by default")
+    // names
+    check(MomentCaptures.photoName(camera: "front", offset: 0, count: 1) == "front"
+          && MomentCaptures.photoName(camera: "back", offset: 0, count: 1) == "back", "a single capture: front, back")
+    let names = MomentCaptures.offsets(count: 3).flatMap { k in
+        ["front", "back"].map { MomentCaptures.photoName(camera: $0, offset: k, count: 3) }
+    }
+    check(names == ["front@-1", "back@-1", "front@0", "back@0", "front@1", "back@1"], "several: front@-1 … back@1: \(names)")
+    check(MomentCaptures.parse("front@-1")! == ("front", -1) && MomentCaptures.parse("back@2")! == ("back", 2), "names read back")
+    check(MomentCaptures.parse("back")! == ("back", nil) && MomentCaptures.parse("x@y") == nil, "plain names, and bad offsets")
+    check(MomentCaptures.sorted(names) == ["back@-1", "back@0", "back@1", "front@-1", "front@0", "front@1"],
+          "kept back first, through the moment, then front: \(MomentCaptures.sorted(names))")
+    check(MomentCaptures.sorted(["front", "back", "voice"]) == ["back", "front", "voice"], "a single capture: back, front")
+    check(MomentCaptures.offsetTag(-1) == "\u{2212}1λ" && MomentCaptures.offsetTag(0) == "0" && MomentCaptures.offsetTag(2) == "+2λ", "tags")
+    check(MomentCaptures.offsetLabel(-2) == "2λ before" && MomentCaptures.offsetLabel(1) == "1λ after", "labels")
+    // grouping
+    let groups = MomentCaptureGroup<String>.grouped(MomentCaptures.sorted(names)) { $0 }
+    check(groups?.map(\.offset) == [-1, 0, 1], "grouped by offset, earliest first")
+    check(groups?.allSatisfy { $0.main?.hasPrefix("back@") == true && $0.inset?.hasPrefix("front@") == true } == true,
+          "each capture: the back photo with the front one as its inset")
+    check(MomentCaptureGroup<String>.grouped(["front", "back"]) { $0 } == nil, "a single capture is not grouped")
+    check(MomentCaptureGroup<String>.grouped(["back@0", "clip"]) { $0 } == nil, "other media: not grouped")
+    check(MomentCaptureGroup<String>.grouped(["camera@-1", "camera@0"]) { $0 }?.map { $0.inset == nil } == [true, true],
+          "one camera: no inset")
+    // times: one Flavon apart in position, the moment itself in the middle
+    let flavon = clock.levelInfo(10).meanSeconds
+    for m in calendar.upcoming(after: vectorA, count: 20) {
+        let times = MomentCaptures.offsets(count: 5).map { calendar.captureTime(of: m, offset: $0) }
+        if times[2] != m.time { check(false, "the middle capture is the moment"); return }
+        for (k, t) in zip(MomentCaptures.offsets(count: 5), times) where k != 0 {
+            let f = calendar.flavons(from: t, to: m)
+            if abs(f + Double(k)) > 0.0002 || t * 1000 != (t * 1000).rounded() || abs(abs(t - m.time) - Double(abs(k)) * flavon) > 0.5 {
+                check(false, "capture \(k): \(f) Flavons from the moment, at \(t)")
+                return
+            }
+        }
+        if !zip(times, times.dropFirst()).allSatisfy({ $0 < $1 }) { check(false, "captures in order"); return }
+        if calendar.promptTime(of: m) >= times[0] { check(false, "the prompt comes before the first capture"); return }
+    }
+    check(true, "captures are a Flavon apart, on the millisecond, around the moment")
+    // the setting, lenient
+    func decoded(_ json: String) -> MomentSettings? { try? JSONDecoder().decode(MomentSettings.self, from: Data(json.utf8)) }
+    check(decoded(#"{"captures":5}"#)?.captures == 5 && decoded(#"{"captures":1}"#)?.captures == 1, "1 and 5 read")
+    check(decoded(#"{"captures":4}"#)?.captures == 3 && decoded(#"{"captures":"x"}"#)?.captures == 3
+          && decoded(#"{"captures":null}"#)?.captures == 3 && decoded("{}")?.captures == 3, "anything else: three")
+    check(decoded(#"{"captures":4,"voice":false}"#)?.voice == false, "a bad count leaves the rest alone")
+    var s = MomentSettings()
+    s.captures = 5
+    check((try? JSONDecoder().decode(MomentSettings.self, from: JSONEncoder().encode(s)))?.captures == 5, "the count round-trips")
 }
 
 @MainActor private func storeChecks() async {

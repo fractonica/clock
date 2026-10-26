@@ -8,11 +8,12 @@ import UserNotifications
 let momentsLog = Logger(subsystem: "app.fractonica.clock", category: "moments")
 
 /// Moments' state: the settings (`moments.v1`), the streak and collection derived from the journal's records (their
-/// `capture`, so they follow every device through the hub), the next moment, and what is presented — the instant view
-/// and the Moments sheet. While the app is in front it wakes at each announced moment's prompt (11 Flavons ahead) and
-/// opens the instant view; in the background the notifications announce them (`MomentScheduling`, a rolling window
-/// of `moment.` requests refilled on launch, on becoming active and leaving, in the background refresh and whenever
-/// the settings change). Everything runs on the device's real clock.
+/// `capture`, so they follow every device through the hub), the next moment, and the instant view to present (the
+/// Moments screen shows the rest). While the app is in front it wakes at each announced moment's prompt (11 Flavons
+/// ahead) and opens the instant view — unless "Open by itself" is off or `-FXMomentsAuto 0` was given
+/// (`opensByItself`); in the background the notifications announce them (`MomentScheduling`, a rolling window of
+/// `moment.` requests refilled on launch, on becoming active and leaving, in the background refresh and whenever the
+/// settings change). Everything runs on the device's real clock.
 @MainActor @Observable
 final class MomentStore {
     static let shared = MomentStore()
@@ -29,8 +30,6 @@ final class MomentStore {
     private(set) var stats = MomentStats()
     /// The instant view to present.
     var instant: InstantRequest?
-    /// The Moments sheet (streak, collection, next moment, settings).
-    var isSheetPresented = false
     private(set) var authorization = MomentAuthorization.unknown
     /// The `moment.` requests the system holds after the last refill.
     private(set) var pendingCount = 0
@@ -124,11 +123,30 @@ final class MomentStore {
         return calendar.promptTime(of: m) <= t ? m : nil
     }
 
-    /// Opens the instant view for a moment (not when another one is up).
+    /// Whether the instant view may open by itself at a moment's prompt (the settings' "Open by itself", and no
+    /// `-FXMomentsAuto 0`). Every way it opens without a tap goes through `openByItself(_:)`, which asks this.
+    var opensByItself: Bool { settings.enabled && settings.autoOpen && launch.autoOpen }
+
+    /// How many times a moment is captured: the setting, or `-FXMomentsCaptures` for this launch.
+    var capturesPerMoment: Int { launch.captures ?? settings.captures }
+
+    /// Opens the instant view for a moment (not when another one is up): a tap (a notification, Get Ready).
     func openInstant(_ m: Moment, demo: Bool = false) {
         handled.insert(m.index)
         guard instant == nil else { return }
         instant = InstantRequest(moment: m, demo: demo)
+    }
+
+    /// Opens the instant view for a moment whose prompt has come, without a tap; false (and nothing opens) when it may
+    /// not open by itself, or did already for this moment.
+    @discardableResult
+    func openByItself(_ m: Moment) -> Bool {
+        guard opensByItself, !handled.contains(m.index), instant == nil, m.time > now else {
+            momentsLog.info("not opening the instant view by itself for \(m.index) (allowed: \(self.opensByItself))")
+            return false
+        }
+        openInstant(m)
+        return true
     }
 
     /// The instant view closed.
@@ -152,12 +170,12 @@ final class MomentStore {
     /// While the app is in front: sleeps until the next announced moment's prompt, then opens the instant view.
     private func scheduleWake() {
         wake?.cancel()
-        guard active, settings.enabled, launch.autoOpen else { return }
+        guard active, opensByItself else { return }
         guard let m = nextMoment() else { return }
         let prompt = calendar.promptTime(of: m)
         let delay = prompt - now
         if delay <= 0 {
-            if settings.autoOpen, !handled.contains(m.index), instant == nil, !isSheetPresented { openInstant(m) }
+            if !handled.contains(m.index) { openByItself(m) }
             // wake again after this moment
             wake = Task { [weak self] in
                 try? await Task.sleep(for: .seconds(max(1, m.time - Date.now.timeIntervalSince1970 + 1)))
@@ -264,7 +282,7 @@ final class MomentStore {
     // MARK: - Launch options
 
     private func applyLaunchOptions() {
-        if launch.sheet { isSheetPresented = true }
+        if launch.screen { AppRouter.shared.show(.moments) }
         if let seconds = launch.instantIn {
             let t = now + seconds
             let real = nextMoment(after: t) ?? calendar.upcoming(after: t, count: 1).first
@@ -375,7 +393,7 @@ enum MomentScheduling {
             content.threadIdentifier = "moments"
             content.interruptionLevel = .timeSensitive
             content.sound = r.sound.map { UNNotificationSound(named: UNNotificationSoundName($0)) } ?? .default
-            var info: [AnyHashable: Any] = AppLink(screen: .journal).userInfo
+            var info: [AnyHashable: Any] = AppLink(screen: .moments).userInfo
             info[indexKey] = NSNumber(value: r.index)
             info[fingerprintKey] = r.fingerprint
             content.userInfo = info
@@ -424,17 +442,20 @@ enum MomentScheduling {
 ///                                   real moment's, or -FXMomentsLevel / -FXMomentsBoundary); it captures and saves
 ///     -FXMomentsLevel <level>       helion nuclide delta gamma beta alpha
 ///     -FXMomentsBoundary <b>        start peak node valley
-///     -FXMomentsSheet 1             open the Moments sheet
+///     -FXMomentsCaptures 1|3|5      capture that many times for this launch (the setting stays)
+///     -FXMomentsSheet 1             show the Moments screen (as -FXTab moments does)
 ///     -FXMomentsSettings 1          … on its settings
 ///     -FXMomentsDemo 1              fill the journal with captured entries of every rarity and a streak (use with
 ///                                   -FXJournalStore <dir> to keep them out of the real journal)
-///     -FXMomentsAuto 0              never open the instant view by itself (screenshots)
+///     -FXMomentsAuto 0              never open the instant view by itself (screenshots); the moments' banners are
+///                                   kept out of sight too
 ///     -FXMomentsPreview 1           never touch the notification centre
 struct MomentLaunchOptions: Sendable {
     var instantIn: Double?
     var level: MomentLevel?
     var boundary: MomentBoundary?
-    var sheet = false
+    var captures: Int?
+    var screen = false
     var settings = false
     var demo = false
     var autoOpen = true
@@ -447,7 +468,8 @@ struct MomentLaunchOptions: Sendable {
             instantIn: string("FXMomentsInstant").flatMap(Double.init),
             level: string("FXMomentsLevel").flatMap { MomentLevel(rawValue: $0.lowercased()) },
             boundary: string("FXMomentsBoundary").flatMap { MomentBoundary(rawValue: $0.lowercased()) },
-            sheet: flag("FXMomentsSheet") || flag("FXMomentsSettings"),
+            captures: string("FXMomentsCaptures").flatMap(Int.init).flatMap { MomentCaptures.choices.contains($0) ? $0 : nil },
+            screen: flag("FXMomentsSheet") || flag("FXMomentsSettings"),
             settings: flag("FXMomentsSettings"),
             demo: flag("FXMomentsDemo"),
             autoOpen: string("FXMomentsAuto").map { !["0", "no", "false"].contains($0.lowercased()) } ?? true,

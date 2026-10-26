@@ -4,7 +4,7 @@
 /// Every screen of the app. The raw value is its id: in `AppLink` URLs (fractonica://rings) and for the `-FXTab`
 /// launch argument.
 enum Screen: String, CaseIterable, Identifiable, Sendable {
-    case now, journal, rings, ladder, wave, timeline, converter, month, diary, sound, timer, stopwatch, alerts, focus, jump, settings
+    case now, journal, moments, rings, ladder, wave, timeline, converter, month, diary, sound, timer, stopwatch, alerts, focus, jump, settings
 
     var id: String { rawValue }
 
@@ -12,6 +12,7 @@ enum Screen: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .now: "Now"
         case .journal: "Journal"
+        case .moments: "Moments"
         case .rings: "Rings"
         case .ladder: "Ladder"
         case .wave: "Wave"
@@ -34,6 +35,7 @@ enum Screen: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .now: "clock"
         case .journal: "book.pages"
+        case .moments: "flame"
         case .rings: "circle.circle"
         case .ladder: "chart.bar.doc.horizontal"
         case .wave: "water.waves"
@@ -58,10 +60,11 @@ enum Screen: String, CaseIterable, Identifiable, Sendable {
 }
 
 /// Screens that share one iPhone tab, switched by a segmented control, and one sidebar section on iPad and Mac.
-/// (The iPhone tab bar holds four tabs beside the search tab before it folds the rest into "More", which is why the
-/// Timeline lives with the other cycle views, and the calendar's Month and Converter with the Journal. The printable
-/// Diary is no segment: on iPhone it opens as a sheet, from the Journal's toolbar; iPad and Mac list it in the
-/// Journal's sidebar section.)
+/// (The iPhone tab bar holds five tabs — Now, Cycles, Journal, Moments, Clock — before it folds the rest into "More",
+/// which is why the Timeline lives with the other cycle views, and the calendar's Month and Converter with the Journal.
+/// Jump has no tab on iPhone: the Cycles tab's leading toolbar button opens it as a sheet. The printable Diary is no
+/// segment: on iPhone it opens as a sheet, from the Journal's toolbar; iPad and Mac list it in the Journal's sidebar
+/// section.)
 enum ScreenGroup: String, CaseIterable, Identifiable, Sendable {
     case cycles, journal, clock
 
