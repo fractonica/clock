@@ -23,7 +23,9 @@ party client. Anything not written here is an implementation detail.
   `/v1`. The hub serves its web UI at `/`.
 - JSON in and out (`Content-Type: application/json; charset=utf-8`), except blob bodies.
 - Times are Unix seconds as JSON numbers (fractions allowed), UTC.
-- Auth: `Authorization: Bearer <token>` on every request except `GET /v1` and `POST /v1/pair`.
+- Auth: `Authorization: Bearer <token>` on every request except `GET /v1` and `POST /v1/pair`. Where a browser cannot
+  set headers (`EventSource`, `<img>`, `<audio>`, `<video>`), `GET /v1/events` and `GET`/`HEAD /v1/blobs/{hash}` also
+  accept the token as `?token=`; no other endpoint does.
 - Errors: a non-2xx status with
   ```json
   { "error": { "code": "conflict", "message": "human readable", "details": { } } }
@@ -70,7 +72,8 @@ Pairing turns a short one-time code into a long-lived token. Codes are made in t
 { "code": "K7QF-2MXD", "expires": 1791461400,
   "link": "fractonica://pair?hub=http%3A%2F%2F192.168.1.20%3A8787&code=K7QF-2MXD" }
 ```
-Defaults: scopes `["read","write","search"]`, kinds `["*"]`, ttl 600 s. Codes are 8 characters from
+Defaults: scopes `["read","write","search"]`, kinds `["*"]`, ttl 600 s. An optional `kind` (`device`, `service`,
+`worker`, `browser`) is the default kind of the client that redeems the code. Codes are 8 characters from
 `23456789ABCDEFGHJKMNPQRSTVWXYZ` shown as `XXXX-XXXX`; input is case-insensitive and ignores `-` and spaces. The `link`
 uses the hub's LAN address so a phone can reach it, and is what the web UI shows as a QR code.
 
@@ -85,21 +88,25 @@ uses the hub's LAN address so a phone can reach it, and is what the web UI shows
   "token": "fxh_…",
   "hub": { "id": "h_01K8…", "name": "Fractonica Hub", "version": "1.0.0" } }
 ```
-Codes are single use and expire. `device` is the app's stable install identifier: pairing again with the same
+`name` and `kind` in the redeem body win over the code's. Codes are single use and expire. `device` is the app's stable install identifier: pairing again with the same
 `device` replaces that client's token instead of adding a second client. Wrong codes: `404 not_found`; more than 10
 failed attempts a minute from one address: `429`.
 
-The hub also mints codes from the command line (`hub pair --name … [--scopes …] [--kinds …]`), which is how a script or
-sensor gets a token, and prints a setup link for the first browser on first start.
+The hub also mints codes from the command line (`hub pair --name … [--kind …] [--scopes …] [--kinds …]`); with
+`--token` it makes the client at once and prints its token instead of a code, which is how a script or sensor gets a
+token. On a start with no admin client it prints a one-time setup link for the first browser,
+`http://localhost:8787/#setup=<code>` (a code with every scope but `worker`, kind `browser`).
 
 ### Other client endpoints
 
 - `GET /v1` (no auth) → `{ "hub": { "id", "name", "version" }, "api": 1, "embedding": { "model", "dim", "dims": [768,512,256,128], "worker": true|false } }`.
-  Apps call it to check an address before pairing.
+  Apps call it to check an address before pairing. `model` is the model of the stored vectors (`google/embeddinggemma-2`
+  until a worker has reported one). The hub advertises itself with Bonjour as `_fractonica-hub._tcp` (TXT `path=/v1`).
 - `GET /v1/me` → this client.
 - `GET /v1/clients` (admin) → `{ "clients": [Client] }`, each with `records` (count written) and `lastSeen`.
 - `PATCH /v1/clients/{id}` (admin) → rename or change scopes/kinds.
-- `DELETE /v1/clients/{id}` (admin) → revoke (the token stops working; its records stay).
+- `DELETE /v1/clients/{id}` (admin) → revoke (the token stops working; its records stay). Revoked clients stay in
+  `GET /v1/clients` with a `revoked` time, so their records keep a name.
 
 ## Records
 
@@ -146,14 +153,15 @@ Written by the client:
 | `blobs` | optional | Attached files in display order: `hash` (lowercase hex SHA-256), `type` (MIME), `size`, `role` (`photo`, `video`, `audio`, `poster`, `file`, or kind-specific), optional `name`, `width`, `height`, `duration`, `poster` (hash of a still for a video, itself listed as a blob with role `poster`). |
 | `created` | required | Producer clock. |
 | `updated` | required | Producer clock, the version for last-writer-wins. |
-| `deleted` | optional | `true` makes the record a tombstone. |
+| `deleted` | optional | `true` makes the record a tombstone; the hub then stores `data: {}`, `text: null`, `tags: []`, `blobs: []`. |
 
 Set by the hub (ignored if sent): `source` (the creating client), `editor` (the last writing client), `rev` (the
 hub-wide change number of its latest change, strictly increasing), `fx` (the Fractonica reading of `time`, for display:
 `stamp` as the web app prints a moment, `clock` the minor clock), and on reads that want it, `vectors` (see Search).
 
-Searchable text by kind: `journal.entry` → `emoji`, `title` and `markdown` (and `data.transcript` if present); any other
-kind → `text`, else `data.text`, else `data.title`/`data.summary`, else nothing (vectors then come from media alone).
+Searchable text by kind, as a title and a body: `journal.entry` → title `emoji title`, body `markdown` (and
+`data.transcript` if present); any other kind → title `data.emoji data.title`, body `text`, else `data.text`, else
+`data.summary`. Empty title and body: nothing (vectors then come from media alone; no text and no media: no vectors).
 
 ### Kinds the apps know
 
@@ -179,7 +187,14 @@ Upload blobs first (below), then the record. A record that names a blob the hub 
    (The client should adopt it.)
 3. Same `updated` and same content: nothing changes, `200` with the stored record (idempotent retry).
 4. Otherwise stored, `200`. Ties of `updated` with different content go to the lexicographically greater SHA-256 of the
-   canonical JSON of the written fields, so every hub and client agree.
+   canonical JSON of the written fields, so every hub and client agree; the losing side of a tie gets `409` as in 2.
+
+   **Canonical JSON**: the object `{ id, kind, time, end, zone, data, text, tags, blobs, created, updated, deleted }`
+   after normalisation (absent `end`, `zone`, `text` → `null`; absent `tags`, `blobs` → `[]`; `deleted` → `false`;
+   unknown fields dropped, also inside blob entries, whose absent optional fields are left out; a tombstone as above),
+   serialised with object keys sorted by UTF-16 code units at every depth, no whitespace, strings and numbers as
+   ECMAScript `JSON.stringify` writes them (shortest round-trip numbers, `1` not `1.0`). The hash is lowercase hex.
+   The record a write returns is exactly that normalised form, so a client can store it as is.
 
 `POST /v1/records/batch` — up to 500 records, `{ "records": [Record] }` → `200`
 ```json
@@ -188,8 +203,9 @@ Upload blobs first (below), then the record. A record that names a blob the hub 
 ```
 Each item is decided as if it were its own `PUT`.
 
-`DELETE /v1/records/{id}` → writes a tombstone (`deleted: true`, `data: {}`, `blobs: []`, `updated` = now) and returns
-it. Tombstones stay in the change feed so every device learns of the delete; they are never listed or searched.
+`DELETE /v1/records/{id}` → writes a tombstone (`deleted: true`, `data: {}`, `blobs: []`, `updated` = now, or the
+stored `updated` + 0.001 when that is later, so the delete always wins) and returns it; `404` for an unknown id.
+Devices that delete offline `PUT` the tombstone with their own `updated` instead. Tombstones stay in the change feed so every device learns of the delete; they are never listed or searched.
 
 ### Reading
 
@@ -224,8 +240,9 @@ Content-addressed by SHA-256 (lowercase hex). A blob is uploaded once and shared
   image or a video's first frame and cached. `404` when the hub cannot make one (no `ffmpeg`/`sips`); clients then fall
   back to the original or the `poster`.
 
-A client with `read` may fetch a blob only if some record it can read names it. Blobs no live record names are
-deleted by the hub after a grace period (24 h).
+A client with `read` may fetch a blob only if some live record it can read names it; a client with `worker` may fetch
+any blob a live record names (the media of its jobs). Otherwise `404`. Blobs no live record names are deleted by the
+hub after a grace period (24 h from upload or from losing their last record).
 
 ## Search and vectors
 
@@ -300,20 +317,30 @@ worker's token.
 or `{ "error": "message", "retry": true }`. Vectors are full 768-dimension, L2-normalised; the hub truncates and
 re-normalises for smaller `dim`s. A query job's vectors are in input order with `part` `"0"`, `"1"`, ….
 
+A video's media entry also carries `poster` and `posterUrl` when the record lists one. The answer is `200 { "ok": true }`;
+`404` when the job is gone (its record changed or was deleted, or a query timed out): the worker drops it. A job leased
+again after its lease ran out may still be finished by the first worker; the first answer wins.
+
+`GET /v1/worker` (admin) → `{ connected, lastSeen, model, device, modalities, dim, vrev, queue: { queued, leased,
+parked, queries }, vectors, records, parked: [ { job, record, kind, attempts, error } ] }` for the web UI;
+`POST /v1/worker/retry` (admin) puts every parked job back in the queue.
+
 `POST /v1/worker/heartbeat` `{ "model": "…", "device": "mps", "modalities": ["text","image","audio","video"] }` every
 30 s while idle; the hub counts a worker as connected while its last heartbeat or job poll is under 60 s old.
 
 ## Live updates
 
 `GET /v1/events` (read) — Server-Sent Events: `event: change` with `{ "rev", "id", "kind", "deleted" }`, `event: vector`
-with `{ "vrev", "record" }`, `event: worker` with `{ "connected": bool }`. Browsers pass the token as `?token=` because
+with `{ "vrev", "record" }`, `event: worker` with `{ "connected": bool }` (also sent once on connect), `event: model`
+with `{ "model" }` when the embedding model changed (vectors restart), and for admin clients `event: clients` when a
+device paired. Browsers pass the token as `?token=` because
 `EventSource` cannot set headers. Apps may use `GET /v1/changes?wait=` instead.
 
 ## Writing a provider
 
 ```sh
-# once: make a token for the script
-node hub/bin/hub.mjs pair --name "Studio thermometer" --kind service --scopes write --kinds 'sensor.*'
+# once: make a token for the script (--token prints a token; without it you get a code to redeem with POST /v1/pair)
+node hub/bin/hub.mjs pair --name "Studio thermometer" --kind service --scopes write --kinds 'sensor.*' --token
 # every minute:
 curl -X PUT "$HUB/v1/records/temp:studio:$(date +%s)" -H "Authorization: Bearer $TOKEN" \
   -H 'Content-Type: application/json' \
