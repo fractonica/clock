@@ -278,6 +278,22 @@ main.wide { max-width: 1040px; }
 .files { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
 .file { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; padding: 4px 9px; border-radius: 8px; background: var(--panel-3); color: var(--ink-2); }
 .tags { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 10px; }
+/* sky events (sky:<event> tags): the diary's symbols in their family's colour */
+.sky-run { display: inline-flex; flex-wrap: wrap; gap: 5px; }
+.sky { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 10px 0 8px; border-radius: 999px; background: var(--panel-3);
+  border: 1px solid color-mix(in srgb, var(--fam) 35%, transparent); color: var(--ink); font-size: 12px; }
+.sky .sym { color: var(--fam); font-size: 14px; font-weight: 600; line-height: 1; }
+.sky.bare { height: 20px; width: 20px; padding: 0; justify-content: center; border: 0; background: none; }
+.sky.bare .sym { font-size: 13px; }
+.tags.compact { margin-top: 8px; }
+.fam-synodic { --fam: var(--ink); }
+.fam-anomalistic { --fam: #8fc1ff; }
+.fam-draconic { --fam: #c99bff; }
+.fam-sidereal { --fam: #a9a6ff; }
+.fam-lunistice { --fam: #8bdc8b; }
+.fam-solar { --fam: var(--gold); }
+.fam-eclipse { --fam: #ff7a3d; }
+.fam-planet { --fam: #ff8cc6; }
 
 /* generic records: compact rows */
 .row-g {

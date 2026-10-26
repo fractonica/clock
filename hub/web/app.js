@@ -12,6 +12,13 @@ try {
 } catch (e) {
   console.warn('Fractonica clock unavailable; grouping by Earth days', e);
 }
+// The printable diary's sky events (names, families, labels, symbols): `sky:<event>` tags show as their symbols.
+let SKY = null;
+try {
+  SKY = (await import('/fx/astro/index.js')).EVENT_INFO;
+} catch (e) {
+  console.warn('Sky events unavailable; sky tags show as text', e);
+}
 
 // ---- state ---------------------------------------------------------------------------------------------------------
 const LS = {
@@ -613,10 +620,32 @@ function journalCard(r, { score, detail } = {}) {
     audios.map((a) => audioEl(a)),
     x.transcript && (detail || !x.markdown) ? h('div', { class: 'transcript' }, `“${x.transcript}”`) : null,
     files.length ? h('div', { class: 'files' }, files.map((f) => h('a', { class: 'file', href: blobUrl(f.hash), target: '_blank', onclick: (e) => e.stopPropagation() }, icon('file'), f.name ?? f.type, h('span', { class: 'dim' }, bytes(f.size))))) : null,
-    r.tags?.length ? h('div', { class: 'tags' }, r.tags.map((t) => h('span', { class: 'tag' }, `#${t}`))) : null,
+    tagsOf(r, detail),
   );
   if (!detail) card.addEventListener('click', (e) => !e.target.closest('a, audio, video, button') && (location.hash = `#/r/${encodeURIComponent(r.id)}`));
   return card;
+}
+// Tags: the writer's own as #chips; sky events (hub/API.md `sky:<event>`) as the diary's symbols in their family's
+// colour — on a card the symbols beside each other, in the detail with their names.
+function tagsOf(r, detail) {
+  const tags = r.tags ?? [];
+  const sky = [];
+  const own = [];
+  for (const t of tags) {
+    const info = t.startsWith('sky:') ? SKY?.[t.slice(4)] : null;
+    if (info) sky.push(info);
+    else own.push(t);
+  }
+  if (!sky.length && !own.length) return null;
+  const chip = (i) =>
+    h('span', { class: `sky fam-${i.family}${detail ? '' : ' bare'}`, title: i.label, 'aria-label': i.label },
+      h('span', { class: 'sym', 'aria-hidden': 'true' }, `${i.symbol}\uFE0E`),
+      detail ? h('span', null, i.label) : null,
+    );
+  return h('div', { class: `tags${detail ? '' : ' compact'}` },
+    sky.length ? h('span', { class: 'sky-run', role: 'list', 'aria-label': 'In the sky' }, sky.map(chip)) : null,
+    own.map((t) => h('span', { class: 'tag' }, `#${t}`)),
+  );
 }
 function mediaGrid(photos, detail) {
   const n = photos.length;
