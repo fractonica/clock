@@ -203,6 +203,39 @@ main.wide { max-width: 1040px; }
 .card.flash { animation: flash 1.6s ease-out; }
 @keyframes flash { from { box-shadow: 0 0 0 2px var(--teal), var(--shadow); } to { box-shadow: var(--shadow); } }
 .card-h { display: flex; align-items: flex-start; gap: 11px; }
+
+/* rarity frames: entries captured on a clock moment (data.capture, hub/API.md) — the app draws the same */
+.r-rare { --r: #4c8dff; }
+.r-epic { --r: #a86bff; }
+.r-legendary { --r: var(--gold); }
+.r-mythic { --r: #ff4d5e; }
+.r-cosmic { --r: #4fd1c5; }
+.card.rarity, .card.detail.rarity {
+  border: 1.5px solid var(--r); background: var(--panel);
+  box-shadow: 0 0 16px -3px color-mix(in srgb, var(--r) 60%, transparent), var(--shadow);
+}
+.card.detail.rarity { padding: 15px 17px 16px; }
+.card.rarity:hover { border-color: var(--r); }
+@property --spin { syntax: '<angle>'; inherits: false; initial-value: 0deg; }
+.card.rarity.r-cosmic {
+  border-color: transparent;
+  background:
+    linear-gradient(var(--panel), var(--panel)) padding-box,
+    conic-gradient(from var(--spin), #ff5a5a, #ffd60a, #5bd88a, #4fd1c5, #4c8dff, #a86bff, #ff5a5a) border-box;
+  box-shadow: 0 0 18px -4px rgb(168 107 255 / 0.55), 0 0 18px -6px rgb(79 209 197 / 0.5), var(--shadow);
+  animation: spin 9s linear infinite;
+}
+.card.rarity.r-cosmic:hover { border-color: transparent; }
+.card.rarity.r-cosmic.flash { animation: flash 1.6s ease-out, spin 9s linear infinite; }
+@keyframes spin { to { --spin: 360deg; } }
+@media (prefers-reduced-motion: reduce) { .card.rarity.r-cosmic, .card.rarity.r-cosmic.flash { animation: none; } }
+.badge-r {
+  flex: none; align-self: flex-start; margin-top: 2px;
+  font-size: 10px; font-weight: 800; letter-spacing: 0.09em; text-transform: uppercase;
+  color: var(--r); background: color-mix(in srgb, var(--r) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--r) 45%, transparent); border-radius: 999px; padding: 2px 8px;
+}
+.r-cosmic .badge-r { background-image: linear-gradient(90deg, #ff5a5a, #ffd60a, #5bd88a, #4fd1c5, #4c8dff, #a86bff); -webkit-background-clip: text; background-clip: text; color: transparent; border-color: rgb(168 107 255 / 0.45); }
 .emoji { font-size: 26px; line-height: 1; width: 34px; height: 34px; display: grid; place-items: center; flex: none; border-radius: 10px; background: var(--panel-3); }
 .card-h .ttl { flex: 1; min-width: 0; padding-top: 1px; }
 .card-h .ttl h3 { margin: 0; font-size: 16px; font-weight: 620; letter-spacing: -0.005em; line-height: 1.3; overflow-wrap: anywhere; }

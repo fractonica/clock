@@ -571,14 +571,27 @@ function itemsOf(hh) {
   return box;
 }
 
+// Entries captured on a clock moment carry data.capture (hub/API.md): their rarity follows from the level.
+const RARITY_OF_LEVEL = { helion: 'rare', nuclide: 'rare', delta: 'epic', gamma: 'legendary', beta: 'mythic', alpha: 'cosmic' };
+const RARITIES = ['rare', 'epic', 'legendary', 'mythic', 'cosmic'];
+const cap = (w) => (w ? w[0].toUpperCase() + w.slice(1) : '');
+/** The capture of a journal entry, as { rarity, label }, or null for a common entry. */
+function captureOf(r) {
+  const c = r.data?.capture;
+  if (!c || typeof c !== 'object' || typeof c.at !== 'number') return null;
+  const rarity = RARITIES.includes(c.rarity) ? c.rarity : RARITY_OF_LEVEL[c.level] ?? 'rare';
+  return { rarity, label: [cap(c.level), c.boundary].filter(Boolean).join(' ') };
+}
+
 function journalCard(r, { score, detail } = {}) {
   const x = r.data ?? {};
+  const capture = captureOf(r);
   const photos = r.blobs.filter((b) => b.role === 'photo' || (b.role === 'file' && b.type.startsWith('image/')));
   const videos = r.blobs.filter((b) => b.role === 'video');
   const audios = r.blobs.filter((b) => b.role === 'audio');
   const files = r.blobs.filter((b) => !['photo', 'video', 'audio', 'poster'].includes(b.role) && !photos.includes(b));
   const title = x.title || (x.markdown ? '' : audios.length ? 'Voice note' : photos.length ? 'Photo' : videos.length ? 'Video' : '');
-  const card = h('article', { class: `card${S.fresh.has(r.id) ? ' flash' : ''}`, dataset: { id: r.id } },
+  const card = h('article', { class: `card${S.fresh.has(r.id) ? ' flash' : ''}${capture ? ` rarity r-${capture.rarity}` : ''}`, dataset: { id: r.id } },
     h('div', { class: 'card-h' },
       h('div', { class: 'emoji', 'aria-hidden': 'true' }, x.emoji || '·'),
       h('div', { class: 'ttl' },
@@ -592,6 +605,7 @@ function journalCard(r, { score, detail } = {}) {
         ),
       ),
       score !== undefined ? h('span', { class: 'score', title: 'score' }, score.toFixed(2)) : null,
+      capture ? h('span', { class: 'badge-r', title: `Captured on a ${capture.label}` }, capture.rarity) : null,
     ),
     x.markdown ? h('div', { class: `prose${detail ? '' : ' clamp'}`, html: markdown(x.markdown) }) : null,
     photos.length ? mediaGrid(photos, detail) : null,
