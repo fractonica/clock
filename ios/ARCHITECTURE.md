@@ -199,6 +199,17 @@ stack that pinches out from Helion days to Delta, Gamma and Beta blocks (`Journa
 the Wave screen's circular geometry down one `Canvas`: regular arcs of the level that fits the zoom, the finer levels
 riding them as perpendicular loops through `WaveArc.child`, each entry's emoji on the curve; `-FXJournalWaveHitches 1`
 measures it).
+Sky events (Features/Journal/Sky) are the printable diary's astronomy (src/diary/astro `events()`: phases, apsides,
+nodes, lunistices, seasons, eclipses, planets…) precomputed for 1900–2200 by scripts/make-sky-events.mjs into
+Resources/Sky/sky-events.bin (its header documents the format; the script also generates SkyEventKinds.swift from
+`EVENT_INFO` and the checks' fixture) and read lazily by `SkyEvents.shared` (binary-search range queries). The wave
+draws them on its strongest line at their moments, fewer as it zooms out (`JournalSkyPlacer`: total solar eclipses
+always, then by tier), tap for a popover, with the solar sync's quarter thresholds as gold ticks across the curve; the
+stack shows a Helion's events beside its header and a block's most notable ones; the timeline menu's Sky Events turns
+families and the ticks on and off (`SkyDisplay`). Every local save carries `sky:<event>` tags for the events within a
+Helion of the entry (hub/API.md): the store applies `JournalStore.normalise` (`SkyTags.normalise`, installed by
+JournalHooks) to every record it writes, and `SkyTagging.backfill` retags the entries on the device once per
+`SkyTags.version` (a migration recorded in state.json, the changed records pending). Keyword search reads the tags.
 Moments (Features/Journal/Moments) are BeReal-style captures on the clock: every Helion quarter boundary is a candidate moment, labelled
 by the longest period with a quarter boundary there (its rarity: rare Helion, epic Delta, legendary Gamma,
 mythic Beta, cosmic Alpha; of the Helion ones only nodes are announced, `MomentSettings.asks`); 11 Flavons ahead the app announces it (a notification with a spoken clip from
