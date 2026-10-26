@@ -63,6 +63,7 @@ struct JournalScreen: View {
                     ForEach(feed.days) { day in
                         Section {
                             JournalDayHeader(day: day, words: words)
+                                .readableColumn()
                                 .listRowBackground(Color.clear)
                                 .listRowSeparator(.hidden)
                                 .listRowInsets(EdgeInsets(top: day.id == feed.days.first?.id ? 4 : 18, leading: 20, bottom: 2, trailing: 20))
@@ -130,6 +131,7 @@ struct JournalScreen: View {
         }
         .listRowBackground(Color.clear)
         .listRowSeparator(.hidden)
+        .readableColumn()
         .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
     }
 
@@ -321,6 +323,11 @@ struct JournalEmptyState: View {
 }
 
 extension View {
+    /// The timeline's column: full width on iPhone, a readable 720 points centred on iPad and Mac.
+    func readableColumn() -> some View {
+        frame(maxWidth: 720).frame(maxWidth: .infinity)
+    }
+
     /// The compose button prominent in Liquid Glass (iOS 26, Mac); the standard bar button on iOS 18.
     @ViewBuilder
     func composeButtonStyle() -> some View {

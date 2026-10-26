@@ -188,13 +188,15 @@ guarantees pure mode never prints a Gregorian date or "3 h 20 min":
 ### Screens and navigation
 
 `Screen` (Shared/Screen.swift) lists every screen; its raw value is the id used in links and `-FXTab`:
-`now rings ladder wave timeline converter month diary sound timer stopwatch alerts focus jump settings`.
-`ScreenGroup` bundles `cycles` (rings ladder wave timeline), `calendar` (converter month diary) and `clock` (timer
-stopwatch alerts).
+`now journal rings ladder wave timeline converter month diary sound timer stopwatch alerts focus jump settings`.
+`ScreenGroup` bundles `cycles` (rings ladder wave timeline), `journal` (journal month converter) and `clock` (timer
+stopwatch alerts). The printable Diary is a sheet over the Journal on iPhone and a sidebar screen in the Journal section
+on iPad and Mac. The Journal (Features/Journal: local store, composer, timeline; hooks for the hub sync in
+JournalHooks.swift) keeps its records and media under Application Support/Journal.
 
 | | iPhone (compact width) | iPad, Mac |
 |---|---|---|
-| Layout | Tabs Now · Cycles · Calendar · Clock · Jump (search role). A group's tab shows its screens behind a segmented control in the navigation bar's centre | `TabView(.sidebarAdaptable)`: every screen in the sidebar under its group; Sound and Focus are screens of their own; Jump is the search item. iPad can collapse the sidebar into a top tab bar |
+| Layout | Tabs Now · Cycles · Journal · Clock · Jump (search role). A group's tab shows its screens behind a segmented control in the navigation bar's centre | `TabView(.sidebarAdaptable)`: every screen in the sidebar under its group; Sound and Focus are screens of their own; Jump is the search item. iPad can collapse the sidebar into a top tab bar |
 | Transport | The tab bar's bottom accessory (Liquid Glass); minimised with the tab bar on scroll. iOS 18: a capsule on a band of bar material that joins the tab bar | iPad: bottom accessory (iOS 18: a capsule on a bar at the foot of the screen). Mac: the window toolbar's centre |
 | Now's toolbar | Sound, Focus, Settings | iPad: Sound (while it plays), Focus, Settings. Mac: Sound (while it plays), Focus, Settings in every screen's toolbar |
 | Sound | A sheet over Now (medium / large) | A screen |
