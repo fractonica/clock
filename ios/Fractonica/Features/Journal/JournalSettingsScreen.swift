@@ -23,9 +23,10 @@ struct JournalSettingsScreen: View {
                         .tag(quality)
                     }
                 } label: {
-                    Label("Voice notes", systemImage: "waveform").foregroundStyle(Theme.ink)
+                    Text("Voice notes")
                 }
                 .pickerStyle(.inline)
+                .labelsHidden()
             } header: {
                 Text("Voice notes")
             } footer: {
@@ -43,6 +44,7 @@ struct JournalSettingsScreen: View {
                     }
                 }
                 .pickerStyle(.inline)
+                .labelsHidden()
             } header: {
                 Text("Photos")
             }
@@ -58,6 +60,7 @@ struct JournalSettingsScreen: View {
                     }
                 }
                 .pickerStyle(.inline)
+                .labelsHidden()
             } header: {
                 Text("Videos")
             } footer: {

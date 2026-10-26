@@ -27,9 +27,6 @@ struct JournalScreen: View {
             .searchable(text: $query, placement: searchPlacement, prompt: Text("Search entries"))
             .refreshable { await JournalHooks.refresh?() }
             .toolbar { toolbar }
-            .navigationDestination(for: JournalRoute.self) { route in
-                JournalRecordView(id: route.id)
-            }
             .navigationDestination(item: $opened) { route in
                 JournalRecordView(id: route.id)
             }
@@ -62,13 +59,16 @@ struct JournalScreen: View {
                 if let results {
                     resultsSection(results, words)
                 } else {
+                    // the day headers are rows, not pinned section headers: a journal reads as one flowing page
                     ForEach(feed.days) { day in
                         Section {
+                            JournalDayHeader(day: day, words: words)
+                                .listRowBackground(Color.clear)
+                                .listRowSeparator(.hidden)
+                                .listRowInsets(EdgeInsets(top: day.id == feed.days.first?.id ? 4 : 18, leading: 20, bottom: 2, trailing: 20))
                             ForEach(day.ids, id: \.self) { id in
                                 if let record = feed.records[id] { row(record, words) }
                             }
-                        } header: {
-                            JournalDayHeader(day: day, words: words)
                         }
                     }
                 }
@@ -106,8 +106,8 @@ struct JournalScreen: View {
     private func row(_ record: HubRecord, _ words: Wording) -> some View {
         Group {
             if record.kind == JournalEntry.kind {
-                NavigationLink(value: JournalRoute(id: record.id)) {
-                    JournalCard(record: record, words: words)
+                Button { opened = JournalRoute(id: record.id) } label: {
+                    JournalCard(record: record, words: words, fullStamp: results != nil)
                 }
                 .buttonStyle(.plain)
                 .swipeActions(edge: .trailing) {
@@ -122,7 +122,7 @@ struct JournalScreen: View {
                     Button("Delete", systemImage: "trash", role: .destructive) { deleting = record }
                 }
             } else {
-                NavigationLink(value: JournalRoute(id: record.id)) {
+                Button { opened = JournalRoute(id: record.id) } label: {
                     GenericRecordRow(record: record, words: words)
                 }
                 .buttonStyle(.plain)
@@ -241,29 +241,38 @@ struct JournalDayHeader: View {
     let words: Wording
 
     var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
+        HStack(alignment: .center, spacing: 10) {
             if let names = day.names(notation: words.notation) {
                 Text(verbatim: names.helion)
-                    .font(.reading(20, weight: .semibold))
+                    .font(.reading(22, weight: .semibold))
                     .foregroundStyle(Theme.teal)
-                Text(verbatim: "\(names.nuclide) · \(names.delta)")
-                    .font(.footnote.weight(.medium))
-                    .foregroundStyle(Theme.ink2)
-                    .lineLimit(1)
+                    .frame(minWidth: 44, alignment: .leading)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(verbatim: "\(names.nuclide) · \(names.delta)")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(Theme.ink2)
+                    if !words.pure {
+                        Text(verbatim: earthDay)
+                            .font(.caption)
+                            .foregroundStyle(Theme.ink3)
+                    }
+                }
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
             } else {
-                Text("Outside the catalogue")
-                    .font(.footnote.weight(.semibold))
-                    .foregroundStyle(Theme.ink2)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Outside the catalogue")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(Theme.ink2)
+                    if !words.pure {
+                        Text(verbatim: earthDay).font(.caption).foregroundStyle(Theme.ink3)
+                    }
+                }
             }
-            Spacer(minLength: 8)
-            if !words.pure {
-                Text(verbatim: earthDay)
-                    .font(.footnote)
-                    .foregroundStyle(Theme.ink3)
-                    .lineLimit(1)
-            }
+            Spacer(minLength: 0)
         }
         .padding(.vertical, 4)
+        .textCase(nil)
         .accessibilityElement(children: .combine)
     }
 

@@ -71,7 +71,7 @@ struct EntryDetailView: View {
             .frame(maxWidth: .infinity)
         }
         .background { Backdrop() }
-        .navigationTitle(entry.title?.isEmpty == false ? entry.title! : "Entry")
+        .navigationTitle(FractonicaClock.shared.inRange(record.time) ? words.notation.clockText(at: record.time, upTo: "iota") : "Entry")
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
         #endif

@@ -20,6 +20,8 @@ final class ComposerModel {
 
     @ObservationIgnored private let store: JournalStore
     @ObservationIgnored private var autosave: Task<Void, Never>?
+    /// Saved or discarded: nothing autosaves any more.
+    @ObservationIgnored private var closed = false
 
     init(request: ComposerRequest, store: JournalStore = .shared, settings: AppSettings = .shared) {
         self.store = store
@@ -62,6 +64,7 @@ final class ComposerModel {
     func save() -> HubRecord? {
         guard canSave else { return nil }
         autosave?.cancel()
+        closed = true
         let record = store.saveEntry(draft)
         Haptics.play(.success)
         return record
@@ -70,18 +73,22 @@ final class ComposerModel {
     /// Keeps the draft for later (closing without saving).
     func keepDraft() {
         autosave?.cancel()
+        guard !closed else { return }
+        closed = true
         if hasChanges || store.draft(draft.key) != nil { store.saveDraft(draft) }
     }
 
     /// Throws the changes away: a new entry's draft and its media; an edit's unsaved changes.
     func discard() {
         autosave?.cancel()
+        closed = true
         recorder.cancel()
         store.discardDraft(draft.key)
     }
 
     func flush() {
         autosave?.cancel()
+        guard !closed else { return }
         if hasChanges { store.saveDraft(draft) }
     }
 
@@ -89,7 +96,7 @@ final class ComposerModel {
         autosave?.cancel()
         autosave = Task { [weak self] in
             try? await Task.sleep(for: .milliseconds(600))
-            guard !Task.isCancelled, let self else { return }
+            guard !Task.isCancelled, let self, !self.closed else { return }
             self.store.saveDraft(self.draft)
         }
     }

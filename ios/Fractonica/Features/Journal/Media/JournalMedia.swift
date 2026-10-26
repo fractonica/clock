@@ -142,13 +142,7 @@ enum JournalMedia {
         let long = max(size.width, size.height)
         if long > CGFloat(longSide), longSide < 1920, long > 0 {
             // 720p: the 1080p preset with a composition that scales every frame (there is no 720p HEVC preset)
-            let scale = CGFloat(longSide) / long
-            let composition = try await AVMutableVideoComposition.videoComposition(with: asset) { request in
-                let image = request.sourceImage.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
-                request.finish(with: image, context: nil)
-            }
-            composition.renderSize = CGSize(width: (size.width * scale / 2).rounded() * 2, height: (size.height * scale / 2).rounded() * 2)
-            session.videoComposition = composition
+            session.videoComposition = try await scaledComposition(asset, scale: CGFloat(longSide) / long, size: size)
         }
         let target = disk.temporaryFile(ext: "mov")
         do {
@@ -157,6 +151,39 @@ enum JournalMedia {
             throw Failure.export(error.localizedDescription)
         }
         return target
+    }
+
+    /// A composition that shows the video turned upright (its preferred transform) and scaled by `scale`.
+    private static func scaledComposition(_ asset: AVURLAsset, scale: CGFloat, size: CGSize) async throws -> AVVideoComposition? {
+        guard let track = try await asset.loadTracks(withMediaType: .video).first else { return nil }
+        let (transform, fps) = try await track.load(.preferredTransform, .nominalFrameRate)
+        let duration = try await asset.load(.duration)
+        let scaled = transform.concatenating(CGAffineTransform(scaleX: scale, y: scale))
+        let renderSize = CGSize(width: (size.width * scale / 2).rounded() * 2, height: (size.height * scale / 2).rounded() * 2)
+        let frame = CMTime(value: 1, timescale: CMTimeScale(max(1, min(120, fps.rounded()))))
+        let range = CMTimeRange(start: .zero, duration: duration)
+        if #available(iOS 26.0, macOS 26.0, *) {
+            var layer = AVVideoCompositionLayerInstruction.Configuration(assetTrack: track)
+            layer.setTransform(scaled, at: .zero)
+            let instruction = AVVideoCompositionInstruction(configuration: .init(
+                layerInstructions: [AVVideoCompositionLayerInstruction(configuration: layer)], timeRange: range))
+            return AVVideoComposition(configuration: .init(frameDuration: frame, instructions: [instruction], renderSize: renderSize))
+        } else {
+            #if os(iOS)
+            let layer = AVMutableVideoCompositionLayerInstruction(assetTrack: track)
+            layer.setTransform(scaled, at: .zero)
+            let instruction = AVMutableVideoCompositionInstruction()
+            instruction.timeRange = range
+            instruction.layerInstructions = [layer]
+            let composition = AVMutableVideoComposition()
+            composition.instructions = [instruction]
+            composition.renderSize = renderSize
+            composition.frameDuration = frame
+            return composition
+            #else
+            return nil
+            #endif
+        }
     }
 
     /// The first frame as a JPEG, long side at most 1280.
