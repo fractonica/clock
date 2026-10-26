@@ -11,9 +11,10 @@ import UIKit
 // previous / next cycle of the selected level, play / pause and the time-lapse speed. Tapping the moment opens
 // `TransportPanel` (a sheet on iOS, a popover on macOS) to go to a date, step by any cycle or pick a speed.
 //
-//   iOS    `TransportBar` in the tab bar's bottom accessory (Liquid Glass); minimised with the tab bar, it keeps
-//          only the moment and Play. iOS 18, which has no accessory: `TransportInsetBar`, a bar of its own just above
-//          the tab bar.
+//   iOS    On the Now screen only: `TransportBar` in the tab bar's bottom accessory (Liquid Glass, iOS 26.1, which
+//          can hide it on the other screens); minimised with the tab bar, it keeps only the moment and Play. iOS 18
+//          (and 26.0): `TransportInsetBar`, a bar of its own just above the tab bar. Every other screen shows
+//          `TravelIndicator` while the clock is not live.
 //   macOS  `TransportControls` in the window toolbar; its moment ticks through an AppKit view (`ToolbarTicker`).
 
 #if os(iOS)
@@ -53,6 +54,67 @@ struct TransportInsetBar: View {
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
             keyboardShown = false
         }
+    }
+}
+
+/// Every screen but Now while the clock is not live (travelling, paused or playing a time-lapse): a small glass chip
+/// at the foot of the screen, where Now's transport sits, with the displayed moment (tap: time travel) and Back to live,
+/// so the app never shows another moment unannounced. Nothing while live. It lies over the content (an overlay, never a
+/// safe area inset: its moment ticks during a time-lapse, see ClockTimeline) and steps aside while the keyboard is up.
+struct TravelIndicator: View {
+    @Environment(ClockStore.self) private var store
+    @Environment(AppRouter.self) private var router
+    @Environment(AppSettings.self) private var settings
+    @State private var keyboardShown = false
+
+    var body: some View {
+        ZStack {
+            if !store.isLive && !keyboardShown {
+                chip.transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+        .animation(.snappy, value: store.isLive)
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
+            keyboardShown = true
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
+            keyboardShown = false
+        }
+    }
+
+    private var chip: some View {
+        let words = settings.wording
+        return HStack(spacing: 6) {
+            Button {
+                router.isTransportPresented = true
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: store.isPlaying ? "play.fill" : "pause.fill")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(Theme.cursor)
+                        .frame(width: 16)
+                    ClockTimeline(.periodic(1)) { t in
+                        Text(verbatim: words.label(t, relativeTo: Date.now.timeIntervalSince1970))
+                            .font(.reading(14, weight: .semibold))
+                            .foregroundStyle(Theme.cursor)
+                            .lineLimit(1)
+                    }
+                }
+                .padding(.leading, 6)
+                .frame(minHeight: 32)
+                .contentShape(.rect)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(Text(store.isPlaying ? "Time-lapse playing" : "Travelling in time"))
+            .accessibilityHint("Opens time travel")
+            LiveButton()
+        }
+        .padding(.leading, 8)
+        .padding(.trailing, 4)
+        .padding(.vertical, 4)
+        .glassSurface(.regular.interactive(), in: .capsule)
+        .padding(.bottom, 8)
+        .accessibilityElement(children: .contain)
     }
 }
 

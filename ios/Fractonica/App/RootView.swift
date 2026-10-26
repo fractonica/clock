@@ -72,8 +72,9 @@ struct RootView: View {
 // MARK: - iPhone
 
 #if os(iOS)
-/// Now | Cycles | Journal | Clock, and Jump as the search tab; the transport rides in the tab bar's bottom accessory
-/// (iOS 18: just above the tab bar, `transportInset()`). The Jump field is the search tab's own (`TabSearchField`),
+/// Now | Cycles | Journal | Clock, and Jump as the search tab; on Now the transport rides in the tab bar's bottom
+/// accessory (iOS 18 and 26.0: just above the tab bar, `transportInset()`), the other tabs show `TravelIndicator`
+/// while the clock is not live. The Jump field is the search tab's own (`TabSearchField`),
 /// shared with JumpScreen through `JumpSearch`.
 private struct CompactRoot: View {
     @Environment(AppRouter.self) private var router
@@ -97,7 +98,7 @@ private struct CompactRoot: View {
                     .modifier(TabSearchField())
             }
         }
-        .transportAccessory(minimizesTabBar: true)
+        .transportAccessory(shown: router.selection == .now, minimizesTabBar: true)
     }
 
     /// The tab of the selected screen; choosing a group's tab shows the segment it showed last.
@@ -184,33 +185,37 @@ private struct GroupStack: View {
 }
 
 extension View {
-    /// The transport in the tab bar's bottom accessory, and on iPhone the tab bar minimised on scroll (iOS 26). On
-    /// iOS 18, which has neither, each tab carries the transport instead (`transportInset()`).
+    /// The transport in the tab bar's bottom accessory while `shown` (the Now screen), and on iPhone the tab bar
+    /// minimised on scroll (iOS 26). The accessory can only be hidden from iOS 26.1: on iOS 18 and 26.0 the Now screen
+    /// carries the transport itself instead (`transportInset()`).
     @ViewBuilder
-    fileprivate func transportAccessory(minimizesTabBar: Bool) -> some View {
-        if #available(iOS 26.0, *) {
+    fileprivate func transportAccessory(shown: Bool, minimizesTabBar: Bool) -> some View {
+        if #available(iOS 26.1, *) {
             if minimizesTabBar {
                 tabBarMinimizeBehavior(.onScrollDown)
-                    .tabViewBottomAccessory { TransportBar() }
+                    .tabViewBottomAccessory(isEnabled: shown) { TransportBar() }
             } else {
-                tabViewBottomAccessory { TransportBar() }
+                tabViewBottomAccessory(isEnabled: shown) { TransportBar() }
             }
+        } else if #available(iOS 26.0, *), minimizesTabBar {
+            tabBarMinimizeBehavior(.onScrollDown)
         } else {
             self
         }
     }
 
-    /// iOS 18: the transport at the foot of a screen, just above the tab bar, which draws no background of its own
-    /// there (the transport's band runs on under it); the content keeps clear of it and scrolls under it. Applied inside the screen's navigation stack (a safe area inset outside it does not reach the
-    /// screen), so views pushed onto the stack go without it. Nothing on iOS 26, where it rides in the tab bar's
-    /// accessory (`transportAccessory`).
+    /// iOS 18 (and 26.0): the transport at the foot of the Now screen, just above the tab bar, which draws no
+    /// background of its own there (the transport's band runs on under it); the content keeps clear of it and scrolls
+    /// under it. Applied inside the screen's navigation stack (a safe area inset outside it does not reach the screen),
+    /// so views pushed onto the stack go without it. Nothing from iOS 26.1, where it rides in the tab bar's accessory
+    /// (`transportAccessory`).
     ///
     /// The content keeps clear of a still copy of the bar (its moment held: it never ticks), and the live bar lies over
     /// that copy. A safe area inset whose content changes hands the screen its safe area anew; with a list under it,
     /// iOS 18 then lays the window out again and again for about ¾ s, so the Ladder was busy for most of every second.
     @ViewBuilder
     fileprivate func transportInset() -> some View {
-        if #available(iOS 26.0, *) {
+        if #available(iOS 26.1, *) {
             self
         } else {
             safeAreaInset(edge: .bottom, spacing: 0) {
@@ -264,7 +269,7 @@ private struct SidebarRoot: View {
         .tabViewStyle(.sidebarAdaptable)
         .tabViewSidebarBottomBar { SidebarFooter() }
         #if os(iOS)
-        .transportAccessory(minimizesTabBar: false)
+        .transportAccessory(shown: router.selection == .now, minimizesTabBar: false)
         #endif
     }
 
@@ -351,7 +356,7 @@ private struct ScreenStack: View {
 
 extension View {
     /// The backdrop and the toolbar items every screen shares: on iOS, Sound (iPhone; iPad while it plays), Focus and
-    /// Settings on Now (and on iOS 18 the transport at the foot); on macOS, the transport, Sound (while it plays),
+    /// Settings on Now (and on iOS 18 the transport at the foot), the travel indicator on the others; on macOS, the transport, Sound (while it plays),
     /// Focus and Settings in every window toolbar.
     fileprivate func screenChrome(_ screen: Screen) -> some View {
         modifier(ScreenChrome(screen: screen))
@@ -367,7 +372,7 @@ private struct ScreenChrome: ViewModifier {
         content
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             #if os(iOS)
-            .transportInset()
+            .modifier(ScreenTransport(screen: screen))
             #endif
             .background { Backdrop() }
             .toolbar {
@@ -404,6 +409,22 @@ private struct ScreenChrome: ViewModifier {
             }
     }
 }
+
+#if os(iOS)
+/// The transport on the Now screen (iOS 18 and 26.0; from 26.1 it is the tab bar's accessory), the travel indicator on
+/// every other screen. Time travel is global: elsewhere the indicator says that the clock is not live.
+private struct ScreenTransport: ViewModifier {
+    let screen: Screen
+
+    func body(content: Content) -> some View {
+        if screen == .now {
+            content.transportInset()
+        } else {
+            content.overlay(alignment: .bottom) { TravelIndicator() }
+        }
+    }
+}
+#endif
 
 /// Whether the sound plays, for the Sound button and sidebar item: a filled waveform while it does.
 @MainActor
