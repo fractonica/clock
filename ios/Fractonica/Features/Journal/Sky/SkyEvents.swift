@@ -106,53 +106,48 @@ final class SkyEvents: Sendable {
     }
 
     convenience init?(data: Data) {
-        let bytes = [UInt8](data)
-        guard bytes.count >= 44, bytes.prefix(6).elementsEqual(Array("FXSKY\u{1}".utf8)) else { return nil }
-        var o = 8
-        func int64() -> Int64 {
-            var v: UInt64 = 0
-            for i in 0..<8 { v |= UInt64(bytes[o + i]) << (8 * UInt64(i)) }
-            o += 8
-            return Int64(bitPattern: v)
+        let parsed: (Double, Double, [Double], [UInt8], [UInt16], [String])? = data.withUnsafeBytes { raw in
+            guard raw.count >= 44, raw.prefix(6).elementsEqual(Array("FXSKY\u{1}".utf8)) else { return nil }
+            func int64(_ o: Int) -> Int64 { Int64(littleEndian: raw.loadUnaligned(fromByteOffset: o, as: Int64.self)) }
+            func uint32(_ o: Int) -> UInt32 { UInt32(littleEndian: raw.loadUnaligned(fromByteOffset: o, as: UInt32.self)) }
+            let t0 = int64(8), t1 = int64(16), base = int64(24)
+            let n = Int(uint32(32)), k = Int(uint32(36)), l = Int(uint32(40))
+            guard k == SkyKinds.all.count else { return nil }
+            var o = 44
+            var labels: [String] = []
+            labels.reserveCapacity(l)
+            for _ in 0..<l {
+                guard o < raw.count else { return nil }
+                let len = Int(raw[o])
+                o += 1
+                guard o + len <= raw.count else { return nil }
+                labels.append(String(decoding: UnsafeRawBufferPointer(rebasing: raw[o..<(o + len)]), as: UTF8.self))
+                o += len
+            }
+            guard o + 7 * n == raw.count else { return nil }
+            var t = base
+            let times = [Double](unsafeUninitializedCapacity: n) { buffer, count in
+                for i in 0..<n {
+                    t += Int64(uint32(o + 4 * i))
+                    buffer[i] = Double(t)
+                }
+                count = n
+            }
+            o += 4 * n
+            let kinds = [UInt8](UnsafeRawBufferPointer(rebasing: raw[o..<(o + n)]))
+            guard kinds.allSatisfy({ Int($0) < k }) else { return nil }
+            o += n
+            let index = [UInt16](unsafeUninitializedCapacity: n) { buffer, count in
+                for i in 0..<n {
+                    buffer[i] = UInt16(littleEndian: raw.loadUnaligned(fromByteOffset: o + 2 * i, as: UInt16.self))
+                }
+                count = n
+            }
+            guard index.allSatisfy({ $0 == 0xFFFF || Int($0) < l }) else { return nil }
+            return (Double(t0), Double(t1), times, kinds, index, labels)
         }
-        func uint32() -> UInt32 {
-            var v: UInt32 = 0
-            for i in 0..<4 { v |= UInt32(bytes[o + i]) << (8 * UInt32(i)) }
-            o += 4
-            return v
-        }
-        let t0 = int64(), t1 = int64(), base = int64()
-        let n = Int(uint32()), k = Int(uint32()), l = Int(uint32())
-        guard k == SkyKinds.all.count else { return nil }
-        var labels: [String] = []
-        labels.reserveCapacity(l)
-        for _ in 0..<l {
-            guard o < bytes.count else { return nil }
-            let len = Int(bytes[o])
-            o += 1
-            guard o + len <= bytes.count else { return nil }
-            labels.append(String(decoding: bytes[o..<(o + len)], as: UTF8.self))
-            o += len
-        }
-        guard o + 7 * n == bytes.count else { return nil }
-        var times = [Double](repeating: 0, count: n)
-        var t = base
-        for i in 0..<n {
-            let p = o + 4 * i
-            t += Int64(UInt32(bytes[p]) | UInt32(bytes[p + 1]) << 8 | UInt32(bytes[p + 2]) << 16 | UInt32(bytes[p + 3]) << 24)
-            times[i] = Double(t)
-        }
-        o += 4 * n
-        let kinds = Array(bytes[o..<(o + n)])
-        guard kinds.allSatisfy({ Int($0) < k }) else { return nil }
-        o += n
-        var index = [UInt16](repeating: 0, count: n)
-        for i in 0..<n {
-            let p = o + 2 * i
-            index[i] = UInt16(bytes[p]) | UInt16(bytes[p + 1]) << 8
-            if index[i] != 0xFFFF, Int(index[i]) >= l { return nil }
-        }
-        self.init(start: Double(t0), end: Double(t1), times: times, kinds: kinds, labelIndex: index, labels: labels)
+        guard let parsed else { return nil }
+        self.init(start: parsed.0, end: parsed.1, times: parsed.2, kinds: parsed.3, labelIndex: parsed.4, labels: parsed.5)
     }
 
     // MARK: Queries

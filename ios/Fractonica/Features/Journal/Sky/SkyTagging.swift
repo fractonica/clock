@@ -9,6 +9,11 @@ enum SkyTagging {
         store.normalise = SkyTags.normalise
     }
 
+    /// Reads the sky table off the main thread (the first sky query would otherwise read it during a frame).
+    nonisolated static func warm() async {
+        await Task.detached(priority: .userInitiated) { _ = SkyEvents.shared.count }.value
+    }
+
     /// Tags the entries already on the device once per `SkyTags.version` (after the store loaded). Returns how many
     /// were written again.
     @discardableResult
