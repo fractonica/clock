@@ -66,6 +66,14 @@ struct SettingsScreen: View {
                 Text("The selected cycle is highlighted on every screen and stepped by ◀︎ ▶︎. Rings, ladder and timeline show the depths from the longest to the shortest.")
             }
 
+            Section {
+                NavigationLink {
+                    JournalSettingsScreen()
+                } label: {
+                    SettingLabel("Journal", detail: "Voice note, photo and video quality; storage", systemImage: Screen.journal.systemImage)
+                }
+            }
+
             Section("Feedback") {
                 Toggle(isOn: $settings.haptics) {
                     SettingLabel("Haptics", detail: "On steps, turnovers and alerts", systemImage: "hand.tap")
@@ -91,7 +99,11 @@ struct SettingsScreen: View {
         .scrollContentBackground(.hidden)
         .background { Backdrop() }
         .navigationTitle(Screen.settings.title)
+        .navigationDestination(isPresented: $showsJournal) { JournalSettingsScreen() }
     }
+
+    /// Settings › Journal, open at launch with -FXJournalSettings 1.
+    @State private var showsJournal = JournalLaunch.flag("FXJournalSettings")
 
     private var zoneName: String {
         guard let zone = settings.zone else { return "System" }

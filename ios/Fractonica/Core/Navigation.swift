@@ -16,7 +16,7 @@ final class AppRouter {
     /// The screen in the content area: a sidebar item on iPad and Mac, a tab (and its segment) on iPhone.
     var selection: Screen = .now
     /// The screen each iPhone group shows when its tab is selected.
-    private(set) var groupSelection: [ScreenGroup: Screen] = [.cycles: .rings, .calendar: .converter, .clock: .timer]
+    private(set) var groupSelection: [ScreenGroup: Screen] = [.cycles: .rings, .journal: .journal, .clock: .timer]
     /// Set by the root view: the iPhone layout (tabs with groups) is showing.
     var isCompact = false
 
@@ -32,6 +32,8 @@ final class AppRouter {
     var hubPairing: AppLink.Pairing?
     /// The hub settings page as a sheet (`-FXHubSettings 1`; the journal's settings will link to it).
     var isHubSettingsPresented = false
+    /// The printable Diary as a sheet (iPhone only, opened from the Journal; iPad and Mac show it as a screen).
+    var isDiaryPresented = false
     /// A link to open as soon as the root knows its layout (the `-FXTab` and `-FXLink` launch arguments).
     @ObservationIgnored var launchLink: AppLink?
 
@@ -51,6 +53,10 @@ final class AppRouter {
             isSettingsPresented = true
         case .sound where isCompact:
             isSoundPresented = true
+        case .diary where isCompact:
+            if let group = Screen.journal.group { groupSelection[group] = .journal }
+            selection = .journal
+            isDiaryPresented = true
         default:
             if let group = screen.group { groupSelection[group] = screen }
             selection = screen

@@ -1,8 +1,9 @@
 import SwiftUI
 
 /// Menu commands and keyboard shortcuts, mirroring the web app's keys: Space play / pause the time-lapse, N back to
-/// live, [ ] previous / next cycle of the selected level, P pure mode, M sound (⇧⌘M on iPad), ⌘K jump, ⌘1…⌘9 screens. On macOS they fill
-/// the Clock and View menus; on iPad they appear in the menu bar and the keyboard shortcut overlay. On macOS the bare
+/// live, [ ] previous / next cycle of the selected level, P pure mode, M sound (⇧⌘M on iPad), ⌘K jump, ⌘1…⌘9 screens
+/// (Now, Journal, the cycle views, Month, Converter, Sound), ⌘N a new journal entry. On macOS they fill the File,
+/// Clock and View menus; on iPad they appear in the menu bar and the keyboard shortcut overlay. On macOS the bare
 /// keys yield to a focused text field (AppKit offers a key to the first responder before the menus), so typing a date
 /// or a name does not trigger them.
 struct ClockCommands: Commands {
@@ -17,7 +18,7 @@ struct ClockCommands: Commands {
     #endif
 
     /// The screens with ⌘-number shortcuts, in key order.
-    private static let numbered: [Screen] = [.now, .rings, .ladder, .wave, .timeline, .converter, .month, .diary, .sound]
+    private static let numbered: [Screen] = [.now, .journal, .rings, .ladder, .wave, .timeline, .month, .converter, .sound]
     /// The Clock group, on ⌥⌘-number.
     private static let clockScreens: [Screen] = ScreenGroup.clock.screens
     /// Sound on / off: the bare M on macOS, where bare keys verifiably yield to a focused text field; ⇧⌘M on iPad,
@@ -29,6 +30,14 @@ struct ClockCommands: Commands {
     #endif
 
     var body: some Commands {
+        CommandGroup(replacing: .newItem) {
+            Button("New Journal Entry", systemImage: "square.and.pencil") {
+                show(.journal)
+                JournalUI.shared.compose()
+            }
+            .keyboardShortcut("n")
+            Button("Print Diary…", systemImage: Screen.diary.systemImage) { show(.diary) }
+        }
         CommandMenu("Clock") {
             Button("Play or Pause Time-lapse", systemImage: "playpause") {
                 if let edge = store.togglePlay() { toasts.show(edge) }

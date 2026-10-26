@@ -47,7 +47,7 @@ struct OpenScreenIntent: AppIntent {
 
 /// The screens a shortcut can open (`Screen` without Jump and Settings, which open from inside the app).
 enum OpenScreenOption: String, AppEnum {
-    case now, rings, ladder, wave, timeline, converter, month, diary, sound, timer, stopwatch, alerts, focus
+    case now, journal, rings, ladder, wave, timeline, converter, month, diary, sound, timer, stopwatch, alerts, focus
 
     var screen: Screen { Screen(rawValue: rawValue) ?? .now }
 
@@ -55,6 +55,7 @@ enum OpenScreenOption: String, AppEnum {
     // literal symbol names (the same as `Screen.systemImage`): the App Intents metadata is read at build time
     static let caseDisplayRepresentations: [OpenScreenOption: DisplayRepresentation] = [
         .now: DisplayRepresentation(title: "Now", image: .init(systemName: "clock")),
+        .journal: DisplayRepresentation(title: "Journal", image: .init(systemName: "book.pages")),
         .rings: DisplayRepresentation(title: "Rings", image: .init(systemName: "circle.circle")),
         .ladder: DisplayRepresentation(title: "Ladder", image: .init(systemName: "chart.bar.doc.horizontal")),
         .wave: DisplayRepresentation(title: "Wave", image: .init(systemName: "water.waves")),

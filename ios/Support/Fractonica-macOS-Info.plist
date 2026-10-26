@@ -44,7 +44,11 @@
 	<array>
 		<string>_fractonica-hub._tcp</string>
 	</array>
+	<key>NSCameraUsageDescription</key>
+	<string>Fractonica takes photos and videos for your journal entries.</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Fractonica finds your Fractonica Hub on the local network and syncs your journal with it.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Fractonica records voice notes for your journal entries.</string>
 </dict>
 </plist>

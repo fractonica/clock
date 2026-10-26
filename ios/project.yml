@@ -71,6 +71,9 @@ targets:
         NSBonjourServices: [_fractonica-hub._tcp]
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
+        # the Journal: voice notes, and photos and videos taken in the app (the Photos picker needs no permission)
+        NSMicrophoneUsageDescription: Fractonica records voice notes for your journal entries.
+        NSCameraUsageDescription: Fractonica takes photos and videos for your journal entries.
         UILaunchScreen:
           UIColorName: LaunchBackground
         UIUserInterfaceStyle: Dark
@@ -138,6 +141,9 @@ targets:
         NSBonjourServices: [_fractonica-hub._tcp]
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
+        # the Journal: voice notes, and photos and videos taken with the Mac's camera
+        NSMicrophoneUsageDescription: Fractonica records voice notes for your journal entries.
+        NSCameraUsageDescription: Fractonica takes photos and videos for your journal entries.
     entitlements:
       path: Support/FractonicaMac.entitlements
       properties:
@@ -146,6 +152,9 @@ targets:
         # the Diary's WKWebView: its sandboxed web-content process dies at launch without it, even for a custom scheme
         com.apple.security.network.client: true
         com.apple.security.print: true
+        # the Journal's voice notes and camera
+        com.apple.security.device.audio-input: true
+        com.apple.security.device.camera: true
         # timer notifications break through Focus (.timeSensitive); needs a provisioning profile, so
         # scripts/build.sh drops com.apple.developer.* keys from its ad-hoc signed builds
         com.apple.developer.usernotifications.time-sensitive: true

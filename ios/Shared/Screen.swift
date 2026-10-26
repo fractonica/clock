@@ -4,13 +4,14 @@
 /// Every screen of the app. The raw value is its id: in `AppLink` URLs (fractonica://rings) and for the `-FXTab`
 /// launch argument.
 enum Screen: String, CaseIterable, Identifiable, Sendable {
-    case now, rings, ladder, wave, timeline, converter, month, diary, sound, timer, stopwatch, alerts, focus, jump, settings
+    case now, journal, rings, ladder, wave, timeline, converter, month, diary, sound, timer, stopwatch, alerts, focus, jump, settings
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
         case .now: "Now"
+        case .journal: "Journal"
         case .rings: "Rings"
         case .ladder: "Ladder"
         case .wave: "Wave"
@@ -32,6 +33,7 @@ enum Screen: String, CaseIterable, Identifiable, Sendable {
     var systemImage: String {
         switch self {
         case .now: "clock"
+        case .journal: "book.pages"
         case .rings: "circle.circle"
         case .ladder: "chart.bar.doc.horizontal"
         case .wave: "water.waves"
@@ -57,16 +59,18 @@ enum Screen: String, CaseIterable, Identifiable, Sendable {
 
 /// Screens that share one iPhone tab, switched by a segmented control, and one sidebar section on iPad and Mac.
 /// (The iPhone tab bar holds four tabs beside the search tab before it folds the rest into "More", which is why the
-/// Timeline lives with the other cycle views.)
+/// Timeline lives with the other cycle views, and the calendar's Month and Converter with the Journal. The printable
+/// Diary is no segment: on iPhone it opens as a sheet, from the Journal's toolbar; iPad and Mac list it in the
+/// Journal's sidebar section.)
 enum ScreenGroup: String, CaseIterable, Identifiable, Sendable {
-    case cycles, calendar, clock
+    case cycles, journal, clock
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
         case .cycles: "Cycles"
-        case .calendar: "Calendar"
+        case .journal: "Journal"
         case .clock: "Clock"
         }
     }
@@ -74,7 +78,7 @@ enum ScreenGroup: String, CaseIterable, Identifiable, Sendable {
     var systemImage: String {
         switch self {
         case .cycles: "circle.circle"
-        case .calendar: "calendar"
+        case .journal: "book.pages"
         case .clock: "timer"
         }
     }
@@ -82,7 +86,7 @@ enum ScreenGroup: String, CaseIterable, Identifiable, Sendable {
     var screens: [Screen] {
         switch self {
         case .cycles: [.rings, .ladder, .wave, .timeline]
-        case .calendar: [.converter, .month, .diary]
+        case .journal: [.journal, .month, .converter]
         case .clock: [.timer, .stopwatch, .alerts]
         }
     }

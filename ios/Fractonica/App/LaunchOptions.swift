@@ -4,7 +4,8 @@ import Foundation
 /// never persist):
 ///
 ///     -FXTab <screen>    open a screen, presenting it as a sheet or cover where that is how it appears:
-///                        now rings ladder wave timeline converter month diary sound timer stopwatch alerts focus jump settings
+///                        now journal rings ladder wave timeline converter month diary sound timer stopwatch alerts focus jump
+///                        settings (the Journal adds its own: -FXJournalSeed, -FXJournalStore … see JournalLaunch)
 ///     -FXTime <unix s>   start travelling, paused at that moment (e.g. 1791460800, SPEC §12 vector A; negative values
 ///                        before 1970 work too)
 ///     -FXPure 1|0        pure mode on / off for this launch
