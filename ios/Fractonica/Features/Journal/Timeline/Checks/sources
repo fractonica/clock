@@ -1,0 +1,6 @@
+# The app files TimelineChecks.swift compiles against (relative to ios/).
+Fractonica/Features/Journal/Timeline/JournalZoom.swift
+Fractonica/Features/Journal/Timeline/JournalWaveLayout.swift
+Fractonica/Features/Journal/Store/HubRecord.swift
+Fractonica/Features/Journal/Store/JournalRecords.swift
+Shared/Notation+Standard.swift
