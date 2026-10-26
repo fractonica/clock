@@ -58,6 +58,32 @@ struct WaveArc: Equatable, Sendable {
         let a = start + sweep * t
         return WavePoint(x: cx + radius * cos(a), y: cy + radius * sin(a))
     }
+
+    /// The unit tangent at progress t, in the direction of travel.
+    func tangent(_ t: Double) -> WavePoint {
+        let a = start + sweep * t
+        let s: Double = sweep < 0 ? -1 : 1
+        return WavePoint(x: -sin(a) * s, y: cos(a) * s)
+    }
+
+    /// The library's child half-arc (fractonica.js `child()`): half-arc `local` of the `m` this arc divides into, whose
+    /// index in its level is `index` (its parity picks crest or trough). The child is a circle orthogonal to this one
+    /// through the ends of its stretch: it leaves and rejoins this arc at right angles, a crest looping out past it
+    /// and a trough dipping back in, so a level rides its parent as loops perpendicular to it.
+    func child(m: Int, local: Int, index: Int64) -> WaveArc {
+        if m == 1 { return self }
+        let delta = sweep / Double(m)
+        let middle = start + (Double(local) + 0.5) * delta
+        let r = radius / cos(delta / 2)
+        let sign: Double = delta > 0 ? 1 : delta < 0 ? -1 : 0
+        return WaveArc(
+            cx: cx + r * cos(middle),
+            cy: cy + r * sin(middle),
+            radius: radius * tan(abs(delta / 2)),
+            start: middle - sign * (Double.pi / 2 + abs(delta) / 2),
+            sweep: delta + (index % 2 != 0 ? -1 : 1) * Double.pi // ascending family
+        )
+    }
 }
 
 /// The half-arc of one level that holds an instant: its index, the progress through it and which half of the cycle.
