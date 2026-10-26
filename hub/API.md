@@ -92,9 +92,10 @@ uses the hub's LAN address so a phone can reach it, and is what the web UI shows
 `device` replaces that client's token instead of adding a second client. Wrong codes: `404 not_found`; more than 10
 failed attempts a minute from one address: `429`.
 
-The hub also mints codes from the command line (`hub pair --name … [--kind …] [--scopes …] [--kinds …]`); with
-`--token` it makes the client at once and prints its token instead of a code, which is how a script or sensor gets a
-token. On a start with no admin client it prints a one-time setup link for the first browser,
+The hub also mints codes from the command line (`hub pair --name … [--kind …] [--scopes …] [--kinds …]`): it prints the
+code, the `fractonica://pair` link and its QR code; the client redeems the code with `POST /v1/pair` (`--kind worker`
+defaults to the `worker` scope). For a script that cannot redeem, `--token` makes the client at once and prints its
+token instead of a code. On a start with no admin client it prints a one-time setup link for the first browser,
 `http://localhost:8787/#setup=<code>` (a code with every scope but `worker`, kind `browser`).
 
 ### Other client endpoints
@@ -254,6 +255,10 @@ each a **part**:
   (`<|image|>` for photos and video posters, `<|audio|>` for audio, `<|video|>` for video), within the model's
   8,192-token budget (the worker trims audio and video first).
 - `blob:<hash>`: one per photo, video and audio blob on its own, so a search can land on the one photo that matches.
+  A video whose poster stood in for it (below) still gets `blob:<video hash>`.
+
+Media the worker cannot decode are left out: a record's result may have fewer `blob:` parts than it has media, or only
+`record`, and the hub keeps what came.
 
 `POST /v1/search` (search)
 ```json
@@ -275,7 +280,9 @@ One result per record. `score` is cosine similarity in semantic mode, a 0…1 ra
 { "inputs": ["the night the moon was huge"], "task": "query", "dim": 256 }
 ```
 → `{ "model": "google/embeddinggemma-2", "dim": 256, "vectors": ["<base64>"] }`. `task`: `query` (SearchQuery prompt) or
-`document`. `dim`: 768, 512, 256 or 128. `503` when no worker is connected.
+`document` (the worker prefixes each input with `title: none | text: `, the document prompt with no title). Both reach
+the worker as an `embed.query` job carrying that `task`. `dim`: 768, 512, 256 or 128. `503` when no worker is
+connected or it does not answer in time.
 
 `GET /v1/vectors?after=<vrev>&dim=256` (read) — the vector feed, so a device keeps a copy of every part's vector and can
 rank a query locally:
@@ -297,18 +304,26 @@ The worker is an ordinary client with the `worker` scope. It needs only outbound
 machine (a GPU box) than the hub.
 
 `GET /v1/worker/jobs?wait=25&max=8` → `{ "jobs": [Job] }`, empty after `wait` seconds with nothing to do. Taking a job
-leases it for 120 s; a job not finished in time goes back to the queue (after 3 failures it is parked and shown in the
-web UI). Query jobs (from `/v1/search` and `/v1/embed`) always come before record jobs.
+leases it for 120 s; a job not finished in time goes back to the queue. Failures are counted per job: an expired lease
+counts as one, and so does an `{ "error", "retry": true }` answer; the third failure parks the job (`"retry": false`
+parks it at once). Parked record jobs are shown in the web UI and go back to the queue with `POST /v1/worker/retry` or
+when their record changes; a parked query job fails its `/v1/search` or `/v1/embed` with `503`. Query jobs (from
+`/v1/search` and `/v1/embed`) always come before record jobs.
 
 ```json
 { "id": "j_…", "type": "embed.query", "inputs": ["…"], "task": "query" }
 { "id": "j_…", "type": "embed.record", "record": { },
   "text": "title: 🌙 Night walk | text: Saw the moon rise…",
-  "media": [ { "hash": "…", "type": "image/heic", "role": "photo", "url": "/v1/blobs/…" } ] }
+  "media": [ { "hash": "…", "type": "image/heic", "role": "photo", "url": "/v1/blobs/…" },
+             { "hash": "v…", "type": "video/quicktime", "role": "video", "url": "/v1/blobs/v…", "duration": 12.0, "poster": "p…" },
+             { "hash": "p…", "type": "image/jpeg", "role": "poster", "url": "/v1/blobs/p…", "video": "v…" } ] }
 ```
-For `embed.record` the hub has already composed the text from the kind; `media` lists the blobs to embed (posters
-stand in for video when the worker cannot decode the video). Blob URLs are relative to the hub and fetched with the
-worker's token.
+For `embed.record` the hub has already composed the text from the kind; `media` lists the blobs to embed in record
+order (`photo`, `video`, `audio`; `duration` when known), each video followed by its poster when the record lists one
+(role `poster`, `video` = the video's hash). Posters: when the worker can decode the video it embeds the video and
+drops the poster; when it cannot, the poster replaces the video (as `<|image|>` in `record`) and its vector is the
+video's `blob:<video hash>` part. A poster never has a part of its own. Blob URLs are relative to the hub and fetched
+with the worker's token.
 
 `POST /v1/worker/jobs/{id}` — finish a job:
 ```json
@@ -317,16 +332,20 @@ worker's token.
 or `{ "error": "message", "retry": true }`. Vectors are full 768-dimension, L2-normalised; the hub truncates and
 re-normalises for smaller `dim`s. A query job's vectors are in input order with `part` `"0"`, `"1"`, ….
 
-A video's media entry also carries `poster` and `posterUrl` when the record lists one. The answer is `200 { "ok": true }`;
+The answer is `200 { "ok": true }`;
 `404` when the job is gone (its record changed or was deleted, or a query timed out): the worker drops it. A job leased
 again after its lease ran out may still be finished by the first worker; the first answer wins.
 
-`GET /v1/worker` (admin) → `{ connected, lastSeen, model, device, modalities, dim, vrev, queue: { queued, leased,
+`GET /v1/worker` (admin) → `{ connected, lastSeen, model, device, dtype, version, modalities, dim, vrev, queue: { queued, leased,
 parked, queries }, vectors, records, parked: [ { job, record, kind, attempts, error } ] }` for the web UI;
 `POST /v1/worker/retry` (admin) puts every parked job back in the queue.
 
-`POST /v1/worker/heartbeat` `{ "model": "…", "device": "mps", "modalities": ["text","image","audio","video"] }` every
-30 s while idle; the hub counts a worker as connected while its last heartbeat or job poll is under 60 s old.
+`POST /v1/worker/heartbeat` `{ "model": "…", "device": "mps", "dtype": "bf16", "version": "…", "modalities": ["text","image","audio","video"] }`
+→ `{ "ok": true }`, every 30 s while idle (other fields are ignored); the hub counts a worker as connected while its
+last heartbeat or job poll is under 60 s old.
+
+A worker gets its token like any client: `hub pair --name "GPU box" --kind worker` (scope `worker`) prints a code and a
+link, and the worker redeems the code with `fx-worker login --hub URL --code XXXX-XXXX` (`POST /v1/pair`).
 
 ## Live updates
 
@@ -339,7 +358,7 @@ device paired. Browsers pass the token as `?token=` because
 ## Writing a provider
 
 ```sh
-# once: make a token for the script (--token prints a token; without it you get a code to redeem with POST /v1/pair)
+# once: make a token for the script (without --token: a code to redeem with POST /v1/pair)
 node hub/bin/hub.mjs pair --name "Studio thermometer" --kind service --scopes write --kinds 'sensor.*' --token
 # every minute:
 curl -X PUT "$HUB/v1/records/temp:studio:$(date +%s)" -H "Authorization: Bearer $TOKEN" \
