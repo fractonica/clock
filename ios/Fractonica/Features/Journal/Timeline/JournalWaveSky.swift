@@ -50,9 +50,10 @@ final class JournalWaveSkyLayer {
         let signpost = JournalWaveSignposts.signposter.beginInterval("wave sky")
         defer { JournalWaveSignposts.signposter.endInterval("wave sky", signpost) }
         let (lo, hi) = cache.window
-        // on the finest line that clearly shows (the emoji sit on the deepest, which may be loops too small to see)
+        // on the line that reads as the wave (the strongest; the emoji sit on the deepest, often loops riding it), so
+        // ticks cross it and marks sit on it
         let zoom = cache.zoom
-        let level = zoom.levels.last { zoom.weight($0) >= JournalSkyPlacer.lineWeight } ?? zoom.spine
+        let level = zoom.levels.max { zoom.weight($0) < zoom.weight($1) } ?? zoom.spine
         marks = JournalSkyPlacer.place(SkyEvents.shared, from: lo, to: hi, k: k, hidden: hidden) { t in
             cache.trace(t, through: level).map { ($0.point.x, $0.point.y) }
         }

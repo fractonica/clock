@@ -38,8 +38,6 @@ enum JournalSkyPlacer {
     /// from `fullGap`. Total solar eclipses always show (where there is room).
     static let minGap = 20.0
     static let fullGap = 34.0
-    /// The sky sits on the finest level at least this strong (`JournalArcZoom.weight`).
-    static let lineWeight = 0.3
     static let eclipseRadius = 11.0
     static let radius = 8.0
     /// The most events considered at once (a window always holds fewer at the gaps above).
