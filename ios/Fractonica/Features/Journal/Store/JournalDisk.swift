@@ -166,6 +166,9 @@ struct JournalDraft: Codable, Hashable, Sendable {
     var timeChosen: Bool?
     var zone: String?
     var blobs: [BlobRef] = []
+    /// When each attachment was captured (blob hash → Unix seconds), read as it was added: the moment picker offers
+    /// them. Not part of the record.
+    var captured: [String: Double]?
     /// When it was last autosaved.
     var saved: Double = 0
 

@@ -65,7 +65,7 @@ final class Thumbnails: Sendable {
         return CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary)
     }
 
-    private static func frame(_ url: URL, pixels: Int) async -> CGImage? {
+    static func frame(_ url: URL, pixels: Int) async -> CGImage? {
         let generator = AVAssetImageGenerator(asset: AVURLAsset(url: url))
         generator.appliesPreferredTrackTransform = true
         generator.maximumSize = CGSize(width: pixels, height: pixels)

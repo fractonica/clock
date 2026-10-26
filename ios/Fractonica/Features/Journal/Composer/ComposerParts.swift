@@ -47,7 +47,9 @@ struct ComposerBar: View {
                     .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
                 HStack(spacing: 4) {
-                    PhotosPicker(selection: $pickerItems, matching: .any(of: [.images, .videos]), photoLibrary: .shared()) {
+                    // .current: the library's own file, not one Photos converts first for compatibility (slow for
+                    // videos); the journal converts it itself, per Settings › Journal
+                    PhotosPicker(selection: $pickerItems, matching: .any(of: [.images, .videos]), preferredItemEncoding: .current, photoLibrary: .shared()) {
                         Image(systemName: "photo.on.rectangle.angled")
                             .font(.system(size: 19, weight: .regular))
                             .foregroundStyle(Theme.ink)
@@ -78,12 +80,6 @@ struct ComposerBar: View {
                         .help("Add images, videos or audio from files")
                     #endif
                     Spacer(minLength: 8)
-                    if model.processing > 0 {
-                        ProgressView()
-                            .controlSize(.small)
-                            .padding(.horizontal, 6)
-                            .accessibilityLabel("Adding media")
-                    }
                     Button(action: onToggleFormatting) {
                         barIcon("textformat", tint: showFormatting ? Theme.teal : nil)
                     }
@@ -115,7 +111,7 @@ struct ComposerBar: View {
 // MARK: - Attachments
 
 /// The entry's media in the composer: photo and video tiles (drag to reorder, hold for more), voice notes as pills,
-/// each with a remove button.
+/// each with a remove button; media on their way in as tiles (or pills) with a ring and a cancel button.
 struct ComposerAttachments: View {
     let model: ComposerModel
     let words: Wording
@@ -124,8 +120,10 @@ struct ComposerAttachments: View {
         let media = model.media
         let visuals = media.filter { $0.role == "photo" || $0.role == "video" }
         let audios = media.filter { $0.role == "audio" }
+        let pendingVisuals = model.pending.filter { $0.role != "audio" }
+        let pendingAudios = model.pending.filter { $0.role == "audio" }
         VStack(alignment: .leading, spacing: 10) {
-            if !visuals.isEmpty || model.processing > 0 {
+            if !visuals.isEmpty || !pendingVisuals.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
                         ForEach(visuals, id: \.hash) { blob in
@@ -142,16 +140,11 @@ struct ComposerAttachments: View {
                                 }
                                 .contextMenu { arrangeMenu(blob, in: visuals) }
                         }
-                        if model.processing > 0 {
-                            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                .fill(Theme.panel2)
+                        ForEach(pendingVisuals) { item in
+                            PendingTile(item: item)
                                 .frame(width: 108, height: 108)
-                                .overlay {
-                                    VStack(spacing: 8) {
-                                        ProgressView()
-                                        Text("Adding…").font(.caption2).foregroundStyle(Theme.ink3)
-                                    }
-                                }
+                                .overlay(alignment: .topTrailing) { cancelButton(item) }
+                                .transition(.scale(scale: 0.85).combined(with: .opacity))
                         }
                     }
                     .padding(.vertical, 6)
@@ -173,7 +166,34 @@ struct ComposerAttachments: View {
                 }
                 .contextMenu { arrangeMenu(blob, in: audios) }
             }
+            ForEach(pendingAudios) { item in
+                HStack(spacing: 8) {
+                    PendingPill(item: item)
+                    Button { model.cancel(item.id) } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.title3)
+                            .symbolRenderingMode(.hierarchical)
+                            .foregroundStyle(Theme.ink3)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Cancel adding \(item.kindTitle.lowercased())")
+                }
+            }
         }
+    }
+
+    private func cancelButton(_ item: PendingMedia) -> some View {
+        Button { model.cancel(item.id) } label: {
+            Image(systemName: "xmark")
+                .font(.system(size: 11, weight: .bold))
+                .foregroundStyle(.white)
+                .frame(width: 24, height: 24)
+                .background(.black.opacity(0.55), in: .circle)
+                .overlay(Circle().stroke(.white.opacity(0.4), lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+        .padding(5)
+        .accessibilityLabel("Cancel adding \(item.kindTitle.lowercased())")
     }
 
     private func removeButton(_ blob: BlobRef) -> some View {
@@ -200,6 +220,114 @@ struct ComposerAttachments: View {
             Button("Move Later", systemImage: "arrow.right") { model.move(blob, by: 1) }
         }
         Button("Remove", systemImage: "trash", role: .destructive) { model.remove(blob) }
+    }
+}
+
+// MARK: - Media on their way in
+
+/// A photo or video on its way in: its picture (dimmed) once there is one, else its kind, and a ring that fills as it
+/// arrives, is converted and stored, with what it is doing under it.
+struct PendingTile: View {
+    let item: PendingMedia
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: 16, style: .continuous)
+            .fill(Theme.panel2)
+            .overlay {
+                if let preview = item.preview {
+                    Image(decorative: preview, scale: 1)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .overlay(Color.black.opacity(0.45))
+                }
+            }
+            .overlay {
+                VStack(spacing: 7) {
+                    ProgressRing(fraction: item.fraction, systemImage: item.systemImage)
+                        .frame(width: 40, height: 40)
+                    Text(item.stageTitle)
+                        .font(.caption2.weight(.medium))
+                        .foregroundStyle(item.preview == nil ? Theme.ink3 : .white.opacity(0.85))
+                }
+            }
+            .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Theme.line, lineWidth: 1))
+            .clipShape(.rect(cornerRadius: 16, style: .continuous))
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("\(item.kindTitle), \(item.stageTitle.lowercased())")
+            .accessibilityValue(Text(verbatim: "\(Int((item.fraction * 100).rounded())) %"))
+    }
+}
+
+/// A voice note or an audio file on its way in, as a pill like the ones it becomes.
+struct PendingPill: View {
+    let item: PendingMedia
+
+    var body: some View {
+        HStack(spacing: 10) {
+            ProgressRing(fraction: item.fraction, systemImage: item.systemImage)
+                .frame(width: 30, height: 30)
+            Text(item.name ?? item.kindTitle)
+                .font(.subheadline)
+                .foregroundStyle(Theme.ink2)
+                .lineLimit(1)
+            Spacer(minLength: 8)
+            Text(item.stageTitle)
+                .font(.caption)
+                .foregroundStyle(Theme.ink3)
+        }
+        .padding(.leading, 6)
+        .padding(.trailing, 12)
+        .padding(.vertical, 6)
+        .background(Theme.panel2, in: .capsule)
+        .overlay(Capsule().stroke(Theme.line, lineWidth: 1))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(item.kindTitle), \(item.stageTitle.lowercased())")
+    }
+}
+
+/// A determinate ring around a kind's symbol.
+struct ProgressRing: View {
+    let fraction: Double
+    let systemImage: String
+
+    var body: some View {
+        ZStack {
+            Circle().fill(Theme.background.opacity(0.55))
+            Circle().stroke(Theme.ink3.opacity(0.35), lineWidth: 3.5)
+            Circle()
+                .trim(from: 0, to: max(0.02, fraction))
+                .stroke(Theme.teal, style: StrokeStyle(lineWidth: 3.5, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+                .animation(.linear(duration: 0.15), value: fraction)
+            Image(systemName: systemImage)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(Theme.ink)
+        }
+    }
+}
+
+/// Save was asked for while media are still coming: it happens when they are in (or stop waiting).
+struct SaveWaitBanner: View {
+    let count: Int
+    let onStop: () -> Void
+
+    var body: some View {
+        HStack(spacing: 10) {
+            ProgressView().controlSize(.small)
+            Text(count == 1 ? "Saving when the attachment is in" : "Saving when \(count) attachments are in")
+                .font(.footnote.weight(.medium))
+                .foregroundStyle(Theme.ink)
+            Spacer(minLength: 8)
+            Button("Don’t Wait", action: onStop)
+                .font(.footnote.weight(.semibold))
+                .buttonStyle(.plain)
+                .foregroundStyle(Theme.teal)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .glassSurface(in: .capsule)
+        .padding(.horizontal, 16)
+        .padding(.top, 4)
     }
 }
 
@@ -323,9 +451,12 @@ struct LevelMeter: View {
 // MARK: - Moment
 
 /// The entry's moment: the Fractonica stamp live over an Earth date and time picker (in the chosen zone); in pure
-/// mode steps along the ladder instead of a Gregorian calendar.
+/// mode steps along the ladder instead of a Gregorian calendar. Attachments that know when they were captured are
+/// offered as one-tap choices above it ("Photo · taken 14:35").
 struct MomentEditor: View {
     let time: Double
+    var options: [MediaCapture.Option] = []
+    var blobs: [BlobRef] = []
     let onChange: (Double) -> Void
 
     @Environment(AppSettings.self) private var settings
@@ -354,6 +485,9 @@ struct MomentEditor: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(14)
                     .background(Theme.panel, in: .rect(cornerRadius: 16, style: .continuous))
+                    if !options.isEmpty {
+                        mediaChoices(words)
+                    }
                     if words.pure {
                         pureSteps(words)
                     } else {
@@ -383,6 +517,78 @@ struct MomentEditor: View {
             }
         }
         .onAppear { t = time }
+    }
+
+    /// "From the attachments": one row per capture moment; the chosen one is ticked.
+    private func mediaChoices(_ words: Wording) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("From the attachments")
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(Theme.ink3)
+                .padding(.leading, 4)
+            VStack(spacing: 0) {
+                ForEach(Array(options.enumerated()), id: \.element.id) { index, option in
+                    if index > 0 { Divider().overlay(Theme.line).padding(.leading, 58) }
+                    let chosen = abs(option.time - t) < 0.5
+                    Button {
+                        withAnimation(.snappy) { t = option.time }
+                        Haptics.play(.selection)
+                    } label: {
+                        HStack(spacing: 12) {
+                            thumbnail(option)
+                                .frame(width: 34, height: 34)
+                                .clipShape(.rect(cornerRadius: 8, style: .continuous))
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(verbatim: "\(option.kind.title) · \(option.kind.verb) \(Self.when(option.time, words: words))")
+                                    .font(.subheadline.weight(.medium))
+                                    .foregroundStyle(Theme.ink)
+                                Text(verbatim: words.notation.stamp(at: option.time, upTo: "iota"))
+                                    .font(.code(12))
+                                    .foregroundStyle(Theme.teal)
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.8)
+                            }
+                            Spacer(minLength: 8)
+                            Image(systemName: "checkmark")
+                                .font(.body.weight(.semibold))
+                                .foregroundStyle(Theme.teal)
+                                .opacity(chosen ? 1 : 0)
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 9)
+                        .contentShape(.rect)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityAddTraits(chosen ? .isSelected : [])
+                    .accessibilityHint("Uses this moment for the entry")
+                }
+            }
+            .background(Theme.panel, in: .rect(cornerRadius: 16, style: .continuous))
+        }
+    }
+
+    @ViewBuilder
+    private func thumbnail(_ option: MediaCapture.Option) -> some View {
+        if let blob = blobs.first(where: { $0.hash == option.id }), blob.role == "photo" || blob.role == "video" {
+            BlobImage(blob: blob, points: 34)
+        } else {
+            Image(systemName: option.kind.systemImage)
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(Theme.teal)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Theme.panel2, in: .rect(cornerRadius: 8, style: .continuous))
+        }
+    }
+
+    /// "14:35" today, "Oct 8 14:35" another day (the year when it differs); pure: the clock within the same Nuclide,
+    /// else the short letter date.
+    static func when(_ t: Double, words: Wording) -> String {
+        let now = Date().timeIntervalSince1970
+        if words.pure { return words.label(t, relativeTo: now) }
+        let earth = words.earth
+        let (a, b) = (earth.parts(t), earth.parts(now))
+        if a.year == b.year && a.month == b.month && a.day == b.day { return earth.time(t, seconds: false) }
+        return words.short(t, refYear: b.year)
     }
 
     private var range: ClosedRange<Date> {

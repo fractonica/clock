@@ -23,6 +23,9 @@ final class VoiceRecorder {
 
     var isActive: Bool { state == .recording || state == .paused }
 
+    /// When the latest recording began (Unix seconds): a voice note's moment, for the entry's moment picker.
+    private(set) var startedAt: Double?
+
     /// Seconds recorded so far.
     var elapsed: Double { recorder?.currentTime ?? 0 }
 
@@ -58,6 +61,7 @@ final class VoiceRecorder {
             guard recorder.record() else { throw CocoaError(.fileWriteUnknown) }
             self.recorder = recorder
             file = url
+            startedAt = Date().timeIntervalSince1970
             levels = Array(repeating: 0, count: levels.count)
             state = .recording
             startMeter()
