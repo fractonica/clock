@@ -35,5 +35,16 @@
 	<false/>
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.utilities</string>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_fractonica-hub._tcp</string>
+	</array>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Fractonica finds your Fractonica Hub on the local network and syncs your journal with it.</string>
 </dict>
 </plist>

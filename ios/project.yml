@@ -65,7 +65,12 @@ targets:
         # ProMotion iPhones run CADisplayLink / TimelineView(.animation) above 60 Hz only with this key (Focus)
         CADisableMinimumFrameDurationOnPhone: true
         UIBackgroundModes: [audio, fetch]
-        BGTaskSchedulerPermittedIdentifiers: [app.fractonica.clock.refresh]
+        BGTaskSchedulerPermittedIdentifiers: [app.fractonica.clock.refresh, app.fractonica.clock.hubsync]
+        # the journal's hub: Bonjour discovery and plain-http hubs on the local network (Features/Journal/Hub)
+        NSLocalNetworkUsageDescription: Fractonica finds your Fractonica Hub on the local network and syncs your journal with it.
+        NSBonjourServices: [_fractonica-hub._tcp]
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
         UILaunchScreen:
           UIColorName: LaunchBackground
         UIUserInterfaceStyle: Dark
@@ -128,6 +133,11 @@ targets:
             CFBundleURLSchemes: [fractonica]
         ITSAppUsesNonExemptEncryption: false
         LSApplicationCategoryType: public.app-category.utilities
+        # the journal's hub: Bonjour discovery and plain-http hubs on the local network (Features/Journal/Hub)
+        NSLocalNetworkUsageDescription: Fractonica finds your Fractonica Hub on the local network and syncs your journal with it.
+        NSBonjourServices: [_fractonica-hub._tcp]
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
     entitlements:
       path: Support/FractonicaMac.entitlements
       properties:

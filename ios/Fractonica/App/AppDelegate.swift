@@ -6,6 +6,7 @@ import UIKit
 final class AppDelegate: NSObject, UIApplicationDelegate {
     func application(_ application: UIApplication, willFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
         AlertsHooks.registerBackgroundTasks()
+        HubSyncHooks.registerBackgroundTasks()
         NotificationRouter.install()
         return true
     }

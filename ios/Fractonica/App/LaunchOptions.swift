@@ -13,6 +13,9 @@ import Foundation
 ///                        it replaces -FXTab, and its moment replaces -FXTime
 ///     -FXRate <rate>     run a time-lapse at that many displayed seconds per real second (from -FXTime, or from now;
 ///                        3600 is Play's default; negative values run backwards), for profiling and animated shots
+///     -FXHubSettings 1   present the hub settings page (Features/Journal/Hub) as a sheet; with it, HubSyncHooks reads
+///                        -FXHubDemo <n> (a demo journal store with n entries to sync) and HubPresentations reads
+///                        -FXHubScheme light|dark (the hub sheets' appearance)
 ///
 ///     xcrun simctl launch booted app.fractonica.clock -FXTab rings -FXTime 1791460800 -FXZone UTC
 struct LaunchOptions: Sendable {
@@ -22,6 +25,7 @@ struct LaunchOptions: Sendable {
     var zone: String?
     var link: AppLink?
     var rate: Double?
+    var hubSettings = false
 
     /// The options this process was launched with.
     static func current(_ defaults: UserDefaults = .standard, arguments: [String] = CommandLine.arguments) -> LaunchOptions {
@@ -39,7 +43,8 @@ struct LaunchOptions: Sendable {
             pure: string("FXPure").flatMap { ["1", "yes", "true"].contains($0.lowercased()) ? true : ["0", "no", "false"].contains($0.lowercased()) ? false : nil },
             zone: string("FXZone"),
             link: string("FXLink").flatMap(URL.init(string:)).flatMap(AppLink.init(url:)),
-            rate: number(raw("-FXRate") ?? string("FXRate")).flatMap { $0 != 0 ? $0 : nil }
+            rate: number(raw("-FXRate") ?? string("FXRate")).flatMap { $0 != 0 ? $0 : nil },
+            hubSettings: string("FXHubSettings").map { ["1", "yes", "true"].contains($0.lowercased()) } ?? false
         )
     }
 
@@ -53,5 +58,6 @@ struct LaunchOptions: Sendable {
             store.setRate(rate)
         }
         router.launchLink = link ?? screen.map { AppLink(screen: $0) }
+        router.isHubSettingsPresented = hubSettings
     }
 }

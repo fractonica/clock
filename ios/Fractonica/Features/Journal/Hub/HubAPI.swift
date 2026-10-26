@@ -342,14 +342,14 @@ struct HubSearchResponse: Decodable, Sendable {
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         mode = try c.decodeIfPresent(String.self, forKey: .mode) ?? "keyword"
-        results = try c.decode([Lossy<Result>].self, forKey: .results).compactMap(\.value)
+        results = try c.decode([HubLossy<Result>].self, forKey: .results).compactMap(\.value)
     }
 
     private enum CodingKeys: String, CodingKey { case mode, results }
 }
 
 /// An array element that may fail to decode without failing the array.
-struct Lossy<T: Decodable & Sendable>: Decodable, Sendable {
+private struct HubLossy<T: Decodable & Sendable>: Decodable, Sendable {
     var value: T?
 
     init(from decoder: Decoder) throws {
