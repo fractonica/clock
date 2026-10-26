@@ -64,7 +64,9 @@ ios/Widgets/Checks/Render/render.sh /tmp/widgets   # every widget family rendere
 
 The engine's fixtures are generated from the web app's own modules (from the repository root, with Node):
 `node ios/scripts/make-fixtures.mjs`, `node ios/scripts/make-fuzz-fixtures.mjs` and
-`node ios/scripts/make-jump-fixtures.mjs`. The app icon comes from `swift ios/scripts/make-icon.swift`.
+`node ios/scripts/make-jump-fixtures.mjs`. The app icon comes from `swift ios/scripts/make-icon.swift`, the journal's emoji
+set (every RGI emoji iOS 18.6 draws, with CLDR names and keywords) from `swift ios/scripts/make-emoji.swift` (its
+header says which Unicode files to give it).
 
 ## Folders
 
