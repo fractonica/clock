@@ -183,7 +183,13 @@ there (`helion`, `nuclide`, `delta`, `gamma`, `beta`, `alpha`), `boundary` which
 a period's end is the next one's `start`), and `rarity` follows from the level: `rare` (a Helion's node, blue),
 `epic` (Delta, purple), `legendary` (Gamma, yellow), `mythic` (Beta, red), `cosmic` (Alpha, rainbow). An entry without
 `capture` is `common` (grey). Photos taken by the front and back cameras at once have roles `photo` with `name`
-`front` and `back`.
+`front` and `back`; a moment captured several times (Flavons around it) names them `front@-1`, `back@-1`, `front@0`,
+`back@0`, `front@1`, … with the capture's offset from the moment in Flavons.
+
+Sky events near an entry are **tags** `sky:<event>` with the event names of the printable diary's astronomy
+(`src/diary/astro/index.js` `EVENT_INFO`: `sky:full-moon`, `sky:solar-eclipse`, `sky:june-solstice`, …): the apps add
+one for every event within one Helion (before or after) of the entry's `time`, and keep them current when the time
+changes. Other tags are the writer's own.
 
 Other kinds are shown generically by the apps and the web UI: the emoji from `data.emoji` if any, `data.title` or the
 kind, the searchable text, numbers from `data` as a compact key/value list (`sensor.temperature`
