@@ -196,25 +196,26 @@ private func settingsChecks() {
     let peak = list.first { $0.level == .helion && $0.boundary == .peak }!
     let node = list.first { $0.level == .helion && $0.boundary == .node }!
     let delta = list.first { $0.level == .delta } ?? calendar.upcoming(after: vectorA, count: 1, scan: 3000) { $0.rarity >= .epic }.first!
-    check(s.enabled && s.helion == .all && s.voice && s.quiet.enabled, "defaults: on, every Helion quarter, voice, quiet hours")
-    check(s.asks(peak) && s.asks(node) && s.asks(delta), "everything is asked for by default")
-    s.helion = .startAndNode
-    check(!s.asks(peak) && s.asks(node) && s.asks(delta), "starts and nodes: no peaks")
+    let start = list.first { $0.level == .helion && $0.boundary == .start }!
+    let nuclide = list.first { $0.level == .nuclide }!
+    check(s.enabled && s.helion == .nodes && s.voice && s.quiet.enabled, "defaults: on, Helion nodes, voice, quiet hours")
+    check(!s.asks(start) && !s.asks(peak) && s.asks(node) && s.asks(delta) && !s.asks(nuclide),
+          "only a Helion's node is a rare moment; Delta and longer always")
     s.helion = .none
     check(!s.asks(node) && s.asks(delta), "Delta and longer are always asked for")
     s.enabled = false
     check(!s.asks(delta), "off: nothing")
     // persistence, lenient
     var t = MomentSettings()
-    t.helion = .startAndNode
+    t.helion = .none
     t.quiet.start = 22 * 60
     let data = try! JSONEncoder().encode(t)
     check((try? JSONDecoder().decode(MomentSettings.self, from: data)) == t, "settings round-trip")
     let partial = try? JSONDecoder().decode(MomentSettings.self, from: Data(#"{"helion":"bogus","voice":false}"#.utf8))
-    check(partial?.helion == .all && partial?.voice == false && partial?.enabled == true, "unknown values take their defaults")
+    check(partial?.helion == .nodes && partial?.voice == false && partial?.enabled == true, "unknown values take their defaults")
     // quiet hours stop prompting
     let s2 = MomentSettings()
-    let night = list.first { s2.quiet.contains($0.time, zone: utc) }!
+    let night = list.first { s2.asks($0) && s2.quiet.contains($0.time, zone: utc) }!
     check(s2.asks(night) && !s2.prompts(night, zone: utc), "a moment in quiet hours is not announced")
 }
 
@@ -229,7 +230,7 @@ private func entry(_ m: Moment, id: String? = nil) -> HubRecord {
 private func streakChecks() {
     var settings = MomentSettings()
     settings.quiet.enabled = false
-    let list = calendar.upcoming(after: vectorA, count: 30)
+    let list = calendar.upcoming(after: vectorA, count: 30, scan: 400) { settings.asks($0) }
     // ten in a row, then a miss, then five
     let first = Array(list[0..<10]), second = Array(list[11..<16])
     let records = (first + second).map { entry($0) } + [HubRecord.journalEntry(time: vectorA, zone: nil, entry: JournalEntry(markdown: "plain"), blobs: [], now: vectorA)]
@@ -242,11 +243,10 @@ private func streakChecks() {
     stats = MomentStats.make(entries: records, calendar: calendar, settings: settings, zone: utc, now: list[17].time + 1)
     check(stats.current == 0 && stats.best == 10, "a moment missed for good: current \(stats.current)")
     // moments that are not announced neither count nor break
-    settings.helion = .startAndNode
-    let asked = list.filter { settings.asks($0) }
+    let asked = list
     let picked = Array(asked.prefix(6))
     stats = MomentStats.make(entries: picked.map { entry($0) }, calendar: calendar, settings: settings, zone: utc, now: picked.last!.time + 30)
-    check(stats.current == 6 && stats.best == 6, "peaks and valleys are skipped when not asked for: \(stats.current)")
+    check(stats.current == 6 && stats.best == 6, "starts, peaks and valleys are skipped: \(stats.current)")
     // quiet hours are skipped too
     var quiet = MomentSettings()
     quiet.quiet = MomentQuietHours(enabled: true, start: 0, end: 12 * 60)

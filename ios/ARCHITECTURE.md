@@ -197,9 +197,9 @@ on iPad and Mac. The Journal (Features/Journal: local store, composer, timeline;
 JournalHooks.swift) keeps its records and media under Application Support/Journal. Its timeline (Journal/Timeline) is a
 stack that pinches out from Helion days to Delta, Gamma and Beta blocks (`JournalZoom`), or the wave (`JournalWave*`:
 the levels as nested waves down one `Canvas`, each entry's emoji on it; `-FXJournalWaveHitches 1` measures it).
-Moments (Features/Journal/Moments) are BeReal-style captures on the clock: every Helion quarter boundary is a moment, labelled
-by the longest period with a quarter boundary there (its rarity: rare Helion and Nuclide, epic Delta, legendary Gamma,
-mythic Beta, cosmic Alpha); 11 Flavons ahead the app announces it (a notification with a spoken clip from
+Moments (Features/Journal/Moments) are BeReal-style captures on the clock: every Helion quarter boundary is a candidate moment, labelled
+by the longest period with a quarter boundary there (its rarity: rare Helion, epic Delta, legendary Gamma,
+mythic Beta, cosmic Alpha; of the Helion ones only nodes are announced, `MomentSettings.asks`); 11 Flavons ahead the app announces it (a notification with a spoken clip from
 Resources/Moments, made by scripts/make-moment-voices.sh, or the instant view itself while the app is in front) and
 at the exact moment the instant view captures both cameras and the voice and saves the entry with `data.capture`
 (hub/API.md). The streak and the collection derive from the records. The Journal shows a Moments bar over its timeline

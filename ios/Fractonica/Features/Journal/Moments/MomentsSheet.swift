@@ -336,7 +336,7 @@ struct MomentSettingsView: View {
                 }
                 .disabled(!moments.settings.enabled)
             } footer: {
-                Text("A moment is every Helion quarter: its start, peak, node and valley (Preon 0, 9, 18 and 27). Every boundary of a Delta, Gamma, Beta or Alpha falls on one, and those are always announced: they are the rare ones.")
+                Text("A rare moment is a Helion's node, its mid point (Preon 18). The start, peak, node and valley of a Delta, Gamma, Beta or Alpha are always announced: they are rarer still.")
             }
             Section {
                 Toggle("Quiet hours", isOn: $moments.settings.quiet.enabled)

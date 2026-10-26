@@ -5,7 +5,8 @@ import Foundation
 // 0 (a Helion's start), 9 (its peak), 18 (its node) and 27 (its valley). Every quarter boundary of a longer period
 // (Nuclide, Delta, Gamma, Beta, Alpha) falls on one of them, so each moment is labelled by the longest level for which
 // it is a start or a quarter boundary; that level gives its rarity (hub/API.md, `journal.entry` `capture`). The app
-// prompts 11 Flavons before each moment the settings ask for, opens the instant view and captures at the exact moment.
+// prompts 11 Flavons before each moment the settings ask for — a Helion's node and every quarter boundary of a Delta
+// or longer (`MomentSettings.asks`) — opens the instant view and captures at the exact moment.
 //
 // Everything here is pure logic on FractonicaKit (no UI), checked by Moments/Checks. Moments are numbered by their
 // Helion quarter count from the catalogue's start: moment q sits at position q / P(η) Saros, exactly.
@@ -312,27 +313,25 @@ struct MomentQuietHours: Hashable, Codable, Sendable {
     }
 }
 
-/// Which Helion (and Nuclide) moments are announced; Delta and longer always are.
+/// Which Helion moments are announced; Delta and longer always are. Only a Helion's node (its mid point, Preon 18)
+/// is a rare moment: its start, peak and valley, and a Nuclide's start, are not announced and do not count for the
+/// streak (unless a Delta or longer has a quarter boundary there).
 enum HelionPrompts: String, CaseIterable, Codable, Sendable {
-    /// Every quarter: start, peak, node, valley (about every 1¼ hours).
-    case all
-    /// Starts and nodes (about every 2½ hours).
-    case startAndNode
+    /// Every Helion's node (about every 5 hours).
+    case nodes
     /// None: only Delta and longer.
     case none
 
     var title: String {
         switch self {
-        case .all: "Every quarter"
-        case .startAndNode: "Starts and nodes"
+        case .nodes: "Helion nodes"
         case .none: "Delta and longer only"
         }
     }
 
     func includes(_ boundary: MomentBoundary) -> Bool {
         switch self {
-        case .all: true
-        case .startAndNode: boundary == .start || boundary == .node
+        case .nodes: boundary == .node
         case .none: false
         }
     }
@@ -341,7 +340,7 @@ enum HelionPrompts: String, CaseIterable, Codable, Sendable {
 /// Moments' preferences, persisted as one JSON value under `moments.v1`.
 struct MomentSettings: Hashable, Codable, Sendable {
     var enabled = true
-    var helion = HelionPrompts.all
+    var helion = HelionPrompts.nodes
     var quiet = MomentQuietHours()
     /// Spoken announcements: the notification's sound and the instant view's greeting.
     var voice = true
@@ -367,7 +366,8 @@ struct MomentSettings: Hashable, Codable, Sendable {
     func asks(_ m: Moment) -> Bool {
         guard enabled else { return false }
         switch m.level {
-        case .helion, .nuclide: return helion.includes(m.boundary)
+        case .helion: return helion.includes(m.boundary)
+        case .nuclide: return false
         default: return true
         }
     }

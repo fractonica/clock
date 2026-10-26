@@ -173,14 +173,14 @@ Searchable text by kind, as a title and a body: `journal.entry` → title `emoji
 Media are the record's `blobs`: roles `photo`, `video` (with a `poster`), `audio`. Everything about the entry that is
 not text lives in `blobs`; an entry with only a voice note has empty `markdown`.
 
-An entry captured on a clock **moment** (the app prompts before every Helion quarter boundary and captures at the exact
-moment) also has
+An entry captured on a clock **moment** (the app prompts before every Helion node and every quarter boundary of a Delta or
+longer, and captures at the exact moment) also has
 ```json
 "capture": { "at": 1791460800.0, "level": "delta", "boundary": "node", "rarity": "epic" }
 ```
 `at` is the boundary's exact time (the record's `time` is the same), `level` the longest period with a quarter boundary
 there (`helion`, `nuclide`, `delta`, `gamma`, `beta`, `alpha`), `boundary` which one (`start`, `peak`, `node`, `valley`;
-a period's end is the next one's `start`), and `rarity` follows from the level: `rare` (Helion and Nuclide, blue),
+a period's end is the next one's `start`), and `rarity` follows from the level: `rare` (a Helion's node, blue),
 `epic` (Delta, purple), `legendary` (Gamma, yellow), `mythic` (Beta, red), `cosmic` (Alpha, rainbow). An entry without
 `capture` is `common` (grey). Photos taken by the front and back cameras at once have roles `photo` with `name`
 `front` and `back`.
