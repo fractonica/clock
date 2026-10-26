@@ -9,3 +9,7 @@ Fractonica/Features/Journal/Markdown/MarkdownEditing.swift
 Fractonica/Features/Journal/Search/JournalRanking.swift
 Fractonica/Features/Journal/Timeline/JournalDays.swift
 Shared/Notation+Standard.swift
+Fractonica/Features/Journal/Sky/SkyEventKinds.swift
+Fractonica/Features/Journal/Sky/SkyEvents.swift
+Fractonica/Features/Journal/Sky/SkyTags.swift
+Fractonica/Features/Journal/Sky/SkyTagging.swift

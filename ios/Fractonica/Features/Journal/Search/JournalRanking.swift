@@ -1,7 +1,7 @@
 import Foundation
 
 /// Local search over records: a case- and accent-insensitive keyword match of every query word against the searchable
-/// text (hub/API.md), ranked by how many words match and how often, then by recency; and the merge with semantic
+/// text (hub/API.md) and the names of its sky tags, ranked by how many words match and how often, then by recency; and the merge with semantic
 /// scores when the sync layer provides them (`JournalSearch.semantic`). Pure logic, checked by Journal/Checks.
 enum JournalRanking {
     /// The query's words, folded ("Café  Moon" → ["cafe", "moon"]).
@@ -20,7 +20,8 @@ enum JournalRanking {
         guard !terms.isEmpty else { return [] }
         var hits: [(id: String, score: Double, time: Double)] = []
         for record in records {
-            let text = fold(record.searchableText)
+            // the sky tags read as their events' names: "full moon" finds an entry tagged sky:full-moon
+            let text = fold(record.searchableText + "\n" + SkyTags.searchText(record.tags))
             let title = fold(record.entry?.title ?? record.data["title"]?.string ?? "")
             var score = 0.0
             var all = true

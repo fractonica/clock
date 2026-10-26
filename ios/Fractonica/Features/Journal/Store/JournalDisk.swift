@@ -148,6 +148,8 @@ struct JournalState: Codable, Hashable, Sendable {
     var pending: [String] = []
     var changeCursor = 0
     var vectorCursor = 0
+    /// One-off migrations that ran, by key: the version of each (optional, so older state files still read).
+    var migrations: [String: Int]?
 }
 
 /// A composer's work in progress, autosaved so nothing is lost if the app is killed. Its media are blobs already in
