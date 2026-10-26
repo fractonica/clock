@@ -323,9 +323,9 @@ final class ComposerModel {
 
     private func makePreview(_ id: UUID, url: URL, role: String) async {
         guard role != "audio" else { return }
-        let image: CGImage? = role == "video"
-            ? await Thumbnails.frame(url, pixels: 320)
-            : await Task.detached(priority: .userInitiated) { Thumbnails.downsample(url, pixels: 320) }.value
+        let image: CGImage? = await Thumbnails.gate.run {
+            role == "video" ? await Thumbnails.frame(url, pixels: 320) : Thumbnails.downsample(url, pixels: 320)
+        } ?? nil
         guard let image, let i = pending.firstIndex(where: { $0.id == id }) else { return }
         pending[i].preview = image
     }

@@ -4,3 +4,4 @@ Fractonica/Features/Journal/Composer/EmojiData.swift
 Fractonica/Features/Journal/Composer/PendingMedia.swift
 Fractonica/Features/Journal/Media/MediaCapture.swift
 Fractonica/Features/Journal/Store/HubRecord.swift
+Fractonica/Features/Journal/Media/DecodeGate.swift

@@ -66,7 +66,15 @@ enum JournalMedia {
     // MARK: Photos
 
     static func processImage(_ url: URL, name: String? = nil, quality: PhotoQuality, disk: JournalDisk) async throws -> Item {
-        try await Task.detached(priority: .userInitiated) {
+        // one of at most two image decodes at a time (see Thumbnails.gate)
+        guard let result = await Thumbnails.gate.run({ () -> Result<Item, Error> in
+            Result { try processImageNow(url, name: name, quality: quality, disk: disk) }
+        }) else { throw CancellationError() }
+        return try result.get()
+    }
+
+    private static func processImageNow(_ url: URL, name: String?, quality: PhotoQuality, disk: JournalDisk) throws -> Item {
+        try {
             guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else {
                 throw Failure.unreadable(url.lastPathComponent)
             }
@@ -91,7 +99,7 @@ enum JournalMedia {
             // the optimised copy keeps when the photo was taken (and nothing else of its metadata)
             let props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any] ?? [:]
             return try encodePhoto(image, name: name, disk: disk, metadata: MediaCapture.dateProperties(props))
-        }.value
+        }()
     }
 
     /// A still (a camera shot, a generated sample) as an optimised HEIC (JPEG where HEIC cannot be written).

@@ -18,6 +18,7 @@ struct ComposerChecks {
         await movieFiles()
         captureOptions()
         pendingProgress()
+        await decodeGate()
         Checks.finish()
     }
 
@@ -225,6 +226,54 @@ struct ComposerChecks {
         check(abs(file.fraction - 0.475) < 1e-9, "a NaN report changes nothing")
         check(PendingMedia(role: "audio", name: nil, transfers: false).kindTitle == "Voice note"
               && PendingMedia(role: "audio", name: "a.m4a", transfers: false).kindTitle == "Audio", "audio kinds")
+    }
+
+    // MARK: Decode gate
+
+    /// At most two at once, every job runs, and one cancelled while it waits never runs.
+    static func decodeGate() async {
+        let gate = DecodeGate(limit: 2)
+        let counter = Counter()
+        await withTaskGroup(of: Int?.self) { group in
+            for i in 0..<12 {
+                group.addTask {
+                    await gate.run {
+                        await counter.enter()
+                        try? await Task.sleep(for: .milliseconds(15))
+                        await counter.leave()
+                        return i
+                    }
+                }
+            }
+            var done = 0
+            for await result in group where result != nil { done += 1 }
+            check(done == 12, "every job ran: \(done)")
+        }
+        let peak = await counter.peak
+        check(peak == 2, "never more than two at once: \(peak)")
+
+        // a waiting job whose task is cancelled leaves without running
+        let busy = Task { await gate.run { try? await Task.sleep(for: .milliseconds(200)); return 0 } }
+        let busy2 = Task { await gate.run { try? await Task.sleep(for: .milliseconds(200)); return 0 } }
+        try? await Task.sleep(for: .milliseconds(30))
+        let ran = Counter()
+        let waiter = Task { await gate.run { await ran.enter(); return 1 } }
+        try? await Task.sleep(for: .milliseconds(30))
+        waiter.cancel()
+        let result = await waiter.value
+        check(result == nil, "a cancelled waiter gets nothing")
+        _ = await (busy.value, busy2.value)
+        let after = await gate.run { 7 }
+        check(after == 7, "the gate still serves after a cancellation")
+        let ranCount = await ran.peak
+        check(ranCount == 0, "the cancelled job never ran")
+    }
+
+    actor Counter {
+        private var now = 0
+        private(set) var peak = 0
+        func enter() { now += 1; peak = max(peak, now) }
+        func leave() { now -= 1 }
     }
 
     // MARK: Helpers
