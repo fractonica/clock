@@ -288,6 +288,7 @@ Features that act outside their screens implement the hooks enum already in thei
 
 `AlertsHooks.registerBackgroundTasks()` (iOS) is called while launching, before launch finishes, as BackgroundTasks
 requires; Alerts registers its `BGAppRefreshTask` (`app.fractonica.clock.refresh`, already in Info.plist) there.
+`HubSyncHooks` (Features/Journal/Hub) does the same for the journal's hub sync (`app.fractonica.clock.hubsync`).
 
 ### Notifications
 
@@ -376,8 +377,9 @@ Read from UserDefaults' argument domain, never persisted; they work on iOS (simc
 | `-FXLink <url>` | Open an `AppLink` as a widget or notification tap does; replaces `-FXTab`, its `t` replaces `-FXTime` |
 | `-FXRate <rate>` | Run a time-lapse at that many displayed seconds per real second (from `-FXTime`, or from now), for profiling and animated shots; negative runs backwards |
 
-Features add their own (`-FXJump…`, `-FXLadder…`, `-FXAlerts…`, `-FXSound…`, `-FXFocus…`; each feature's file lists
-them). How the argument domain reads values:
+Features add their own (`-FXJump…`, `-FXLadder…`, `-FXAlerts…`, `-FXSound…`, `-FXFocus…`, `-FXHub…`; each feature's
+file lists them). `-FXHubSettings 1` presents the hub settings page, `-FXHubDemo <n>` attaches a demo journal store with
+n entries to sync, `-FXHubScheme light|dark` sets the hub sheets' appearance (HubSyncHooks.swift). How the argument domain reads values:
 
 - A value that starts with `-` is read as the next flag, not as the value: `-FXTime -11253795000` needs the raw-argument
   fallback LaunchOptions has; prefer values that start otherwise.
@@ -390,12 +392,16 @@ them). How the argument domain reads values:
 
 ## Info.plist keys and entitlements in place
 
-iOS app: `UIBackgroundModes` audio + fetch, `BGTaskSchedulerPermittedIdentifiers` [app.fractonica.clock.refresh],
+iOS app: `UIBackgroundModes` audio + fetch, `BGTaskSchedulerPermittedIdentifiers` [app.fractonica.clock.refresh,
+app.fractonica.clock.hubsync],
 `NSSupportsLiveActivities`, `CADisableMinimumFrameDurationOnPhone` (120 Hz on ProMotion iPhones), `CFBundleURLTypes`
 (fractonica), dark `UIUserInterfaceStyle`, all orientations on iPad, portrait + landscape on iPhone; entitlement
 `com.apple.developer.usernotifications.time-sensitive`. macOS app: `CFBundleURLTypes`; entitlements app-sandbox,
 files.user-selected.read-write, print, `network.client` (the sandboxed WebContent process of any WKWebView dies at
-launch without it, even for a custom-scheme page such as the Diary's), time-sensitive notifications. Widget
+launch without it, even for a custom-scheme page such as the Diary's), time-sensitive notifications. Both apps, for the journal's hub (Features/Journal/Hub):
+`NSLocalNetworkUsageDescription`, `NSBonjourServices` [_fractonica-hub._tcp] (finding hubs on the network with
+`NWBrowser`) and `NSAppTransportSecurity` `NSAllowsLocalNetworking` (plain http to `localhost`, `*.local` names and LAN
+IP addresses; a hub elsewhere needs https). Widget
 extensions: the WidgetKit extension point (macOS: app-sandbox). Local notifications, local audio output,
 `UIApplication.isIdleTimerDisabled` and haptics need nothing more.
 

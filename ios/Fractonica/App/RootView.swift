@@ -19,6 +19,7 @@ struct RootView: View {
         layout
             .toastOverlay()
             .modifier(Presentations())
+            .modifier(HubPresentations())
             .onChange(of: isCompact, initial: true) { _, compact in
                 router.isCompact = compact
                 router.openLaunchLink()

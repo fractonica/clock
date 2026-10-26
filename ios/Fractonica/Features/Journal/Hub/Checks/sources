@@ -1,0 +1,15 @@
+# The app files HubChecks compiles against (relative to ios/). The checks start Checks/mockhub.mjs with Node.
+Fractonica/Features/Journal/Store/HubRecord.swift
+Fractonica/Features/Journal/Store/RecordSyncing.swift
+Fractonica/Features/Journal/Hub/HubAPI.swift
+Fractonica/Features/Journal/Hub/HubClient.swift
+Fractonica/Features/Journal/Hub/HubCredentials.swift
+Fractonica/Features/Journal/Hub/HubDemoStore.swift
+Fractonica/Features/Journal/Hub/HubDevice.swift
+Fractonica/Features/Journal/Hub/HubDiscovery.swift
+Fractonica/Features/Journal/Hub/MediaLedger.swift
+Fractonica/Features/Journal/Hub/SemanticSearch.swift
+Fractonica/Features/Journal/Hub/SyncEngine.swift
+Fractonica/Features/Journal/Hub/VectorIndex.swift
+Shared/AppLink.swift
+Shared/Screen.swift

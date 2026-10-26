@@ -28,6 +28,10 @@ final class AppRouter {
     var isSoundPresented = false
     /// The time-travel sheet of the transport bar (iOS; macOS uses a popover).
     var isTransportPresented = false
+    /// A hub pairing link (`fractonica://pair?hub=…&code=…`) waiting for the person to confirm (HubPresentations).
+    var hubPairing: AppLink.Pairing?
+    /// The hub settings page as a sheet (`-FXHubSettings 1`; the journal's settings will link to it).
+    var isHubSettingsPresented = false
     /// A link to open as soon as the root knows its layout (the `-FXTab` and `-FXLink` launch arguments).
     @ObservationIgnored var launchLink: AppLink?
 
@@ -55,6 +59,10 @@ final class AppRouter {
 
     /// Opens a link (a widget, a notification, a URL): shows its moment, if it has one, then its screen.
     func open(_ link: AppLink, store: ClockStore = .shared) {
+        if let pairing = link.pairing {
+            hubPairing = pairing
+            return
+        }
         if let time = link.time { store.travel(to: time) }
         show(link.screen)
     }
