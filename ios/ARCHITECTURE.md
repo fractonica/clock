@@ -192,7 +192,9 @@ guarantees pure mode never prints a Gregorian date or "3 h 20 min":
 `ScreenGroup` bundles `cycles` (rings ladder wave timeline), `journal` (journal month converter) and `clock` (timer
 stopwatch alerts). The printable Diary is a sheet over the Journal on iPhone and a sidebar screen in the Journal section
 on iPad and Mac. The Journal (Features/Journal: local store, composer, timeline; hooks for the hub sync in
-JournalHooks.swift) keeps its records and media under Application Support/Journal.
+JournalHooks.swift) keeps its records and media under Application Support/Journal. Its timeline (Journal/Timeline) is a
+stack that pinches out from Helion days to Delta, Gamma and Beta blocks (`JournalZoom`), or the wave (`JournalWave*`:
+the levels as nested waves down one `Canvas`, each entry's emoji on it; `-FXJournalWaveHitches 1` measures it).
 
 | | iPhone (compact width) | iPad, Mac |
 |---|---|---|
