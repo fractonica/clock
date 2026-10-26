@@ -87,6 +87,14 @@ struct HubRequestBuilder: Sendable, Equatable {
         return components.url ?? base
     }
 
+    /// `url(endpoint)` with the token as `?token=`: only blob GETs (and the event stream) accept it, for players and
+    /// image views that cannot send a header.
+    func tokenURL(_ endpoint: HubEndpoint) -> URL {
+        var copy = endpoint
+        if let token { copy.query.append(URLQueryItem(name: "token", value: token)) }
+        return url(copy)
+    }
+
     /// The request for `endpoint`; `body` goes with `contentType` (JSON unless said otherwise).
     func request(_ endpoint: HubEndpoint, body: Data? = nil, contentType: String = "application/json; charset=utf-8") -> URLRequest {
         var request = URLRequest(url: url(endpoint), cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: endpoint.timeout)

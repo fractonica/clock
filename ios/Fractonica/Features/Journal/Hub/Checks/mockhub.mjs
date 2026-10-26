@@ -7,7 +7,7 @@
 // keeps the data (`--state`).
 //
 //   node mockhub.mjs [--port 8787] [--host 0.0.0.0] [--code K7QF-2MXD …] [--name "Mock Hub"] [--admin TOKEN]
-//                    [--state file.json] [--no-worker] [--model NAME] [--bonjour] [--quiet]
+//                    [--state file.json] [--no-worker] [--model NAME] [--bonjour] [--throttle KBps] [--quiet]
 //
 // Prints "LISTENING <port>" once ready (port 0 picks one). Test controls, all under /_mock (admin token):
 //   POST /_mock/code     {code?}                 mint a pairing code (also POST /v1/pairings)
@@ -41,6 +41,7 @@ const HOST = opt('host', '0.0.0.0');
 const ADMIN = opt('admin', 'fxh_admin');
 const STATE_FILE = opt('state', null);
 const QUIET = flag('quiet');
+const THROTTLE = Number(opt('throttle', '0')); // KB/s for blob uploads (0: as fast as it comes), to watch progress
 const log = (...a) => { if (!QUIET) console.error('[mockhub]', ...a); };
 
 // ---------------------------------------------------------------- state
@@ -119,9 +120,9 @@ function glob(pattern, kind) {
 }
 const kindAllowed = (client, kind) => (client.kinds || ['*']).some((p) => glob(p, kind));
 
-function auth(req, scope) {
+function auth(req, scope, queryToken = null) {
   const h = req.headers.authorization || '';
-  const token = h.startsWith('Bearer ') ? h.slice(7) : null;
+  const token = h.startsWith('Bearer ') ? h.slice(7) : queryToken;
   if (token === ADMIN) return { id: 'c_admin', name: 'admin', kind: 'browser', scopes: ['read', 'write', 'search', 'admin', 'worker'], kinds: ['*'] };
   const client = token && Object.values(S.clients).find((c) => c.token === token && !c.revoked);
   if (!client) fail(401, 'unknown or revoked token');
@@ -137,7 +138,16 @@ function canonical(v) {
   if (v && typeof v === 'object') return '{' + Object.keys(v).sort().filter((k) => v[k] !== undefined).map((k) => JSON.stringify(k) + ':' + canonical(v[k])).join(',') + '}';
   return JSON.stringify(v);
 }
-function written(r) { const o = {}; for (const k of WRITTEN) if (r[k] !== undefined && r[k] !== null) o[k] = r[k]; if (o.deleted === false) delete o.deleted; return o; }
+// The normalised record (API.md § Writing, canonical JSON): absent end/zone/text null, tags/blobs [], deleted false;
+// a tombstone keeps no data, text, tags or blobs.
+const BLOB_FIELDS = ['hash', 'type', 'size', 'role', 'name', 'width', 'height', 'duration', 'poster'];
+function written(r) {
+  const o = { id: r.id, kind: r.kind, time: r.time, end: r.end ?? null, zone: r.zone ?? null, data: r.data ?? {},
+              text: r.text ?? null, tags: r.tags ?? [], blobs: (r.blobs ?? []).map((b) => Object.fromEntries(BLOB_FIELDS.filter((k) => b[k] !== undefined && b[k] !== null).map((k) => [k, b[k]]))),
+              created: r.created, updated: r.updated, deleted: !!r.deleted };
+  if (o.deleted) { o.data = {}; o.text = null; o.tags = []; o.blobs = []; }
+  return o;
+}
 const contentHash = (r) => crypto.createHash('sha256').update(canonical(written(r))).digest('hex');
 
 // ---------------------------------------------------------------- the fake worker
@@ -202,13 +212,10 @@ function writeRecord(client, input) {
   }
   if (missing.length) return { id, status: 422, error: { code: 'unprocessable', message: 'missing blobs', details: { missing } } };
   const record = written(input);
-  if (record.deleted) { record.data = {}; record.blobs = []; }
-  if (stored) {
-    const same = contentHash(stored) === contentHash(record);
-    if (stored.updated === input.updated) {
-      if (same) return { id, status: 200, record: stored };
-      if (contentHash(record) < contentHash(stored)) return { id, status: 200, record: stored };
-    }
+  if (stored && stored.updated === input.updated) {
+    if (contentHash(stored) === contentHash(record)) return { id, status: 200, record: stored };
+    // A tie with other content: the greater hash wins; the losing side gets 409 as for an older write.
+    if (contentHash(record) < contentHash(stored)) return { id, status: 409, error: { code: 'conflict', message: 'tie lost', details: { current: stored } } };
   }
   const full = { ...record, source: stored ? stored.source : client.id, editor: client.id, rev: ++S.rev,
                  fx: { stamp: 'mock', clock: 'mock' } };
@@ -289,7 +296,8 @@ async function route(req, res) {
     fail(404, 'no such control');
   }
 
-  const client = auth(req);
+  // Blob GETs (for <img>, <video>, AVPlayer) also take the token as ?token=.
+  const client = auth(req, null, method === 'GET' && /^\/v1\/blobs\/[0-9a-f]{64}$/.test(path) ? q.get('token') : null);
 
   if (path === '/v1/me' && method === 'GET') {
     const { token, device, revoked, ...pub } = client;
@@ -386,7 +394,10 @@ async function route(req, res) {
       if (!client.scopes.includes('write') && !client.scopes.includes('admin')) fail(403, 'missing scope write');
       const hasher = crypto.createHash('sha256');
       const chunks = [];
-      for await (const c of req) { hasher.update(c); chunks.push(c); }
+      for await (const c of req) {
+        hasher.update(c); chunks.push(c);
+        if (THROTTLE) await new Promise((r) => setTimeout(r, (c.length / (THROTTLE * 1024)) * 1000));
+      }
       const actual = hasher.digest('hex');
       if (actual !== hash) fail(422, 'hash mismatch', { actual });
       const had = blobData.has(hash);
@@ -483,7 +494,7 @@ server.listen(PORT, HOST, () => {
   console.log(`LISTENING ${port}`);
   for (const [code] of Object.entries(S.codes)) log('pairing code', code.slice(0, 4) + '-' + code.slice(4));
   if (flag('bonjour')) {
-    bonjour = spawn('dns-sd', ['-R', S.hub.name, '_fractonica-hub._tcp', 'local', String(port), `id=${S.hub.id}`, `version=${S.hub.version}`], { stdio: 'ignore' });
+    bonjour = spawn('dns-sd', ['-R', S.hub.name, '_fractonica-hub._tcp', 'local', String(port), `id=${S.hub.id}`, `version=${S.hub.version}`, 'path=/v1'], { stdio: 'ignore' });
     log('advertising _fractonica-hub._tcp on', port);
   }
 });

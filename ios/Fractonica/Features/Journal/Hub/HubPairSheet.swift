@@ -31,6 +31,7 @@ struct HubPairSheet: View {
                 Text(isPaired ? "Paired" : "Pair with Fractonica Hub at \(host)?")
                     .font(.title2.weight(.semibold))
                     .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
                 details
             }
 
@@ -56,7 +57,7 @@ struct HubPairSheet: View {
                     Button {
                         dismiss()
                     } label: {
-                        Text("Done").frame(maxWidth: .infinity).frame(minHeight: 34)
+                        Text("Done").frame(maxWidth: .infinity).frame(minHeight: 34).foregroundStyle(Theme.background)
                     }
                     .glassProminentButtonStyle()
                 } else {
@@ -75,6 +76,7 @@ struct HubPairSheet: View {
                                 Text(isPairing ? "Pairing…" : "Pair")
                             }
                             .frame(maxWidth: .infinity).frame(minHeight: 34)
+                            .foregroundStyle(Theme.background)
                         }
                         .glassProminentButtonStyle()
                         .disabled(!model.canPair)

@@ -107,6 +107,17 @@ func engineChecks() async {
     check(storeA.records["ridge"]?.entry?.markdown == "Edited on the Mac" && storeA.pending.isEmpty,
           "a 409 adopts the hub's newer copy: \(String(describing: storeA.records["ridge"]?.entry?.markdown))")
 
+    // ---- a tie: same `updated`, other content on each device; both end with the hub's choice
+    storeB.write(entry("tie", "🪢", "Tie written on the Mac", t0 + 600))
+    storeA.write(entry("tie", "🪢", "Tie written on the phone", t0 + 600))
+    await engineB.syncNow()
+    await engineA.syncNow()
+    await engineB.syncNow()
+    let hubTie = try? await engineA.client!.record("tie")
+    check(hubTie != nil && storeA.records["tie"]?.entry == hubTie?.entry && storeB.records["tie"]?.entry == hubTie?.entry
+          && storeA.pending.isEmpty && storeB.pending.isEmpty,
+          "a tie converges on the hub's copy and leaves nothing pending: \(String(describing: hubTie?.entry?.markdown))")
+
     // ---- 422: the blob check says nothing is missing; the batch says otherwise; the engine uploads and retries
     let late = try! storeA.addBlob(HubDemoStore.photo(seed: 9, size: CGSize(width: 300, height: 200))!, type: "image/jpeg", role: "photo")
     storeA.write(entry("late", "📷", "A photo the hub has not seen", t0 + 3, blobs: [late]))
@@ -123,7 +134,7 @@ func engineChecks() async {
     for chunk in bulk.hubChunks(of: 500) { _ = try? await clientB.putRecords(chunk) }
     await engineA.syncNow()
     state = await hub.state()
-    check(storeA.entries.count == 1207, "1,203 more entries pulled in pages: \(storeA.entries.count)")
+    check(storeA.entries.count == 1208, "1,203 more entries pulled in pages: \(storeA.entries.count)")
     check(storeA.changeCursor == state["rev"] as? Int, "the cursor is the hub's last rev")
 
     // ---- tombstones: B deletes the moon entry; A drops it, its media and its vectors

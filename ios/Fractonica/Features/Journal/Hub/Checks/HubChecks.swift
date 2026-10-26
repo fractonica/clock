@@ -70,6 +70,10 @@ private func requestChecks() {
 
     let unpaired = HubClient(base: base)
     check(unpaired.thumbnailURL(hash: hash, px: 256).absoluteString.hasSuffix("?thumb=256"), "thumbnailURL")
+    let paired = HubClient(base: base, token: "fxh_t")
+    check(paired.thumbnailURL(hash: hash, px: 256).query == "thumb=256&token=fxh_t", "thumbnailURL carries ?token=: \(paired.thumbnailURL(hash: hash, px: 256))")
+    check(paired.blobURL(hash: hash).absoluteString == "http://192.168.1.20:8787/v1/blobs/\(hash)?token=fxh_t", "blobURL carries ?token=")
+    check(builder.request(.blob(hash)).url?.query == nil, "authorized requests never put the token in the URL")
     let authed = HubClient(base: base, token: "t").authorizedRequest(unpaired.thumbnailURL(hash: hash, px: 256))
     check(authed.value(forHTTPHeaderField: "Authorization") == "Bearer t", "authorizedRequest adds the token")
 
@@ -209,6 +213,8 @@ private func addressChecks() {
     check(HubAddress.display(URL(string: "http://192.168.1.20:8787")!) == "192.168.1.20:8787", "display drops http://")
     check(HubAddress.display(URL(string: "https://hub.example.com")!) == "https://hub.example.com", "display keeps https://")
 
+    check(HubDiscovery.prefix(of: "/v1") == "" && HubDiscovery.prefix(of: "/hub/v1/") == "/hub" && HubDiscovery.prefix(of: nil) == "",
+          "the TXT path's prefix")
     check(HubPairingCode.formatted("k7qf2mxd") == "K7QF-2MXD", "codes format XXXX-XXXX")
     check(HubPairingCode.formatted("K7Q") == "K7Q", "a partial code has no dash yet")
     check(HubPairingCode.formatted("k7qf 2mxd-extra") == "K7QF-2MXD", "spaces, dashes and overflow are dropped")

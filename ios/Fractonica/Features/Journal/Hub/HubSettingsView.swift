@@ -99,6 +99,7 @@ struct HubSettingsView: View {
                     Spacer()
                 }
                 .frame(minHeight: 30)
+                .foregroundStyle(Theme.background)
             }
             .glassProminentButtonStyle()
             .disabled(engine.isSyncing)
@@ -246,6 +247,7 @@ struct HubSettingsView: View {
                     Spacer()
                 }
                 .frame(minHeight: 30)
+                .foregroundStyle(Theme.background)
             }
             .glassProminentButtonStyle()
             .disabled(!model.canPair)

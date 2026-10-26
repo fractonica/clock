@@ -16,8 +16,10 @@ final class HubDiscovery {
     struct Hub: Identifiable, Hashable, Sendable {
         /// The Bonjour service name ("Fractonica Hub").
         var name: String
-        /// "192.168.1.20:8787" once resolved.
+        /// "192.168.1.20:8787" once resolved (with the path before `/v1`, when the TXT record's `path` has one).
         var address: String?
+        /// The TXT record's `path` ("/v1").
+        var path: String?
         /// From the TXT record, when the hub puts them there.
         var hubId: String?
         var version: String?
@@ -75,15 +77,18 @@ final class HubDiscovery {
             if let index = hubs.firstIndex(where: { $0.name == name }) {
                 hubs[index].hubId = txt["id"] ?? hubs[index].hubId
                 hubs[index].version = txt["version"] ?? hubs[index].version
+                hubs[index].path = txt["path"] ?? hubs[index].path
             } else {
-                hubs.append(Hub(name: name, address: nil, hubId: txt["id"], version: txt["version"]))
+                hubs.append(Hub(name: name, address: nil, path: txt["path"], hubId: txt["id"], version: txt["version"]))
             }
             if hubs.first(where: { $0.name == name })?.address == nil, !resolving.contains(name) {
                 resolving.insert(name)
                 Task {
                     let address = await Self.resolve(endpoint)
                     resolving.remove(name)
-                    if let index = hubs.firstIndex(where: { $0.name == name }) { hubs[index].address = address }
+                    if let index = hubs.firstIndex(where: { $0.name == name }) {
+                        hubs[index].address = address.map { $0 + Self.prefix(of: hubs[index].path) }
+                    }
                 }
             }
         }
@@ -124,6 +129,14 @@ final class HubDiscovery {
             connection.start(queue: .global(qos: .userInitiated))
             DispatchQueue.global().asyncAfter(deadline: .now() + 5) { finish(nil) }
         }
+    }
+
+    /// The base path before the API's `/v1` (TXT `path=/v1` → "", `path=/hub/v1` → "/hub").
+    nonisolated static func prefix(of path: String?) -> String {
+        guard var path, path.hasPrefix("/") else { return "" }
+        while path.hasSuffix("/") { path.removeLast() }
+        if path.hasSuffix("/v1") { path.removeLast(3) }
+        return path
     }
 
     private nonisolated static func hostString(_ host: NWEndpoint.Host) -> String {

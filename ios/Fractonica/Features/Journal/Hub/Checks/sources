@@ -6,6 +6,7 @@ Fractonica/Features/Journal/Hub/HubClient.swift
 Fractonica/Features/Journal/Hub/HubCredentials.swift
 Fractonica/Features/Journal/Hub/HubDemoStore.swift
 Fractonica/Features/Journal/Hub/HubDevice.swift
+Fractonica/Features/Journal/Hub/HubDiscovery.swift
 Fractonica/Features/Journal/Hub/MediaLedger.swift
 Fractonica/Features/Journal/Hub/SemanticSearch.swift
 Fractonica/Features/Journal/Hub/SyncEngine.swift

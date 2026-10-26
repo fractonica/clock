@@ -542,13 +542,9 @@ final class SyncEngine {
                 case 200, 201:
                     store.markUploaded(item.record ?? local)
                 case 409:
-                    if let current = item.error?.current {
-                        store.applyRemote(current)
-                        ledger.update(current)
-                        ledgerChanged = true
-                    } else if let current = try? await client.record(item.id) {
-                        store.applyRemote(current)
-                    }
+                    var current = item.error?.current
+                    if current == nil { current = try? await client.record(item.id) }
+                    if let current { adopt(current, over: local, store) }
                 case 422:
                     again.append(local)
                     missing.formUnion((item.error?.missing ?? []).map { $0.lowercased() })
@@ -573,6 +569,18 @@ final class SyncEngine {
         } else {
             problems.append("\(again.count) \(again.count == 1 ? "entry names" : "entries name") media the hub lacks")
         }
+    }
+
+    /// The hub kept its copy (409): adopt it. A newer copy goes through `applyRemote`; one with the same `updated` won
+    /// the hub's tie rule (the greater canonical hash), which the store's tie rule (keep a pending local copy) would
+    /// refuse forever, so it is taken as accepted with `markUploaded`, which clears pending.
+    private func adopt(_ current: HubRecord, over sent: HubRecord, _ store: any RecordSyncing) {
+        if current.updated == sent.updated {
+            store.markUploaded(current)
+        } else {
+            store.applyRemote(current)
+        }
+        if ledger.update(current) { ledgerChanged = true }
     }
 
     // MARK: Pull
@@ -757,10 +765,16 @@ final class SyncEngine {
         }
     }
 
-    /// A preview of a blob the hub makes (`?thumb=`): the URL needs the bearer token, so load it with
-    /// `client.authorizedRequest(_:)` or use `thumbnail(hash:px:)`. Nil when unpaired.
+    /// A preview of a blob made by the hub (`?thumb=<px>`, 64…2048), with the token in the URL so `AsyncImage` can load
+    /// it; the hub answers 404 when it cannot make one (fall back to the poster or the blob). Nil when unpaired.
     func thumbnailURL(hash: String, px: Int) -> URL? {
         client?.thumbnailURL(hash: hash, px: px)
+    }
+
+    /// A blob on the hub with the token in the URL, to stream a video the device does not have (`AVPlayer`) instead of
+    /// waiting for `ensureBlob`. Nil when unpaired.
+    func remoteBlobURL(hash: String) -> URL? {
+        client?.blobURL(hash: hash)
     }
 
     /// A hub-made JPEG preview, cached in Caches/HubThumbnails. Throws `.api(.notFound)` when the hub cannot make one.

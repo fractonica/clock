@@ -105,7 +105,9 @@ struct HubKeychain: HubSecretStore {
             q[kSecMatchLimit as String] = kSecMatchLimitOne
             return SecItemCopyMatching(q as CFDictionary, &result)
         }
-        return status == errSecSuccess ? result as? Data : nil
+        // A process without the entitlement may be told "not found" rather than refused: look in the fallback too.
+        guard status == errSecSuccess else { return try? Data(contentsOf: fallbackFile(account)) }
+        return result as? Data
     }
 
     private func write(_ account: String, _ data: Data) throws {
@@ -123,11 +125,27 @@ struct HubKeychain: HubSecretStore {
             }
             return status
         }
+        if status == errSecMissingEntitlement {
+            let file = fallbackFile(account)
+            try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try data.write(to: file, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+            return
+        }
         guard status == errSecSuccess else { throw KeychainError(status: status) }
     }
 
     private func remove(_ account: String) {
         _ = attempt { legacy in SecItemDelete(query(account, legacy: legacy) as CFDictionary) }
+        try? FileManager.default.removeItem(at: fallbackFile(account))
+    }
+
+    /// Where an unsigned build keeps what the Keychain refuses it (`errSecMissingEntitlement`: the command-line
+    /// simulator builds of scripts/build.sh, signed with nothing): a file in Application Support, which does not
+    /// outlive the app. Signed builds (Xcode, TestFlight, the App Store) always use the Keychain.
+    private func fallbackFile(_ account: String) -> URL {
+        let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        return support.appendingPathComponent("HubUnsignedKeychain", isDirectory: true)
+            .appendingPathComponent("\(service).\(account)")
     }
 }
 

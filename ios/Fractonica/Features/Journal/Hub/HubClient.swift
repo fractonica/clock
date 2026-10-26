@@ -155,10 +155,14 @@ struct HubClient: Sendable {
         return file
     }
 
-    /// The URL of a hub-made preview (`?thumb=`). It needs the token: load it with `authorizedRequest(_:)` (an
-    /// `AsyncImage` cannot send it) or `thumbnail(hash:px:)`.
+    /// A hub-made preview (`?thumb=<px>`) with the token in the URL (`?token=`), for `AsyncImage` and the like.
     func thumbnailURL(hash: String, px: Int) -> URL {
-        builder.url(.thumbnail(hash, px: px))
+        builder.tokenURL(.thumbnail(hash, px: px))
+    }
+
+    /// A blob with the token in the URL, for streaming (`AVPlayer` seeks with `Range`) without downloading it first.
+    func blobURL(hash: String) -> URL {
+        builder.tokenURL(.blob(hash))
     }
 
     /// `url` (one of this hub's) with the bearer token.
