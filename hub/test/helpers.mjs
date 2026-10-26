@@ -92,6 +92,15 @@ export function fakeWorker(w, { model = 'test/fake-embed', onJob } = {}) {
   const loop = (async () => {
     await w.post('/v1/worker/heartbeat', { model, device: 'cpu', modalities: ['text'] });
     while (running) {
+      try {
+        await step();
+      } catch (e) {
+        if (running) throw e;
+      }
+    }
+  })();
+  async function step() {
+    {
       const r = await w.get('/v1/worker/jobs?wait=1&max=8');
       for (const job of r.body.jobs ?? []) {
         onJob?.(job);
@@ -105,7 +114,7 @@ export function fakeWorker(w, { model = 'test/fake-embed', onJob } = {}) {
         await w.post(`/v1/worker/jobs/${job.id}`, { model, vectors });
       }
     }
-  })();
+  }
   return { stop: async () => ((running = false), await loop) };
 }
 

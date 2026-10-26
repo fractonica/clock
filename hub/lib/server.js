@@ -4,7 +4,7 @@ import { createReadStream, readFileSync, statSync, existsSync } from 'node:fs';
 import { join, dirname, extname, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { once } from 'node:events';
-import { HubError, bad, unauthorized, notFound, tooLarge, matchesAny } from './util.js';
+import { HubError, bad, unauthorized, notFound, tooLarge, unavailable, matchesAny } from './util.js';
 import { openHub } from './hub.js';
 import { openBlobs } from './blobs.js';
 import { lanAddress } from './lan.js';
@@ -59,7 +59,8 @@ async function readJSON(req, limit) {
 /** Waits until `ready()` is true, an event fires, the deadline passes or the client goes away. */
 async function waitUntil(ready, seconds, emitter, names, req) {
   const deadline = Date.now() + seconds * 1000;
-  while (!ready() && Date.now() < deadline && !req.destroyed) {
+  names = [...names, 'closing'];
+  while (!emitter.closing && !ready() && Date.now() < deadline && !req.destroyed) {
     const ac = new AbortController();
     const t = setTimeout(() => ac.abort(), deadline - Date.now());
     const onClose = () => ac.abort();
@@ -94,6 +95,7 @@ export async function startHub(opts = {}) {
     const path = url.pathname;
     const method = req.method;
     if (!path.startsWith('/v1')) return serveStatic(req, res, path);
+    if (hub.events.closing) throw unavailable('the hub is shutting down', 5);
     if (method === 'OPTIONS') {
       res.writeHead(204, CORS);
       return res.end();
@@ -160,6 +162,7 @@ export async function startHub(opts = {}) {
           let out = hub.changes(client, args);
           if (!out.changes.length && wait > 0) {
             await waitUntil(() => (out = hub.changes(client, args)).changes.length > 0, wait, hub.events, ['change'], req);
+            if (hub.events.closing) out = { ...out, changes: [] };
           }
           return send(res, 200, out);
         }
@@ -201,7 +204,7 @@ export async function startHub(opts = {}) {
           let out = hub.takeJobs(client, max);
           if (!out.jobs.length && wait > 0) {
             await waitUntil(() => hub.hasQueuedJobs(), wait, hub.events, ['job'], req);
-            if (!req.destroyed) out = hub.takeJobs(client, max);
+            if (!req.destroyed && !hub.events.closing) out = hub.takeJobs(client, max);
           }
           if (req.destroyed) return; // a job leased to a vanished poll goes back to the queue when its lease ends
           return send(res, 200, out);
@@ -351,6 +354,8 @@ export async function startHub(opts = {}) {
   gc();
 
   async function close() {
+    hub.events.closing = true;
+    hub.events.emit('closing');
     clearInterval(gcTimer);
     for (const s of sse) s.res.end();
     server.closeAllConnections?.();
