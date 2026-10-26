@@ -38,8 +38,24 @@ final class Thumbnails: Sendable {
         return image
     }
 
+    /// A thumbnail from image bytes (a remote thumbnail), cached under `key`.
+    func image(_ data: Data, key: String, pixels: Int) async -> CGImage? {
+        let cacheKey = "\(key)@\(pixels)" as NSString
+        if let hit = cache.object(forKey: cacheKey) { return hit.image }
+        let image = await Task.detached(priority: .userInitiated) { () -> CGImage? in
+            guard let source = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }
+            return Self.downsample(source, pixels: pixels)
+        }.value
+        if let image { cache.setObject(Entry(image), forKey: cacheKey, cost: image.bytesPerRow * image.height) }
+        return image
+    }
+
     static func downsample(_ url: URL, pixels: Int) -> CGImage? {
         guard let source = CGImageSourceCreateWithURL(url as CFURL, [kCGImageSourceShouldCache: false] as CFDictionary) else { return nil }
+        return downsample(source, pixels: pixels)
+    }
+
+    static func downsample(_ source: CGImageSource, pixels: Int) -> CGImage? {
         let options: [CFString: Any] = [
             kCGImageSourceCreateThumbnailFromImageAlways: true,
             kCGImageSourceCreateThumbnailWithTransform: true,
@@ -64,6 +80,8 @@ struct BlobImage: View {
     /// The long side to load, in points (scaled by the display).
     var points: CGFloat = 120
     var contentMode: ContentMode = .fill
+    /// Download the whole photo when the device lacks it (`JournalHooks.fetchBlob`), not just the hub's thumbnail.
+    var fetchesFull = false
 
     @Environment(\.displayScale) private var displayScale
     @State private var image: CGImage?
@@ -105,7 +123,15 @@ struct BlobImage: View {
     }
 
     private func load(_ pixels: Int) async -> CGImage? {
-        guard let source else { return nil }
-        return await Thumbnails.shared.image(source.url, key: source.key, pixels: pixels, video: source.video)
+        if let source {
+            return await Thumbnails.shared.image(source.url, key: source.key, pixels: pixels, video: source.video)
+        }
+        // not on this device yet: a full photo when asked for one (the gallery), else the hub's thumbnail
+        if fetchesFull, blob.role == "photo", let fetch = JournalHooks.fetchBlob, let url = try? await fetch(blob.hash) {
+            return await Thumbnails.shared.image(url, key: blob.hash, pixels: pixels)
+        }
+        let key = blob.role == "video" ? (blob.poster ?? blob.hash) : blob.hash
+        guard let remote = JournalHooks.remoteThumbnail, let data = await remote(key, min(2048, max(64, pixels))) else { return nil }
+        return await Thumbnails.shared.image(data, key: "remote:\(key)", pixels: pixels)
     }
 }

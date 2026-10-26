@@ -163,7 +163,8 @@ final class JournalStore: RecordSyncing {
     func markUploaded(_ record: HubRecord) {
         // gone meanwhile (a tombstone from the feed removed it): nothing to keep
         guard let local = records[record.id] else { return }
-        if local.updated > record.updated { return }  // edited again since: stays pending
+        // only a strictly newer local edit stays pending; a tie (the engine's answer to a tie-409) takes the hub's copy
+        if local.updated > record.updated { return }
         unmarkPending(record.id)
         if record.isDeleted {
             // the hub has the tombstone: the device no longer needs it
@@ -185,6 +186,13 @@ final class JournalStore: RecordSyncing {
         } else {
             commit(record, replacing: local)
         }
+    }
+
+    /// Makes every record on the device pending again, live ones and tombstones (the sync layer calls it when the
+    /// device pairs with a different hub, so everything uploads there). No `onLocalChange`: the caller syncs.
+    func markAllPending() {
+        pending = Set(records.keys)
+        saveState()
     }
 
     func blobFile(_ hash: String) -> URL? {

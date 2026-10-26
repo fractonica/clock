@@ -37,6 +37,19 @@ final class JournalAudioPlayer {
 
     func play(_ hash: String, at time: Double = 0) {
         stop()
+        if JournalStore.shared.blobFile(hash) == nil, let fetch = JournalHooks.fetchBlob {
+            // not on this device yet: download it, then play (unless something else started meanwhile)
+            current = hash
+            Task {
+                guard (try? await fetch(hash)) != nil, current == hash, player == nil else { return }
+                start(hash, at: time)
+            }
+            return
+        }
+        start(hash, at: time)
+    }
+
+    private func start(_ hash: String, at time: Double) {
         guard let url = JournalStore.shared.blobFile(hash), let player = try? AVAudioPlayer(contentsOf: url) else { return }
         Self.activateSession()
         let delegate = Delegate { [weak self] in self?.finished() }

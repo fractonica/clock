@@ -42,7 +42,7 @@ struct JournalScreen: View {
                 Text("Its photos, videos and voice notes are deleted with it.")
             }
             .onChange(of: feedKey, initial: true) { feed.update(store: store, includeOthers: prefs.showsOtherKinds) }
-            .task(id: query) { await search() }
+            .task(id: "\(feed.revision)|\(query)") { await search() }
             .onChange(of: store.isLoaded, initial: true) { applyLaunchOptions() }
     }
 

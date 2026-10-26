@@ -149,6 +149,8 @@ struct ComposerView: View {
             Text(model.error ?? "")
         }
         .onChange(of: scenePhase) { _, phase in if phase != .active { model.flush() } }
+        // the recorder shows in the page: the keyboard steps aside for it
+        .onChange(of: model.recorder.isActive) { _, active in if active { focus = nil } }
         .onDisappear { model.flush() }
         .task {
             if JournalLaunch.flag("FXJournalRecord") { model.startRecording() }

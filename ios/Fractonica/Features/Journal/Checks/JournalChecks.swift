@@ -183,6 +183,25 @@ private func remoteChecks() async {
     store.applyRemote(entry("e2", time: 60, title: "remote tie", updated: 200))
     check(store.record("e2")?.entry?.title == "remote tie", "a tie with nothing pending takes the hub's copy")
 
+    // markUploaded with a tie of updated adopts the hub's copy even while pending (the engine's tie-409)
+    clock.t = 250
+    store.save(entry("e3", time: 61, title: "local", updated: 0))
+    var hubCopy = entry("e3", time: 61, title: "hub", updated: 250)
+    hubCopy.rev = 12
+    store.markUploaded(hubCopy)
+    check(store.record("e3")?.entry?.title == "hub" && !store.isPending("e3"), "markUploaded on a tie takes the hub's copy and clears pending")
+
+    // markAllPending: every record, live and tombstone, pending again
+    store.delete("e3")
+    store.markUploaded(store.record("e2").map { var r = $0; r.rev = 4; return r }!)
+    store.markAllPending()
+    check(Set(store.pendingRecords().map(\.id)) == Set(store.records.keys) && store.isPending("temp:studio:1") && store.isPending("e3"),
+          "markAllPending marks live records and tombstones")
+    let reloaded = JournalStore(disk: store.disk)
+    reloaded.loadNow()
+    check(Set(reloaded.pendingRecords().map(\.id)) == Set(store.records.keys), "markAllPending persists")
+    for id in store.records.keys where id != "e2" && id != "e1" { if let r = store.records[id] { store.markUploaded(r) } }
+
     // a remote tombstone removes the record
     var tombstone = store.record("e2")!.tombstone(at: 300)
     tombstone.rev = 9

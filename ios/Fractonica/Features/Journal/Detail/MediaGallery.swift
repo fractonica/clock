@@ -123,7 +123,7 @@ private struct ZoomableImage: View {
 
     var body: some View {
         GeometryReader { geo in
-            BlobImage(blob: blob, points: max(geo.size.width, geo.size.height) * 2, contentMode: .fit)
+            BlobImage(blob: blob, points: max(geo.size.width, geo.size.height) * 2, contentMode: .fit, fetchesFull: true)
                 .frame(width: geo.size.width, height: geo.size.height)
                 .scaleEffect(scale)
                 .offset(offset)
@@ -180,12 +180,14 @@ private struct GalleryVideo: View {
                 BlobImage(blob: blob, points: 900, contentMode: .fit)
             }
         }
-        .onAppear {
-            if player == nil, let url = JournalStore.shared.blobFile(blob.hash) {
-                JournalAudioPlayer.shared.pause()
-                JournalAudioPlayer.activateSession()
-                player = AVPlayer(url: url)
-            }
+        .task {
+            guard player == nil else { return }
+            var url = JournalStore.shared.blobFile(blob.hash)
+            if url == nil, let fetch = JournalHooks.fetchBlob { url = try? await fetch(blob.hash) }
+            guard let url else { return }
+            JournalAudioPlayer.shared.pause()
+            JournalAudioPlayer.activateSession()
+            player = AVPlayer(url: url)
         }
         .onChange(of: active) { _, isActive in if !isActive { player?.pause() } }
         .onDisappear { player?.pause() }

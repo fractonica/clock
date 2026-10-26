@@ -5,12 +5,23 @@ import Observation
 /// optional for the journal: without the sync layer it is a local journal.
 ///
 ///     JournalHooks.refresh = { await HubSync.shared.syncNow() }             // pull to refresh in the timeline
+///     JournalHooks.fetchBlob = { try await HubSync.shared.ensureBlob($0) }   // a missing voice note, video, photo
+///     JournalHooks.remoteThumbnail = { hash, px in await HubSync.shared.thumbnail(hash, px) }   // missing tiles
 ///     JournalSearch.semantic = { query in await HubSearch.shared.scores(query) }   // record id → similarity
 ///     JournalStore.shared.onLocalChange = { HubSync.shared.scheduleUpload() }   // after every local save or delete
 @MainActor
 enum JournalHooks: FeatureHooks {
     /// Pull to refresh in the timeline calls this (and waits for it); nil hides nothing, the pull just ends.
     static var refresh: (@MainActor () async -> Void)?
+
+    /// A blob the device does not have yet: download it into the store and return its local file (the sync layer's
+    /// `ensureBlob`). Voice notes, videos and full-size photos call it when their file is missing.
+    static var fetchBlob: (@MainActor (_ hash: String) async throws -> URL)?
+
+    /// A small JPEG of a blob the device does not have (an image, or a video's first frame), long side at most
+    /// `pixels`, as the hub's `?thumb=` makes it: the bytes, fetched with the sync layer's credentials. Timeline and
+    /// composer tiles call it before (or instead of) downloading the whole file.
+    static var remoteThumbnail: (@MainActor (_ hash: String, _ pixels: Int) async -> Data?)?
 
     static func launch() {
         Task {
