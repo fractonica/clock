@@ -372,6 +372,8 @@ private func rankingChecks() {
     check(JournalRanking.merge(keyword: kw, semantic: nil, known: ["a", "b", "c"]) == ["c", "a", "b"], "no semantic scores: keyword order")
     check(JournalRanking.merge(keyword: kw, semantic: ["b": 0.8, "a": 0.5, "zz": 0.9], known: ["a", "b", "c"]) == ["b", "a", "c"],
           "semantic scores rank first, unknown ids dropped, keyword-only hits after")
+    check(JournalRanking.merge(keyword: [("a", 1)], semantic: ["b": 0.70, "c": 0.66, "d": 0.60, "a": 0.40], known: ["a", "b", "c", "d"]) == ["b", "c", "a"],
+          "semantic matches far below the best are left out unless a word matches")
 }
 
 // MARK: - Days

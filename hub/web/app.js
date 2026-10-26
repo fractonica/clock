@@ -704,7 +704,7 @@ function renderSearch() {
   // semantic search ranks everything; matches far below the best one are folded away
   const all = s.results ?? [];
   const top = all[0]?.score ?? 0;
-  const strong = s.ran === 'semantic' && !s.showWeak ? all.filter((x) => x.score >= top * 0.75) : all;
+  const strong = s.ran === 'semantic' && !s.showWeak ? all.filter((x) => x.score >= top - 0.06) : all;
   const weak = all.length - strong.length;
   const head = h('div', { class: 'results-h' },
     h('span', { class: 'h1' }, s.busy ? 'Searching…' : `${strong.length} result${strong.length === 1 ? '' : 's'}`),

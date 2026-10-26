@@ -21,6 +21,7 @@ enum HubSyncHooks: FeatureHooks {
     static func launch() {
         #if DEBUG
         attachDemoStoreIfAsked()
+        pairIfAsked()
         #endif
     }
 
@@ -37,6 +38,21 @@ enum HubSyncHooks: FeatureHooks {
     }
 
     #if DEBUG
+    /// `-FXHubPair <hub URL> -FXHubCode <code>`: pairs at launch without the confirmation sheet (scripted end-to-end
+    /// runs, where nothing can tap Pair).
+    private static func pairIfAsked() {
+        let defaults = UserDefaults.standard
+        guard let address = defaults.string(forKey: "FXHubPair"), let url = URL(string: address),
+              let code = defaults.string(forKey: "FXHubCode") else { return }
+        Task {
+            do {
+                try await SyncEngine.shared.pair(url: url, code: code, name: HubDevice.defaultName)
+            } catch {
+                print("FXHubPair: \(error)")
+            }
+        }
+    }
+
     /// The demo store for `-FXHubDemo`, kept alive here.
     private static var demoStore: HubDemoStore?
 

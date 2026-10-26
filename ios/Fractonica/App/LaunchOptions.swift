@@ -17,6 +17,7 @@ import Foundation
 ///     -FXHubSettings 1   present the hub settings page (Features/Journal/Hub) as a sheet; with it, HubSyncHooks reads
 ///                        -FXHubDemo <n> (a demo journal store with n entries to sync) and HubPresentations reads
 ///                        -FXHubScheme light|dark (the hub sheets' appearance)
+///     -FXHubPair <url>   with -FXHubCode <code>: pair with that hub at launch, no confirmation (debug builds)
 ///
 ///     xcrun simctl launch booted app.fractonica.clock -FXTab rings -FXTime 1791460800 -FXZone UTC
 struct LaunchOptions: Sendable {

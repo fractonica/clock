@@ -35,12 +35,17 @@ enum JournalRanking {
         return hits.sorted { $0.score != $1.score ? $0.score > $1.score : $0.time > $1.time }.map { ($0.id, min(1, $0.score)) }
     }
 
+    /// How far below the best semantic score a record that matches no word may be and still show: the search ranks
+    /// every record, and similarities of short entries bunch together (the hub's web page folds the same ones away).
+    static let semanticReach = 0.06
+
     /// Semantic scores (record id → similarity) ranked first, keyword hits the semantic search missed after them.
-    /// Without semantic scores, the keyword ranking.
+    /// Records far below the best score that match no word are left out. Without semantic scores, the keyword ranking.
     static func merge(keyword: [(id: String, score: Double)], semantic: [String: Double]?, known: Set<String>) -> [String] {
         guard let semantic, !semantic.isEmpty else { return keyword.map(\.id) }
         let keywordScore = Dictionary(keyword.map { ($0.id, $0.score) }, uniquingKeysWith: max)
-        let ranked = semantic.filter { known.contains($0.key) }
+        let top = semantic.filter { known.contains($0.key) }.values.max() ?? 0
+        let ranked = semantic.filter { known.contains($0.key) && ($0.value >= top - semanticReach || keywordScore[$0.key] != nil) }
             .map { (id: $0.key, score: $0.value + 0.05 * (keywordScore[$0.key] ?? 0)) }
             .sorted { $0.score != $1.score ? $0.score > $1.score : $0.id < $1.id }
             .map(\.id)
