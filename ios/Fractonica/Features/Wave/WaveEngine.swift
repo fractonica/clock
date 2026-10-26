@@ -331,22 +331,6 @@ final class WaveEngine {
 
     // MARK: The library geometry
 
-    /// fractonica.js `child()`: the child half-arc `index` (local place `local` among m) of a parent arc.
-    private func child(_ parent: WaveArc, m: Int, local: Int, index: Int64) -> WaveArc {
-        if m == 1 { return parent }
-        let delta = parent.sweep / Double(m)
-        let middle = parent.start + (Double(local) + 0.5) * delta
-        let r = parent.radius / cos(delta / 2)
-        let sign: Double = delta > 0 ? 1 : delta < 0 ? -1 : 0
-        return WaveArc(
-            cx: parent.cx + r * cos(middle),
-            cy: parent.cy + r * sin(middle),
-            radius: parent.radius * tan(abs(delta / 2)),
-            start: middle - sign * (Double.pi / 2 + abs(delta) / 2),
-            sweep: delta + (index % 2 != 0 ? -1 : 1) * Double.pi // ascending family
-        )
-    }
-
     private static func moduloAngle(_ x: Double) -> Double {
         let tau = WaveGeometry.tau
         return WaveGeometry.jsMod(WaveGeometry.jsMod(x, tau) + tau, tau)
@@ -372,7 +356,7 @@ final class WaveEngine {
             }
             if l < level {
                 let m = factor(l)
-                result = child(result, m: m, local: Int(indices[l + 1] % Int64(m)), index: indices[l + 1])
+                result = result.child(m: m, local: Int(indices[l + 1] % Int64(m)), index: indices[l + 1])
             }
             result.start = Self.moduloAngle(result.start)
         }

@@ -2,8 +2,9 @@ import FractonicaKit
 import os
 import SwiftUI
 
-/// The Journal as a wave: time runs down the screen, newest at the top, the clock's levels drawn along it as nested
-/// harmonic waves (the levels whose cycles are readable at the zoom), each entry's emoji on the wave at its moment.
+/// The Journal as a wave in the Wave screen's circular geometry: time runs down the screen, newest at the top, along
+/// the regular arcs of the level that fits the zoom, the finer levels riding them as perpendicular loops
+/// (`JournalArcLayout`), each entry's emoji on the wave at its moment.
 /// Drag to move through time, pinch to zoom from Preons to Betas, tap an emoji to open its entry (a cluster zooms in
 /// until it comes apart). The displayed moment is marked across the wave.
 ///
@@ -170,67 +171,126 @@ struct JournalWaveSymbol: View {
 
 // MARK: - Drawing
 
-/// The wave's paths for a zoom and size, built over a window two and a half screens tall and moved, not rebuilt, while
-/// the view scrolls inside it. Names of cycles are memoised.
+/// The wave's arcs and paths for a zoom and size, built over a window two and a half screens tall and moved, not
+/// rebuilt, while the view scrolls inside it. Names of cycles are memoised.
 @MainActor
 final class JournalWaveCache {
     struct Key: Equatable {
         let k: Double
         let width: Double
         let height: Double
+        let x0: Double
+        let radius: Double
     }
 
     struct Line {
         let level: Int
         let weight: Double
+        let width: Double
+        let depth: Double
         let path: Path
     }
 
     private(set) var key: Key?
-    private(set) var strands: [JournalWaveStrand] = []
+    private(set) var zoom = JournalArcs.zoom(k: 0.001, radius: 100)
     private(set) var lines: [Line] = []
-    /// The cached paths' y is measured from this moment (y' = (anchor − t) · k).
+    /// The half-arcs in the window, per level from the spine down, in the cache's coordinates.
+    private(set) var arcs: [[JournalArc]] = []
+    /// The cached arcs' y is measured from this moment (y' = (anchor − t) · k).
     private(set) var anchor = 0.0
     private var lo = 0.0
     private var hi = 0.0
     private var names: [Int64: String] = [:]
+    /// The layout in the cache's coordinates, and the wave points of moments worked out so far (kept while it lasts).
+    private var layout: JournalArcLayout?
+    private var points: [Double: JournalWavePoint] = [:]
     let clock = FractonicaClock.shared
     /// The texts as pictures.
     let labels = JournalWaveLabels()
 
-    /// The strands and lines for a frame, rebuilding when the zoom or size changed or the view left the window.
-    func lines(_ f: JournalWaveFrame, size: CGSize, x0: Double, half: Double) -> (strands: [JournalWaveStrand], lines: [Line], dy: Double) {
-        let key = Key(k: f.k, width: size.width, height: size.height)
+    /// Arcs with a radius above this many points are drawn as polylines (a spine opening into a straight line).
+    static let bigRadius = 3000.0
+
+    /// The zoom, lines and arcs for a frame, rebuilding when the zoom or size changed or the view left the window; `dy`
+    /// moves the cached coordinates onto the frame.
+    func lines(_ f: JournalWaveFrame, size: CGSize, x0: Double, radius: Double) -> (zoom: JournalArcZoom, lines: [Line], arcs: [[JournalArc]], dy: Double) {
+        let key = Key(k: f.k, width: size.width, height: size.height, x0: x0, radius: radius)
         let t0 = f.t(size.height), t1 = f.t(0)
         if key != self.key || t0 < lo || t1 > hi {
-            rebuild(f, key: key, x0: x0, half: half)
+            rebuild(f, key: key)
         }
-        return (strands, lines, (f.top - anchor) * f.k)
+        return (zoom, lines, arcs, (f.top - anchor) * f.k)
     }
 
-    private func rebuild(_ f: JournalWaveFrame, key: Key, x0: Double, half: Double) {
+    private func rebuild(_ f: JournalWaveFrame, key: Key) {
         let signpost = JournalWaveSignposts.signposter.beginInterval("wave paths")
         defer { JournalWaveSignposts.signposter.endInterval("wave paths", signpost) }
+        // while a zoom changes it every frame, the window is only a little taller than the screen
+        let zooming = self.key.map { $0.k != key.k && $0.width == key.width && $0.height == key.height } ?? false
         self.key = key
         let span = key.height / f.k
-        lo = max(clock.tMin, f.t(key.height) - 0.75 * span)
-        hi = min(clock.tMax, f.top + 0.75 * span)
+        let extra = (zooming ? 0.25 : 0.75) * span
+        lo = max(clock.tMin, f.t(key.height) - extra)
+        hi = min(clock.tMax, f.top + extra)
         anchor = f.top
-        strands = JournalWave.strands(k: f.k, height: key.height, half: half, clock: clock)
-        guard hi > lo, let p0 = clock.position(at: lo), let p1 = clock.position(at: hi) else {
+        points.removeAll(keepingCapacity: true)
+        zoom = JournalArcs.zoom(k: f.k, radius: key.radius, clock: clock)
+        let k = f.k, a = anchor
+        let layout = JournalArcLayout(zoom: zoom, x0: key.x0, clock: clock) { t in (a - t) * k }
+        self.layout = layout
+        let drawn = zoom.drawn
+        guard hi > lo, let last = drawn.last else {
             lines = []
+            arcs = []
             return
         }
-        let k = f.k, a = anchor
-        lines = strands.indices.map { i in
-            let points = JournalWave.line(strands, through: i, from: p0, to: p1, x0: x0, clock: clock) { t in (a - t) * k }
+        let yRange = (a - hi) * k ... (a - lo) * k
+        arcs = layout.arcs(from: lo, to: hi, through: last, yRange: yRange)
+        lines = drawn.compactMap { level in
+            let i = level - zoom.spine
+            guard i < arcs.count else { return nil }
             var path = Path()
-            if let first = points.first {
-                path.move(to: CGPoint(x: first.x, y: first.y))
-                for p in points.dropFirst() { path.addLine(to: CGPoint(x: p.x, y: p.y)) }
-            }
-            return Line(level: strands[i].level, weight: strands[i].weight, path: path)
+            for item in arcs[i] { Self.add(&path, item.arc, yRange: yRange) }
+            return Line(level: level, weight: zoom.weight(level), width: zoom.lineWidth(level), depth: zoom.depth(level), path: path)
         }
+    }
+
+    /// Adds an arc to a path: a true arc, or the stretch of a huge one inside `yRange` as a polyline.
+    static func add(_ path: inout Path, _ a: WaveArc, yRange: ClosedRange<Double>) {
+        if a.radius <= bigRadius {
+            // a level's arcs follow on from each other: one stroke runs on through their joins (no caps piling up
+            // into beads where a translucent line meets itself)
+            let p = a.point(0)
+            if let c = path.currentPoint, abs(c.x - p.x) < 0.01, abs(c.y - p.y) < 0.01 {} else {
+                path.move(to: CGPoint(x: p.x, y: p.y))
+            }
+            path.addArc(center: CGPoint(x: a.cx, y: a.cy), radius: a.radius, startAngle: .radians(a.start),
+                        endAngle: .radians(a.start + a.sweep), clockwise: a.sweep < 0)
+            return
+        }
+        // nearly straight: a spine arc down the axis, sampled where it is in the window
+        let p0 = a.point(0), p1 = a.point(1)
+        let dy = p1.y - p0.y
+        guard abs(dy) > 1e-9 else { return }
+        let u0 = max(0, min(1, (yRange.lowerBound - p0.y) / dy))
+        let u1 = max(0, min(1, (yRange.upperBound - p0.y) / dy))
+        let (a0, a1) = (min(u0, u1), max(u0, u1))
+        guard a1 > a0 else { return }
+        let n = 24
+        for i in 0...n {
+            let p = a.point(a0 + (a1 - a0) * Double(i) / Double(n))
+            if i == 0 { path.move(to: CGPoint(x: p.x, y: p.y)) } else { path.addLine(to: CGPoint(x: p.x, y: p.y)) }
+        }
+    }
+
+    /// A moment's point on the wave in the cache's coordinates (add `dy` for the frame's), memoised until the next
+    /// rebuild: scrolling then places the emoji without tracing them again.
+    func point(_ t: Double) -> JournalWavePoint? {
+        if let p = points[t] { return p }
+        guard let p = layout?.point(t) else { return nil }
+        if points.count > 4000 { points.removeAll(keepingCapacity: true) }
+        points[t] = p
+        return p
     }
 
     /// "δ#3", "23η": a cycle start's short label.
@@ -270,8 +330,18 @@ struct JournalWavePainter {
 
     /// The label margin on the left.
     static func margin(_ width: Double) -> Double { width > 700 ? 92 : 64 }
-    /// The floating zoom buttons' strip on the right.
+    /// The floating zoom buttons' strip on the right, and how tall it is from the bottom.
     static let controlsWidth = 60.0
+    static let controlsHeight = 200.0
+
+    /// The wave's axis and radius in a view: the middle of the column between the margin and the buttons, and a radius
+    /// that leaves room for the loops either side (and lets a few arcs share a tall screen).
+    static func geometry(_ size: CGSize) -> (x0: Double, radius: Double, column: ClosedRange<Double>) {
+        let w = size.width, h = size.height
+        let lo = margin(w) + 4, hi = max(lo + 40, w - controlsWidth)
+        let half = (hi - lo) / 2
+        return ((lo + hi) / 2, max(24, min(half / 1.3, h * 0.2)), lo...hi)
+    }
 
     func draw(_ context: inout GraphicsContext, _ size: CGSize) {
         let signpost = JournalWaveSignposts.signposter.beginInterval("wave frame")
@@ -279,12 +349,10 @@ struct JournalWavePainter {
         let w = size.width, h = size.height
         guard w > 40, h > 40 else { return }
         let margin = Self.margin(w)
-        // the zoom buttons float on the right: the wave keeps clear of them
-        let column = (lo: margin + 4, hi: w - Self.controlsWidth)
-        let x0 = (column.lo + column.hi) / 2
-        let half = min(240, (column.hi - column.lo) / 2 - 22)
+        let (x0, radius, _) = Self.geometry(size)
         let clock = cache.clock
-        let (strands, lines, dy) = cache.lines(frame, size: size, x0: x0, half: half)
+        let (zoom, lines, arcs, dy) = cache.lines(frame, size: size, x0: x0, radius: radius)
+        let layout = JournalArcLayout(zoom: zoom, x0: x0, clock: clock, y: frame.y)
 
         // the axis
         var axis = Path()
@@ -294,40 +362,39 @@ struct JournalWavePainter {
 
         let p0 = clock.position(at: max(clock.tMin, frame.t(h + 20)))
         let p1 = clock.position(at: min(clock.tMax, frame.t(-20)))
-        drawFrameLines(&context, strands, p0, p1, w: w, h: h, margin: margin)
-        drawMargin(&context, strands, p0, p1, h: h, margin: margin)
+        drawFrameLines(&context, zoom, p0, p1, w: w, h: h, margin: margin)
+        drawMargin(&context, zoom, layout, p0, p1, h: h, margin: margin)
 
-        // the waves, coarsest first, the finest brightest
+        // the levels, coarsest first; the one nearest the spine's place glows
         var moved = context
         moved.translateBy(x: 0, y: dy)
-        for (i, line) in lines.enumerated() {
-            let fine = i == lines.count - 1
-            let colour = Theme.levelColor(line.level, opacity: (fine ? 0.95 : 0.42) * (0.25 + 0.75 * line.weight), lightness: fine ? 0.68 : 0.6)
-            if fine {
-                moved.stroke(line.path, with: .color(Theme.levelColor(line.level, opacity: 0.16 * line.weight)), style: StrokeStyle(lineWidth: 6, lineCap: .round, lineJoin: .round))
+        let glowing = lines.min { abs($0.depth) < abs($1.depth) }?.level
+        for line in lines {
+            let glow = line.weight * max(0, 1 - abs(line.depth))
+            if glow > 0.05, line.level == glowing {
+                moved.stroke(line.path, with: .color(Theme.levelColor(line.level, opacity: 0.16 * glow)),
+                             style: StrokeStyle(lineWidth: line.width + 4.5, lineCap: .round, lineJoin: .round))
             }
-            moved.stroke(line.path, with: .color(colour), style: StrokeStyle(lineWidth: fine ? 1.8 : 1.3 + 1.2 * Double(lines.count - 1 - i) / Double(max(1, lines.count - 1)), lineCap: .round, lineJoin: .round))
+            moved.stroke(line.path, with: .color(Theme.levelColor(line.level, opacity: 0.95 * line.weight, lightness: 0.6 + 0.08 * glow)),
+                         style: StrokeStyle(lineWidth: line.width, lineCap: .round, lineJoin: .round))
         }
+        drawMarks(&context, zoom, arcs, dy: dy, w: w, h: h)
 
-        let point: (Double) -> JournalWavePoint = { t in
-            JournalWavePoint(x: x0 + JournalWave.offset(clock.position(at: t) ?? 0, strands, through: strands.count - 1), y: frame.y(t))
-        }
-        drawNow(&context, point, w: w, h: h, margin: margin)
-        let badges = drawBadges(&context, point, w: w, h: h, margin: margin)
-        drawFrameNames(&context, strands, p0, p1, badges, w: w, h: h, margin: margin)
-        drawLegend(&context, strands, h: h)
+        drawNow(&context, layout, w: w, h: h, margin: margin)
+        let badges = drawBadges(&context, layout, w: w, h: h, margin: margin)
+        drawFrameNames(&context, zoom, p0, p1, badges, w: w, h: h, margin: margin)
+        drawLegend(&context, zoom, h: h)
     }
 
-    /// Hairlines across at the framing level's cycle starts.
-    private func drawFrameLines(_ context: inout GraphicsContext, _ strands: [JournalWaveStrand], _ p0: Double?, _ p1: Double?, w: Double, h: Double, margin: Double) {
-        guard let p0, let p1, let s = JournalWave.frameLevel(strands, height: h) else { return }
+    /// Hairlines across at the framing level's cycle starts (on the axis: the spine's nodes).
+    private func drawFrameLines(_ context: inout GraphicsContext, _ zoom: JournalArcZoom, _ p0: Double?, _ p1: Double?, w: Double, h: Double, margin: Double) {
+        guard let p0, let p1, let level = JournalArcs.frameLevel(zoom, height: h, clock: cache.clock) else { return }
         var lines = Path()
-        for tick in JournalWave.ticks(s, from: p0, to: p1, limit: 40) {
+        for tick in JournalArcs.ticks(level: level, from: p0, to: p1, clock: cache.clock, limit: 40) {
             let y = frame.y(tick.time)
             lines.move(to: CGPoint(x: margin - 6, y: y))
             lines.addLine(to: CGPoint(x: w, y: y))
         }
-        context.stroke(lines, with: .color(Theme.levelColor(s.level, opacity: 0.26 * s.weight, lightness: 0.6)), lineWidth: 1)
+        context.stroke(lines, with: .color(Theme.levelColor(level, opacity: 0.26, lightness: 0.6)), lineWidth: 1)
     }
 }
-

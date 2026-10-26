@@ -9,7 +9,7 @@ import SwiftUI
 ///
 /// Two ways to move through time. The stack zooms: pinch out (or the menu, ⌘−) and the days collapse into blocks of
 /// Deltas, then Gammas, then Betas, each with its count, emoji and pictures; pinch in or tap a block to go back down.
-/// The wave (the toolbar's switch) shows the entries' emoji on the clock's nested waves, zoomable from Preons to Betas.
+/// The wave (the toolbar's switch) shows the entries' emoji on the clock's arcs and loops, zoomable from Preons to Betas.
 struct JournalScreen: View {
     @Environment(AppSettings.self) private var settings
     @Environment(AppRouter.self) private var router
