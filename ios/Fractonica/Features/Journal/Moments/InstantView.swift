@@ -220,7 +220,7 @@ struct InstantView: View {
                 .controlSize(.large)
                 .buttonBorderShape(.capsule)
             }
-            .padding(.top, 6)
+            .padding(.top, 16)
         }
         .scrollBounceBehavior(.basedOnSize)
     }
