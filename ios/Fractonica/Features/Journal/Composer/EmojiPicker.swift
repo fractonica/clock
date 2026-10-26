@@ -1,8 +1,8 @@
 import SwiftUI
 
-/// The emoji header's picker: recent choices, curated categories for a journal (moods, sky and time, nature, food,
-/// moments, places, things, symbols) and a search by name ("moon", "coffee", "heart"). Tap one to choose it; the
-/// current one can be removed.
+/// The emoji header's picker: recent choices, then every emoji (`EmojiCatalog`) in Unicode's groups (Smileys & Emotion
+/// … Flags), and a search by name ("moon", "coffee", "red heart", "flag japan"). Tap one to choose it; the current one
+/// can be removed.
 struct EmojiPicker: View {
     @Binding var selection: String?
     let done: () -> Void
@@ -65,6 +65,13 @@ struct EmojiPicker: View {
                             done()
                         }
                     }
+                }
+                ToolbarItem(placement: .primaryAction) {
+                    Button("Any Emoji", systemImage: "die.face.5") {
+                        selection = EmojiCatalog.random()
+                        Haptics.play(.selection)
+                    }
+                    .help("Choose one at random")
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done", systemImage: "checkmark", role: .confirmIfAvailable, action: done)
@@ -129,56 +136,5 @@ struct EmojiPicker: View {
         .glassSurface(.regular.interactive(), in: .capsule)
         .padding(.horizontal, 12)
         .padding(.bottom, 8)
-    }
-}
-
-/// The curated emoji and their names (the Unicode names, read from the system, so search works offline in any
-/// language the names are in: English).
-enum EmojiCatalog {
-    struct Category: Identifiable {
-        let id: String
-        let title: String
-        let icon: String
-        let emoji: [String]
-    }
-
-    static let categories: [Category] = [
-        Category(id: "moods", title: "Moods", icon: "😊", emoji: Array("😊😀😄😁😆🥹😂🙂😉😍🥰😘🤗🤩🥳😎🤓🧐🤔🫠😌😴🥱😪😮‍💨😤😠😡🤯😳😬😕🙁☹️😢😭😞😔😟😩😫🥺😶‍🌫️🤒🤕🤧😷🫶🙏👏💪🤝✌️👍👎🙌🤞🫡").map(String.init)),
-        Category(id: "sky", title: "Sky & Time", icon: "🌙", emoji: Array("🌙🌕🌖🌗🌘🌑🌒🌓🌔🌛🌜🌝🌚⭐️🌟✨💫☄️🌠🌌🪐☀️🌤️⛅️🌥️☁️🌦️🌧️⛈️🌩️🌨️❄️☃️🌬️🌪️🌫️🌈☔️⚡️🔥💧🌊⏳⌛️⏰🕰️⌚️🧭🔭🌅🌄🌇🌆🌃").map(String.init)),
-        Category(id: "nature", title: "Nature", icon: "🌿", emoji: Array("🌿🌱🌲🌳🌴🌵🍀☘️🍃🍂🍁🌾🌷🌹🥀🌺🌸🌼🌻💐🪴🍄🐚🪨🪵🐶🐱🐭🐰🦊🐻🐼🐨🐯🦁🐮🐷🐸🐵🐔🐧🐦🦆🦉🦋🐝🐞🐢🐍🐬🐳🐟🐙🦀🐌").map(String.init)),
-        Category(id: "food", title: "Food & Drink", icon: "☕️", emoji: Array("☕️🍵🧋🥤🍺🍷🥂🍸🧃🥛🍎🍐🍊🍋🍌🍉🍇🍓🫐🍒🍑🥭🍍🥥🥝🍅🥑🥦🥕🌽🍞🥐🥯🧀🥚🍳🥞🧇🥓🍔🍟🍕🌮🌯🥗🍝🍜🍲🍛🍣🍱🥟🍙🍦🍰🎂🧁🍫🍩🍪🍿").map(String.init)),
-        Category(id: "moments", title: "Moments", icon: "🎉", emoji: Array("🎉🎊🎈🎁🎂🎄🎃🕯️💝💌💍👶🎓🏆🥇🎯🎨🖌️🎭🎬🎤🎧🎵🎶🎹🎸🥁📚📖✍️📝💡🧘🏃🚶🧗🏊🚴⛷️🏄🏕️⚽️🏀🎾🏐🎳♟️🎮🧩🛌🛀💤💃🕺❤️‍🩹").map(String.init)),
-        Category(id: "places", title: "Places & Travel", icon: "🧳", emoji: Array("🧳✈️🚆🚇🚌🚗🚲🛴⛵️🚢🚀🛸🗺️🏔️⛰️🌋🏝️🏖️🏜️🏞️🏙️🌉🏠🏡🏢🏛️⛪️🕌🏰🗼🗽⛩️🎡🎢⛲️🏟️🏥🏫🛣️🛤️🗻🌁").map(String.init)),
-        Category(id: "things", title: "Things", icon: "📷", emoji: Array("📷📸📹🎥📱💻⌨️🖥️🖨️🎙️📻📺🔋🔌💾📦📮✉️📎✂️🖊️🖋️✏️📌📍🔑🗝️🔒🧰🔧🔨🪛⚙️🧪🔬💊🩺🛒💰💳🧾📅📆🗓️🪴🛋️🪑🛏️🧸🪞🧺🧹").map(String.init)),
-        Category(id: "symbols", title: "Symbols", icon: "❤️", emoji: Array("❤️🧡💛💚🩵💙💜🤎🖤🤍💔❣️💕💞💓💗💖💘✅☑️✔️❌⭕️❗️❓‼️⁉️💯🔆🔅♻️⚠️🚫⛔️🔴🟠🟡🟢🔵🟣⚫️⚪️🟤🔺🔻🔷🔶💠🌀♾️☯️☮️🕉️✡️☪️").map(String.init)),
-    ]
-
-    /// Every curated emoji with its name, built once.
-    private static let named: [(emoji: String, name: String)] = {
-        var seen = Set<String>()
-        var list: [(String, String)] = []
-        for group in categories {
-            for emoji in group.emoji where seen.insert(emoji).inserted {
-                list.append((emoji, name(emoji).lowercased() + " " + group.title.lowercased()))
-            }
-        }
-        return list
-    }()
-
-    /// "FULL MOON SYMBOL" → "full moon symbol" (variation selectors and joiners left out).
-    static func name(_ emoji: String) -> String {
-        guard let raw = emoji.applyingTransform(.toUnicodeName, reverse: false) else { return emoji }
-        let names = raw.components(separatedBy: "\\N{").compactMap { part -> String? in
-            guard let end = part.firstIndex(of: "}") else { return nil }
-            let n = String(part[..<end])
-            return n.hasPrefix("VARIATION SELECTOR") || n == "ZERO WIDTH JOINER" ? nil : n
-        }
-        return names.joined(separator: " ").lowercased()
-    }
-
-    static func search(_ query: String) -> [String] {
-        let terms = query.lowercased().split(separator: " ").map(String.init)
-        guard !terms.isEmpty else { return [] }
-        return named.filter { item in terms.allSatisfy { item.name.contains($0) || item.emoji == $0 } }.map(\.emoji)
     }
 }

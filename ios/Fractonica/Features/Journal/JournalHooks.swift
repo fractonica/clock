@@ -80,6 +80,9 @@ struct ComposerRequest: Identifiable, Hashable, Sendable {
 ///     -FXJournalSearch <text>   start with that search
 ///     -FXJournalCompose 1       open the composer (a new entry; "edit" edits the newest entry)
 ///     -FXJournalEmoji 1         … with the emoji picker open
+///     -FXJournalEmojiPick <e>   a new entry starts with that emoji instead of a random one
+///     -FXJournalAttach <paths>  … attaching copies of those files ("a.mov|b.jpg"), as if picked
+///     -FXJournalSaveSoon 1      … then typing a line and tapping Save (which waits for the media)
 ///     -FXJournalRecord 1        … with the voice recorder open
 ///     -FXJournalPreview 1       … showing the Markdown preview
 ///     -FXJournalMoment 1        … with the moment picker open

@@ -20,10 +20,11 @@ struct ComposerSheet: View {
     }
 }
 
-/// A new entry or an edit: the emoji header (tap to choose), the moment (defaults to now, any moment can be chosen),
-/// an optional title, the Markdown body with a formatting bar and a Write / Preview switch, and the media — photos and
-/// videos from the library, the camera, voice notes recorded inline, files and drag and drop on the Mac. Everything
-/// autosaves as a draft; Save writes the record.
+/// A new entry or an edit: the emoji header (a new entry starts with one at random; tap to choose), the moment
+/// (defaults to now; any moment, or an attachment's capture time, can be chosen), an optional title, the Markdown body
+/// with a formatting bar and a Write / Preview switch, and the media — photos and videos from the library, the camera,
+/// voice notes recorded inline, files and drag and drop on the Mac, each showing as a tile the moment it is added.
+/// Everything autosaves as a draft; Save writes the record (once media still coming are in).
 struct ComposerView: View {
     @Environment(AppSettings.self) private var settings
     @Environment(ToastCenter.self) private var toasts
@@ -66,7 +67,7 @@ struct ComposerView: View {
                     RecorderCard(recorder: model.recorder, onStop: model.finishRecording, onCancel: model.recorder.cancel)
                         .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
-                if !model.media.isEmpty || model.processing > 0 {
+                if !model.media.isEmpty || !model.pending.isEmpty {
                     ComposerAttachments(model: model, words: words)
                 }
             }
@@ -90,7 +91,12 @@ struct ComposerView: View {
             }
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            ComposerBar(
+            VStack(spacing: 0) {
+                if model.isWaitingToSave {
+                    SaveWaitBanner(count: model.pending.count, onStop: model.stopWaiting)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+                ComposerBar(
                 model: model,
                 pickerItems: $pickerItems,
                 showFormatting: showFormatting || focus == .body,
@@ -99,7 +105,9 @@ struct ComposerView: View {
                 onCamera: { showCamera = true },
                 onFiles: { showFiles = true },
                 onToggleFormatting: { showFormatting.toggle() }
-            )
+                )
+            }
+            .animation(.snappy, value: model.isWaitingToSave)
         }
         .navigationTitle(model.isNew ? "New Entry" : "Edit Entry")
         #if os(iOS)
@@ -107,6 +115,11 @@ struct ComposerView: View {
         #endif
         .toolbar { toolbar }
         .onChange(of: pickerItems) { _, items in importPicked(items) }
+        .onChange(of: model.saved?.id) { _, id in
+            guard id != nil else { return }
+            toasts.show(model.isNew ? "Entry saved" : "Changes saved")
+            dismiss()
+        }
         .onDrop(of: [.movie, .audio, .image, .fileURL], isTargeted: $dropTargeted) { providers in
             importDropped(providers)
             return true
@@ -154,6 +167,12 @@ struct ComposerView: View {
         .onDisappear { model.flush() }
         .task {
             if JournalLaunch.flag("FXJournalRecord") { model.startRecording() }
+            if let paths = JournalLaunch.string("FXJournalAttach") { attachForTesting(paths) }
+            if JournalLaunch.flag("FXJournalSaveSoon") {
+                try? await Task.sleep(for: .milliseconds(300))
+                model.draft.markdown = "Sunrise over the hills."
+                model.save()
+            }
         }
     }
 
@@ -208,7 +227,7 @@ struct ComposerView: View {
             .buttonStyle(.plain)
             .accessibilityHint("Choose the moment of the entry")
             .popover(isPresented: $showMoment) {
-                MomentEditor(time: model.draft.time) { model.setTime($0) }
+                MomentEditor(time: model.draft.time, options: model.captureOptions, blobs: model.media) { model.setTime($0) }
                     .frame(minWidth: 340, idealWidth: 360, minHeight: 420)
                     .presentationDetents([.medium, .large])
             }
@@ -242,7 +261,7 @@ struct ComposerView: View {
                 .frame(minHeight: 220)
                 .overlay(alignment: .topLeading) {
                     if model.draft.markdown.isEmpty {
-                        Text("What’s happening? Markdown works: **bold**, *italic*, - lists, > quotes…")
+                        Text("What’s happening?")
                             .font(.body)
                             .foregroundStyle(Theme.ink3)
                             .padding(.top, 8)
@@ -259,10 +278,10 @@ struct ComposerView: View {
     private var toolbar: some ToolbarContent {
         ToolbarItem(placement: .cancellationAction) {
             Button("Cancel", systemImage: "xmark") {
-                if model.draft.isEmpty {
+                if !model.hasContent && (model.draft.isEmpty || !model.hasChanges) {
                     model.discard()
                     dismiss()
-                } else if model.hasChanges {
+                } else if model.hasChanges || !model.pending.isEmpty {
                     confirmCancel = true
                 } else {
                     // unchanged: a kept draft stays kept, an untouched edit leaves nothing behind
@@ -279,14 +298,16 @@ struct ComposerView: View {
             .fixedSize()
         }
         ToolbarItem(placement: .confirmationAction) {
-            Button("Save", systemImage: "checkmark", role: .confirmIfAvailable) {
-                if model.save() != nil {
-                    toasts.show(model.isNew ? "Entry saved" : "Changes saved")
-                    dismiss()
+            if model.isWaitingToSave {
+                ProgressView()
+                    .accessibilityLabel("Saving when the media are in")
+            } else {
+                Button("Save", systemImage: "checkmark", role: .confirmIfAvailable) {
+                    model.save()
                 }
+                .disabled(!model.canSave)
+                .keyboardShortcut("s", modifiers: .command)
             }
-            .disabled(!model.canSave)
-            .keyboardShortcut("s", modifiers: .command)
         }
     }
 
@@ -326,18 +347,21 @@ struct ComposerView: View {
     private func importPicked(_ items: [PhotosPickerItem]) {
         guard !items.isEmpty else { return }
         pickerItems = []
-        for item in items {
-            Task {
-                let isMovie = item.supportedContentTypes.contains { $0.conforms(to: .movie) }
-                if isMovie, let movie = try? await item.loadTransferable(type: PickedMovie.self) {
-                    model.add(files: [(movie.url, nil)])
-                } else if let image = try? await item.loadTransferable(type: PickedImage.self) {
-                    model.add(files: [(image.url, nil)])
-                } else {
-                    model.error = "That item could not be read from the library."
-                }
+        model.add(picked: items)
+    }
+
+    /// `-FXJournalAttach <path>[|<path>…]`: attaches copies of those files as if picked (screenshots, timing).
+    private func attachForTesting(_ paths: String) {
+        let disk = JournalStore.shared.disk
+        var files: [(url: URL, name: String?)] = []
+        for path in paths.split(separator: "|").map(String.init) {
+            let url = URL(fileURLWithPath: path)
+            let target = disk.temporaryFile(ext: url.pathExtension.lowercased())
+            if (try? FileManager.default.copyItem(at: url, to: target)) != nil {
+                files.append((target, JournalMedia.role(of: url) == "audio" ? url.lastPathComponent : nil))
             }
         }
+        model.add(files: files)
     }
 
     private func importFiles(_ urls: [URL]) {

@@ -1,0 +1,7 @@
+# The app files ComposerChecks.swift compiles against (relative to ios/).
+Fractonica/Features/Journal/Composer/EmojiCatalog.swift
+Fractonica/Features/Journal/Composer/EmojiData.swift
+Fractonica/Features/Journal/Composer/PendingMedia.swift
+Fractonica/Features/Journal/Media/MediaCapture.swift
+Fractonica/Features/Journal/Store/HubRecord.swift
+Fractonica/Features/Journal/Media/DecodeGate.swift

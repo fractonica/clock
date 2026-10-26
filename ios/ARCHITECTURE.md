@@ -181,7 +181,9 @@ guarantees pure mode never prints a Gregorian date or "3 h 20 min":
 - `toasts.show("Link copied")` / `toasts.show(edge)`: a transient capsule at the top of the main window.
 - Transport (Core/TransportBar.swift, TransportPanel.swift): the moment, Back to live, ◀︎ ▶︎ steps of the selected
   level, play / pause with a direction-and-speed menu, and the time-travel panel (date picker, step by any cycle,
-  speed). It is the shell's; features never draw another global transport.
+  speed). It is the shell's; features never draw another global transport. On iOS it rides on Now only; every other
+  screen shows `TravelIndicator` (a glass chip over the foot of the content: the moment, which opens the panel, and
+  Back to live) while the clock is not live.
 
 ## The shell
 
@@ -206,7 +208,7 @@ at the exact moment the instant view captures both cameras and the voice and sav
 | | iPhone (compact width) | iPad, Mac |
 |---|---|---|
 | Layout | Tabs Now · Cycles · Journal · Clock · Jump (search role). A group's tab shows its screens behind a segmented control in the navigation bar's centre | `TabView(.sidebarAdaptable)`: every screen in the sidebar under its group; Sound and Focus are screens of their own; Jump is the search item. iPad can collapse the sidebar into a top tab bar |
-| Transport | The tab bar's bottom accessory (Liquid Glass); minimised with the tab bar on scroll. iOS 18: a capsule on a band of bar material that joins the tab bar | iPad: bottom accessory (iOS 18: a capsule on a bar at the foot of the screen). Mac: the window toolbar's centre |
+| Transport | On Now only: the tab bar's bottom accessory (Liquid Glass, iOS 26.1 hides it on the other tabs); minimised with the tab bar on scroll. iOS 18 (and 26.0): a capsule on a band of bar material that joins the tab bar. Other screens: `TravelIndicator` while the clock is not live | iPad: on Now, the bottom accessory (iOS 18: a capsule on a bar at the foot of the screen); elsewhere `TravelIndicator`. Mac: the window toolbar's centre, every screen |
 | Now's toolbar | Sound, Focus, Settings | iPad: Sound (while it plays), Focus, Settings. Mac: Sound (while it plays), Focus, Settings in every screen's toolbar |
 | Sound | A sheet over Now (medium / large) | A screen |
 | Settings | A sheet | iPad: a sheet. Mac: the Settings window (⌘,) |
@@ -253,9 +255,9 @@ API it names on iOS 26 and the Mac:
 | `Button(…, role: .confirm)` | `role: .confirmIfAvailable` | no role (a confirmation action is bold already) |
 | `.presentationDetents([.medium, .large])` on a sheet iPad shows | `.sheetDetents([.medium, .large])` | iPad: `.large` (its medium is half the form sheet, a few rows); iPhone: as given |
 
-Guarded in place: the transport (RootView's `transportAccessory` on iOS 26; `transportInset` and `TransportInsetBar`
-on iOS 18, applied by `ScreenChrome` inside each screen's navigation stack — a safe area inset outside the stack does
-not reach the screen there — so pushed views go without it; it steps aside while the keyboard is up; the inset is a
+Guarded in place: the transport (RootView's `transportAccessory` on iOS 26.1, enabled on Now only; `transportInset`
+and `TransportInsetBar` on iOS 18 and 26.0, applied by `ScreenChrome` inside Now's navigation stack — a safe area inset
+outside the stack does not reach the screen there — so pushed views go without it; it steps aside while the keyboard is up; the inset is a
 still copy of the bar and the live bar lies over it, see "ClockTimeline"), the iPhone Jump
 field's placement (`TabSearchField`), and the open intents (`supportedModes` on iOS 26, `openAppWhenRun` on iOS 18;
 their App Intents metadata is the same either way). There is no tab bar minimise on iOS 18.
