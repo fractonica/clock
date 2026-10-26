@@ -79,6 +79,67 @@ enum JournalSeed {
         store.applyRemote(sensor)
     }
 
+    // MARK: A wide journal
+
+    /// `-FXJournalSeed wide`: after the sample week, about 330 more entries over the last three years — denser lately,
+    /// with bursts of several within minutes and a few sharing one moment — so the stack's Delta, Gamma and Beta blocks
+    /// and the wave's clusters have something to show. A handful of pictures are made once and shared. Added once
+    /// (its ids are fixed), never on its own.
+    @MainActor
+    static func fillWide(_ store: JournalStore) async {
+        guard store.record(wideID(0)) == nil else { return }
+        let disk = store.disk
+        let now = Date().timeIntervalSince1970
+        let zone = AppSettings.shared.zone ?? TimeZone.current.identifier
+        var pictures: [[BlobRef]] = []
+        for scene in [Scene.moon, .sunrise, .fields, .sea, .dusk] {
+            // the sample week's size: some simulators' HEIC decoder stalls on smaller generated pictures
+            guard let image = render(scene, width: 1600, height: 1200),
+                  let item = try? JournalMedia.encodePhoto(image, disk: disk),
+                  let blobs = try? await store.adopt(item) else { continue }
+            pictures.append(blobs)
+        }
+        var rng: UInt64 = 0x5EED_F00D
+        func random() -> Double {
+            rng ^= rng << 13; rng ^= rng >> 7; rng ^= rng << 17
+            return Double(rng % 1_000_000) / 1_000_000
+        }
+        let emoji = ["🌙", "☕️", "🌅", "📚", "🎧", "🌊", "💡", "🏃", "🍜", "🎨", "🌱", "✈️", "🎂", "🧘", "🚲", "📷", "🎹", "🍷",
+                     "🌧️", "❄️", "🔥", "🏔️", "🐈", "🎬", "🧩", "🛠️", "🌻", "🎉"]
+        let titles = ["Morning pages", "Long walk", "Rain all day", "New idea", "Dinner with friends", "Quiet evening",
+                      "Training", "Road trip", "Studio time", "Reading", "Market", "First snow", "Birthday", "Garden",
+                      "Late call", "Museum", "Concert", "Fixing the bike", "Sunday", "Notes"]
+        let lines = ["Wrote before anyone was up.", "The light at the end of the Helion was unreal.", "Nothing much, and that was good.",
+                     "Sketched the next Delta's plan.", "Too much coffee, not enough sleep.", "Everything smelled of rain.",
+                     "Finally finished it.", "A small thing that made the day.", ""]
+        let year = 365.25 * 86_400
+        var moments: [Double] = []
+        for _ in 0..<270 {
+            moments.append(now - 2 * 3600 - 3.1 * year * pow(random(), 1.7))
+        }
+        // bursts: several entries within a few minutes, and a few sharing one moment
+        for b in 0..<12 {
+            let at = now - 3 * 3600 - 2.8 * year * pow(random(), 1.4)
+            let n = 4 + Int(random() * 4)
+            for i in 0..<n { moments.append(at - Double(i) * (b % 4 == 0 ? 2 : 60 + random() * 240)) }
+        }
+        for (i, t) in moments.sorted(by: >).enumerated() {
+            let hasEmoji = random() > 0.08
+            let entry = JournalEntry(emoji: hasEmoji ? emoji[Int(random() * Double(emoji.count)) % emoji.count] : nil,
+                                     title: titles[Int(random() * Double(titles.count)) % titles.count],
+                                     markdown: lines[Int(random() * Double(lines.count)) % lines.count])
+            var blobs: [BlobRef] = []
+            if !pictures.isEmpty, random() < 0.28 {
+                let count = 1 + Int(random() * 3)
+                for j in 0..<count { blobs += pictures[(i + j * 2) % pictures.count] }
+            }
+            let record = HubRecord.journalEntry(id: wideID(i), time: t, zone: zone, entry: entry, blobs: blobs, now: now)
+            store.save(record)
+        }
+    }
+
+    static func wideID(_ n: Int) -> String { "seed.wide.\(n)" }
+
     // MARK: Pictures
 
     enum Scene { case moon, sunrise, fields, sea, dusk }
