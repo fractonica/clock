@@ -16,6 +16,10 @@ No build step and no dependencies: static files and vanilla ES modules.
 Native apps for iPhone, iPad and Mac (SwiftUI, with widgets, Live Activities, alerts, a timer, a stopwatch and a Focus
 mode) live in [`ios/`](ios/README.md); their engine is checked against this app's own modules.
 
+The **Fractonica Hub** ([`hub/`](hub/README.md)) is a personal server the apps' journals sync to: it collects records
+from every device and any other data source ([API](hub/API.md)), shows them on a web page and searches them by meaning
+with an EmbeddingGemma 2 worker ([`hub/worker/`](hub/worker/README.md)). `npm run hub` starts it.
+
 ![Rings view](docs/img/rings.jpg)
 
 <p>
