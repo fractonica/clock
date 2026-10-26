@@ -246,9 +246,9 @@ API it names on iOS 26 and the Mac:
 | `Button(…, role: .confirm)` | `role: .confirmIfAvailable` | no role (a confirmation action is bold already) |
 | `.presentationDetents([.medium, .large])` on a sheet iPad shows | `.sheetDetents([.medium, .large])` | iPad: `.large` (its medium is half the form sheet, a few rows); iPhone: as given |
 
-Guarded in place: the transport (RootView's `transportAccessory` on iOS 26; `transportInset` and `TransportInsetBar`
-on iOS 18, applied by `ScreenChrome` inside each screen's navigation stack — a safe area inset outside the stack does
-not reach the screen there — so pushed views go without it; it steps aside while the keyboard is up; the inset is a
+Guarded in place: the transport (RootView's `transportAccessory` on iOS 26.1, enabled on Now only; `transportInset`
+and `TransportInsetBar` on iOS 18 and 26.0, applied by `ScreenChrome` inside Now's navigation stack — a safe area inset
+outside the stack does not reach the screen there — so pushed views go without it; it steps aside while the keyboard is up; the inset is a
 still copy of the bar and the live bar lies over it, see "ClockTimeline"), the iPhone Jump
 field's placement (`TabSearchField`), and the open intents (`supportedModes` on iOS 26, `openAppWhenRun` on iOS 18;
 their App Intents metadata is the same either way). There is no tab bar minimise on iOS 18.
