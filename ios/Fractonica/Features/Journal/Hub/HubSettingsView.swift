@@ -43,17 +43,6 @@ struct HubSettingsView: View {
         .onChange(of: engine.isPaired) { _, paired in
             if paired { discovery.stop() } else { discovery.start() }
         }
-        .confirmationDialog("Unpair from \(engine.credentials?.hubName ?? "the hub")?", isPresented: $confirmUnpair,
-                            titleVisibility: .visible) {
-            Button("Unpair", role: .destructive) {
-                let address = engine.credentials.map { HubAddress.display($0.hubURL) } ?? ""
-                engine.unpair()
-                repairing = false
-                model = HubPairingModel(engine: engine, address: address)
-            }
-        } message: {
-            Text("Your entries stay on this device. Pair again with a new code from the hub to sync.")
-        }
     }
 
     // MARK: Paired
@@ -143,6 +132,17 @@ struct HubSettingsView: View {
                 }
             }
             Button("Unpair", role: .destructive) { confirmUnpair = true }
+                .confirmationDialog("Unpair from \(engine.credentials?.hubName ?? "the hub")?", isPresented: $confirmUnpair,
+                                    titleVisibility: .visible) {
+                    Button("Unpair", role: .destructive) {
+                        let address = engine.credentials.map { HubAddress.display($0.hubURL) } ?? ""
+                        engine.unpair()
+                        repairing = false
+                        model = HubPairingModel(engine: engine, address: address)
+                    }
+                } message: {
+                    Text("Your entries stay on this device. Pair again with a new code from the hub to sync.")
+                }
         } header: {
             Text("Pairing")
         } footer: {

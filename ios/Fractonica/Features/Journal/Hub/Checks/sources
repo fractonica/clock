@@ -11,3 +11,5 @@ Fractonica/Features/Journal/Hub/MediaLedger.swift
 Fractonica/Features/Journal/Hub/SemanticSearch.swift
 Fractonica/Features/Journal/Hub/SyncEngine.swift
 Fractonica/Features/Journal/Hub/VectorIndex.swift
+Shared/AppLink.swift
+Shared/Screen.swift

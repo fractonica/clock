@@ -155,7 +155,7 @@ struct HubPresentations: ViewModifier {
             .sheet(item: $router.hubPairing) { pairing in
                 HubPairSheet(pairing: pairing)
                     .preferredColorScheme(Self.scheme ?? .dark)
-                    .presentationDetents([.medium, .large])
+                    .presentationDetents([.height(560), .large])
             }
             .sheet(isPresented: $router.isHubSettingsPresented) {
                 NavigationStack {

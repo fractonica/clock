@@ -215,6 +215,13 @@ private func addressChecks() {
 
     check(HubDiscovery.prefix(of: "/v1") == "" && HubDiscovery.prefix(of: "/hub/v1/") == "/hub" && HubDiscovery.prefix(of: nil) == "",
           "the TXT path's prefix")
+    // The hub's QR link (API.md § Pairing), as the Camera hands it to the app.
+    let link = AppLink(url: URL(string: "fractonica://pair?hub=http%3A%2F%2F192.168.1.20%3A8787&code=K7QF-2MXD")!)
+    check(link?.pairing == AppLink.Pairing(hub: "http://192.168.1.20:8787", code: "K7QF-2MXD"), "a pairing link reads: \(String(describing: link))")
+    check(link.map { AppLink(url: $0.url) == $0 } == true, "and round-trips")
+    check(AppLink(url: URL(string: "fractonica://pair?code=K7QF-2MXD")!)?.pairing == nil, "a pairing link without a hub is no pairing")
+    check(AppLink(url: URL(string: "fractonica://rings?t=5")!)?.pairing == nil, "screen links have no pairing")
+    check(HubAddress.normalize(link!.pairing!.hub)?.absoluteString == "http://192.168.1.20:8787", "its hub normalises")
     check(HubPairingCode.formatted("k7qf2mxd") == "K7QF-2MXD", "codes format XXXX-XXXX")
     check(HubPairingCode.formatted("K7Q") == "K7Q", "a partial code has no dash yet")
     check(HubPairingCode.formatted("k7qf 2mxd-extra") == "K7QF-2MXD", "spaces, dashes and overflow are dropped")
