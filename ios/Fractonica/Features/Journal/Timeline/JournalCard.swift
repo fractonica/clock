@@ -218,6 +218,8 @@ struct AudioPill: View {
     @State private var peaks: [Float] = []
 
     var body: some View {
+        // a waveform already read draws at once; the task reads it only the first time
+        let shown = peaks.isEmpty ? AudioWaveform.cached(blob.hash, count: 40) ?? [] : peaks
         let current = player.isCurrent(blob.hash)
         let playing = current && player.isPlaying
         HStack(spacing: 10) {
@@ -234,7 +236,7 @@ struct AudioPill: View {
             .buttonStyle(.borderless)
             .accessibilityLabel(playing ? "Pause voice note" : "Play voice note")
             TimelineView(.animation(minimumInterval: 1 / 30, paused: !playing)) { _ in
-                WaveformBars(peaks: peaks, progress: current && player.duration > 0 ? player.currentTime / player.duration : 0)
+                WaveformBars(peaks: shown, progress: current && player.duration > 0 ? player.currentTime / player.duration : 0)
             }
             .frame(height: 24)
             Text(verbatim: mediaDuration(blob.duration, words: words, at: time))
@@ -246,7 +248,10 @@ struct AudioPill: View {
         .padding(.vertical, 6)
         .background(Theme.panel2, in: .capsule)
         .overlay(Capsule().stroke(Theme.line, lineWidth: 1))
-        .task(id: blob.hash) { peaks = await AudioWaveform.peaks(blob.hash, count: 40) }
+        .task(id: blob.hash) {
+            guard AudioWaveform.cached(blob.hash, count: 40) == nil else { return }
+            peaks = await AudioWaveform.peaks(blob.hash, count: 40)
+        }
     }
 }
 
