@@ -823,7 +823,7 @@ async function renderWorker() {
     h('div', { class: 'worker-h' },
       h('i', { class: `dot${w.connected ? ' on' : ''}` }),
       h('b', null, w.connected ? 'Embedding worker connected' : 'No embedding worker'),
-      h('span', { class: 'dim', style: { fontSize: '13px' } }, w.connected ? [w.device, (w.modalities ?? []).join(' · ')].filter(Boolean).join(' · ') : w.lastSeen ? `last seen ${ago(w.lastSeen)}` : 'search falls back to keywords'),
+      h('span', { class: 'dim', style: { fontSize: '13px' } }, w.connected ? [w.device, w.dtype, (w.modalities ?? []).join(' · '), w.version ? `worker ${w.version}` : null].filter(Boolean).join(' · ') : w.lastSeen ? `last seen ${ago(w.lastSeen)}` : 'search falls back to keywords'),
       h('span', { style: { flex: '1' } }),
       w.queue.parked ? h('button', { class: 'btn sm', type: 'button', onclick: async () => (await api('POST', '/v1/worker/retry', {}), renderWorker()) }, icon('refresh'), 'Retry parked') : null,
     ),

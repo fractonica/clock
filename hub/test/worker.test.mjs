@@ -179,3 +179,37 @@ test('search: keyword (accent/case-insensitive), auto, semantic with a fake work
   const gone = await h.admin.post('/v1/search', { query: 'the huge orange moon' });
   assert.ok(!gone.body.results.some((r) => r.record.id === 'moon'), 'tombstones are never searched');
 });
+
+test('worker: video posters follow their video; fewer parts than media are fine; heartbeat extras', async (t) => {
+  const h = await testHub();
+  t.after(h.close);
+  const w = await workerOf(h);
+  const hb = await w.post('/v1/worker/heartbeat', { model: 'test/m', device: 'mps', dtype: 'bf16', version: '0.3.0', modalities: ['text', 'image'] });
+  assert.deepEqual(hb.body, { ok: true });
+  const st = await h.admin.get('/v1/worker');
+  assert.equal(st.body.dtype, 'bf16');
+  assert.equal(st.body.version, '0.3.0');
+
+  const vid = Buffer.from('video bytes');
+  const pos = Buffer.from('poster bytes');
+  const [vh, ph] = [sha(vid), sha(pos)];
+  await h.admin.put(`/v1/blobs/${vh}`, vid, { 'Content-Type': 'video/quicktime' });
+  await h.admin.put(`/v1/blobs/${ph}`, pos, { 'Content-Type': 'image/jpeg' });
+  await h.admin.put('/v1/records/vid', rec({
+    blobs: [
+      { hash: ph, type: 'image/jpeg', size: pos.length, role: 'poster' },
+      { hash: vh, type: 'video/quicktime', size: vid.length, role: 'video', duration: 3, poster: ph },
+    ],
+  }));
+  const job = (await w.get('/v1/worker/jobs')).body.jobs[0];
+  assert.deepEqual(job.media, [
+    { hash: vh, type: 'video/quicktime', role: 'video', url: `/v1/blobs/${vh}`, duration: 3, poster: ph },
+    { hash: ph, type: 'image/jpeg', role: 'poster', url: `/v1/blobs/${ph}`, video: vh },
+  ]);
+  assert.equal((await w.get(`/v1/blobs/${ph}`)).status, 200);
+  // the video did not decode and the worker skipped it: only the record part comes back
+  const r = await w.post(`/v1/worker/jobs/${job.id}`, { model: 'test/m', vectors: [{ part: 'record', vector: b64(fakeEmbed(job.text)) }] });
+  assert.deepEqual(r.body, { ok: true });
+  assert.deepEqual((await h.admin.get('/v1/vectors')).body.vectors.map((v) => v.part), ['record']);
+  assert.equal((await h.admin.get('/v1/worker')).body.queue.queued, 0);
+});

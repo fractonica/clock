@@ -539,6 +539,7 @@ export function openHub(dir, opts = {}) {
   function storeVectors(record, parts) {
     dropVectors(record);
     const list = [];
+    if (!parts.length) return;
     for (const { part, vec } of parts) {
       const vrev = nextVrev();
       q('INSERT INTO vectors (vrev, record, part, vec) VALUES (?, ?, ?, ?)').run(vrev, record, part, new Uint8Array(vec.buffer, vec.byteOffset, vec.byteLength));
@@ -662,8 +663,8 @@ export function openHub(dir, opts = {}) {
   const hasQueuedJobs = () =>
     [...queries.values()].some((j) => j.state === 'queued') || !!q("SELECT 1 FROM jobs WHERE state = 'queued' LIMIT 1").get();
 
-  function parseVectors(list, needDim) {
-    if (!Array.isArray(list) || !list.length) throw bad('vectors must be a non-empty list');
+  function parseVectors(list, needDim, allowEmpty = false) {
+    if (!Array.isArray(list) || (!list.length && !allowEmpty)) throw bad('vectors must be a non-empty list');
     return list.map((v, i) => {
       if (!isObj(v) || typeof v.part !== 'string' || !v.part) throw bad(`vectors[${i}].part is required`);
       const vec = decodeVector(v.vector);
@@ -709,10 +710,11 @@ export function openHub(dir, opts = {}) {
       }
       adoptModel(body.model);
       const dimKnown = getMeta('dim') ? modelDim() : null;
-      const parts = parseVectors(body.vectors, dimKnown);
-      const d = parts[0].vec.length;
+      // the worker leaves out the parts it could not decode (a broken video, say): fewer parts, even none, are fine
+      const parts = parseVectors(body.vectors, dimKnown, true);
+      const d = parts[0]?.vec.length;
       if (parts.some((p) => p.vec.length !== d)) throw bad('all vectors must have the same number of dimensions');
-      if (!dimKnown) setMeta('dim', d);
+      if (!dimKnown && d) setMeta('dim', d);
       const rec = getRow(row.record);
       // a model change re-queued every record (this one too, under a new job id): the job row may be gone
       const still = q('SELECT * FROM jobs WHERE record = ?').get(row.record);
@@ -729,13 +731,15 @@ export function openHub(dir, opts = {}) {
     workerSeen(client);
     if (isObj(body)) {
       if (typeof body.device === 'string') worker.device = body.device;
+      if (typeof body.dtype === 'string') worker.dtype = body.dtype;
+      if (typeof body.version === 'string') worker.version = body.version;
       if (Array.isArray(body.modalities)) worker.modalities = body.modalities.filter((m) => typeof m === 'string');
       if (typeof body.model === 'string') {
         worker.model = body.model;
         run(() => adoptModel(body.model));
       }
     }
-    return { ok: true, hub: hubInfo() };
+    return { ok: true };
   }
 
   function failQuery(j, err) {
@@ -767,6 +771,8 @@ export function openHub(dir, opts = {}) {
       model: model(),
       workerModel: worker.model,
       device: worker.device,
+      dtype: worker.dtype ?? null,
+      version: worker.version ?? null,
       modalities: worker.modalities,
       dim: getMeta('dim') ? modelDim() : null,
       vrev: Number(getMeta('vrev') ?? 0),

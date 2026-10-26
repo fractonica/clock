@@ -107,14 +107,20 @@ export const MEDIA_ROLES = new Set(['photo', 'video', 'audio']);
 /** What the worker embeds for a record: the composed text and the media list (empty text and no media: nothing). */
 export function embeddingInput(r) {
   const { title, body } = searchable(r);
-  const media = (r.blobs ?? [])
-    .filter((b) => MEDIA_ROLES.has(b.role))
-    .map((b) => {
-      const m = { hash: b.hash, type: b.type, role: b.role, url: `/v1/blobs/${b.hash}` };
-      if (b.duration !== undefined) m.duration = b.duration;
-      if (b.poster) Object.assign(m, { poster: b.poster, posterUrl: `/v1/blobs/${b.poster}` });
-      return m;
-    });
+  // each video is followed by its poster (role "poster", `video` = the video's hash): a worker that cannot decode the
+  // video embeds the poster as the video's `blob:<video hash>` part, else it drops the poster
+  const media = [];
+  for (const b of r.blobs ?? []) {
+    if (!MEDIA_ROLES.has(b.role)) continue;
+    const m = { hash: b.hash, type: b.type, role: b.role, url: `/v1/blobs/${b.hash}` };
+    if (b.duration !== undefined) m.duration = b.duration;
+    if (b.role === 'video' && b.poster) m.poster = b.poster;
+    media.push(m);
+    if (b.role === 'video' && b.poster) {
+      const p = (r.blobs ?? []).find((x) => x.hash === b.poster);
+      media.push({ hash: b.poster, type: p?.type ?? 'image/jpeg', role: 'poster', url: `/v1/blobs/${b.poster}`, video: b.hash });
+    }
+  }
   if (!title && !body && media.length === 0) return null;
   const text = title || body ? `title: ${title || 'none'} | text: ${body}` : '';
   return { text, media, sig: sha256(JSON.stringify([text, media.map((m) => m.hash)])) };
