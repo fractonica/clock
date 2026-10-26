@@ -159,10 +159,10 @@ private func wordChecks() {
 
 private func pinchChecks() {
     var pinch = JournalPinch()
-    check(pinch.step(0.9) == 0 && pinch.step(1.1) == 0, "a wobble steps nowhere")
-    check(pinch.step(0.7) == 1, "closing the fingers steps out")
-    check(pinch.step(0.6) == 0 && pinch.step(0.7 * 0.7) == 1, "a long pinch steps out again from where it last stepped")
-    check(pinch.step(0.49 * 1.45) == -1, "opening the fingers steps back in")
+    check(pinch.step(0.9) == 0 && pinch.step(1.1) == 0 && pinch.step(0.7) == 0, "a wobble steps nowhere")
+    check(pinch.step(0.62) == 1, "closing the fingers steps out")
+    check(pinch.step(0.5) == 0 && pinch.step(0.62 * 0.62) == 1, "a long pinch steps out again from where it last stepped")
+    check(pinch.step(0.3844 * 1.4) == 0 && pinch.step(0.3844 * 1.55) == -1, "opening the fingers steps back in")
     let lean = JournalPinch().lean(0.5)
     check(lean >= 0.9 && lean < 1 && JournalPinch().lean(3) <= 1.08 && JournalPinch().lean(1) == 1, "the page leans into the pinch, a little: \(lean)")
     check(JournalPinch.apply(1, to: .helion) == .delta && JournalPinch.apply(1, to: .beta) == nil && JournalPinch.apply(-1, to: .gamma) == .delta

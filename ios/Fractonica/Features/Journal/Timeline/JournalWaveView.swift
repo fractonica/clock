@@ -23,22 +23,8 @@ struct JournalWaveView: View {
     @State private var cache = JournalWaveCache()
 
     var body: some View {
-        let words = settings.wording
-        ClockTimeline(.periodic(cadence)) { now in
-            TimelineView(.animation(minimumInterval: nil, paused: !model.isMoving)) { timeline in
-                let frame = model.frame(at: timeline.date)
-                let pins = model.pins
-                let live = store.isLive
-                Canvas(opaque: false, rendersAsynchronously: false) { context, size in
-                    JournalWavePainter(frame: frame, now: now, live: live, words: words, pins: pins, model: model, cache: cache)
-                        .draw(&context, size)
-                } symbols: {
-                    ForEach(model.symbols, id: \.self) { key in
-                        JournalWaveSymbol(key: key).tag(key)
-                    }
-                }
-            }
-        }
+        // only the canvas follows the frame: this body runs when the records, the mode or a dialog change
+        JournalWaveCanvas(model: model, cache: cache, words: settings.wording)
         .overlay { JournalWaveInputSurface(model: model) }
         .overlay(alignment: .bottomTrailing) { controls }
         .onGeometryChange(for: CGSize.self) { $0.size } action: { model.resize($0) }
@@ -66,12 +52,6 @@ struct JournalWaveView: View {
         .accessibilityChildren {
             if voiceOver { accessibilityItems }
         }
-    }
-
-    /// How often the displayed moment's marker moves: about every half point.
-    private var cadence: Double {
-        let s = 0.5 / max(1e-9, model.base.k)
-        return min(4096, max(1, pow(2, log2(s).rounded())))
     }
 
     private var chooserShown: Binding<Bool> {
@@ -132,6 +112,41 @@ struct JournalWaveView: View {
     }
 }
 
+/// The wave's canvas: redrawn on every frame of a move (the frame is read here and nowhere above), on the clock's
+/// cadence for the displayed moment's marker, and every display frame while a zoom glides or a flick coasts.
+struct JournalWaveCanvas: View {
+    let model: JournalWaveModel
+    let cache: JournalWaveCache
+    let words: Wording
+
+    @Environment(ClockStore.self) private var store
+
+    var body: some View {
+        ClockTimeline(.periodic(cadence)) { now in
+            TimelineView(.animation(minimumInterval: nil, paused: !model.isMoving)) { timeline in
+                let frame = model.frame(at: timeline.date)
+                let pins = model.pins
+                let live = store.isLive
+                Canvas(opaque: false, rendersAsynchronously: false) { context, size in
+                    JournalWavePainter(frame: frame, now: now, live: live, words: words, pins: pins, model: model, cache: cache)
+                        .draw(&context, size)
+                } symbols: {
+                    ForEach(model.symbols, id: \.self) { key in
+                        JournalWaveSymbol(key: key).tag(key)
+                    }
+                }
+            }
+        }
+    }
+
+    /// How often the displayed moment's marker moves: about every half point (in powers of two, so a zoom seldom
+    /// changes it).
+    private var cadence: Double {
+        let s = 0.5 / max(1e-9, model.base.k)
+        return min(4096, max(1, pow(2, log2(s).rounded())))
+    }
+}
+
 /// An emoji (or a stand-in symbol) in its disc: the Canvas symbol a badge draws.
 struct JournalWaveSymbol: View {
     let key: String
@@ -180,6 +195,8 @@ final class JournalWaveCache {
     private var hi = 0.0
     private var names: [Int64: String] = [:]
     let clock = FractonicaClock.shared
+    /// The texts as pictures.
+    let labels = JournalWaveLabels()
 
     /// The strands and lines for a frame, rebuilding when the zoom or size changed or the view left the window.
     func lines(_ f: JournalWaveFrame, size: CGSize, x0: Double, half: Double) -> (strands: [JournalWaveStrand], lines: [Line], dy: Double) {
@@ -312,132 +329,5 @@ struct JournalWavePainter {
         }
         context.stroke(lines, with: .color(Theme.levelColor(s.level, opacity: 0.26 * s.weight, lightness: 0.6)), lineWidth: 1)
     }
-
-    /// The framing cycles' names (and Earth moments) on their hairlines, over everything, on whichever side of the
-    /// column the emoji leave free.
-    private func drawFrameNames(_ context: inout GraphicsContext, _ strands: [JournalWaveStrand], _ p0: Double?, _ p1: Double?,
-                                _ badges: [JournalWaveBadge], w: Double, h: Double, margin: Double) {
-        guard let p0, let p1, let s = JournalWave.frameLevel(strands, height: h) else { return }
-        let alpha = s.weight
-        let r = JournalWaveModel.badge / 2
-        for tick in JournalWave.ticks(s, from: p0, to: p1, limit: 40) {
-            let y = frame.y(tick.time)
-            guard y > -24, y < h + 4 else { continue }
-            let name = cache.full(level: s.level, cycle: tick.cycle, notation: words.notation)
-            var text = Text(verbatim: name).font(.system(size: 11, weight: .semibold)).foregroundColor(Theme.levelColor(s.level, opacity: alpha, lightness: 0.76))
-            if !words.pure {
-                text = text + Text(verbatim: "  " + JournalWave.earthTick(tick.time, level: s.level, earth: words.earth))
-                    .font(.system(size: 10)).foregroundColor(Theme.ink2.opacity(alpha))
-            }
-            let resolved = context.resolve(text)
-            let m = resolved.measure(in: CGSize(width: w, height: 30))
-            let left = CGRect(x: margin + 4, y: y + 3, width: m.width + 10, height: m.height + 4)
-            let right = CGRect(x: w - Self.controlsWidth - m.width - 10, y: y + 3, width: m.width + 10, height: m.height + 4)
-            func covered(_ rect: CGRect) -> Int {
-                badges.filter { rect.insetBy(dx: -r, dy: -r).contains(CGPoint(x: $0.x, y: $0.y)) }.count
-            }
-            let box = covered(left) <= covered(right) ? left : right
-            context.fill(Capsule().path(in: box), with: .color(Theme.background.opacity(0.78)))
-            context.draw(resolved, at: CGPoint(x: box.midX, y: box.midY), anchor: .center)
-        }
-    }
-
-    /// Cycle starts in the margin, coarse levels first, as many as fit.
-    private func drawMargin(_ context: inout GraphicsContext, _ strands: [JournalWaveStrand], _ p0: Double?, _ p1: Double?, h: Double, margin: Double) {
-        guard let p0, let p1 else { return }
-        var taken: [Double] = []
-        var drawn = 0
-        for s in strands where s.cyclePoints >= 34 && s.weight > 0.35 {
-            var marks = Path()
-            for tick in JournalWave.ticks(s, from: p0, to: p1, limit: 80) {
-                let y = frame.y(tick.time)
-                guard y > -8, y < h + 8 else { continue }
-                marks.move(to: CGPoint(x: margin - 4, y: y))
-                marks.addLine(to: CGPoint(x: margin + 2, y: y))
-                guard drawn < 44, !taken.contains(where: { abs($0 - y) < 13 }) else { continue }
-                taken.append(y)
-                drawn += 1
-                let label = cache.short(level: s.level, cycle: tick.cycle, notation: words.notation)
-                context.draw(Text(verbatim: label).font(.system(size: 10, weight: .medium, design: .monospaced))
-                    .foregroundColor(Theme.levelColor(s.level, opacity: s.weight, lightness: 0.7)),
-                             at: CGPoint(x: margin - 8, y: y), anchor: .trailing)
-            }
-            context.stroke(marks, with: .color(Theme.levelColor(s.level, opacity: 0.7 * s.weight)), lineWidth: 1)
-        }
-    }
-
-    /// The displayed moment: a line across, a dot on the wave, "Now" (or the moment, while travelling).
-    private func drawNow(_ context: inout GraphicsContext, _ point: (Double) -> JournalWavePoint, w: Double, h: Double, margin: Double) {
-        let y = frame.y(now)
-        guard y > -20, y < h + 20 else { return }
-        let colour = live ? Theme.now : Theme.cursor
-        var line = Path()
-        line.move(to: CGPoint(x: margin - 6, y: y))
-        line.addLine(to: CGPoint(x: w, y: y))
-        context.stroke(line, with: .color(colour.opacity(0.55)), style: StrokeStyle(lineWidth: 1, dash: [4, 4]))
-        let p = point(now)
-        context.fill(Path(ellipseIn: CGRect(x: p.x - 9, y: p.y - 9, width: 18, height: 18)), with: .color(colour.opacity(0.22)))
-        context.fill(Path(ellipseIn: CGRect(x: p.x - 4.5, y: p.y - 4.5, width: 9, height: 9)), with: .color(colour))
-        let label = live ? "Now" : words.time(now, seconds: false)
-        context.draw(Text(verbatim: label).font(.system(size: 10, weight: .semibold)).foregroundColor(colour),
-                     at: CGPoint(x: w - 8, y: y - 3), anchor: .bottomTrailing)
-    }
-
-    /// The entries in view: placed, tethered to their wave point when set beside it, clusters with their count.
-    @discardableResult
-    private func drawBadges(_ context: inout GraphicsContext, _ point: (Double) -> JournalWavePoint, w: Double, h: Double, margin: Double) -> [JournalWaveBadge] {
-        let size = JournalWaveModel.badge
-        let reach = 2 * (size + JournalWaveModel.badgeGap)
-        let visible = model.pins(from: frame.t(h + reach), to: frame.t(-reach))
-        let badges = JournalWavePlacer.place(Array(visible), size: size, gap: JournalWaveModel.badgeGap,
-                                             xRange: (margin + 2)...(w - Self.controlsWidth + 6), point: point)
-        model.hits.badges = badges
-        guard !badges.isEmpty else { return badges }
-        var tethers = Path()
-        var dots = Path()
-        for b in badges where b.isOffset {
-            let dx = b.x - b.anchor.x, dy = b.y - b.anchor.y
-            let d = max(1, (dx * dx + dy * dy).squareRoot())
-            tethers.move(to: CGPoint(x: b.anchor.x, y: b.anchor.y))
-            tethers.addLine(to: CGPoint(x: b.x - dx / d * size / 2, y: b.y - dy / d * size / 2))
-        }
-        for b in badges {
-            dots.addEllipse(in: CGRect(x: b.anchor.x - 2.5, y: b.anchor.y - 2.5, width: 5, height: 5))
-        }
-        context.stroke(tethers, with: .color(Theme.ink3.opacity(0.7)), lineWidth: 1)
-        context.fill(dots, with: .color(Theme.ink2))
-        for b in badges {
-            guard b.y > -size, b.y < h + size else { continue }
-            if let symbol = context.resolveSymbol(id: b.symbol) {
-                context.draw(symbol, at: CGPoint(x: b.x, y: b.y))
-            }
-            if b.isCluster {
-                let text = context.resolve(Text(verbatim: "\(b.ids.count)").font(.system(size: 10, weight: .bold).monospacedDigit()).foregroundColor(Theme.background))
-                let m = text.measure(in: CGSize(width: 60, height: 20))
-                let bw = max(17, m.width + 9)
-                let rect = CGRect(x: b.x + size * 0.32 - bw / 2 + 4, y: b.y - size / 2 - 3, width: bw, height: 17)
-                context.fill(Capsule().path(in: rect.insetBy(dx: -1.5, dy: -1.5)), with: .color(Theme.background))
-                context.fill(Capsule().path(in: rect), with: .color(Theme.teal))
-                context.draw(text, at: CGPoint(x: rect.midX, y: rect.midY))
-            }
-        }
-        return badges
-    }
-
-    /// The levels drawn and how much time the screen shows, bottom left: "ζ η θ  4 d 10 h".
-    private func drawLegend(_ context: inout GraphicsContext, _ strands: [JournalWaveStrand], h: Double) {
-        var text = Text(verbatim: "")
-        for (i, s) in strands.enumerated() where s.weight > 0.15 {
-            text = text + Text(verbatim: (i > 0 ? " " : "") + Fractonica.periodName(s.level).text)
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundColor(Theme.levelColor(s.level, opacity: 0.3 + 0.7 * s.weight, lightness: 0.72))
-        }
-        let span = frame.span(h)
-        text = text + Text(verbatim: "  " + words.duration(span, at: frame.t(h / 2))).font(.system(size: 11)).foregroundColor(Theme.ink2)
-        let resolved = context.resolve(text)
-        let m = resolved.measure(in: CGSize(width: 300, height: 30))
-        let box = CGRect(x: 8, y: h - 10 - m.height - 6, width: m.width + 14, height: m.height + 6)
-        context.fill(Capsule().path(in: box), with: .color(Theme.background.opacity(0.82)))
-        context.draw(resolved, at: CGPoint(x: box.midX, y: box.midY), anchor: .center)
-    }
 }
+

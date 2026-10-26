@@ -259,8 +259,8 @@ enum JournalPeriods {
 /// The pinch that zooms the stack: steps out (to bigger periods) once the fingers close to `outward` of where the last
 /// step happened, in once they open to `inward`, so one long pinch can pass several levels and a small wobble none.
 struct JournalPinch: Sendable {
-    static let outward = 0.72
-    static let inward = 1.38
+    static let outward = 0.66
+    static let inward = 1.5
 
     /// The magnification at the last step (or the start).
     private(set) var base = 1.0
