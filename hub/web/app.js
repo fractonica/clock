@@ -287,6 +287,7 @@ async function route() {
     }
   }
   const m = /^#\/(devices|search\/(.*)|r\/(.+))?$/.exec(hash || '#/') ?? [];
+  if (!m[3] && dlg.open) dlg.close();
   $('nav-timeline').toggleAttribute('aria-current', false);
   $('nav-devices').toggleAttribute('aria-current', false);
   if (m[1] === 'devices') {
@@ -671,7 +672,7 @@ document.addEventListener('keydown', (e) => {
   }
 });
 async function runSearch(q, mode = S.search.mode) {
-  S.search = { ...S.search, q, mode, busy: true, note: null };
+  S.search = { ...S.search, q, mode, busy: true, note: null, showWeak: false };
   renderSearch();
   try {
     const body = { query: q, mode, limit: 50 };
@@ -700,20 +701,26 @@ function renderSearch() {
   const seg = h('div', { class: 'seg', role: 'group', 'aria-label': 'Search mode' },
     ['auto', 'semantic', 'keyword'].map((m) => h('button', { type: 'button', 'aria-pressed': String(s.mode === m), onclick: () => runSearch(s.q, m) }, m[0].toUpperCase() + m.slice(1))),
   );
+  // semantic search ranks everything; matches far below the best one are folded away
+  const all = s.results ?? [];
+  const top = all[0]?.score ?? 0;
+  const strong = s.ran === 'semantic' && !s.showWeak ? all.filter((x) => x.score >= top * 0.75) : all;
+  const weak = all.length - strong.length;
   const head = h('div', { class: 'results-h' },
-    h('span', { class: 'h1' }, s.busy ? 'Searching…' : `${s.results?.length ?? 0} result${s.results?.length === 1 ? '' : 's'}`),
+    h('span', { class: 'h1' }, s.busy ? 'Searching…' : `${strong.length} result${strong.length === 1 ? '' : 's'}`),
     s.ran && !s.busy ? h('span', { class: `tag ${s.ran === 'semantic' ? 'teal' : ''}`, title: s.ran === 'semantic' ? 'Ranked by meaning (cosine similarity)' : 'Ranked by matching words and recency' }, s.ran) : null,
     h('span', { style: { flex: '1' } }),
     seg,
   );
   const list = h('div', { class: 'results' },
     s.note ? h('div', { class: 'sub' }, s.note) : null,
-    (s.results ?? []).map((x) =>
+    strong.map((x) =>
       h('div', null,
         h('div', { class: 'result-when' }, [x.record.fx?.stamp, fmt.full.format(d(x.record.time)), x.part && x.part !== 'record' ? 'matched an attachment' : null].filter(Boolean).join(' · ')),
         cardOf(x.record, { score: x.score }),
       ),
     ),
+    weak > 0 ? h('button', { class: 'btn sm ghost', type: 'button', style: { alignSelf: 'center' }, onclick: () => ((S.search.showWeak = true), renderSearch()) }, `Show ${weak} weaker match${weak === 1 ? '' : 'es'}`) : null,
     !s.busy && s.results && !s.results.length ? h('div', { class: 'empty' }, h('b', null, 'Nothing found'), s.ran === 'keyword' ? 'Keyword search matches words; try fewer or different ones.' : 'Try other words.') : null,
   );
   main.replaceChildren(head, list);
@@ -843,6 +850,7 @@ async function renderDevices() {
     main.replaceChildren(h('div', { class: 'empty' }, h('b', null, 'Devices need the admin scope'), 'This browser can read the timeline but not manage clients.'));
     return;
   }
+  if (!main.querySelector('.clients')) main.replaceChildren(h('div', { class: 'loading' }, 'Loading…'));
   await loadClients();
   const w = await renderWorker();
   const all = [...S.clients.values()];
