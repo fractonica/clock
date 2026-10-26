@@ -328,3 +328,24 @@ def _check_result(body: dict) -> str | None:
         if not np.isfinite(arr).all() or abs(float(np.linalg.norm(arr)) - 1) > 1e-3:
             return "vector is not L2-normalised"
     return None
+
+
+if __name__ == "__main__":  # manual runs: python tests/mock_hub.py --port 8787 --token fxh_dev
+    import argparse
+
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--port", type=int, default=8787)
+    ap.add_argument("--token", default="fxh_dev")
+    a = ap.parse_args()
+    hub = MockHub(port=a.port, token=a.token).start()
+    print(f"mock hub on {hub.url}, token {a.token}, pairing code {hub.add_code()}", flush=True)
+    jobs = [hub.add_query_job(["the night the moon was huge", "train delay"]),
+            hub.add_record_job({"id": "demo", "kind": "journal.entry"}, "title: 🌙 Night walk | text: Saw the moon rise")]
+    try:
+        for k, r in hub.wait_results(jobs, timeout=600).items():
+            print(k, [(v["part"], len(base64.b64decode(v["vector"]))) for v in r.get("vectors", [])] or r, flush=True)
+        while True:
+            time.sleep(5)
+            print(f"heartbeats: {len(hub.heartbeats)}, last: {hub.heartbeats[-1] if hub.heartbeats else None}", flush=True)
+    except KeyboardInterrupt:
+        hub.stop()
