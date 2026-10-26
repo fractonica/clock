@@ -4,7 +4,8 @@ import Foundation
 // The journal timeline's zoom and wave: periods (grouping, emoji and pictures, sections, words), the pinch's steps, the
 // wave's frame and limits, its arc geometry (the spine and its band at every zoom, regular arcs of one radius joining
 // smoothly, children perpendicular to their parent, emoji exactly on the curve, no jump anywhere across the zoom), the
-// cycle starts, and the emoji placement (fanning, clusters, hits, the zoom that opens a cluster).
+// cycle starts, the emoji placement (fanning, clusters, hits, the zoom that opens a cluster), and the sky on the wave
+// (which events show at a zoom, most notable first, never overlapping; the solar sync's ticks).
 // Run: ios/scripts/check.sh ios/Fractonica/Features/Journal/Timeline/Checks
 
 @main
@@ -23,6 +24,8 @@ struct TimelineChecks {
         continuityChecks()
         tickChecks()
         placementChecks()
+        skyChecks()
+        solarTickChecks()
         Checks.finish()
     }
 }
@@ -506,4 +509,86 @@ private func placementChecks() {
     }
     let same = JournalWaveBadge(x: 0, y: 0, anchor: JournalWavePoint(x: 0, y: 0), ids: ["a", "b"], times: [5, 5], symbol: "")
     check(JournalWavePlacer.separatingK(same, size: size, gap: gap, kMax: 1) == nil, "entries at the same moment cannot be zoomed apart")
+}
+
+// MARK: - The sky on the wave
+
+private func skyChecks() {
+    let sky = SkyEvents.shared
+    let year = 365.2422 * 86_400
+    let h = 700.0
+    let beta = h / (1.5 * clock.levelInfo(1).meanSeconds), gamma = h / (1.5 * clock.levelInfo(2).meanSeconds)
+    let nuclide = h / (1.5 * clock.levelInfo(4).meanSeconds), zeta = h / (1.5 * clock.levelInfo(5).meanSeconds)
+    // level of detail by tier
+    check(SkyTier.allCases.allSatisfy { JournalSkyPlacer.tierAlpha($0, k: zeta) >= JournalSkyPlacer.tierAlpha($0, k: nuclide) },
+          "closer, every tier shows at least as strongly")
+    check(JournalSkyPlacer.tierAlpha(.eclipse, k: gamma) == 1 && JournalSkyPlacer.tierAlpha(.season, k: gamma) == 1
+          && JournalSkyPlacer.tierAlpha(.between, k: gamma) == 0, "a Gamma's screen: eclipses and seasons, not the in-between states")
+    check(JournalSkyPlacer.tierAlpha(.syzygy, k: beta) == 0 && JournalSkyPlacer.tierAlpha(.eclipse, k: beta) == 0, "a Beta's screen: no moons, and eclipses only…")
+    let year2026 = sky.events(from: 1_767_225_600, to: 1_798_761_600)
+    let total = year2026.first { $0.label == "Total solar eclipse" }!
+    let partialLunar = sky.events(from: 1_700_000_000, to: 1_800_000_000).first { $0.label == "Partial lunar eclipse" }!
+    check(JournalSkyPlacer.alpha(total, k: beta) == 1 && JournalSkyPlacer.alpha(partialLunar, k: beta) == 0, "… total solar ones")
+    check(JournalSkyPlacer.alpha(partialLunar, k: gamma) == 1, "a Gamma's screen shows every eclipse")
+    check(SkyTier.allCases.allSatisfy { JournalSkyPlacer.tierAlpha($0, k: 1) == 1 }, "everything when zoomed in")
+
+    // placing on a straight wave: never overlapping, most notable first, in time order
+    func place(_ k: Double, from t0: Double, to t1: Double, hidden: Set<SkyFamily> = []) -> [JournalSkyMark] {
+        JournalSkyPlacer.place(sky, from: t0, to: t1, k: k, hidden: hidden) { t in (200, (t1 - t) * k) }
+    }
+    for (name, k, span) in [("nuclide", nuclide, 60 * 86_400.0), ("gamma", gamma, 2 * year), ("beta", beta, 30 * year), ("close", 0.01, 3 * 86_400.0)] {
+        let marks = place(k, from: vectorA - span / 2, to: vectorA + span / 2)
+        var overlap = false
+        for i in marks.indices {
+            for j in marks.indices where j > i && hypot(marks[i].x - marks[j].x, marks[i].y - marks[j].y) < marks[i].radius + marks[j].radius + 3 - 1e-9 {
+                overlap = true
+            }
+        }
+        check(!marks.isEmpty && !overlap, "\(name): \(marks.count) marks, none overlapping")
+        check(zip(marks, marks.dropFirst()).allSatisfy { $0.event.time <= $1.event.time }, "\(name): in time order")
+        check(marks.allSatisfy { $0.alpha > 0.02 }, "\(name): only what shows")
+    }
+    let g = place(gamma, from: 1_767_225_600, to: 1_798_761_600)
+    // 2026's eclipses come in pairs two weeks apart (16 points here, too close for both): 17 Feb annular and 3 Mar total
+    // lunar, the first kept; 12 Aug total solar and 28 Aug partial lunar, the solar kept
+    let eclipses = g.filter { $0.event.tier == .eclipse }
+    check(eclipses.count == 2 && eclipses.contains { $0.event == total }, "a Gamma's screen keeps 2026's eclipses where there is room: \(eclipses.map(\.event.label))")
+    check(g.allSatisfy { $0.event.tier <= .syzygy }, "and nothing less notable than new and full moons")
+    let b = place(beta, from: vectorA - 15 * year, to: vectorA + 15 * year)
+    check(!b.isEmpty && b.allSatisfy { $0.event.label == "Total solar eclipse" }, "a Beta's screen: total solar eclipses (\(b.count))")
+    let close = place(0.01, from: vectorA, to: vectorA + 3 * 86_400)
+    check(close.count == sky.indices(from: vectorA, to: vectorA + 3 * 86_400).count, "zoomed in, every event shows")
+    let hidden = place(nuclide, from: vectorA - 30 * 86_400, to: vectorA + 30 * 86_400, hidden: [.synodic, .eclipse])
+    check(!hidden.isEmpty && hidden.allSatisfy { $0.event.family != .synodic && $0.event.family != .eclipse }, "hidden families stay off")
+    // when marks collide the more notable one stays
+    let crowd = JournalSkyPlacer.place(sky, from: vectorA - 60 * 86_400, to: vectorA + 60 * 86_400, k: 0.01, hidden: []) { _ in (0, 0) }
+    check(crowd.count == 1 && crowd[0].event.tier == SkyTier.allCases.first { t in
+        sky.events(from: vectorA - 60 * 86_400, to: vectorA + 60 * 86_400).contains { $0.tier == t } }, "all in one spot, the most notable stays: \(crowd.map(\.event.name))")
+}
+
+private func solarTickChecks() {
+    let q = JournalSkyPlacer.quarterSeconds()
+    check(abs(q - 86_400) < 0.05 * 86_400, "the sync's quarters come about a day apart: \(q)")
+    let line: (Double) -> (x: Double, y: Double, nx: Double, ny: Double)? = { t in (200, vectorA - t, 1, 0) }
+    // quarters at ~40 points a day
+    let k = 40 / q
+    let ticks = JournalSkyPlacer.solarTicks(from: vectorA - 10 * 86_400, to: vectorA + 10 * 86_400, k: k, trace: line)
+    check(ticks.count >= 18 && ticks.count <= 22, "twenty days hold about twenty quarters: \(ticks.count)")
+    check(zip(ticks, ticks.dropFirst()).allSatisfy { $0.time > $1.time && abs(($0.time - $1.time) - q) < 0.05 * q }, "latest first, a quarter apart")
+    check(zip(ticks, ticks.dropFirst()).allSatisfy { $0.quarter == $1.quarter % 4 + 1 }, "peak, node, valley, end in turn")
+    let grid = WaveSolar.Grid(p6: clock.levelInfo(WaveSolar.syncLevel).prefixDouble)
+    let right = ticks.allSatisfy { t in
+        let c = grid.coord(clock.position(at: t.time)!)
+        return abs(c - (Double(t.sync) + Double(t.quarter) / 4)) < 1e-6
+    }
+    check(right, "each tick is its sync's quarter on the Wave screen's grid")
+    let reading = clock.solar(at: ticks[0].time - 60)
+    check(reading.map { $0.sync == ticks[0].sync && $0.quarter == ticks[0].quarter - 1 } ?? false,
+          "and the engine's sync and quarter agree: \(String(describing: reading?.sync)) \(ticks[0].sync)")
+    check(ticks.allSatisfy { !$0.labelled }, "no names at 40 points a quarter")
+    check(JournalSkyPlacer.solarTicks(from: vectorA - 86_400, to: vectorA + 86_400, k: 60 / q, trace: line).allSatisfy(\.labelled), "names from 46")
+    // closer than 9 points a quarter: only the syncs' ends; closer than 9 a sync: nothing
+    let ends = JournalSkyPlacer.solarTicks(from: vectorA - 40 * 86_400, to: vectorA + 40 * 86_400, k: 4 / q, trace: line)
+    check(!ends.isEmpty && ends.allSatisfy(\.isEnd), "only the syncs' ends: \(ends.count)")
+    check(JournalSkyPlacer.solarTicks(from: vectorA - 400 * 86_400, to: vectorA, k: 1 / q, trace: line).isEmpty, "none when even the syncs crowd")
 }

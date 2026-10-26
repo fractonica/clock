@@ -5,3 +5,7 @@ Fractonica/Features/Journal/Store/HubRecord.swift
 Fractonica/Features/Journal/Store/JournalRecords.swift
 Shared/Notation+Standard.swift
 Fractonica/Features/Wave/WaveGeometry.swift
+Fractonica/Features/Journal/Timeline/JournalWaveSkyLayout.swift
+Fractonica/Features/Wave/WaveSolar.swift
+Fractonica/Features/Journal/Sky/SkyEventKinds.swift
+Fractonica/Features/Journal/Sky/SkyEvents.swift

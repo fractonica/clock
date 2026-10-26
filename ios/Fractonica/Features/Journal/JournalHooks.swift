@@ -24,8 +24,13 @@ enum JournalHooks: FeatureHooks {
     static var remoteThumbnail: (@MainActor (_ hash: String, _ pixels: Int) async -> Data?)?
 
     static func launch() {
+        // every entry saved on the device carries the sky events near it as tags
+        SkyTagging.install(JournalStore.shared)
         Task {
+            async let sky: Void = SkyTagging.warm()
             await JournalStore.shared.load()
+            await sky
+            SkyTagging.backfill(JournalStore.shared)
             if JournalLaunch.flag("FXJournalSeed") {
                 await JournalSeed.fillIfEmpty(JournalStore.shared)
                 if JournalLaunch.string("FXJournalSeed")?.lowercased() == "wide" {

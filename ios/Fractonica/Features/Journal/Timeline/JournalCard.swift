@@ -21,7 +21,10 @@ struct JournalCard: View {
                         .font(.headline)
                         .foregroundStyle(Theme.ink)
                         .lineLimit(2)
-                    JournalStampText(time: record.time, words: words, full: fullStamp)
+                    HStack(spacing: 7) {
+                        JournalStampText(time: record.time, words: words, full: fullStamp)
+                        SkyTagSymbols(tags: record.tags, words: words)
+                    }
                 }
                 Spacer(minLength: 0)
                 DeltaAgo(time: record.time, words: words)

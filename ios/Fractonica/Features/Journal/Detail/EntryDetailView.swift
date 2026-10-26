@@ -47,6 +47,7 @@ struct EntryDetailView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
                 header(entry, words).momentHeader(for: record)
+                SkyTagChips(record: record, words: words)
                 if let captures {
                     DetailCaptures(groups: captures, words: words, time: record.time) { index in
                         gallery = GalleryStart(index: index)

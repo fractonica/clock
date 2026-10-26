@@ -1,0 +1,5 @@
+# The app files SkyChecks.swift compiles against (relative to ios/).
+Fractonica/Features/Journal/Sky/SkyEventKinds.swift
+Fractonica/Features/Journal/Sky/SkyEvents.swift
+Fractonica/Features/Journal/Sky/SkyTags.swift
+Fractonica/Features/Journal/Store/HubRecord.swift

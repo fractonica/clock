@@ -110,6 +110,8 @@ struct JournalPeriodSection: Identifiable, Hashable, Sendable {
 enum JournalPeriods {
     static let emojiLimit = 6
     static let mediaLimit = 4
+    /// The sky events a block shows as symbols (the most notable; "+N" for the rest).
+    static let skyLimit = 6
 
     /// Groups records (newest first) into periods of `level`, keeping their order. Records outside the catalogue share
     /// one period per run, as the Helion days do.

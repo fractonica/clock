@@ -414,6 +414,7 @@ struct JournalScreen: View {
                         }
                     }
                 }
+                SkyMenuSection()
                 Divider()
                 Toggle(isOn: $prefs.showsOtherKinds) {
                     Label("Records from Other Sources", systemImage: "tray.full")
@@ -544,10 +545,13 @@ struct JournalScrollTarget: Equatable {
 
 // MARK: - Parts
 
-/// A Helion's header: "34η" with its Nuclide and Delta, and the Earth day and hours (not in pure mode).
+/// A Helion's header: "34η" with its Nuclide and Delta, and the Earth day and hours (not in pure mode); the sky events
+/// inside the Helion on the right (tap for their names and moments).
 struct JournalDayHeader: View {
     let day: JournalDay
     let words: Wording
+
+    @State private var sky = SkyDisplay.shared
 
     var body: some View {
         HStack(alignment: .center, spacing: 10) {
@@ -579,10 +583,16 @@ struct JournalDayHeader: View {
                 }
             }
             Spacer(minLength: 0)
+            if day.cycle != nil {
+                let events = SkyEvents.shared.events(from: day.start, to: day.end, hiding: sky.hidden)
+                if !events.isEmpty {
+                    SkyHelionStrip(events: events, words: words)
+                }
+            }
         }
         .padding(.vertical, 4)
         .textCase(nil)
-        .accessibilityElement(children: .combine)
+        .accessibilityElement(children: .contain)
     }
 
     private var earthDay: String {

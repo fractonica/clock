@@ -13,6 +13,7 @@ struct JournalChecks {
         await remoteChecks()
         await blobChecks()
         await draftChecks()
+        skyChecks()
         recordChecks()
         rankingChecks()
         dayChecks()
@@ -374,6 +375,57 @@ private func rankingChecks() {
           "semantic scores rank first, unknown ids dropped, keyword-only hits after")
     check(JournalRanking.merge(keyword: [("a", 1)], semantic: ["b": 0.70, "c": 0.66, "d": 0.60, "a": 0.40], known: ["a", "b", "c", "d"]) == ["b", "c", "a"],
           "semantic matches far below the best are left out unless a word matches")
+}
+
+// MARK: - Sky tags in the store
+
+@MainActor
+private func skyChecks() {
+    let (store, clock, root) = freshStore()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let vectorA = 1_791_460_800.0
+    let full = SkyEvents.shared.events(from: vectorA, to: vectorA + 30 * 86_400).first { $0.name == "full-moon" }!
+    // entries written before tagging existed (no hook yet), one with a tag of its own, one stale
+    store.save(entry("old", time: full.time + 600, title: "Moonlight", updated: 1))
+    var mine = entry("mine", time: full.time - 900, title: "Walk", updated: 1)
+    mine.tags = ["walks", "sky:new-moon"]
+    store.save(mine)
+    store.save(entry("far", time: full.time + 7 * 86_400, title: "Far", updated: 1))
+    store.save(entry("dead", time: full.time, title: "Dead", updated: 1))
+    store.delete("dead")
+    store.markUploaded(store.record("old")!)
+    check(store.record("old")?.tags == nil && !store.isPending("old"), "without the hook nothing is tagged")
+
+    var changes = 0
+    store.onLocalChange = { changes += 1 }
+    SkyTagging.install(store)
+    clock.t += 100
+    let written = SkyTagging.backfill(store)
+    check(written >= 2 && changes == 1, "the backfill writes the outdated entries with one change: \(written) \(changes)")
+    check(store.record("old")?.tags?.contains("sky:full-moon") == true && store.isPending("old"), "a backfilled entry is tagged and pending")
+    check(store.record("old")!.updated == clock.t, "and updated now, so the hub takes it")
+    check(store.record("mine")?.tags?.first == "walks" && store.record("mine")?.tags?.contains("sky:new-moon") == false
+          && store.record("mine")?.tags?.contains("sky:full-moon") == true, "own tags stay, stale sky tags go: \(store.record("mine")?.tags ?? [])")
+    check(store.migrationVersion(SkyTags.migration) == SkyTags.version, "the backfill is remembered")
+    check(SkyTagging.backfill(store) == 0 && changes == 1, "and runs once")
+
+    // the version survives a relaunch
+    let (again, _, _) = freshStore(root)
+    check(again.migrationVersion(SkyTags.migration) == SkyTags.version && again.isPending("old"), "migration and pending survive a relaunch")
+
+    // saves keep the tags current: a new entry, an edit that moves it, an instant capture through save()
+    var draft = JournalDraft(key: JournalDraft.newKey, recordID: "new", title: "Eclipse?", time: full.time, timeChosen: true, zone: "UTC")
+    let a = store.saveEntry(draft)
+    check(a.tags?.contains("sky:full-moon") == true, "a new entry near a full moon is tagged: \(a.tags ?? [])")
+    draft = JournalDraft(key: "new", recordID: "new", title: "Moved", time: full.time + 7 * 86_400, timeChosen: true, zone: "UTC")
+    let b = store.saveEntry(draft)
+    check(b.tags?.contains("sky:full-moon") != true, "moved a week on, the full moon's tag goes: \(b.tags ?? [])")
+    let c = store.save(entry("capture", time: full.time + 60, title: "Moment", updated: 1))
+    check(c.tags?.contains("sky:full-moon") == true, "a record saved directly (a moment's capture) is tagged")
+
+    // keyword search reads the tags
+    check(JournalRanking.keyword(store.entries, query: "full moon").map(\.id).contains("capture"), "\"full moon\" finds an entry tagged sky:full-moon")
+    check(!JournalRanking.keyword(store.entries, query: "full moon").map(\.id).contains("far"), "and not one a week away")
 }
 
 // MARK: - Days

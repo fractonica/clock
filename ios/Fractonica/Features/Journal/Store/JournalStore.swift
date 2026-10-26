@@ -43,6 +43,10 @@ final class JournalStore: RecordSyncing {
     @ObservationIgnored var onLocalChange: (@MainActor () -> Void)?
     /// The clock for `updated` and `created`; replaced by the checks.
     @ObservationIgnored var now: () -> Double = { Date().timeIntervalSince1970 }
+    /// Applied to every record this device writes (`save`, `saveEntry`, `rewrite`) before it is stored: the one place
+    /// derived fields are kept current (JournalHooks installs the sky tags, `SkyTags.normalise`). Not applied to records
+    /// from the hub.
+    @ObservationIgnored var normalise: (@MainActor (HubRecord) -> HubRecord)?
 
     @ObservationIgnored private var state = JournalState()
     @ObservationIgnored private var pending: Set<String> = []
@@ -115,7 +119,7 @@ final class JournalStore: RecordSyncing {
     /// Creates or replaces a record written on this device: `updated` (and for a new record `created`) = now, pending.
     @discardableResult
     func save(_ record: HubRecord) -> HubRecord {
-        var record = record
+        var record = normalise?(record) ?? record
         let t = now()
         let old = records[record.id]
         if old == nil { record.created = t }
@@ -142,6 +146,37 @@ final class JournalStore: RecordSyncing {
         let saved = save(record)
         discardDraft(draft.key)
         return saved
+    }
+
+    /// Writes several records again on this device at once (a migration: derived fields brought up to date): each is
+    /// normalised, `updated` = now and pending, with one `onLocalChange` for all. Records no longer on the device or
+    /// deleted meanwhile are skipped. Returns how many were written.
+    @discardableResult
+    func rewrite(_ changed: [HubRecord]) -> Int {
+        var written = 0
+        let t = now()
+        for record in changed {
+            guard let old = records[record.id], !old.isDeleted else { continue }
+            var record = normalise?(record) ?? record
+            record.updated = max(t, old.updated + 0.001)
+            commit(record, replacing: old)
+            pending.insert(record.id)
+            written += 1
+        }
+        guard written > 0 else { return 0 }
+        saveState()
+        onLocalChange?()
+        return written
+    }
+
+    /// The version of a one-off migration that ran on this store (0 when none has), kept in state.json.
+    func migrationVersion(_ key: String) -> Int { state.migrations?[key] ?? 0 }
+
+    func setMigrationVersion(_ key: String, _ version: Int) {
+        var m = state.migrations ?? [:]
+        m[key] = version
+        state.migrations = m
+        saveState()
     }
 
     /// Deletes a record: a tombstone, pending until uploaded and hidden at once; its media go from disk unless

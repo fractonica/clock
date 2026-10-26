@@ -18,6 +18,9 @@ const CORE = {
   '/fx/model.js': join(REPO, 'src/core/model.js'),
   '/fx/pure.js': join(REPO, 'src/core/pure.js'),
 };
+/** The printable diary's astronomy (`/fx/astro/<module>.js`): the UI reads its EVENT_INFO for the sky tags. */
+const ASTRO = join(REPO, 'src/diary/astro');
+const ASTRO_RE = /^\/fx\/astro\/([a-z0-9-]+\.js)$/;
 const TYPES = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8',
   '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.json': 'application/json; charset=utf-8',
@@ -313,6 +316,8 @@ export async function startHub(opts = {}) {
       return res.end();
     }
     let file = CORE[path];
+    const astro = ASTRO_RE.exec(path);
+    if (!file && astro && existsSync(join(ASTRO, astro[1]))) file = join(ASTRO, astro[1]);
     if (!file) {
       const rel = normalize(path === '/' ? '/index.html' : path).replace(/^(\.\.[/\\])+/, '');
       file = join(WEB, rel);
