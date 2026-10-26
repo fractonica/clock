@@ -106,7 +106,7 @@ enum JournalWave {
     static let levels = 0...10
     /// A level fades in while its mean cycle grows from `fadeIn.lowerBound` to `fadeIn.upperBound` points, and out
     /// while it grows from `fadeOut` screens to 2.6 times as many.
-    static let fadeIn = 22.0...46.0
+    static let fadeIn = 16.0...36.0
     static let fadeOut = 3.0
 
     static func smoothstep(_ a: Double, _ b: Double, _ x: Double) -> Double {

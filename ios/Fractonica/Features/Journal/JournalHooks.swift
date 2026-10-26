@@ -28,6 +28,9 @@ enum JournalHooks: FeatureHooks {
             await JournalStore.shared.load()
             if JournalLaunch.flag("FXJournalSeed") {
                 await JournalSeed.fillIfEmpty(JournalStore.shared)
+                if JournalLaunch.string("FXJournalSeed")?.lowercased() == "wide" {
+                    await JournalSeed.fillWide(JournalStore.shared)
+                }
             }
             // -FXHubDemo attaches its own demo store to the sync engine instead
             if !JournalLaunch.flag("FXHubDemo") { JournalHubWiring.connect() }
@@ -70,6 +73,9 @@ struct ComposerRequest: Identifiable, Hashable, Sendable {
 ///
 ///     -FXJournalStore <dir>     keep the journal in that folder instead of Application Support/Journal
 ///     -FXJournalSeed 1          fill an empty journal with sample entries (photos, a voice note, Markdown)
+///     -FXJournalSeed wide       … and about 330 more over three years, with bursts (blocks and wave clusters)
+///     -FXJournalMode, -FXJournalZoom, -FXJournalWaveZoom, -FXJournalWaveAt, -FXJournalWaveHitches
+///                               the timeline's stack or wave and their zoom (JournalBrowsing.swift)
 ///     -FXJournalOthers 1        show records of other kinds in the timeline
 ///     -FXJournalSearch <text>   start with that search
 ///     -FXJournalCompose 1       open the composer (a new entry; "edit" edits the newest entry)
