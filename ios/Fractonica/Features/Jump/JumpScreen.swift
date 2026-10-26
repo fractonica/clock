@@ -4,10 +4,10 @@ import SwiftUI
 import UIKit
 #endif
 
-/// Jump: go to any moment by typing it (src/ui/jump.js, docs/design/60-calendar.md §1). The search tab of the app: on
-/// iPhone its field is the tab bar's own (the compact root's `.searchable`, shared through `JumpSearch`; under the
-/// title on iOS 18); on iPad and Mac it is the sidebar's search item and draws its field under the title or in the
-/// toolbar. ⌘K focuses the field.
+/// Jump: go to any moment by typing it (src/ui/jump.js, docs/design/60-calendar.md §1). On iPhone a sheet, from the
+/// magnifying glass at the leading edge of the Cycles tab (or ⌘K); on iPad and Mac the sidebar's search item. It
+/// draws its own field (under the title; in the window toolbar on the Mac), whose text and focus live in `JumpSearch`.
+/// ⌘K focuses the field.
 ///
 /// As you type, the best reading shows the moment it lands on — in Earth and Fractonica terms (side by side on a wide
 /// screen), or only Fractonica terms in pure mode — with the other readings below and a precise message for text that
@@ -29,9 +29,9 @@ struct JumpScreen: View {
     @State private var width: CGFloat = 0
     /// On screen (the readings follow the clock only then).
     @State private var visible = false
-    /// The focus of the field this screen draws (iPad and Mac), kept in step with `search.isFocused`.
+    /// The focus of the field this screen draws, kept in step with `search.isFocused`.
     @FocusState private var searchFocused: Bool
-    /// The query and focus shared with the iPhone tab bar's field.
+    /// The focus, shared with ⌘K and the Cycles tab's Jump button.
     private var search: JumpSearch { .shared }
 
     /// Does the device's locale write the day first in 06/01/2031? (it ranks the two readings)
@@ -52,7 +52,7 @@ struct JumpScreen: View {
         .scrollDismissesKeyboard(.immediately)
         #endif
         .navigationTitle(Screen.jump.title)
-        .modifier(JumpSearchField(owned: !router.isCompact, query: $model.query, focused: $searchFocused, pure: settings.pure, submit: submit))
+        .modifier(JumpSearchField(query: $model.query, focused: $searchFocused, pure: settings.pure, submit: submit))
         #if os(iOS)
         .safeAreaInset(edge: .bottom) {
             // the notation's Greek letters, floating above the keyboard while the field has focus
@@ -65,15 +65,11 @@ struct JumpScreen: View {
             }
         }
         #endif
-        .onChange(of: search.submissions) {
-            // Return in the iPhone tab bar's field
-            if router.isCompact { submit() }
-        }
         .onChange(of: searchFocused) { _, focused in
-            if !router.isCompact, search.isFocused != focused { search.isFocused = focused }
+            if search.isFocused != focused { search.isFocused = focused }
         }
         .onChange(of: search.isFocused) { _, focused in
-            if !router.isCompact, searchFocused != focused { searchFocused = focused }
+            if searchFocused != focused { searchFocused = focused }
         }
         .onChange(of: refreshKey) { model.refresh(situation()) }
         .background {
@@ -110,10 +106,10 @@ struct JumpScreen: View {
         .sensoryFeedback(.error, trigger: model.rejections) { _, _ in settings.haptics }
     }
 
-    /// Puts the keyboard focus in the field (or takes it away), whichever view draws the field.
+    /// Puts the keyboard focus in the field (or takes it away).
     private func focusField(_ focused: Bool) {
         search.isFocused = focused
-        if !router.isCompact { searchFocused = focused }
+        searchFocused = focused
     }
 
     // MARK: Content
@@ -277,28 +273,23 @@ struct JumpScreen: View {
     }
 }
 
-/// The search field Jump draws itself on iPad (under the title, always in view) and Mac (the window toolbar). On iPhone
-/// the compact root owns the field (in the tab bar), so this adds nothing there.
+/// The search field Jump draws: under the title, always in view, on iPhone (in its sheet) and iPad; in the window
+/// toolbar on the Mac.
 private struct JumpSearchField: ViewModifier {
-    var owned: Bool
     @Binding var query: String
     var focused: FocusState<Bool>.Binding
     var pure: Bool
     var submit: () -> Void
 
     func body(content: Content) -> some View {
-        if owned {
-            content
-                .searchable(text: $query, placement: placement, prompt: Text(JumpSearch.prompt(pure: pure)))
-                .searchFocused(focused)
-                .autocorrectionDisabled()
-                #if os(iOS)
-                .textInputAutocapitalization(.never)
-                #endif
-                .onSubmit(of: .search, submit)
-        } else {
-            content
-        }
+        content
+            .searchable(text: $query, placement: placement, prompt: Text(JumpSearch.prompt(pure: pure)))
+            .searchFocused(focused)
+            .autocorrectionDisabled()
+            #if os(iOS)
+            .textInputAutocapitalization(.never)
+            #endif
+            .onSubmit(of: .search, submit)
     }
 
     private var placement: SearchFieldPlacement {

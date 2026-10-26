@@ -618,7 +618,52 @@ function journalCard(r, { score, detail } = {}) {
   if (!detail) card.addEventListener('click', (e) => !e.target.closest('a, audio, video, button') && (location.hash = `#/r/${encodeURIComponent(r.id)}`));
   return card;
 }
+// A moment captured several times names its photos back@-1, front@-1, back@0 … (hub/API.md): the offset from the
+// moment in Flavons. They show capture by capture, each the back photo with the front one inset (as the app does).
+/** The camera and offset of a capture's photo name ("front@-1"), or null. */
+function captureName(name) {
+  const m = /^(.+)@(-?\d+)$/.exec(name ?? '');
+  return m ? { camera: m[1], offset: Number(m[2]) } : null;
+}
+const captureTag = (k) => (k === 0 ? '0' : k < 0 ? `−${-k}λ` : `+${k}λ`);
+const captureWords = (k) => (k === 0 ? 'at the moment' : k < 0 ? `${-k} Flavon${k < -1 ? 's' : ''} before` : `${k} Flavon${k > 1 ? 's' : ''} after`);
+/** Photos grouped by capture, earliest first ([{ offset, main, inset }]), or null unless every name is a capture's. */
+function captureGroups(photos) {
+  const groups = new Map();
+  for (const p of photos) {
+    const c = captureName(p.name);
+    if (!c) return null;
+    if (!groups.has(c.offset)) groups.set(c.offset, []);
+    groups.get(c.offset).push({ ...c, blob: p });
+  }
+  if (!groups.size) return null;
+  return [...groups.keys()].sort((a, b) => a - b).map((offset) => {
+    const list = groups.get(offset);
+    const main = list.find((x) => x.camera === 'back') ?? list[0];
+    const inset = list.find((x) => x !== main);
+    return { offset, main: main.blob, inset: inset?.blob };
+  });
+}
+function captureGrid(groups, detail) {
+  return h('div', { class: `media captures n${Math.min(groups.length, 3)}` },
+    groups.map((g) =>
+      h('div', { class: 'ph', title: `${cap(captureWords(g.offset))}: back and front cameras` },
+        h('a', { class: 'main', href: blobUrl(g.main.hash, 2048), target: '_blank', onclick: (e) => !detail && e.preventDefault() },
+          h('img', { src: blobUrl(g.main.hash, detail ? 1280 : 480), alt: `${g.main.name}: ${captureWords(g.offset)}`, loading: 'lazy', decoding: 'async', width: g.main.width, height: g.main.height }),
+        ),
+        g.inset
+          ? h('a', { class: 'inset', href: blobUrl(g.inset.hash, 2048), target: '_blank', onclick: (e) => !detail && e.preventDefault() },
+              h('img', { src: blobUrl(g.inset.hash, 320), alt: `${g.inset.name}: ${captureWords(g.offset)}`, loading: 'lazy', decoding: 'async' }),
+            )
+          : null,
+        h('span', { class: 'cap' }, captureTag(g.offset)),
+      ),
+    ),
+  );
+}
 function mediaGrid(photos, detail) {
+  const groups = captureGroups(photos);
+  if (groups) return captureGrid(groups, detail);
   const n = photos.length;
   const shown = detail ? photos : photos.slice(0, 6);
   return h('div', { class: `media n${Math.min(n, 4) === 3 || n > 4 ? 3 : Math.min(n, 4)}` },

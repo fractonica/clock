@@ -31,14 +31,19 @@ enum MomentDemo {
             for (i, m) in moments.enumerated() {
                 let line = i < lines.count ? lines[i] : ([MomentLevel.delta: "🪐", .gamma: "🌕", .beta: "☄️", .alpha: "🌌"][m.level] ?? "✨", "\(m.title()), captured on the dot.")
                 var blobs: [BlobRef] = []
-                if i < 2 || i >= lines.count {
-                    for photo in MomentStill.make(m, words: AppSettings.shared.wording) {
-                        let url = store.disk.temporaryFile(ext: "jpg")
-                        guard (try? photo.data.write(to: url)) != nil,
-                              let item = try? await JournalMedia.processImage(url, name: photo.name, quality: .optimised, disk: store.disk),
-                              let refs = try? await store.adopt(item) else { continue }
-                        blobs += refs
+                // the two latest were captured three times (back@-1 … front@1), the rare ones once (back, front)
+                let offsets = i < 2 ? MomentCaptures.offsets(count: 3) : [0]
+                let photos = i < 2 || i >= lines.count ? offsets.flatMap { k in
+                    MomentStill.make(m, words: AppSettings.shared.wording, offset: offsets.count > 1 ? k : nil).map {
+                        (name: MomentCaptures.photoName(camera: $0.name, offset: k, count: offsets.count), data: $0.data)
                     }
+                } : []
+                for photo in photos.sorted(by: { MomentCaptures.sortKey($0.name) < MomentCaptures.sortKey($1.name) }) {
+                    let url = store.disk.temporaryFile(ext: "jpg")
+                    guard (try? photo.data.write(to: url)) != nil,
+                          let item = try? await JournalMedia.processImage(url, name: photo.name, quality: .optimised, disk: store.disk),
+                          let refs = try? await store.adopt(item) else { continue }
+                    blobs += refs
                 }
                 var record = HubRecord.journalEntry(time: m.time, zone: zone.identifier, entry: JournalEntry(emoji: line.0, markdown: line.1),
                                                     blobs: blobs, now: now)

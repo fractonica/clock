@@ -1,11 +1,13 @@
 import FractonicaKit
 import SwiftUI
 
-/// The instant view: full screen (a sheet on the Mac), from 11 Flavons before a moment until it is captured. The
+/// The instant view: full screen (a sheet on the Mac), from 11 Flavons before a moment until its last capture. The
 /// moment's name in its level's colour, the cameras live (back with the front inset, BeReal style), a big countdown in
-/// Flavons and Blinks (and seconds outside pure mode) ticking to the exact moment, an emoji and a line to write, and
-/// the voice recording with its meter and a mute switch. At the moment: a flash and a strong haptic, the entry saves
-/// itself and shows as its card, with its rarity's frame and the streak.
+/// Flavons and Blinks (and seconds outside pure mode) ticking to the next capture — with "2 of 3", the moment's own
+/// countdown and a dot per capture when there are several — an emoji and a line to write, and the voice recording
+/// with its meter and a mute switch. Each capture: a flash and a strong haptic. After the last, the entry saves itself
+/// and shows as its card — the captures side by side, each the back photo with the front one inset — with its
+/// rarity's frame and the streak.
 struct InstantView: View {
     @Environment(AppSettings.self) private var settings
     @Environment(AppRouter.self) private var router
@@ -55,7 +57,8 @@ struct InstantView: View {
         .onChange(of: model.flashes) {
             flash = reduceMotion ? 0.5 : 0.95
             withAnimation(.easeOut(duration: reduceMotion ? 0.3 : 0.7)) { flash = 0 }
-            writing = false
+            // the keyboard goes at the last capture (the line is saved with the entry)
+            if model.taken.count + 1 >= model.shots.count { writing = false }
         }
         .animation(.snappy, value: model.phase)
         #if os(macOS)
@@ -86,7 +89,7 @@ struct InstantView: View {
             .buttonStyle(.plain)
             .foregroundStyle(Theme.ink2)
             .background(Theme.panel2.opacity(0.8), in: .circle)
-            .accessibilityLabel(model.savedID == nil ? "Close without capturing" : "Close")
+            .accessibilityLabel(model.savedID != nil ? "Close" : model.taken.contains(0) ? "Close and keep the captures" : "Close without capturing")
             .keyboardShortcut(.cancelAction)
             Spacer()
             RarityBadge(rarity: rarity)
@@ -112,9 +115,11 @@ struct InstantView: View {
 
     private var subtitle: String {
         switch model.phase {
+        case .waiting where model.count > 1:
+            "\(model.moment.rarity.title) moment · \(model.count) captures, a Flavon apart"
         case .waiting: "\(model.moment.rarity.title) moment · captured at the exact moment"
-        case .capturing: "Capturing…"
-        case .saved: "Captured and saved"
+        case .saving: "Saving…"
+        case .saved: model.taken.count > 1 ? "\(model.taken.count) captures saved" : "Captured and saved"
         case .failed(let reason): reason
         }
     }
@@ -192,7 +197,7 @@ struct InstantView: View {
     private func saved(_ record: HubRecord, _ words: Wording) -> some View {
         ScrollView {
             VStack(spacing: 18) {
-                JournalCard(record: record, words: words)
+                CaptureCard(record: record, words: words)
                     .transition(.scale(scale: 0.92).combined(with: .opacity))
                 StreakLine(stats: moments.stats, rarity: record.rarity)
                 HStack(spacing: 12) {
@@ -226,7 +231,8 @@ struct InstantView: View {
     }
 }
 
-/// "10λ 13ν" and the seconds, ticking to the moment; the last three Flavons in the rarity's colour.
+/// "10λ 13ν" and the seconds, ticking to the next capture; the last three Flavons in the rarity's colour. With several
+/// captures: which one comes ("2 of 3"), the moment's own countdown while it is still ahead, and a dot per capture.
 private struct InstantCountdown: View {
     let model: InstantModel
     let pure: Bool
@@ -235,13 +241,21 @@ private struct InstantCountdown: View {
     var body: some View {
         TimelineView(.animation(minimumInterval: 1 / 15, paused: model.phase != .waiting)) { context in
             let t = context.date.timeIntervalSince1970
+            let next = model.next
             let f = model.flavons(at: t)
             let whole = Int(f)
             let blinks = min(24, Int((f - Double(whole)) * 25))
-            let seconds = max(0, model.moment.time - t)
-            let done = model.phase != .waiting
+            let seconds = max(0, (next?.time ?? model.moment.time) - t)
+            let done = next == nil
             VStack(spacing: 2) {
-                Text(verbatim: done ? "Now" : "\(whole)λ \(String(format: "%02d", blinks))ν")
+                if model.count > 1 {
+                    Text(verbatim: next.map { "Capture \(model.number(of: $0)) of \(model.count)" } ?? "\(model.count) of \(model.count)")
+                        .font(.caption.weight(.bold))
+                        .textCase(.uppercase)
+                        .kerning(1)
+                        .foregroundStyle(.white.opacity(0.75))
+                }
+                Text(verbatim: done ? "Now" : Self.reading(f))
                     .font(.reading(46, weight: .semibold))
                     .foregroundStyle(f < 3 || done ? color : .white)
                     .contentTransition(.identity)
@@ -250,16 +264,68 @@ private struct InstantCountdown: View {
                         .font(.reading(15, weight: .medium))
                         .foregroundStyle(.white.opacity(0.7))
                 }
-                ProgressTrack(fraction: done ? 0 : min(1, f / Double(MomentCalendar.leadFlavons)), color: color)
-                    .frame(width: 180, height: 4)
-                    .padding(.top, 4)
+                if let next, next.offset < 0 {
+                    // the moment itself, beyond this capture
+                    Text(verbatim: "The moment in \(Self.reading((model.moment.time - t) / model.flavonSeconds))")
+                        .font(.reading(13, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.7))
+                }
+                if model.count > 1 {
+                    CaptureDots(plan: model.plan, taken: model.taken, next: next?.offset, color: color)
+                        .padding(.top, 6)
+                } else {
+                    ProgressTrack(fraction: done ? 0 : min(1, f / Double(MomentCalendar.leadFlavons)), color: color)
+                        .frame(width: 180, height: 4)
+                        .padding(.top, 4)
+                }
             }
             .padding(.horizontal, 22)
             .padding(.vertical, 12)
             .background(.black.opacity(0.42), in: .rect(cornerRadius: 22, style: .continuous))
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel(done ? "Captured" : "\(whole) Flavons \(blinks) Blinks to the moment")
+            .accessibilityLabel(accessibility(next: next, whole: whole, blinks: blinks))
         }
+    }
+
+    /// "10λ 13ν".
+    static func reading(_ flavons: Double) -> String {
+        let f = max(0, flavons)
+        let whole = Int(f)
+        return "\(whole)λ \(String(format: "%02d", min(24, Int((f - Double(whole)) * 25))))ν"
+    }
+
+    private func accessibility(next: InstantModel.Shot?, whole: Int, blinks: Int) -> String {
+        guard let next else { return "Captured" }
+        let which = model.count > 1 ? "capture \(model.number(of: next)) of \(model.count)" : "the moment"
+        return "\(whole) Flavons \(blinks) Blinks to \(which)"
+    }
+}
+
+/// A dot per capture of the moment, filled once taken, the next one ringed; the moment's own a little larger.
+private struct CaptureDots: View {
+    let plan: [InstantModel.Shot]
+    let taken: [Int]
+    let next: Int?
+    let color: Color
+
+    var body: some View {
+        HStack(spacing: 10) {
+            ForEach(plan, id: \.offset) { shot in
+                let done = taken.contains(shot.offset)
+                let size: CGFloat = shot.offset == 0 ? 12 : 9
+                VStack(spacing: 3) {
+                    Circle()
+                        .fill(done ? color : .white.opacity(0.18))
+                        .overlay(Circle().stroke(shot.offset == next ? color : .clear, lineWidth: 2).padding(-3))
+                        .frame(width: size, height: size)
+                        .frame(height: 14)
+                    Text(verbatim: MomentCaptures.offsetTag(shot.offset))
+                        .font(.reading(10, weight: .semibold))
+                        .foregroundStyle(.white.opacity(done || shot.offset == next ? 0.85 : 0.45))
+                }
+            }
+        }
+        .animation(.snappy, value: taken)
     }
 }
 

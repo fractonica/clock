@@ -21,12 +21,12 @@ enum MomentsHooks: FeatureHooks {
     static func presentation(ofNotification identifier: String) -> UNNotificationPresentationOptions? {
         guard identifier.hasPrefix(MomentScheduling.prefix) else { return nil }
         let store = MomentStore.shared
-        if store.instant != nil { return [.list] }
-        if store.settings.autoOpen, store.launch.autoOpen,
-           let index = MomentScheduling.index(ofIdentifier: identifier), let m = store.calendar.moment(index),
-           m.time > Date.now.timeIntervalSince1970 {
-            // in front: the instant view opens (and speaks) instead of the banner
-            store.openInstant(m)
+        // screenshots and checks (-FXMomentsAuto 0): no instant view, no banner either
+        if store.instant != nil || !store.launch.autoOpen { return [.list] }
+        if store.opensByItself, let index = MomentScheduling.index(ofIdentifier: identifier),
+           let m = store.calendar.moment(index), m.time > Date.now.timeIntervalSince1970 {
+            // in front: the instant view opens (and speaks) instead of the banner — or opened already and was closed
+            store.openByItself(m)
             return [.list]
         }
         return [.banner, .list, .sound]
@@ -46,8 +46,8 @@ enum MomentsHooks: FeatureHooks {
     }
 }
 
-/// What Moments presents over the window: the instant view (full screen on iPhone and iPad, a sheet on the Mac) and
-/// the Moments sheet. RootView applies it.
+/// What Moments presents over the window: the instant view (full screen on iPhone and iPad, a sheet on the Mac).
+/// RootView applies it.
 struct MomentsPresentations: ViewModifier {
     @State private var moments = MomentStore.shared
 
@@ -63,78 +63,5 @@ struct MomentsPresentations: ViewModifier {
                 InstantView(request: request)
             }
             #endif
-            .sheet(isPresented: $moments.isSheetPresented) {
-                MomentsSheet()
-            }
-    }
-}
-
-extension View {
-    /// The Journal's Moments bar over the timeline (RootView applies it to every screen; only the Journal shows it).
-    @ViewBuilder
-    func momentsHeader(_ screen: Screen) -> some View {
-        if screen == .journal {
-            safeAreaInset(edge: .top, spacing: 0) { MomentsBar() }
-        } else {
-            self
-        }
-    }
-}
-
-/// The Journal's compact Moments header: the streak's flame and count, the next moment and its rarity; a tap opens
-/// the Moments sheet. It changes only when a moment passes or the journal changes (it sits in a safe area inset, where
-/// anything that ticks would lay the screen out again each time).
-struct MomentsBar: View {
-    @Environment(AppSettings.self) private var settings
-    @State private var moments = MomentStore.shared
-
-    var body: some View {
-        Button {
-            moments.isSheetPresented = true
-        } label: {
-            TimelineView(.periodic(from: .now, by: 120)) { context in
-                let next = moments.nextMoment(after: context.date.timeIntervalSince1970)
-                HStack(spacing: 10) {
-                    HStack(spacing: 4) {
-                        Image(systemName: "flame.fill")
-                            .foregroundStyle(moments.stats.current > 0 ? Theme.gold : Theme.ink3)
-                        Text(verbatim: "\(moments.stats.current)")
-                            .font(.reading(15, weight: .bold))
-                            .foregroundStyle(Theme.ink)
-                    }
-                    Rectangle().fill(Theme.line2).frame(width: 1, height: 18)
-                    if let next {
-                        Text(verbatim: next.title(settings.wording.notation))
-                            .font(.footnote.weight(.semibold))
-                            .foregroundStyle(Theme.levelColor(next.level.kitLevel, lightness: 0.72))
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.8)
-                        Spacer(minLength: 4)
-                        RarityBadge(rarity: next.rarity, compact: true)
-                    } else {
-                        Text(moments.settings.enabled ? "Moments" : "Moments are off")
-                            .font(.footnote.weight(.semibold))
-                            .foregroundStyle(Theme.ink2)
-                        Spacer(minLength: 4)
-                    }
-                    Image(systemName: "chevron.right")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(Theme.ink3)
-                }
-                .padding(.horizontal, 14)
-                .frame(height: 38)
-                .contentShape(.capsule)
-            }
-        }
-        .buttonStyle(.plain)
-        .glassSurface(.regular, in: .capsule)
-        .frame(maxWidth: 720)
-        .padding(.horizontal, 16)
-        .padding(.top, 4)
-        .padding(.bottom, 6)
-        .frame(maxWidth: .infinity)
-        .help("Moments: your streak, the collection and the next moment")
-        .accessibilityLabel("Moments, \(moments.stats.current) in a row")
-        .accessibilityHint("Opens the streak, the collection and the next moment")
     }
 }

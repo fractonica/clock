@@ -1,4 +1,7 @@
 import SwiftUI
+#if os(iOS)
+import UIKit
+#endif
 
 /// The window's content: the iPhone layout (tabs, with grouped screens behind segmented controls) in compact width,
 /// the sidebar layout (every screen listed) on iPad and Mac. It also owns what is presented over the screens — Focus
@@ -22,7 +25,7 @@ struct RootView: View {
             .modifier(HubPresentations())
             .modifier(MomentsPresentations())
             .onChange(of: isCompact, initial: true) { _, compact in
-                router.isCompact = compact
+                router.setCompact(compact)
                 router.openLaunchLink()
             }
             .onChange(of: settings.pure, initial: true) { _, pure in
@@ -73,12 +76,17 @@ struct RootView: View {
 // MARK: - iPhone
 
 #if os(iOS)
-/// Now | Cycles | Journal | Clock, and Jump as the search tab; on Now the transport rides in the tab bar's bottom
-/// accessory (iOS 18 and 26.0: just above the tab bar, `transportInset()`), the other tabs show `TravelIndicator`
-/// while the clock is not live. The Jump field is the search tab's own (`TabSearchField`),
-/// shared with JumpScreen through `JumpSearch`.
+/// Now | Cycles | Journal | Moments | Clock; on Now the transport rides in the tab bar's bottom accessory (iOS 18 and
+/// 26.0: just above the tab bar, `transportInset()`), the other tabs show `TravelIndicator` while the clock is not
+/// live. Jump has no tab: the Cycles tab's leading toolbar button (and ⌘K) opens it as a sheet (`Presentations`).
 private struct CompactRoot: View {
     @Environment(AppRouter.self) private var router
+
+    init() {
+        // The navigation bar's segmented controls size each segment by its title rather than all by the widest: the
+        // Cycles tab's four fit between the Jump button and a screen's own button ("Timeline" was cut off).
+        UISegmentedControl.appearance(whenContainedInInstancesOf: [UINavigationBar.self]).apportionsSegmentWidthsByContent = true
+    }
 
     var body: some View {
         TabView(selection: tabBinding) {
@@ -91,12 +99,11 @@ private struct CompactRoot: View {
             Tab(ScreenGroup.journal.title, systemImage: ScreenGroup.journal.systemImage, value: CompactTab.group(.journal)) {
                 GroupStack(group: .journal)
             }
+            Tab(Screen.moments.title, systemImage: Screen.moments.systemImage, value: CompactTab.moments) {
+                ScreenStack(screen: .moments)
+            }
             Tab(ScreenGroup.clock.title, systemImage: ScreenGroup.clock.systemImage, value: CompactTab.group(.clock)) {
                 GroupStack(group: .clock)
-            }
-            Tab(Screen.jump.title, systemImage: Screen.jump.systemImage, value: CompactTab.jump, role: .search) {
-                ScreenStack(screen: .jump)
-                    .modifier(TabSearchField())
             }
         }
         .transportAccessory(shown: router.selection == .now, minimizesTabBar: true)
@@ -109,7 +116,7 @@ private struct CompactRoot: View {
             set: { tab in
                 switch tab {
                 case .now: router.selection = .now
-                case .jump: router.selection = .jump
+                case .moments: router.selection = .moments
                 case .group(let group): router.selection = router.screen(in: group)
                 }
             }
@@ -117,50 +124,23 @@ private struct CompactRoot: View {
     }
 }
 
-/// The Jump field of the iPhone layout, bound to `JumpSearch`: applied to the search tab's navigation stack (from
-/// outside it), so the system presents it as the search tab's field — over the tab's content with a close button while
-/// it has focus. (Applied to the whole `TabView`, the field would also show in every other tab's navigation bar.)
-/// iOS 18 has no such field: there it stays in the tab's navigation bar, always in view under the title.
-private struct TabSearchField: ViewModifier {
-    @Environment(AppSettings.self) private var settings
-    @FocusState private var searchFocused: Bool
-
-    func body(content: Content) -> some View {
-        @Bindable var search = JumpSearch.shared
-        content
-            .searchable(text: $search.query, placement: placement, prompt: Text(JumpSearch.prompt(pure: settings.pure)))
-            .searchFocused($searchFocused)
-            .autocorrectionDisabled()
-            .textInputAutocapitalization(.never)
-            .onSubmit(of: .search) { search.submit() }
-            .onChange(of: searchFocused) { _, focused in
-                if search.isFocused != focused { search.isFocused = focused }
-            }
-            .onChange(of: search.isFocused, initial: true) { _, focused in
-                if searchFocused != focused { searchFocused = focused }
-            }
-    }
-
-    private var placement: SearchFieldPlacement {
-        if #available(iOS 26.0, *) { .automatic } else { .navigationBarDrawer(displayMode: .always) }
-    }
-}
-
 /// The tabs of the iPhone layout.
 private enum CompactTab: Hashable {
-    case now, jump
+    case now, moments
     case group(ScreenGroup)
 
     init(_ screen: Screen) {
         switch screen {
-        case .jump: self = .jump
+        case .moments: self = .moments
         case .diary: self = .group(.journal)  // a sheet over the Journal
+        case .jump: self = .group(.cycles)    // a sheet over the Cycles tab
         default: self = screen.group.map(CompactTab.group) ?? .now
         }
     }
 }
 
-/// A group's tab: its screens behind a segmented control in the navigation bar, in one navigation stack.
+/// A group's tab: its screens behind a segmented control in the navigation bar, in one navigation stack. The Cycles
+/// tab has the way to Jump at its leading edge, whichever of its screens shows.
 private struct GroupStack: View {
     let group: ScreenGroup
 
@@ -173,6 +153,11 @@ private struct GroupStack: View {
                 .screenChrome(screen)
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
+                    if group == .cycles {
+                        ToolbarItem(placement: .topBarLeading) {
+                            JumpButton()
+                        }
+                    }
                     ToolbarItem(placement: .principal) {
                         Picker(group.title, selection: Binding(get: { router.screen(in: group) }, set: { router.show($0) })) {
                             ForEach(group.screens) { Text($0.title).tag($0) }
@@ -182,6 +167,20 @@ private struct GroupStack: View {
                     }
                 }
         }
+    }
+}
+
+/// The magnifying glass that opens Jump (a sheet on iPhone) with the keyboard up in its field.
+struct JumpButton: View {
+    @Environment(AppRouter.self) private var router
+
+    var body: some View {
+        Button(Screen.jump.title, systemImage: Screen.jump.systemImage) {
+            JumpSearch.shared.isFocused = true
+            router.show(.jump)
+        }
+        .accessibilityLabel("Jump to a moment")
+        .accessibilityIdentifier("jump")
     }
 }
 
@@ -248,6 +247,7 @@ private struct SidebarRoot: View {
                 tab(.converter)
                 tab(.diary)
             }
+            tab(.moments)
             TabSection(ScreenGroup.cycles.title) {
                 tab(.rings)
                 tab(.ladder)
@@ -325,6 +325,7 @@ struct ScreenContent: View {
         switch screen {
         case .now: NowScreen()
         case .journal: JournalScreen()
+        case .moments: MomentsScreen()
         case .rings: RingsScreen()
         case .ladder: LadderScreen()
         case .wave: WaveScreen()
@@ -371,7 +372,6 @@ private struct ScreenChrome: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .momentsHeader(screen)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             #if os(iOS)
             .modifier(ScreenTransport(screen: screen))
@@ -460,6 +460,13 @@ private struct Presentations: ViewModifier {
             .sheet(isPresented: $router.isDiaryPresented) {
                 NavigationStack {
                     DiaryScreen()
+                        .background { Backdrop() }
+                        .toolbar { SheetCloseButton() }
+                }
+            }
+            .sheet(isPresented: $router.isJumpPresented) {
+                NavigationStack {
+                    JumpScreen()
                         .background { Backdrop() }
                         .toolbar { SheetCloseButton() }
                 }
