@@ -21,6 +21,7 @@ log = logging.getLogger("fx_worker")
 
 HEARTBEAT_EVERY = 30.0
 LEASE_SECONDS = 120.0
+QUERY_LATENCY = 10.0  # seconds of record work leased per poll (a search waits at most about this long)
 MAX_BLOB_BYTES = 4 << 30
 
 
@@ -48,6 +49,7 @@ class Worker:
         self.stop = threading.Event()
         self.heartbeat_hub = heartbeat_hub
         self.stats = {"queries": 0, "records": 0, "errors": 0}
+        self.record_seconds: float | None = None  # moving average of one record job
         self._hb_thread: threading.Thread | None = None
         self._connected: bool | None = None
 
@@ -91,7 +93,7 @@ class Worker:
         backoff = Backoff()
         while not self.stop.is_set():
             try:
-                jobs = self.hub.jobs(wait=self.wait, max_jobs=self.max_jobs)
+                jobs = self.hub.jobs(wait=self.wait, max_jobs=self.poll_size())
                 self._set_connected(True)
                 backoff.reset()
             except Unauthorized as e:
@@ -119,6 +121,14 @@ class Worker:
                 self.process(jobs)
 
     # ---------------------------------------------------------------- jobs
+
+    def poll_size(self) -> int:
+        """How many jobs to lease at once. Records are done one after another, so a big batch makes a search
+        that arrives meanwhile wait, and on a slow device can outlive the 120 s lease (which counts as a
+        failure on the hub). Take as many as fit in ~QUERY_LATENCY seconds of measured record time."""
+        if self.record_seconds is None:
+            return min(self.max_jobs, 2)
+        return max(1, min(self.max_jobs, int(QUERY_LATENCY / max(self.record_seconds, 0.1))))
 
     def process(self, jobs: list[dict]):
         queries = [j for j in jobs if j.get("type") == "embed.query"]
@@ -189,11 +199,12 @@ class Worker:
             return
         finally:
             self._release_accelerator_memory()
+            dt = time.perf_counter() - t0
+            self.record_seconds = dt if self.record_seconds is None else 0.7 * self.record_seconds + 0.3 * dt
         body = {"model": self.embedder.info()["model"],
                 "vectors": [{"part": p, "vector": encode_vector(v)} for p, v in parts]}
         self.stats["records"] += 1
-        log.info("record %s: %d vector(s) in %.1f s%s", rid, len(parts), time.perf_counter() - t0,
-                 f" ({'; '.join(notes)})" if notes else "")
+        log.info("record %s: %d vector(s) in %.1f s%s", rid, len(parts), dt, f" ({'; '.join(notes)})" if notes else "")
         self.report(job, body)
 
     def _release_accelerator_memory(self):

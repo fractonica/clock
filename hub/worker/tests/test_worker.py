@@ -209,6 +209,15 @@ def test_login_redeems_a_code_and_saves_the_token(tmp_path, monkeypatch, capsys)
     assert config.resolve(None, "fxh_flag")[1] == "fxh_flag"
 
 
+def test_poll_size_follows_record_speed(fake_embedder):
+    w = Worker(Hub("http://x", "t"), fake_embedder, max_jobs=8)
+    assert w.poll_size() == 2  # unknown speed: small batches
+    w.record_seconds = 0.5
+    assert w.poll_size() == 8
+    w.record_seconds = 30.0  # CPU with video: one record per poll, well inside the lease
+    assert w.poll_size() == 1
+
+
 def test_blob_urls_keep_the_hub_path_prefix():
     h = Hub("http://box:8787/hub/", "fxh_x")
     assert h.url("/v1/blobs/abc") == "http://box:8787/hub/v1/blobs/abc"
