@@ -162,6 +162,8 @@ struct JournalDraft: Codable, Hashable, Sendable {
     var markdown: String = ""
     var transcript: String?
     var time: Double
+    /// The moment was chosen by hand; otherwise a new entry takes the moment it is saved.
+    var timeChosen: Bool?
     var zone: String?
     var blobs: [BlobRef] = []
     /// When it was last autosaved.

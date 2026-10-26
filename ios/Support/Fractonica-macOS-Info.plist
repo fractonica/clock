@@ -35,5 +35,9 @@
 	<false/>
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.utilities</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Fractonica takes photos and videos for your journal entries.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Fractonica records voice notes for your journal entries.</string>
 </dict>
 </plist>

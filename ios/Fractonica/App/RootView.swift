@@ -71,7 +71,7 @@ struct RootView: View {
 // MARK: - iPhone
 
 #if os(iOS)
-/// Now | Cycles | Calendar | Clock, and Jump as the search tab; the transport rides in the tab bar's bottom accessory
+/// Now | Cycles | Journal | Clock, and Jump as the search tab; the transport rides in the tab bar's bottom accessory
 /// (iOS 18: just above the tab bar, `transportInset()`). The Jump field is the search tab's own (`TabSearchField`),
 /// shared with JumpScreen through `JumpSearch`.
 private struct CompactRoot: View {
@@ -85,8 +85,8 @@ private struct CompactRoot: View {
             Tab(ScreenGroup.cycles.title, systemImage: ScreenGroup.cycles.systemImage, value: CompactTab.group(.cycles)) {
                 GroupStack(group: .cycles)
             }
-            Tab(ScreenGroup.calendar.title, systemImage: ScreenGroup.calendar.systemImage, value: CompactTab.group(.calendar)) {
-                GroupStack(group: .calendar)
+            Tab(ScreenGroup.journal.title, systemImage: ScreenGroup.journal.systemImage, value: CompactTab.group(.journal)) {
+                GroupStack(group: .journal)
             }
             Tab(ScreenGroup.clock.title, systemImage: ScreenGroup.clock.systemImage, value: CompactTab.group(.clock)) {
                 GroupStack(group: .clock)
@@ -151,6 +151,7 @@ private enum CompactTab: Hashable {
     init(_ screen: Screen) {
         switch screen {
         case .jump: self = .jump
+        case .diary: self = .group(.journal)  // a sheet over the Journal
         default: self = screen.group.map(CompactTab.group) ?? .now
         }
     }
@@ -234,16 +235,17 @@ private struct SidebarRoot: View {
         @Bindable var router = router
         TabView(selection: $router.selection) {
             tab(.now)
+            TabSection(ScreenGroup.journal.title) {
+                tab(.journal)
+                tab(.month)
+                tab(.converter)
+                tab(.diary)
+            }
             TabSection(ScreenGroup.cycles.title) {
                 tab(.rings)
                 tab(.ladder)
                 tab(.wave)
                 tab(.timeline)
-            }
-            TabSection(ScreenGroup.calendar.title) {
-                tab(.converter)
-                tab(.month)
-                tab(.diary)
             }
             Tab(Screen.sound.title, systemImage: SoundIndicator.systemImage, value: Screen.sound) {
                 ScreenStack(screen: .sound)
@@ -315,6 +317,7 @@ struct ScreenContent: View {
     var body: some View {
         switch screen {
         case .now: NowScreen()
+        case .journal: JournalScreen()
         case .rings: RingsScreen()
         case .ladder: LadderScreen()
         case .wave: WaveScreen()
@@ -430,6 +433,13 @@ private struct Presentations: ViewModifier {
                 }
                 .presentationDetents([.medium, .large])
             }
+            .sheet(isPresented: $router.isDiaryPresented) {
+                NavigationStack {
+                    DiaryScreen()
+                        .background { Backdrop() }
+                        .toolbar { SheetCloseButton() }
+                }
+            }
             .sheet(isPresented: $router.isSettingsPresented) {
                 NavigationStack {
                     SettingsScreen()
@@ -449,6 +459,17 @@ private struct Presentations: ViewModifier {
 }
 
 #if os(iOS)
+/// The leading close button of a sheet whose trailing side holds the screen's own actions (the Diary).
+private struct SheetCloseButton: ToolbarContent {
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some ToolbarContent {
+        ToolbarItem(placement: .cancellationAction) {
+            Button("Close", systemImage: "xmark") { dismiss() }
+        }
+    }
+}
+
 /// The confirmation button of a sheet that has no other way to close on iPad.
 private struct SheetDoneButton: ToolbarContent {
     @Environment(\.dismiss) private var dismiss

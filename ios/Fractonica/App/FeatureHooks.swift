@@ -41,7 +41,7 @@ extension FeatureHooks {
 @MainActor
 enum AppHooks {
     static var all: [any FeatureHooks.Type] {
-        [AlertsHooks.self, TimerHooks.self, SoundHooks.self, FocusHooks.self]
+        [AlertsHooks.self, TimerHooks.self, SoundHooks.self, FocusHooks.self, JournalHooks.self]
     }
 
     static func launch() { for hooks in all { hooks.launch() } }

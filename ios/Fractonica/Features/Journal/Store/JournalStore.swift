@@ -133,7 +133,8 @@ final class JournalStore: RecordSyncing {
         var record = records[draft.recordID].flatMap { $0.isDeleted ? nil : $0 }
             ?? HubRecord.journalEntry(id: draft.recordID, time: draft.time, zone: draft.zone, entry: draft.entry, blobs: [], now: now())
         record.kind = JournalEntry.kind
-        record.time = draft.time
+        // a new entry whose moment nobody chose is stamped when it is saved
+        record.time = draft.key == JournalDraft.newKey && draft.timeChosen != true ? now() : draft.time
         record.zone = draft.zone
         record.data = draft.entry.data
         record.blobs = draft.blobs.isEmpty ? nil : draft.blobs

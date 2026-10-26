@@ -39,6 +39,10 @@
 	<string>1</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
+	<key>NSCameraUsageDescription</key>
+	<string>Fractonica takes photos and videos for your journal entries.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Fractonica records voice notes for your journal entries.</string>
 	<key>NSSupportsLiveActivities</key>
 	<true/>
 	<key>UIApplicationSceneManifest</key>

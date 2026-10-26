@@ -63,7 +63,7 @@ private func storeChecks() async {
 
     check(store.isLoaded && store.entries.isEmpty && store.pendingRecords().isEmpty, "a fresh store is empty and loaded")
 
-    var draft = JournalDraft(key: JournalDraft.newKey, recordID: "a1", emoji: "🌙", title: "Night walk", markdown: "Saw the **moon**", time: 1_791_400_000, zone: "Europe/Kyiv")
+    var draft = JournalDraft(key: JournalDraft.newKey, recordID: "a1", emoji: "🌙", title: "Night walk", markdown: "Saw the **moon**", time: 1_791_400_000, timeChosen: true, zone: "Europe/Kyiv")
     clock.t = 1_791_460_800
     let a = store.saveEntry(draft)
     check(a.created == 1_791_460_800 && a.updated == 1_791_460_800, "a new entry is created and updated now: \(a.created) \(a.updated)")
@@ -85,6 +85,13 @@ private func storeChecks() async {
     check(a2.created == a.created && a2.updated == clock.t, "an edit keeps created and sets updated")
     check(store.entries.count == 1 && store.entries[0].entry?.title == "Night walk, again", "the edit replaces the entry")
     check(changes == 2, "onLocalChange fires for the edit")
+
+    // a new entry whose moment was not chosen takes the moment it is saved
+    let unchosen = store.saveEntry(JournalDraft(key: JournalDraft.newKey, recordID: "u1", markdown: "now", time: 5))
+    check(unchosen.time == clock.t, "an unchosen moment is the save's: \(unchosen.time)")
+    store.markUploaded(unchosen)
+    store.applyRemote(unchosen.tombstone(at: clock.t + 1))
+    changes -= 1
 
     // a second entry; pending order is oldest updated first
     _ = clock.tick()
