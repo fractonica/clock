@@ -143,7 +143,9 @@ struct StopwatchScreen: View {
     /// The digits: the ladder readout, the Earth reading in Earth mode, and the phase of λ, ι and η.
     private func digitsFace(size: CGFloat, bars: Bool = true, live: Bool = true) -> some View {
         let run = store.run
-        return TimelineView(.animation(minimumInterval: 1.0 / 60, paused: !run.isRunning || !live)) { context in
+        // a cap safely between refresh multiples (every 2nd refresh at 120 Hz, every one at 60 Hz): exactly 1/60 s
+        // lands on the 120 Hz grid and alternates two and three refreshes, which judders
+        return TimelineView(.animation(minimumInterval: 1.0 / 80, paused: !run.isRunning || !live)) { context in
             let now = context.date
             let seconds = run.elapsed(at: now)
             let blinks = seconds / store.blinkSeconds(at: now)
@@ -199,7 +201,9 @@ struct StopwatchScreen: View {
                 let schedule = TickSchedule(anchor: run.zero(at: .now), steps: [store.blinkSeconds(at: .now)], paused: paused)
                 TimelineView(schedule) { dial($0.date) }
             } else {
-                TimelineView(.animation(minimumInterval: 1.0 / 60, paused: paused)) { dial($0.date) }
+                // every display frame: a cap like 1/60 s judders on a 120 Hz screen, where frames then come
+                // alternately two and three refreshes apart and the hands seem to skip
+                TimelineView(.animation(minimumInterval: nil, paused: paused)) { dial($0.date) }
             }
         }
         .aspectRatio(1, contentMode: .fit)

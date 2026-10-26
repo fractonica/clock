@@ -24,6 +24,7 @@ struct JournalCard: View {
                     JournalStampText(time: record.time, words: words, full: fullStamp)
                 }
                 Spacer(minLength: 0)
+                DeltaAgo(time: record.time, words: words)
             }
             if !text.excerpt.isEmpty {
                 Text(text.excerpt)
@@ -44,6 +45,35 @@ struct JournalCard: View {
         .rarityFrame(for: record)
         .contentShape(.rect(cornerRadius: 22, style: .continuous))
         .accessibilityElement(children: .combine)
+    }
+}
+
+/// The right of a card's header: the Delta's phase at the entry's moment as its 3-stroke glyph (SPEC §5, 52 states),
+/// and how long ago the entry was on the ladder ("3η 12ι ago"), measured on the device clock. The label redraws only
+/// when its last part changes: once a Preon for entries a Helion or more ago, else once a Flavon.
+struct DeltaAgo: View {
+    let time: Double
+    let words: Wording
+
+    var body: some View {
+        let notation = words.notation
+        VStack(alignment: .trailing, spacing: 4) {
+            if let glyph = notation.model.level(at: time, 3, strokes: 3)?.index {
+                GlyphView(index: glyph, strokes: 3, color: Theme.levelColor(3))
+                    .frame(height: 30)
+                    .accessibilityLabel(Text("Delta phase"))
+            }
+            let age = Date.now.timeIntervalSince1970 - time
+            let step = age >= 5.052 * 3600 ? 8.421 * 60 : 7.773
+            TimelineView(.periodic(from: .now, by: step)) { context in
+                let now = context.date.timeIntervalSince1970
+                Text(verbatim: notation.countdown(time - now, at: now))
+                    .font(.reading(11, weight: .medium))
+                    .foregroundStyle(Theme.ink3)
+                    .lineLimit(1)
+                    .fixedSize()
+            }
+        }
     }
 }
 
@@ -235,7 +265,7 @@ struct AudioPill: View {
             }
             .buttonStyle(.borderless)
             .accessibilityLabel(playing ? "Pause voice note" : "Play voice note")
-            TimelineView(.animation(minimumInterval: 1 / 30, paused: !playing)) { _ in
+            TimelineView(.animation(minimumInterval: 1 / 45, paused: !playing)) { _ in
                 WaveformBars(peaks: shown, progress: current && player.duration > 0 ? player.currentTime / player.duration : 0)
             }
             .frame(height: 24)

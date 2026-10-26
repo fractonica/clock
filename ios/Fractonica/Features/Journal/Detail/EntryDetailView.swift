@@ -214,7 +214,7 @@ struct AudioPlayerCard: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(playing ? "Pause" : "Play voice note")
-                TimelineView(.animation(minimumInterval: 1 / 30, paused: !playing)) { _ in
+                TimelineView(.animation(minimumInterval: 1 / 45, paused: !playing)) { _ in
                     let position = scrub ?? (current ? player.currentTime : 0)
                     VStack(spacing: 6) {
                         GeometryReader { geo in

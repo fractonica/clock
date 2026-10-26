@@ -36,7 +36,7 @@ struct TimerDial: View {
             if reduceMotion {
                 TimelineView(perBlink) { motion($0.date, partials: false) }
             } else {
-                TimelineView(.animation(minimumInterval: 1.0 / 60, paused: paused)) { motion($0.date, partials: true) }
+                TimelineView(.animation(minimumInterval: nil, paused: paused)) { motion($0.date, partials: true) }
             }
         }
         .opacity(paused ? 0.6 : 1)

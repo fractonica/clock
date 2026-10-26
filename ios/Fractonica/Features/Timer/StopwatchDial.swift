@@ -15,7 +15,7 @@ struct StopwatchDial: View {
     var body: some View {
         // the face is drawn once (its marks and numerals do not move); only the hands redraw with the time
         ZStack {
-            StopwatchDialFace()
+            StopwatchDialFace().equatable()
             Canvas { context, size in
                 drawHands(in: &context, size: size)
             }
@@ -71,7 +71,7 @@ struct StopwatchDial: View {
 }
 
 /// The stopwatch dial's still face: the marks, numerals and sub-dials, without hands.
-struct StopwatchDialFace: View {
+struct StopwatchDialFace: View, Equatable {
     /// Where everything goes in a dial of `size`.
     struct Layout {
         let center: CGPoint
