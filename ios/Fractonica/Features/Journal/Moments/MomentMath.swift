@@ -239,6 +239,22 @@ struct MomentCalendar: Sendable {
         return (Double(m.index) / Double(helionPrefix) - p) * Double(prefixes[10]) / 4
     }
 
+    /// The first moment strictly after `t` that is a quarter boundary of `level` (so labelled `level` or longer),
+    /// found by arithmetic: Alpha's quarters are tens of thousands of moments apart.
+    func next(atLeast level: MomentLevel, after t: Double) -> Moment? {
+        guard let q0 = index(after: t) else { return nil }
+        let ratio = helionPrefix / prefixes[level.kitLevel]
+        let q = (Int128(q0) + ratio - 1) / ratio * ratio
+        return q <= Int128(Int64.max) ? moment(Int64(q)) : nil
+    }
+
+    /// The last moment at or before `t` that is a quarter boundary of `level`.
+    func previous(atLeast level: MomentLevel, atOrBefore t: Double) -> Moment? {
+        guard let q0 = index(after: t).map({ $0 - 1 }), q0 >= 0 else { return nil }
+        let ratio = helionPrefix / prefixes[level.kitLevel]
+        return moment(Int64(Int128(q0) / ratio * ratio))
+    }
+
     /// The next `count` moments after `t` that `include` accepts, soonest first, looking at most `scan` moments ahead.
     func upcoming(after t: Double, count: Int, scan: Int = 400, where include: (Moment) -> Bool = { _ in true }) -> [Moment] {
         guard count > 0, var q = index(after: t) else { return [] }

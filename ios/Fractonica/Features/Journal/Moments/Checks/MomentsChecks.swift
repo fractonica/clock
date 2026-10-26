@@ -68,6 +68,18 @@ private func calendarChecks() {
         if let expected, expected != c.iota { preons = false; print("  \(m.index) \(m.boundary) at ι \(c.iota)") }
     }
     check(preons, "moments fall on Preon 0, 9, 18 and 27 of their Helion, Flavon 0")
+    // the next and previous boundary of each level, by arithmetic
+    for level in MomentLevel.allCases {
+        guard let n = calendar.next(atLeast: level, after: vectorA), let p = calendar.previous(atLeast: level, atOrBefore: vectorA) else {
+            check(level == .alpha, "next and previous \(level.name) boundary")
+            continue
+        }
+        let rank = { (l: MomentLevel) in MomentLevel.allCases.firstIndex(of: l)! }
+        check(n.time > vectorA && p.time <= vectorA && rank(n.level) >= rank(level) && rank(p.level) >= rank(level),
+              "next / previous \(level.name) boundary: \(p.title()) … \(n.title())")
+        let between = calendar.upcoming(after: p.time, count: 3000, scan: 3000).prefix { $0.time < n.time }
+        if rank(level) <= rank(.delta) { check(!between.contains { rank($0.level) >= rank(level) }, "nothing of \(level.name) between them") }
+    }
     check(calendar.moment(-1) == nil && calendar.index(after: clock.tMax + 10) == nil, "nothing outside the catalogue")
     check(calendar.upcoming(after: clock.tMax - 3 * 3600, count: 10).allSatisfy { $0.time <= clock.tMax }, "no moment past the catalogue's end")
 }

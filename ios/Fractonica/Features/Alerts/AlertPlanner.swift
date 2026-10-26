@@ -64,8 +64,9 @@ struct AlertPlan: Hashable, Sendable {
 struct AlertPlanner: Sendable {
     /// Identifier prefix of every Alerts request (ARCHITECTURE: features share the 64 pending requests by prefix).
     static let prefix = "alert."
-    /// Alerts keeps at most this many requests pending, so Timer always has room within the system's 64.
-    static let budget = 60
+    /// Alerts keeps at most this many requests pending, so Timer (one) and Moments (12) always have room within the
+    /// system's 64.
+    static let budget = 50
 
     let clock: FractonicaClock
     var budget = AlertPlanner.budget

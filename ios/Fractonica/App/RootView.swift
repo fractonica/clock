@@ -20,6 +20,7 @@ struct RootView: View {
             .toastOverlay()
             .modifier(Presentations())
             .modifier(HubPresentations())
+            .modifier(MomentsPresentations())
             .onChange(of: isCompact, initial: true) { _, compact in
                 router.isCompact = compact
                 router.openLaunchLink()
@@ -371,6 +372,7 @@ private struct ScreenChrome: ViewModifier {
             #endif
             .background { Backdrop() }
             .toolbar {
+                MomentsToolbar(screen: screen)
                 #if os(iOS)
                 if screen == .now {
                     ToolbarItemGroup(placement: .topBarTrailing) {
