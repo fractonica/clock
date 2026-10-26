@@ -8,6 +8,6 @@
   "engines": { "node": ">=22.13" },
   "scripts": {
     "start": "node bin/hub.mjs serve",
-    "test": "node --test test/"
+    "test": "node --test test/*.test.mjs"
   }
 }
