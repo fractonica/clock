@@ -56,8 +56,8 @@ struct TimerWords {
     }
 
     /// A moment's words led by its Pentad (SPEC §7.5), as a date by its weekday: "Pentad II · 34η 30ι 12λ".
-    func led(_ text: String, at date: Date) -> String {
-        PentadWords.lead(text, at: clock.t(date))
+    func led(_ text: String, at date: Date, form: PentadWords.Form = .full) -> String {
+        PentadWords.lead(text, at: clock.t(date), form: form)
     }
 
     /// The Pentad at a moment, for a view that draws its mark; nil outside the catalogue.

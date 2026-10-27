@@ -19,6 +19,7 @@ func timerWordsChecks() {
         check(body.hasPrefix("4ι · rang at Pentad II · "), "the notification names the Pentad first: \(body)")
         check(!body.contains("\u{2B20}") && !body.contains("\u{25FB}"), "notifications stay plain text: \(body)")
         check(words.pentad(end) == 1 && words.led("x", at: end) == "Pentad II · x", "the end's Pentad")
+        check(words.led("x", at: end, form: .ascii) == "P2 · x", "the short form where room is short (the Live Activity)")
         if pure {
             check(body == "4ι · rang at Pentad II · 34η 33ι 21λ", "pure: \(body)")
         }
