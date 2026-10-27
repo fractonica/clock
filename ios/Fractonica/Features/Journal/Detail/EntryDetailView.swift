@@ -320,7 +320,9 @@ struct AudioPlayerCard: View {
         .padding(16)
         .background(Theme.panel, in: .rect(cornerRadius: 22, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(Theme.line, lineWidth: 1))
-        .task(id: blob.hash) { peaks = await AudioWaveform.peaks(blob.hash, count: 64) }
+        .task(id: "\(blob.hash)#\(peaks.isEmpty ? JournalStore.shared.blobArrivals : 0)") {
+            peaks = await AudioWaveform.peaks(blob.hash, count: 64)
+        }
     }
 
     static func rateText(_ rate: Float) -> String {

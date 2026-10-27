@@ -273,6 +273,19 @@ struct MomentCalendar: Sendable {
         return q <= Int128(Int64.max) ? moment(Int64(q)) : nil
     }
 
+    /// The first moment strictly after `t` labelled exactly `level` (a Beta's next boundary that is not also an
+    /// Alpha's), so each rarity has its own next moment.
+    func next(exactly level: MomentLevel, after t: Double) -> Moment? {
+        guard var m = next(atLeast: level, after: t) else { return nil }
+        let ratio = helionPrefix / prefixes[level.kitLevel]
+        for _ in 0..<64 where m.level != level {
+            let q = Int128(m.index) + ratio
+            guard q <= Int128(Int64.max), let following = moment(Int64(q)) else { return nil }
+            m = following
+        }
+        return m.level == level ? m : nil
+    }
+
     /// The last moment at or before `t` that is a quarter boundary of `level`.
     func previous(atLeast level: MomentLevel, atOrBefore t: Double) -> Moment? {
         guard let q0 = index(after: t).map({ $0 - 1 }), q0 >= 0 else { return nil }

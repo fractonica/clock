@@ -37,6 +37,8 @@ final class JournalStore: RecordSyncing {
     private(set) var records: [String: HubRecord] = [:]
     /// Bumped on every change to `records`.
     private(set) var revision = 0
+    /// Bumped whenever a blob file arrives (adopted, imported or downloaded): media views waiting for one look again.
+    private(set) var blobArrivals = 0
     private(set) var isLoaded = false
 
     /// Called after every local write that made something pending (see the type's documentation).
@@ -266,7 +268,9 @@ final class JournalStore: RecordSyncing {
             try? fm.removeItem(at: target)
             try fm.moveItem(at: file, to: target)
         }
+        let had = blobFiles[hash] != nil
         blobFiles[hash] = fm.fileExists(atPath: target.path) ? name : blobFiles[hash]
+        if !had, blobFiles[hash] != nil { blobArrivals += 1 }
         return blobFile(hash) ?? target
     }
 

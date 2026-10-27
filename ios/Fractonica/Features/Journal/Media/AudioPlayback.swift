@@ -132,7 +132,8 @@ enum AudioWaveform {
         if let hit = cached(hash, count: count) { return hit }
         guard let url = await JournalStore.shared.blobFile(hash) else { return [] }
         let peaks = await Task.detached(priority: .utility) { read(url, count: count) }.value
-        cache.setObject(peaks as NSArray, forKey: "\(hash)#\(count)" as NSString)
+        // an unreadable file (still being written) is tried again next time, not remembered as silence
+        if !peaks.isEmpty { cache.setObject(peaks as NSArray, forKey: "\(hash)#\(count)" as NSString) }
         return peaks
     }
 

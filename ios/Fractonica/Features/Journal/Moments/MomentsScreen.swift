@@ -405,7 +405,7 @@ private struct RareAhead: View {
     private func list(at t: Double) -> some View {
         VStack(spacing: 0) {
             ForEach([MomentLevel.delta, .gamma, .beta, .alpha], id: \.self) { level in
-                if let m = moments.calendar.next(atLeast: level, after: t) {
+                if let m = moments.calendar.next(exactly: level, after: t) {
                     HStack(spacing: 10) {
                         Image(systemName: level.rarity.symbol)
                             .font(.system(size: 13, weight: .semibold))

@@ -100,8 +100,12 @@ struct BlobImage: View {
 
     var body: some View {
         let pixels = Int(points * displayScale)
+        let shown = image ?? cachedImage(pixels)
+        // a placeholder waits for its file: drawn before the blob was in the store (a capture's card shown while its
+        // photos were being adopted, a download still under way), it loads once the file arrives
+        let local = shown != nil || hasFile
         ZStack {
-            if let image = image ?? cachedImage(pixels) {
+            if let image = shown {
                 Image(decorative: image, scale: displayScale)
                     .resizable()
                     .aspectRatio(contentMode: contentMode)
@@ -114,12 +118,22 @@ struct BlobImage: View {
                     }
             }
         }
-        .task(id: "\(blob.hash)@\(pixels)") {
-            // already drawn from the cache: nothing to load, and no second pass of the body (a scroll brings tiles
-            // back by the dozen)
-            guard image == nil || image.map({ max($0.width, $0.height) }) ?? 0 < pixels / 2, cachedImage(pixels) == nil else { return }
+        .task(id: "\(blob.hash)@\(pixels)@\(local)") {
+            // in the cache already: keep it, even when the body drew the placeholder (laid out before another view
+            // made the thumbnail, e.g. a capture's card behind the instant view: it would wait for good)
+            if let hit = cachedImage(pixels) {
+                if image == nil { image = hit }
+                return
+            }
+            guard image == nil || image.map({ max($0.width, $0.height) }) ?? 0 < pixels / 2 else { return }
             if let loaded = await load(pixels), !Task.isCancelled { image = loaded }
         }
+    }
+
+    /// Whether the device has the blob's file, read so that the view updates when a blob arrives.
+    private var hasFile: Bool {
+        _ = JournalStore.shared.blobArrivals
+        return source != nil
     }
 
     private var source: (url: URL, key: String, video: Bool)? {
