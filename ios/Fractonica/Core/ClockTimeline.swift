@@ -4,6 +4,9 @@ import SwiftUI
 enum ClockCadence: Sendable, Equatable {
     /// Every display frame, for canvases and moving markers. Idles while the displayed time stands still.
     case animation
+    /// As `.animation`, at most `fps` frames a second: `.frameRate(60)` draws every other frame on a 120 Hz screen, for
+    /// quick motion that reads as well at 60 (trails carry it between frames) for half the work.
+    case frameRate(Double)
     /// Every display frame even while the displayed time stands still, for views with motion of their own (Focus).
     case continuous
     /// Whenever the displayed time has moved on by `seconds`, for readouts. Live, that is once per `seconds` of real
@@ -46,6 +49,10 @@ struct ClockTimeline<Content: View>: View {
         switch cadence {
         case .animation:
             TimelineView(.animation(minimumInterval: nil, paused: idle || store.isPaused)) { context in
+                content(store.time(at: context.date))
+            }
+        case .frameRate(let fps):
+            TimelineView(.animation(minimumInterval: 1 / fps, paused: idle || store.isPaused)) { context in
                 content(store.time(at: context.date))
             }
         case .continuous:

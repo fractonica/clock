@@ -578,8 +578,8 @@ struct NowLayout: Equatable {
     /// Wide layouts: the face's height, as tall as the space allows.
     var wideFaceHeight: CGFloat {
         let byHeight = min(size.height - 2 * verticalPadding - dotsHeight, maxFaceHeight)
-        // a broad face (the round ones) leaves the readings at least 280 points
-        let byWidth = (size.width - 2 * gap - 280 - 2 * (rails ? railWidth + railGap : faceMargin)) / aspect
+        // a broad face (the round ones) leaves the readings room for their lines
+        let byWidth = (size.width - 2 * gap - minPanelWidth - 2 * (rails ? railWidth + railGap : faceMargin)) / aspect
         return max(0, min(byHeight, byWidth))
     }
 
@@ -588,4 +588,6 @@ struct NowLayout: Equatable {
 
     /// Wide layouts: the readings column, as wide as its longest line wants and the space allows.
     var panelWidth: CGFloat { max(200, min(roomy ? 460 : 360, size.width - faceAreaWidth - 2 * gap)) }
+    /// The narrowest the readings get beside a broad face: the roomy layout's larger readings need more.
+    var minPanelWidth: CGFloat { roomy ? 400 : 280 }
 }

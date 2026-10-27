@@ -3,3 +3,4 @@ Fractonica/Features/Face/Analog/AnalogModel.swift
 Fractonica/Features/Face/Analog/AnalogGeometry.swift
 Shared/Pentads.swift
 Shared/Notation+Standard.swift
+Fractonica/Features/Face/Swing.swift

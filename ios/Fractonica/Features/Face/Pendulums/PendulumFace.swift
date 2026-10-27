@@ -14,7 +14,7 @@ import SwiftUI
 /// pendulum swings.
 ///
 /// Three layers: what stays (case, beam, arcs, the dial's face) drawn once; the slower pendulums and the dial a few
-/// times a displayed second; κ λ μ in a canvas of their own corner at up to 60 frames a second (`PendulumTimeline`);
+/// times a displayed second; κ λ μ in a canvas of their own corner at up to 60 frames a second (`.frameRate(60)`);
 /// the crystal's glare over all. Reduce Motion: no continuous animation, a redraw a displayed second, the quick
 /// pendulums as their fans.
 struct PendulumFace: View {
@@ -134,7 +134,7 @@ private struct FastPendulums: View {
                 // once a displayed second, at most once a real second (twice while fanned)
                 NowTimeline(fixed: nil, minimumStep: reduceMotion ? 1 : 0.5, next: { $0 + 1 }) { t in canvas(at: t, region: region) }
             } else {
-                PendulumTimeline { t in canvas(at: t, region: region) }
+                ClockTimeline(.frameRate(60)) { t in canvas(at: t, region: region) }
             }
         }
         .frame(width: frame.width, height: frame.height)

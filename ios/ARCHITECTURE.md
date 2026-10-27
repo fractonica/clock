@@ -89,11 +89,13 @@ on the displayed time; they may *read* the clock at real now (`clock.level(at: D
 ClockTimeline(.periodic(1)) { t in Text(settings.wording.time(t)).font(.reading(34)) }   // a readout
 ClockTimeline(.periodic(0.25)) { t in … }                                               // countdowns at 4 Hz
 ClockTimeline(.animation) { t in Canvas { context, size in draw(t, context, size) } }   // moving graphics
+ClockTimeline(.frameRate(60)) { t in … }             // moving graphics, every other frame on a 120 Hz screen
 ClockTimeline(.continuous) { t in … }                // every frame even while paused (motion of its own: Focus)
 ```
 
 `.periodic(s)` fires when the *displayed* time crosses a multiple of `s` (live: on the second; during a time-lapse at
-most 30 Hz; never while paused). `.animation` runs every display frame and idles while paused. All stop in the
+most 30 Hz; never while paused). `.animation` runs every display frame and idles while paused; `.frameRate(fps)` the same at most `fps` times a
+second. All stop in the
 background. Pick the slowest cadence that keeps the finest visible thing honest (ν changes every ~311 ms, λ every
 ~7.8 s, the η pair every ~71 s). Never run your own `Timer` for the clock. Content that needs the real instant (an
 animation that runs while the clock is paused) reads `Date.now`, which is the tick's moment.
@@ -131,7 +133,7 @@ settings = settings` inside `body`.
 |---|---|---|
 | `pure` | Bool, false | Pure mode: Fractonica terms only (no Gregorian dates, Earth units, percentages) |
 | `zone` | IANA id or nil (system) | Earth times' zone; `timeZone` gives the `TimeZone` |
-| `faceMode` | `.journal` / `.watch` | The Now screen's face |
+| `faceMode` | `.analog` / `.pendulums` / `.star` / `.journal` / `.watch`, `.analog` | The Now screen's face (page order) |
 | `journalUnit` | 0 … 6, 5 | The journal face's first unit (`Journal.units`) |
 | `topDepth` | 2 … 11, 7 | Upper period of the watch face |
 | `selectedLevel` | 0 … 13, 6 | The level highlighted everywhere and stepped by ◀︎ ▶︎ |
@@ -256,6 +258,23 @@ itself" and `-FXMomentsAuto 0` turn off. The streak and the collection derive fr
 its own (`MomentsScreen`: the streak, the next moment, the collection by rarity, recent captures, the settings); cards
 wear their rarity's frame (`rarityFrame(for:)`), and a moment's captures show as `CaptureTiles` (the back photo with
 the front one inset) in the instant view, on the Moments screen and capture by capture in the entry's detail.
+The Now screen pages through five faces (`FacePager`; `FaceCatalog.swift` gives each its title, aspect ratio and
+whether it steps through levels). The three drawn faces carry the Pentads themselves, so the Pentad card is left out
+under them; each keeps its geometry and reading pure (checked in its own Checks folder) and redraws in layers, each as
+often as it changes:
+- **Analog** (Face/Analog): a mechanical dial of one Helion (36 Preon ticks, the 9 θ as indices), a Preon register
+  of 65 Flavons, the Nuclide's 77 Helions on the outer ring with each Pentad's stretch in gold, a Pentad register of
+  the sync's 19 Helions (a tap opens the explainer), and a balance swinging with the μ. The balance is a Core
+  Animation layer kept in step with the displayed time (`AnalogBalance`): a 60 Hz SwiftUI timeline cost ~21 % of a
+  core on the Mac, the layer next to nothing — the pattern for anything that swings continuously.
+- **Pendulums** (Face/Pendulums): twelve pendulums from depth 12 (μ) to α on one beam, lengths by the log of their
+  periods, two swings a period (`Swing`, Face/Swing.swift, shared with the balance); trails show where the slow ones
+  head and how fast, the quick ones blur and fan out when a time-lapse outruns the display. The Helion's bob is the
+  running Pentad's shape, and a dial under the cascade shows the sync's 19 Helions by Pentad. κ λ μ draw in a canvas
+  of their own corner at `.frameRate(60)`, the rest a few times a displayed second.
+- **Star** (Face/Star): one solar day round the rim, the sync's 19 Helions as the chords of the star polygon {19/4}
+  (Helion k from point 4k mod 19 to the next, so each chord spans the Sun's arc in it), the running Pentad's chords
+  in gold, the rim's points marked by Pentad, and the running Helion as a 9 × 4 rose of η, θ and ι arms.
 
 | | iPhone (compact width) | iPad, Mac |
 |---|---|---|

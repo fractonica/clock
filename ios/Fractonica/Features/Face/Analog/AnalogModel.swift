@@ -136,7 +136,7 @@ enum AnalogDial {
     /// swing law (the pendulums swing the same way) — the right extreme at the peak (¼), back through the centre at
     /// the node (½), the left extreme at the valley (¾).
     static func balanceAngle(phase: Double, amplitude: Double = 210) -> Double {
-        amplitude * sin(2 * .pi * phase)
+        Swing.angle(phase: phase, amplitude: amplitude)
     }
 
     /// A part that turns once every `period` displayed seconds is drawn as a blur rather than a hand when the clock
