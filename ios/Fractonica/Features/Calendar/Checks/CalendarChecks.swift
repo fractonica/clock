@@ -22,6 +22,7 @@ struct CalendarChecks {
         pureInputChecks()
         pureWordChecks()
         deltaPageChecks()
+        pentadCalendarChecks()
         webFixtureChecks()
         Checks.finish()
     }

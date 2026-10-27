@@ -79,7 +79,8 @@ private struct PureHero: View {
                             .minimumScaleFactor(0.6)
                     }
                 }
-                Text(n.dateText(at: t, upTo: "epsilon"))
+                // the date led by its Pentad, as by a weekday
+                Text.ledByPentad(at: t, n.dateText(at: t, upTo: "epsilon"))
                     .font(.title3)
                     .foregroundStyle(Theme.ink)
                 Text(n.dateText(at: t, form: "full", upTo: "delta"))

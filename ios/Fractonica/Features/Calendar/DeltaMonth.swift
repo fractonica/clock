@@ -115,9 +115,11 @@ extension DeltaMonthView {
         let band = switch model.pureBand {
         case 3: "The band is the Delta's quarters; "
         case 4: "The band is the Nuclides, one per row; "
-        default: "A cell is 11 Helions, numbered in their Nuclide; "
+        case MonthModel.pentadBand: "The band is the Pentads: five Helions each, the Hypopentad four, about a solar day each; "
+        default: "A cell is 11 Helions, numbered in their Nuclide and grouped by Pentad; "
         }
-        let tap = model.pureBand == 6 ? "its Helions" : model.pureBand == 4 ? "its Nuclide" : "its quarters"
+        let tap = model.pureBand == 6 || model.pureBand == MonthModel.pentadBand ? "its Helions by Pentad"
+            : model.pureBand == 4 ? "its Nuclide" : "its quarters"
         return band + "gold diamonds mark the quarters of a solar sync (19η); a line in the Delta colour marks where a quarter of the Delta begins. Tap a cell for \(tap)."
     }
 }
@@ -140,15 +142,19 @@ private struct CalPureBandChooser: View {
         HStack(spacing: 6) {
             ForEach(MonthModel.pureBands, id: \.self) { level in
                 let on = model.pureBand == level
-                let color = Theme.levelColor(level)
+                let color = level == MonthModel.pentadBand ? Theme.gold : Theme.levelColor(level)
                 Button {
                     withAnimation(.snappy) { model.pureBand = level }
-                    // the band level is the app-wide selected level (pure-month.js)
-                    settings.selectedLevel = level
+                    // the band level is the app-wide selected level (pure-month.js); the Pentads are no level
+                    if level != MonthModel.pentadBand { settings.selectedLevel = level }
                     Haptics.play(.selection)
                 } label: {
                     HStack(spacing: 5) {
-                        Text(CalMath.letter(level)).font(.subheadline.weight(.bold))
+                        if level == MonthModel.pentadBand {
+                            Image(systemName: "pentagon").font(.footnote.weight(.bold))
+                        } else {
+                            Text(CalMath.letter(level)).font(.subheadline.weight(.bold))
+                        }
                         if words {
                             Text(Self.names[level] ?? "").font(.caption).foregroundStyle(on ? color.opacity(0.85) : Theme.ink3)
                         }
@@ -173,10 +179,11 @@ private struct CalPureBandChooser: View {
         }
     }
 
-    static let names = [3: "quarters", 4: "Nuclides", 6: "Helions"]
+    static let names = [3: "quarters", 4: "Nuclides", 6: "Helions", MonthModel.pentadBand: "Pentads"]
     static let help = [3: "The band shows the Delta's quarters: Peak, Node, Valley, End",
                        4: "The band shows the Nuclides, one per row",
-                       6: "The band shows the 11 Helions of each cell"]
+                       6: "The band shows the 11 Helions of each cell, grouped by Pentad",
+                       MonthModel.pentadBand: "The band shows the Pentads: Pentad I, II, III and the Hypopentad"]
 }
 
 struct CalDeltaMetrics: Equatable {
@@ -414,6 +421,12 @@ private struct DeltaPageGrid: View {
 
     private func label(_ cell: CalDeltaPage.Cell) -> String {
         var parts = ["ε#\(cell.epsilon), \(cell.firstHelion)η to \(cell.firstHelion + 10)η"]
+        if cell.inRange {
+            for p in CalPentads.starts(firstHelion: cell.z * Int64(CalDeltaPage.helionsPerCell), count: CalDeltaPage.helionsPerCell,
+                                       anchor: CalPentads.anchor) {
+                parts.append("\(PentadWords.name(p.index)) begins at \(cell.firstHelion + p.offset)η")
+            }
+        }
         if let q = cell.quarters.first(where: \.startsHere), cell.inRange {
             parts.append("\(Notation.periodName(level: 3, ordinal: page.delta)) \(Notation.quarterWords[q.quarter]) begins")
         }
@@ -611,6 +624,9 @@ private struct CalHelionBand: View {
         band == 6 ? (regular ? 28 : 13) : (regular ? 26 : 18)
     }
 
+    /// The cell's first Helion (global η index).
+    private var firstHelion: Int64 { cell.z * Int64(CalDeltaPage.helionsPerCell) }
+
     var body: some View {
         Canvas { context, size in
             if band == 6 {
@@ -628,7 +644,19 @@ private struct CalHelionBand: View {
         let y = size.height - barH
         let w = size.width * cell.cut
         var pieces: [(x0: Double, x1: Double, odd: Bool, startsHere: Bool, endsHere: Bool, label: String?)] = []
-        if band == 4 {
+        var marks: [Int: Int] = [:] // piece → its Pentad, labelled with its shape
+        if band == MonthModel.pentadBand {
+            // a Pentad is five of the cell's eleven Helions (the Hypopentad four); one that began in an earlier cell is
+            // named again at the start of a row
+            let n = Double(CalDeltaPage.helionsPerCell)
+            for row in CalPentads.rows(firstHelion: firstHelion, count: CalDeltaPage.helionsPerCell, anchor: CalPentads.anchor) {
+                let offset = Int(row.first - firstHelion)
+                let startsHere = row.inside.lowerBound == 0
+                if startsHere || cell.column == 0 { marks[pieces.count] = row.index }
+                pieces.append((Double(offset + row.inside.lowerBound) / n, Double(offset + row.inside.upperBound) / n,
+                               row.index % 2 == 1, startsHere, row.inside.upperBound == row.count, nil))
+            }
+        } else if band == 4 {
             // a Nuclide is a row
             let nuclide = cell.z / Int64(CalDeltaPage.columns)
             let first = cell.column == 0, last = cell.column == CalDeltaPage.columns - 1
@@ -640,8 +668,8 @@ private struct CalHelionBand: View {
                  !q.startsHere && cell.column == 0 && q.x0 == 0 ? Notation.quarterWords[q.quarter] : nil)
             }
         }
-        let color = Theme.levelColor(band)
-        for p in pieces {
+        let color = band == MonthModel.pentadBand ? Theme.gold : Theme.levelColor(band)
+        for (i, p) in pieces.enumerated() {
             let x0 = CGFloat(p.x0) * size.width, x1 = min(CGFloat(p.x1) * size.width, w)
             guard x1 > x0 else { continue }
             let gap: CGFloat = p.startsHere && p.x0 > 0 ? 0.75 : 0
@@ -657,8 +685,8 @@ private struct CalHelionBand: View {
                 tick.addLine(to: CGPoint(x: x0, y: y + barH + 1))
                 context.stroke(tick, with: .color(Theme.ink.opacity(0.9)), lineWidth: 1.25)
             }
-            if let label = p.label {
-                let text = context.resolve(Text(verbatim: label).font(.system(size: regular ? 10 : 8, weight: .bold).monospacedDigit())
+            if let label = marks[i].map({ Text.pentadMark($0) }) ?? p.label.map({ Text(verbatim: $0) }) {
+                let text = context.resolve(label.font(.system(size: regular ? 10 : 8, weight: .bold).monospacedDigit())
                     .foregroundStyle(Theme.background.opacity(0.9)))
                 let m = text.measure(in: CGSize(width: 200, height: barH))
                 if m.width + 4 <= x1 - x0 {
@@ -690,10 +718,14 @@ private struct CalHelionBand: View {
         let y = size.height - barH
         let w = size.width * cell.cut
         let step = size.width / CGFloat(CalDeltaPage.helionsPerCell)
+        // the Helions grouped by Pentad, like days in weeks: a wider gap where one begins
+        let pentadStarts = Set(CalPentads.starts(firstHelion: firstHelion, count: CalDeltaPage.helionsPerCell,
+                                                 anchor: CalPentads.anchor).map(\.offset))
         for j in 0..<CalDeltaPage.helionsPerCell {
             let x0 = CGFloat(j) * step
             guard x0 < w else { break }
-            let rect = CGRect(x: x0 + (j > 0 ? 0.5 : 0), y: y, width: min(step, w - x0) - (j > 0 ? 0.5 : 0), height: barH)
+            let gap: CGFloat = j == 0 ? 0 : pentadStarts.contains(j) ? (regular ? 2.5 : 1.75) : 0.5
+            let rect = CGRect(x: x0 + gap, y: y, width: min(step, w - x0) - gap, height: barH)
             let even = (Int(cell.z) * CalDeltaPage.helionsPerCell + j) % 2 == 0
             context.fill(Path(roundedRect: rect, cornerRadius: 1.2), with: .color(Theme.levelColor(6, opacity: even ? 0.85 : 0.45)))
             if regular {
@@ -841,7 +873,9 @@ private struct CellDetailView: View {
         let page = model.deltaPage(model.page)
         VStack(alignment: .leading, spacing: 16) {
             HStack(alignment: .top) {
-                Text(verbatim: "ε#\(cell.epsilon) · \(cell.firstHelion)η–\(cell.firstHelion + 10)η")
+                // led by the Pentad the cell begins in, as a date by its weekday
+                Text.ledByPentad(cell.inRange ? Pentads.index(at: cell.start) : nil,
+                                 Text(verbatim: "ε#\(cell.epsilon) · \(cell.firstHelion)η–\(cell.firstHelion + 10)η"))
                     .font(.title2.weight(.semibold))
                     .foregroundStyle(Theme.ink)
                 Spacer()
@@ -907,6 +941,7 @@ private struct CellDetailView: View {
                                 + (q.startsHere ? "" : " · began before this cell"))
                 }
             } else {
+                // the Helions band and the Pentads band: the cell's Helions in Pentad rows
                 helions(cell)
             }
             if !cell.syncs.isEmpty {
@@ -932,32 +967,22 @@ private struct CellDetailView: View {
         }
     }
 
-    /// The 11 Helions of the cell, each with a go button.
+    /// The 11 Helions of the cell in Pentad rows, like days in weeks: the Pentads it touches shown whole, the Helions of
+    /// the cells around it dim; tap one to go there.
     @ViewBuilder
     private func helions(_ cell: CalDeltaPage.Cell) -> some View {
         let clock = store.clock
-        Text("Helions").font(.footnote.weight(.semibold)).textCase(.uppercase).tracking(0.8).foregroundStyle(Theme.ink3)
-        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 3), spacing: 8) {
-            ForEach(0..<CalDeltaPage.helionsPerCell, id: \.self) { j in
-                let start = CalDeltaPage.helionStart(clock, cell: cell, j)
-                Button {
-                    if let start { travel(start, "\(cell.firstHelion + j)η") }
-                } label: {
-                    HStack {
-                        Text("\(cell.firstHelion + j)η").font(.reading(15, weight: .semibold)).foregroundStyle(Theme.levelColor(6))
-                        Spacer(minLength: 0)
-                        Image(systemName: "location").font(.caption).foregroundStyle(Theme.ink3)
-                    }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 8)
-                    .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Theme.panel2))
-                    .contentShape(.rect)
-                }
-                .buttonStyle(.plain)
-                .disabled(start == nil)
-                .accessibilityLabel(Text("Go to \(cell.firstHelion + j)η"))
-            }
+        let first = cell.z * Int64(CalDeltaPage.helionsPerCell)
+        let rows = CalPentads.rows(firstHelion: first, count: CalDeltaPage.helionsPerCell, anchor: CalPentads.anchor)
+        Text("Helions by Pentad").font(.footnote.weight(.semibold)).textCase(.uppercase).tracking(0.8).foregroundStyle(Theme.ink3)
+        CalPentadRowsView(rows: rows, current: clock.level(at: store.time(), 6)?.cycle) { h in
+            guard clock.cycleStartTime(level: 6, index: h) != nil, let start = CalMath.landPoint(clock, level: 6, index: h) else { return }
+            travel(start, Notation.standard.cycleName(level: 6, cycle: h))
         }
+        Text("Five Helions make a Pentad, about a solar day (4¾η is a solar day); the Hypopentad, one Helion short, brings the Pentads back to the Sun every 19 Helions.")
+            .font(.caption)
+            .foregroundStyle(Theme.ink3)
+            .fixedSize(horizontal: false, vertical: true)
     }
 
     /// One row of the band's cycle: its name, where it begins (a go button).

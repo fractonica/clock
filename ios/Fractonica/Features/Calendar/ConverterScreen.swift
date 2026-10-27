@@ -66,14 +66,15 @@ struct ConverterScreen: View {
         let n = Notation.standard
         let link = AppLink(screen: .converter, time: t).url.absoluteString
         var lines: [String] = []
+        // a date leads with its Pentad (SPEC §15.3); the stamp stays the moment's exact identity
         if settings.pure {
             lines.append(n.stamp(at: t, upTo: "nu"))
-            lines.append(n.dateText(at: t, form: "full", upTo: "iota"))
+            lines.append(PentadWords.lead(n.dateText(at: t, form: "full", upTo: "iota"), at: t))
         } else {
             let zone = model.timeZone(app: settings.timeZone)
             let earth = EarthFormatter.calendar(zone)
             lines.append("\(earth.long(t)) \(earth.tag(t))")
-            if store.clock.inRange(t) { lines.append(n.stamp(at: t, upTo: "nu")) }
+            if store.clock.inRange(t) { lines.append(PentadWords.lead(n.stamp(at: t, upTo: "nu"), at: t)) }
         }
         if let p = CalMath.position(store.clock, at: t) { lines.append("pos \(p.ordinal).\(p.fraction)") }
         lines.append(link)
@@ -227,7 +228,8 @@ private struct EarthHero: View {
                 .font(.title3)
                 .foregroundStyle(Theme.ink)
             if snap.inRange {
-                Text(Notation.standard.stamp(at: t, upTo: "iota"))
+                // the address led by its Pentad, as the date above by its weekday
+                Text.ledByPentad(at: t, Notation.standard.stamp(at: t, upTo: "iota"))
                     .font(.code(13))
                     .foregroundStyle(Theme.teal)
                     .textSelection(.enabled)
@@ -338,9 +340,11 @@ struct ConverterActions: View {
         let n = Notation.standard
         let position = CalMath.position(clock, at: t).map { "\($0.ordinal).\($0.fraction)" }
         let link = AppLink(screen: .converter, time: t).url.absoluteString
+        let pentad = Pentads.at(t).map { [("Pentad", PentadWords.full($0))] } ?? []
         if settings.pure {
-            return [("Stamp", n.stamp(at: t, upTo: "nu")), ("Date in words", n.dateText(at: t, form: "full", upTo: "iota"))]
-                + (position.map { [("Saros position", $0)] } ?? []) + [("Link", link)]
+            return [("Stamp", n.stamp(at: t, upTo: "nu")),
+                    ("Date in words", PentadWords.lead(n.dateText(at: t, form: "full", upTo: "iota"), at: t))]
+                + pentad + (position.map { [("Saros position", $0)] } ?? []) + [("Link", link)]
         }
         let earth = EarthFormatter.calendar(model.timeZone(app: settings.timeZone))
         let p = earth.parts(t)
@@ -348,6 +352,7 @@ struct ConverterActions: View {
                      ("ISO 8601", "\(earth.date(t))T\(earth.time(t, seconds: true, ms: true))\(EarthTime.offsetLabel(Double(p.offset)))"),
                      ("Unix seconds", String(format: "%.3f", t))]
         if clock.inRange(t) { items.append(("Stamp", n.stamp(at: t, upTo: "nu"))) }
+        items += pentad
         if let position { items.append(("Saros position", position)) }
         items.append(("Link", link))
         return items
@@ -428,6 +433,10 @@ private struct CalEarthCard: View {
             }
             Divider().overlay(Theme.line)
             CalValueRow(label: "Day", value: "\(CalEarthNames.weekdays[p.weekday]) · day \(doy) of \(daysInYear)")
+            if let pentad = Pentads.at(t) {
+                // the Fractonica "weekday": about a solar day of five Helions (the Hypopentad four)
+                CalValueRow(label: "Pentad", value: PentadWords.full(pentad))
+            }
             CalValueRow(label: "Offset", value: (earth.zone == "UTC" ? "UTC" : "UTC" + EarthTime.offsetLabel(Double(p.offset)))
                 + (abs(dayLength - 86_400) > 1 ? " · a \(EarthTime.duration(dayLength, parts: 2)) day" : ""))
         }
