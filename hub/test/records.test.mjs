@@ -18,6 +18,8 @@ test('PUT: create, idempotent retry, 409 on older, newer wins', async (t) => {
   assert.ok(r1.body.rev > 0);
   assert.match(r1.body.fx.stamp, /^α#\d+ β#\d+ γ#\d+ δ#\d+ ε#\d+ \d+η \d+ι$/);
   assert.match(r1.body.fx.clock, /^\d+η \d+ι \d+λ$/);
+  // the Pentad the moment falls in (SPEC §7.5): vector A is in Pentad II, its 2nd Helion
+  assert.deepEqual(r1.body.fx.pentad, { index: 1, name: 'Pentad II', short: '\u2B20II', helion: 2 });
 
   const again = await a.put('/v1/records/0b6c1d0e', { ...body, source: 'c_fake', rev: 5, unknown: 1 });
   assert.equal(again.status, 200);
@@ -158,4 +160,39 @@ test('list: newest first, filters, paging, keyword q', async (t) => {
   assert.deepEqual((await h.admin.get('/v1/records?q=cafe%20creme')).body.records.map((r) => r.id), ['l3']);
   assert.equal((await h.admin.get(`/v1/records?source=${h.adminClient.id}`)).body.records.length, 8);
   assert.equal((await h.admin.get('/v1/records?source=c_nobody')).body.records.length, 0);
+});
+
+test('fx: the Pentad leads the reading; records stored before it gain it when the hub opens', async () => {
+  const { mkdtempSync, rmSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const { openHub } = await import('../lib/hub.js');
+  const { fxOf, FX_VERSION } = await import('../lib/fx.js');
+  // outside the catalogue (1613 … 2857) nothing is said
+  assert.deepEqual(fxOf(-12e9), { stamp: null, clock: null, pentad: null });
+  assert.deepEqual(fxOf(NaN), { stamp: null, clock: null, pentad: null });
+  // the Hypopentad's short form is its square alone
+  const hypo = fxOf(1791460800 + 10.5 * 18187.6).pentad; // vector A is in the 2nd Helion of Pentad II
+  assert.deepEqual([hypo.index, hypo.name, hypo.short], [3, 'Hypopentad', '\u25FB']);
+
+  const dir = mkdtempSync(join(tmpdir(), 'fx-hub-'));
+  try {
+    let hub = openHub(dir);
+    const { client } = hub.createClient({ name: 'Admin', kind: 'browser', scopes: ['read', 'write', 'admin'] });
+    hub.putRecord(client, 'old', rec({ time: 1791460800.25 }));
+    // as a hub before Pentads stored it
+    hub.db.prepare('UPDATE records SET fx = ?').run(JSON.stringify({ stamp: 'α#6', clock: '34η' }));
+    hub.setMeta('fx_version', null);
+    const rev = hub.getRecord(client, 'old').rev;
+    hub.close();
+    hub = openHub(dir);
+    const r = hub.getRecord(client, 'old');
+    assert.deepEqual(r.fx.pentad, { index: 1, name: 'Pentad II', short: '⬠II', helion: 2 });
+    assert.match(r.fx.stamp, /^α#6 β#4 γ#9 δ#3 ε#5 34η \d+ι$/, 'the whole fx is recomputed');
+    assert.equal(r.rev, rev, 'a derived field is not a change');
+    assert.equal(Number(hub.getMeta('fx_version')), FX_VERSION);
+    hub.close();
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

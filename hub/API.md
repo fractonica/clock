@@ -135,7 +135,11 @@ token instead of a code. On a start with no admin client it prints a one-time se
   "source": "c_01K8…",
   "editor": "c_01K8…",
   "rev": 1042,
-  "fx": { "stamp": "…", "clock": "34η 29ι 21λ" }
+  "fx": {
+    "stamp": "α#6 β#4 γ#9 δ#3 ε#5 34η 29ι",
+    "clock": "34η 29ι 21λ",
+    "pentad": { "index": 1, "name": "Pentad II", "short": "⬠II", "helion": 2 }
+  }
 }
 ```
 
@@ -158,7 +162,23 @@ Written by the client:
 
 Set by the hub (ignored if sent): `source` (the creating client), `editor` (the last writing client), `rev` (the
 hub-wide change number of its latest change, strictly increasing), `fx` (the Fractonica reading of `time`, for display:
-`stamp` as the web app prints a moment, `clock` the minor clock), and on reads that want it, `vectors` (see Search).
+`stamp` as the web app prints a moment, `clock` the minor clock, `pentad` the Pentad it falls in), and on reads that
+want it, `vectors` (see Search).
+
+`fx` in detail (every field `null` outside the catalogue, 1613 … 2857):
+
+| field | | |
+|---|---|---|
+| `stamp` | `α#6 β#4 γ#9 δ#3 ε#5 34η 29ι` | The full letter address down to the Preon (SPEC §15.3): it identifies the moment and can be read back. It never carries the Pentad. |
+| `clock` | `34η 29ι 21λ` | The minor clock: the Helion's number in its Nuclide, then Preons and Flavons completed. |
+| `pentad` | `{ "index": 1, "name": "Pentad II", "short": "⬠II", "helion": 2 }` | The Pentad of the solar sync the moment falls in (SPEC §7.5): `index` 0 … 3 (Pentad I, II, III and the Hypopentad, 3), `name` its words, `short` its plain-text short form (`⬠I`, `⬠II`, `⬠III`, `◻`), `helion` the Helion's place in it, 1 … 5 (1 … 4 in the Hypopentad). |
+
+A date leads with its Pentad as a civil date leads with its weekday: show `Pentad II · α#6 …`, or the short form
+before the clock. `short` is for plain text; a UI draws the shape itself (a pentagon with the numeral, the
+Hypopentad's square alone), since the `⬠` character exists in few fonts. Text that must stay ASCII writes `P1`, `P2`,
+`P3`, `H`. `fx` is derived from `time` and is not part of a record's version: when the hub learns a new field it fills
+it in for the stored records without changing their `rev`, so a client that cached a record keeps the old `fx` until
+it reads it again.
 
 Searchable text by kind, as a title and a body: `journal.entry` → title `emoji title`, body `markdown` (and
 `data.transcript` if present); any other kind → title `data.emoji data.title`, body `text`, else `data.text`, else

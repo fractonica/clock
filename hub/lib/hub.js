@@ -11,7 +11,7 @@ import {
   decodeVector, encodeVector, truncateNormalize, dot,
 } from './util.js';
 import { normalizeRecord, contentHash, searchable, embeddingInput, ID_RE } from './records.js';
-import { fxOf } from './fx.js';
+import { fxOf, FX_VERSION } from './fx.js';
 
 export const VERSION = '1.0.0';
 export const SCOPES = ['read', 'write', 'search', 'worker', 'admin'];
@@ -95,6 +95,15 @@ export function openHub(dir, opts = {}) {
       ? q('DELETE FROM meta WHERE key = ?').run(k)
       : q('INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value').run(k, String(v));
   if (!getMeta('hub_id')) setMeta('hub_id', `h_${ulid()}`);
+  // `fx` is derived from `time` for display: when its shape grows (FX_VERSION), recompute it for the stored records once.
+  // Not a change of the records (their rev stays): clients that read them again see the new fields.
+  if (Number(getMeta('fx_version') ?? 1) < FX_VERSION) {
+    tx(() => {
+      const put = q('UPDATE records SET fx = ? WHERE id = ?');
+      for (const r of q('SELECT id, time FROM records').all()) put.run(JSON.stringify(fxOf(r.time)), r.id);
+      setMeta('fx_version', FX_VERSION);
+    });
+  }
   const hubInfo = () => ({ id: getMeta('hub_id'), name: getMeta('hub_name') ?? 'Fractonica Hub', version: VERSION });
 
   // ---- clients ------------------------------------------------------------------------------------------------------
