@@ -5,6 +5,8 @@
  * Interactive things drawn here (chips) register themselves in `S.regions` for hit-testing.
  */
 import { lastStartAtOrBefore, eclipseLabelStride, depthHeadVariants, turnoverTip } from './helpers.js';
+import { drawPentadMark } from '../pentad.js';
+import { MARK_RE, splitMarks, bandLabels } from './pentads.js';
 
 // ---- small drawing utilities ------------------------------------------------------------------
 const twCache = new Map();
@@ -27,6 +29,45 @@ function text(g, s, x, y, font, color, align = 'left') {
   g.fillText(s, x, y);
 }
 /**
+ * Labels that lead with a Pentad (timeline/pentads.js): a private-use character in the string stands for the mark,
+ * drawn as the shape + numeral (src/ui/pentad.js) at the size of the text around it.
+ */
+const fontPx = (font) => Number(/([\d.]+)px/.exec(font)?.[1] ?? 11);
+const markSize = (font) => Math.round(fontPx(font) * 1.9) / 2; // ≈ 0.95 em, on half pixels
+const mwCache = new Map();
+function markW(g, font, m) {
+  const key = `${font}|${m.index}|${m.numeral}`;
+  let w = mwCache.get(key);
+  if (w === undefined) {
+    w = drawPentadMark(g, m.index, 0, 0, { size: markSize(font), font, numeral: m.numeral, measure: true });
+    if (mwCache.size > 400) mwCache.clear();
+    mwCache.set(key, w);
+  }
+  return w;
+}
+/** Width of a label that may hold Pentad marks. */
+function rw(g, font, s) {
+  if (!MARK_RE.test(s)) return tw(g, font, s);
+  let w = 0;
+  for (const r of splitMarks(s)) w += r.mark ? markW(g, font, r.mark) : tw(g, font, r.text);
+  return w;
+}
+/** Draw a label that may hold Pentad marks; `markColor` paints the marks (default: the text colour). */
+function rtext(g, s, x, y, font, color, align = 'left', markColor = color) {
+  if (!MARK_RE.test(s)) return text(g, s, x, y, font, color, align);
+  const w = rw(g, font, s);
+  let cx = align === 'center' ? x - w / 2 : align === 'right' ? x - w : x;
+  for (const r of splitMarks(s)) {
+    if (r.mark) {
+      drawPentadMark(g, r.mark.index, cx, y, { size: markSize(font), font, numeral: r.mark.numeral, color: markColor });
+      cx += markW(g, font, r.mark);
+    } else {
+      text(g, r.text, cx, y, font, color);
+      cx += tw(g, font, r.text);
+    }
+  }
+}
+/**
  * A pure-mode count tick ("5θ", "17ι"): the number in `color`, the unit symbol in `symColor` (the unit's lane colour).
  * At 11 px a mono θ is hard to tell from a 0 ("0θ" reads "00"); the colour keeps the two apart. Anything that is not
  * a count (an ordinal "ζ#5") is drawn as one piece.
@@ -39,7 +80,7 @@ function countText(g, s, x, y, font, color, symColor) {
 }
 /** Longest variant that fits in `room` px (or null). */
 function fit(g, font, variants, room) {
-  for (const v of variants) if (v && tw(g, font, v) <= room) return v;
+  for (const v of variants) if (v && rw(g, font, v) <= room) return v;
   return null;
 }
 function roundRect(g, x, y, w, h, r) {
@@ -363,7 +404,8 @@ function paintLane(S, i) {
         const quarter = isCur && S.pure.isMajor(level) ? S.pure.QUARTER_WORDS[S.pure.quarterAt(S.cursorT, level)] : null;
         variants = S.words.blockLabels({ level, local: b.local, idx: b.idx, sib, wide: w > plotW * 0.45, w, endsWithCatalogue: b.end >= model.tMax - 1e-3, quarter });
       } else {
-        if (w > plotW * 0.45) variants.push(`${info.letter} ${info.depth} · ${n1}/${sib} · ends ${data.endLabel(level, b.idx, b.end, S.refYear)}`);
+        // the end is a date: it leads with its Pentad ("ends ⬠III Sat 17 Oct 2026")
+        if (w > plotW * 0.45) variants.push(`${info.letter} ${info.depth} · ${n1}/${sib} · ends ${S.pentads.lead(b.end, data.endLabel(level, b.idx, b.end, S.refYear))}`);
         if (w >= 120) variants.push(`${info.letter} ${info.depth} · ${n1}/${sib}`);
         if (w >= 40) variants.push(`${info.letter}${n1}`);
         variants.push(String(n1));
@@ -371,7 +413,7 @@ function paintLane(S, i) {
       const vis = cx1 - Math.max(cx0, px0 + reserve);
       const lab = fit(g, font, variants, vis - (w < 30 ? 4 : 10));
       if (lab) {
-        const lw = tw(g, font, lab);
+        const lw = rw(g, font, lab);
         let tx = Math.max(x0, px0 + reserve) + (w < 30 ? 3 : 6);
         if (tx + lw > x1 - 2) tx = x1 - 2 - lw; // pushed by the next block, like a sticky header
         if (tx >= cx0 + 1) {
@@ -381,7 +423,7 @@ function paintLane(S, i) {
             g.fillStyle = 'rgba(10,14,19,0.42)';
             g.fill();
           }
-          text(g, lab, tx, ty, font, isCur ? st.cur : st.text);
+          rtext(g, lab, tx, ty, font, isCur ? st.cur : st.text);
         }
       }
     }
@@ -541,8 +583,8 @@ function paintEclipseLane(S) {
     const next = E.findIndex((e) => e > t1);
     const cy = base;
     const pu = S.isPure;
-    if (prev >= 0) chip(S, pu ? S.words.eclipseChip(prev, false) : `◂ ${fmt.date(E[prev])}`, px0 + 8, cy, { align: 'left', color: theme.TEAL, tip: pu ? S.words.eclipseChipTip(prev, false) : 'Previous greatest eclipse of Saros 141 – click to bring it into view', onClick: () => S.actions.reveal(E[prev], 'left') });
-    if (next >= 0) chip(S, pu ? S.words.eclipseChip(next, true) : `${fmt.date(E[next])} ▸`, px1 - 8, cy, { align: 'right', color: theme.TEAL, tip: pu ? S.words.eclipseChipTip(next, true) : 'Next greatest eclipse of Saros 141 – click to bring it into view', onClick: () => S.actions.reveal(E[next], 'right') });
+    if (prev >= 0) chip(S, pu ? S.words.eclipseChip(prev, false) : `◂ ${S.pentads.lead(E[prev], fmt.date(E[prev]))}`, px0 + 8, cy, { align: 'left', color: theme.TEAL, tip: pu ? S.words.eclipseChipTip(prev, false) : 'Previous greatest eclipse of Saros 141 – click to bring it into view', onClick: () => S.actions.reveal(E[prev], 'left') });
+    if (next >= 0) chip(S, pu ? S.words.eclipseChip(next, true) : `${S.pentads.lead(E[next], fmt.date(E[next]))} ▸`, px1 - 8, cy, { align: 'right', color: theme.TEAL, tip: pu ? S.words.eclipseChipTip(next, true) : 'Next greatest eclipse of Saros 141 – click to bring it into view', onClick: () => S.actions.reveal(E[next], 'right') });
     const msg = 'Saros 141 · time base of the clock';
     const mw = tw(g, fonts.ui(500, 10), msg);
     if (px1 - px0 > mw + 330) text(g, msg, (px0 + px1) / 2, y + h * 0.82, fonts.ui(500, 10), MUTED, 'center');
@@ -707,14 +749,77 @@ function paintAxis(S) {
   // base line under the axis
   g.fillStyle = 'rgba(163,177,191,0.25)';
   g.fillRect(px0, yTick + rowH - 1, px1 - px0, 1);
+  paintPentads(S);
   g.restore();
+}
+
+/**
+ * The Pentad band (SPEC §7.5) in the row under the ticks, where the cursor and now flags sit: the Pentads of the window
+ * as day-like stretches in the solar gold, alternately tinted, the one holding the cursor brighter, a stronger tick where
+ * a sync begins (Pentad I). The Hypopentad is a Helion shorter, so it reads shorter. Each is labelled with its mark
+ * (and its name where it fits), sticky to the visible part. Drawn only while the Hypopentad is a few pixels wide.
+ */
+const GOLD_RGB = '255,214,10';
+function paintPentads(S) {
+  const { g, L, X, t0, t1, k, fonts, dpr, data } = S;
+  if (!S.pentads.bandShown(k)) return;
+  const px0 = L.px0;
+  const px1 = L.px1;
+  const y = L.axis.y + L.axis.ctxH + L.axis.tickH;
+  const h = L.axis.markH;
+  const f = fonts.ui(600, 10);
+  const fPlace = fonts.mono(500, 9.5);
+  const cur = S.cursorIn ? S.pentads.at(S.cursorT) : null;
+  const list = S.pentads.spans(t0, t1);
+  const helionPx = S.pentads.helion * k;
+  // the Helions inside each Pentad: a short tick where each one begins (so the Hypopentad shows its four against the
+  // others' five) and, where a Helion is wide, its place in the Pentad (2 … 5; the 1st is the Pentad's own label)
+  const helions = helionPx >= 8 ? data.blocksFor(6, t0, t1) : [];
+  let hi = Math.max(0, lastStartAtOrBefore(helions, t0));
+  for (const p of list) {
+    const a = X(p.start);
+    const b = X(p.end);
+    if (b < px0) continue;
+    if (a > px1) break;
+    const ca = Math.max(a, px0);
+    const cb = Math.min(b, px1);
+    const isCur = cur && cur.sync === p.sync && cur.index === p.index;
+    g.fillStyle = `rgba(${GOLD_RGB},${isCur ? 0.17 : p.index % 2 ? 0.045 : 0.095})`;
+    g.fillRect(ca, y + 1, cb - ca, h - 2);
+    if (a >= px0 && b - a >= 3) {
+      const sync = p.index === 0; // a sync begins: a stronger tick
+      g.fillStyle = `rgba(${GOLD_RGB},${sync ? 0.85 : 0.42})`;
+      g.fillRect(Math.round(a * dpr) / dpr, y + (sync ? 0 : 2), sync ? 1.5 : 1, h - (sync ? 0 : 4));
+    }
+    const lab = fit(g, f, bandLabels(p.index, { pure: S.isPure }), cb - ca - 7);
+    let labEnd = -Infinity;
+    if (lab) {
+      const lw = rw(g, f, lab);
+      let tx = ca + 4;
+      if (tx + lw > b - 3) tx = b - 3 - lw; // pushed by the next Pentad, like a sticky header
+      rtext(g, lab, tx, y + h / 2 + 0.5, f, isCur ? 'rgba(231,237,243,0.92)' : 'rgba(231,237,243,0.72)', 'left', `rgba(${GOLD_RGB},${isCur ? 1 : 0.85})`);
+      labEnd = tx + lw;
+    }
+    // the Helions of this Pentad
+    const len = (p.end - p.start) / p.helions;
+    for (; hi < helions.length && helions[hi].start < p.end - len / 2; hi++) {
+      const hs = helions[hi].start;
+      if (hs <= p.start + len / 2) continue; // the Pentad's own start
+      const x = X(hs);
+      if (x < px0 || x > px1) continue;
+      g.fillStyle = `rgba(${GOLD_RGB},0.38)`;
+      g.fillRect(Math.round(x * dpr) / dpr, y + h - 5, 1, 4);
+      const place = String(Math.round((hs - p.start) / len) + 1);
+      if (helionPx >= 44 && x + 3 > labEnd + 6) text(g, place, x + 3, y + h / 2 + 0.5, fPlace, `rgba(${GOLD_RGB},0.7)`);
+    }
+  }
 }
 
 // ---- cursor, now, hover ---------------------------------------------------------------------------------
 function flag(S, x, label, color, side, scrub = false) {
   const { g, L, fonts } = S;
   const f = fonts.mono(600, 10.5);
-  const w = tw(g, f, label) + 12;
+  const w = rw(g, f, label) + 12;
   const y = L.axis.y + L.axis.ctxH + L.axis.tickH + 1;
   const h = L.axis.markH - 2;
   let x0 = side === 'left' ? x - w + 1 : side === 'right' ? x - 1 : x - w / 2;
@@ -722,7 +827,7 @@ function flag(S, x, label, color, side, scrub = false) {
   roundRect(g, x0, y, w, h, 4);
   g.fillStyle = color;
   g.fill();
-  text(g, label, x0 + w / 2, y + h / 2 + 0.5, f, '#07090d', 'center');
+  rtext(g, label, x0 + w / 2, y + h / 2 + 0.5, f, '#07090d', 'center');
   if (scrub) S.regions.push({ x: x0, y, w, h, scrub: true, tip: 'The time cursor. Drag it sideways to scrub time.' });
   S.flagRects.push({ x0, x1: x0 + w });
   return { x0, w };
@@ -781,7 +886,7 @@ function paintMarkers(S) {
   if (S.hover && S.hover.x >= px0 && S.hover.x <= px1 && S.hover.y > L.overview.y + L.overview.h && S.hoverLabel) {
     const { g: gg, fonts } = S;
     const f = fonts.mono(500, 10.5);
-    const w = tw(gg, f, S.hoverLabel) + 12;
+    const w = rw(gg, f, S.hoverLabel) + 12;
     const y = top + 1;
     const x0 = clampX(S.hover.x - w / 2, px0, px1 - w);
     // never on top of the cursor / now flags: near them the tooltip carries the time
@@ -792,7 +897,7 @@ function paintMarkers(S) {
       gg.strokeStyle = 'rgba(231,237,243,0.35)';
       gg.lineWidth = 1;
       gg.stroke();
-      text(gg, S.hoverLabel, x0 + w / 2, y + (L.axis.markH - 2) / 2 + 0.5, f, '#e7edf3', 'center');
+      rtext(gg, S.hoverLabel, x0 + w / 2, y + (L.axis.markH - 2) / 2 + 0.5, f, '#e7edf3', 'center');
     }
   }
 }
@@ -815,6 +920,10 @@ function paintGutters(S) {
   if (!L.compact) text(g, S.catLabel, 8, ov.y + ov.h / 2 + 7, fSmall, MUTED);
   text(g, L.compact ? 'Saros' : 'Saros 141', 8, L.eclipse.y + L.eclipse.h * 0.34, fTitle, theme.TEAL);
   text(g, L.compact ? '70' : '70 eclipses', 8, L.eclipse.y + L.eclipse.h * 0.66, fSmall, MUTED);
+  if (S.pentads.bandShown(S.k)) {
+    // the band under the ticks: hover for what a Pentad is
+    text(g, L.compact ? 'Pentad' : 'Pentads', 8, L.axis.y + L.axis.ctxH + L.axis.tickH + L.axis.markH / 2 + 0.5, fonts.ui(600, L.compact ? 9.5 : 10), `rgba(${GOLD_RGB},0.85)`);
+  }
   if (S.isPure && S.step) {
     // the ruler's key: which unit the context row spans and which unit the ticks count (hover for the sentence)
     const key = S.words.rulerKey(S.step);
@@ -871,7 +980,7 @@ function paintGutters(S) {
 
 // ---- chips (interactive pills) -----------------------------------------------------------------------------
 const CHIP_FONT = (S) => S.fonts.ui(600, 10.5);
-const chipWidth = (S, label) => tw(S.g, CHIP_FONT(S), label) + 14;
+const chipWidth = (S, label) => rw(S.g, CHIP_FONT(S), label) + 14;
 
 /** Draws a chip (and registers it for hit-testing); returns its box. */
 function chip(S, label, x, cy, o = {}) {
@@ -887,7 +996,7 @@ function chip(S, label, x, cy, o = {}) {
   g.strokeStyle = o.color ?? 'rgba(138,180,255,0.8)';
   g.lineWidth = 1;
   g.stroke();
-  text(g, label, x0 + w / 2, cy + 0.5, f, o.color ?? '#e7edf3', 'center');
+  rtext(g, label, x0 + w / 2, cy + 0.5, f, o.color ?? '#e7edf3', 'center');
   S.regions.push({ x: x0, y: y0, w, h, onClick: o.onClick, tip: o.tip });
   return { x: x0, w };
 }
@@ -944,8 +1053,11 @@ function paintChips(S) {
   const clear = (x0, x1) => !S.flagRects.some((r) => x0 < r.x1 + 4 && x1 > r.x0 - 4);
   const offscreen = (t, name, color, tip, onClick) => {
     const right = S.X(t) > L.px1;
-    const lab = `${name} ${S.isPure ? S.ruler.flagText(t, S.step.u) : fmt.short(t, S.chipYear)}`;
-    const variants = S.isPure ? S.words.markerChip(name, S.ruler.flagText(t, S.step.u), right) : right ? [`${lab} ▸`, `${name} ▸`] : [`◂ ${lab}`, `◂ ${name}`];
+    // the reading leads with its Pentad, like the flags
+    const plain = S.isPure ? S.ruler.flagText(t, S.step.u) : fmt.short(t, S.chipYear);
+    const reading = S.flagLeads ? S.pentads.lead(t, plain) : plain;
+    const lab = `${name} ${reading}`;
+    const variants = S.isPure ? S.words.markerChip(name, reading, right) : right ? [`${lab} ▸`, `${name} ▸`] : [`◂ ${lab}`, `◂ ${name}`];
     for (const v of variants) {
       const w = chipWidth(S, v);
       const x0 = right ? edge.right - w : edge.left;

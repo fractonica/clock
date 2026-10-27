@@ -117,3 +117,22 @@ Verification: `test/timeline.test.js` (ladder, counts, stamps vs `pure.stamp`, b
 ticks vs lanes of every unit and of the depths between, context quarters, spans, presets, the deepest zoom, wording,
 tooltips, leak sweeps) and `tools/checks/check-timeline-pure.mjs` (browser: every preset, window edges, drags, keyboard,
 phone long press, live switching, leak scan).
+
+## Pentads (SPEC §7.5)
+
+A date leads with its Pentad, like a weekday (`src/ui/pentad.js`, timeline glue in `src/ui/timeline/pentads.js`).
+
+- **Band.** The row under the ticks (where the flags sit) holds the Pentads of the window once the Hypopentad is at least
+  6 px wide (from about a month across down to the deepest zoom): day-like stretches in the solar gold, alternately
+  tinted, the one holding the cursor brighter, a stronger tick where a sync begins (Pentad I). Each is labelled with its
+  mark, its name where it fits (`⬠ Pentad II`; pure mode adds its length, `· 5η`), sticky to the visible part. Short ticks
+  mark the Helions inside each Pentad (four in the Hypopentad, five in the others) and, where a Helion is 44 px wide,
+  its place (2 … 5). The gutter says `Pentads`; its tooltip explains the Sun link (pure mode without day, hour or Sun).
+  Spans are cached on a window padded by half its width (`pentadsIn`); a frame never asks the model per pixel.
+- **Leading readings.** The cursor / now / hover flags, the off-screen cursor and now chips, the Gregorian eclipse chips
+  and the `ends …` date of a wide block are led by the mark, drawn on the canvas (a private-use character in the label
+  stands for it; it never reaches the DOM). The tooltips lead their date with the mark (HTML, named "Pentad II" for
+  screen readers) and add `Pentad II · 2nd of its 5 Helions`; the status line leads each end while the band is drawn
+  (once when both ends share a Pentad); the screen-reader summary says `Cursor at Pentad II, …`. In pure mode a reading
+  leads with its Pentad only when it reads down to the Helion (a flag over γ ticks, a tooltip over α ticks or a status
+  line of Nuclides does not). `api.flags` gives the flag labels with the marks spelled out.

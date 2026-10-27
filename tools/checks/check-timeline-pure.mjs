@@ -184,7 +184,8 @@ await withApp(
       const it = await scanState(page, `preset ${p.label}`);
       const pressed = await page.$eval(`.tl-presets [data-preset="${p.id}"]`, (b) => b.getAttribute('aria-pressed'));
       check(`preset ${p.label} is pressed after the click`, pressed === 'true');
-      const win = it.find((x) => x.kind === 'text' && x.where.includes('tl-win'));
+      // (the status line leads its ends with Pentad marks: read the whole line, not its first text node)
+      const win = { text: (await page.$eval('[data-role="win"]', (e) => e.textContent)).replace(/\s+/g, ' ').trim() };
       // (ν is the deepest zoom, a few Blinks across: it reads "6.4ν", not one unit)
       check(`preset ${p.label}: the status line counts the window in ladder units`, p.id === 'all' ? /^the whole catalogue · \d+α \d+β across$/.test(win?.text ?? '') : p.id === 'u:nu' ? /· \d\.\dν across$/.test(win?.text ?? '') : new RegExp(`· 1${p.label} across$`).test(win?.text ?? ''), win?.text ?? '(none)');
       // the ruler never goes blank: 4 to 12 labelled ticks at every preset (it was ONE around β)
@@ -310,7 +311,7 @@ await withApp(
     const live = await page.$eval('[data-role="live"]', (e) => e.textContent);
     const summary = await page.$eval('[data-role="summary"]', (e) => e.textContent);
     check('the live region is pure and names the cycle that begins', /Selected depth \d+ \([α-ξ]\): .+ ends → .+ begins\./.test(live), live);
-    check('the summary describes the window as an address range in ladder units', /^Timeline shows .* → .*, [^,]+ across\./.test(summary) && /Cursor at (Alpha|Delta) \w+fracton (Peak|Node|Valley|End)/.test(summary), summary);
+    check('the summary describes the window as an address range in ladder units', /^Timeline shows .* → .*, [^,]+ across\./.test(summary) && /Cursor at ((Pentad I{1,3}|Hypopentad), )?(Alpha|Delta) \w+fracton (Peak|Node|Valley|End)/.test(summary), summary);
     check('no Earth word in the screen-reader text', !judge([{ kind: 'text', text: live + ' ' + summary, where: 'sr' }], '').some((l) => l.severity === 'hard'));
     void kb;
 
@@ -338,8 +339,10 @@ await withApp(
     await api((tl) => tl.zoomBy(1)); // a repaint, so the flags are drawn again
     await settle(400);
     const liveItems = await scanState(page, 'live');
-    const liveFlag = liveItems.find((x) => x.kind === 'canvas' && /^NOW /.test(x.text));
-    check('live mode: the NOW flag carries a pure address (the clock "34η 29ι 21λ" or ordinals "ε#5")', /^NOW (\d+[ηιλν]|[α-ε]#\d)/.test(liveFlag?.text ?? ''), liveFlag?.text ?? '(not drawn)');
+    // the flag is drawn in pieces ("NOW ", the Pentad mark, the address): its label comes from the debug API
+    const liveFlag = liveItems.find((x) => x.kind === 'canvas' && /^NOW\b/.test(x.text));
+    const nowFlag = await api((tl) => tl.flags.now);
+    check('live mode: the NOW flag carries a pure address led by its Pentad (the clock "34η 29ι 21λ" or ordinals "ε#5")', !!liveFlag && /^(Pentad I{1,3}|Hypopentad) (\d+[ηιλν]|[α-ε]#\d)/.test(nowFlag), `${liveFlag?.text ?? '(not drawn)'} | ${nowFlag}`);
 
     // =============================== 4. a phone: layout, long press, nothing overflows =============================
     await open(`?pure=1&t=${T_A}&view=timeline`, 390, 844);

@@ -9,11 +9,14 @@
  * Names of units appear only where a unit is explained (lane heads, the ruler key).
  */
 
+import { leadHTML } from '../pentad.js';
+import { placeText } from './pentads.js';
+
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 
 /**
  * @param {object} h     hover state { gutter, kind, lane, x, y, t, inPlot }
- * @param {object} env   { model, store, pure, ruler, words, theme, levels, data, step, hoverEclipse, ovTime }
+ * @param {object} env   { model, store, pure, ruler, words, theme, levels, data, step, hoverEclipse, ovTime, pentads }
  * @returns {string} HTML (empty: no tooltip)
  */
 export function pureTipHTML(h, env) {
@@ -77,7 +80,11 @@ export function pureTipHTML(h, env) {
   const tick = env.step?.u ?? IOTA;
   const upTo = ruler.units[Math.max(DELTA, ruler.below(tick, 2))].id;
   const form = tick <= DELTA ? 'full' : 'short';
-  const head = `<div class="tl-tip-h">${esc(pure.dateText(t, { form, upTo }))}</div><div class="tl-tip-p mono dim">${esc(ruler.stampText(t, ruler.unitIndex(upTo)))}</div>`;
+  // the date leads with its Pentad (SPEC §7.5, §15.3), like a weekday, once it reads down to the Helion (a date that
+  // stops at the Delta has no more use for it than "October 2026" for a weekday); the stamp under it never carries it
+  const toHelion = ruler.unitIndex(upTo) >= ruler.unitIndex('eta');
+  const pt = !toHelion ? null : env.pentads ? env.pentads.at(t) : model.pentadAt(t);
+  const head = `<div class="tl-tip-h">${leadHTML(model, t, esc(pure.dateText(t, { form, upTo })), { p: pt, cls: 'is-gold' })}</div><div class="tl-tip-p mono dim">${esc(ruler.stampText(t, ruler.unitIndex(upTo)))}</div>${pt ? `<div class="tl-tip-p tl-tip-pentad">${esc(placeText(pt))}</div>` : ''}`;
   let rel = `<span class="dim">vs now</span> ${esc(ruler.relText(t, real))}`;
   if (!store.live) rel += `<br><span class="dim">vs cursor</span> ${esc(ruler.relText(t, store.t()))}`;
 

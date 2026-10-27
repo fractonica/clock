@@ -48,6 +48,8 @@ import { paint } from './timeline/paint.js';
 import { createWords } from './timeline/words.js';
 import { pureTipHTML } from './timeline/tips.js';
 import { createPure } from '../core/pure.js';
+import { createPentads, placeText, bandTip, plainMarks } from './timeline/pentads.js';
+import { leadHTML, leadText, pentadMarkHTML } from './pentad.js';
 
 const ICON = (body) =>
   `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body}</svg>`;
@@ -78,6 +80,8 @@ export function mount(el, ctx) {
   const IOTA = ruler.unitIndex('iota'); // the default tick unit before the first frame
   const words = createWords({ model, pure, ruler });
   const lim = data.lim;
+  /** Pentads (SPEC §7.5): the band under the ticks, and the mark that leads every reading of a moment. */
+  const pentads = createPentads(model);
   const uid = ++mountCount;
   // a corrupt persisted setting must not stop the view from mounting
   const selLevel = () => validLevel(store.state.selectedLevel);
@@ -209,6 +213,7 @@ export function mount(el, ctx) {
     pure,
     ruler,
     words,
+    pentads,
     isPure: pureMode,
     catLabel: '',
   };
@@ -498,8 +503,11 @@ export function mount(el, ctx) {
     return `<span class="tl-tip-k" style="color:${theme.levelColor(L, 1, 72)}">${info.letter} ${info.depth}</span>${extra}`;
   };
   /** What the pure tooltips need from this closure (read at the moment of the call: the lanes change). */
-  const tipEnv = () => ({ model, store, pure, ruler, words, theme, levels, data, step: S.step, hoverEclipse, ovTime });
+  const tipEnv = () => ({ model, store, pure, ruler, words, theme, levels, data, step: S.step, hoverEclipse, ovTime, pentads });
+  /** Over the band's row (under the ticks) while it is drawn. */
+  const overBand = (h) => h.kind === 'axis' && layout && h.y >= layout.axis.y + layout.axis.ctxH + layout.axis.tickH && S.k && pentads.bandShown(S.k);
   function tipHTML(h) {
+    if (h.gutter && overBand(h)) return `<div class="tl-tip-h tl-tip-pentad">${pentadMarkHTML(0, { numeral: false, cls: 'is-gold' })} Pentads</div><div class="tl-tip-p">${esc(bandTip(pureMode))}</div>`;
     if (pureMode) return pureTipHTML(h, tipEnv());
     if (h.gutter) {
       if (h.kind === 'lane') {
@@ -528,7 +536,7 @@ export function mount(el, ctx) {
       const e = data.eclipses[i];
       // numbered like the position (eclipse #22 sits at pos 22), the same number in both modes and in every view
       return `<div class="tl-tip-h"><span class="tl-tip-k" style="color:${theme.TEAL}">Eclipse ${pure.eclipseName(i)}</span> <span class="dim">· one of ${data.eclipses.length}</span></div>
-        <div class="tl-tip-p mono">${esc(fmt.long(e))} <span class="dim">${esc(fmt.tag(e))}</span></div>
+        <div class="tl-tip-p mono">${leadHTML(model, e, esc(fmt.long(e)), { p: pentads.at(e), cls: 'is-gold' })} <span class="dim">${esc(fmt.tag(e))}</span></div>
         <div class="tl-tip-p dim">Greatest eclipse of Saros 141 · position ${i}${i % 4 === 0 ? ' · starts α cycle ' + (i / 4 + 1) : ''}<br><span class="dim">vs now</span> ${esc(fmt.countdown(e - store.realNow()))} · click to move the cursor here</div>`;
     }
     const precise = win.span < 60;
@@ -558,7 +566,10 @@ export function mount(el, ctx) {
       const f = focus.r;
       detail = `<div class="tl-tip-p tl-tip-detail">${levelChip(focus.L, ` <span class="mono">${esc(cycleName(info, f.local, f.siblings).split(' · ')[1])}</span>`)} <span class="dim">${esc(fmt.short(f.start, refY))} → ${esc(fmt.short(f.end, refY))} · ${esc(formatCycleLength(f.duration))}</span></div>`;
     }
-    return `<div class="tl-tip-h mono">${esc(head)} <span class="dim">${esc(fmt.tag(t))}</span></div>
+    // the date leads with its Pentad, like a weekday; the line under it says where in the Pentad the moment is
+    const pt = pentads.at(t);
+    return `<div class="tl-tip-h mono">${leadHTML(model, t, esc(head), { p: pt, cls: 'is-gold' })} <span class="dim">${esc(fmt.tag(t))}</span></div>
+      ${pt ? `<div class="tl-tip-p tl-tip-pentad">${esc(placeText(pt))}</div>` : ''}
       <div class="tl-tip-p mono dim">pos ${pos.toFixed(6)} · Saros interval ${Math.floor(pos) + 1} of ${model.extent}</div>
       <div class="tl-tip-p">${rel}</div>${detail}<div class="tl-tip-grid">${rows}</div>`;
   }
@@ -1082,9 +1093,14 @@ export function mount(el, ctx) {
     S.step = step; // the labels below depend on the tick unit
     const refYear = pureMode ? 0 : fmt.parts(t).year;
     S.refYear = refYear;
-    S.cursorLabel = inRange ? flagLabel(t) : '';
-    S.nowLabel = nowShow ? flagLabel(nowT) : '';
-    S.hoverLabel = hover && hover.inPlot ? flagLabel(hover.t) : '';
+    // every reading of a moment leads with its Pentad (a mark drawn by paint.js; nothing outside the catalogue) once it
+    // reads down to the Helion: a Gregorian flag always names a day, a pure one over γ ticks stops at the Nuclide
+    const ETA = ruler.unitIndex('eta');
+    S.flagLeads = !pureMode || Math.max(...ruler.flagUnits(step.u)) >= ETA;
+    const flag = (x) => (S.flagLeads ? pentads.lead(x, flagLabel(x)) : flagLabel(x));
+    S.cursorLabel = inRange ? flag(t) : '';
+    S.nowLabel = nowShow ? flag(nowT) : '';
+    S.hoverLabel = hover && hover.inPlot ? flag(hover.t) : '';
     const sel = selLevel();
     const selCycle = inRange ? data.cycleAt(sel, t) : null;
     let chipSig = '';
@@ -1115,10 +1131,11 @@ export function mount(el, ctx) {
 
     // toolbar / readouts (text only when changed)
     if (moved || needsDraw) {
-      const range = pureMode
-        ? `${ruler.rangeText(t0, t1, step.u)} · ${ruler.spanText(t0, t1, 2, PIXEL / plotW())} across`
-        : `${fmt.short(t0, refYear)} → ${fmt.short(t1, refYear)} · ${fmt.duration(win.span, { parts: 2 })} across · ${fmt.tag(win.c)}`;
-      if (winEl.textContent !== range) winEl.textContent = range;
+      const range = statusHTML(t0, t1, step, refYear, k);
+      if (range !== lastStatus) {
+        winEl.innerHTML = range;
+        lastStatus = range;
+      }
       syncToolbar();
     }
     // Text alternative of the canvas (aria-describedby; twice a second at most, only when it changed) ...
@@ -1170,6 +1187,27 @@ export function mount(el, ctx) {
     paint(S);
   }
 
+  /**
+   * The status line: the window's ends and its width. While the Pentad band is drawn, each end leads with its Pentad
+   * (pure: the shared leading part of the two addresses is written once, the mark leads each side of the arrow).
+   */
+  let lastStatus = '';
+  function statusHTML(t0, t1, step, refYear, k) {
+    // (pure: only while the range reads down to the Helion; a range of Nuclides has no use for a Pentad)
+    const marks = pentads.bandShown(k) && (!pureMode || step.u >= ruler.unitIndex('eta'));
+    const pa = marks ? pentads.at(t0) : null;
+    const pb = marks ? pentads.at(t1) : null;
+    const same = pa && pb && pa.sync === pb.sync && pa.index === pb.index; // one Pentad: the second end needs no mark
+    const lead = (t, s, p) => (p ? leadHTML(model, t, esc(s), { p, cls: 'is-gold' }) : esc(s));
+    if (pureMode) {
+      const across = ` · ${esc(ruler.spanText(t0, t1, 2, PIXEL / plotW()))} across`;
+      const r = ruler.rangeText(t0, t1, step.u);
+      const i = r.indexOf(' → ');
+      return i < 0 ? `${esc(r)}${across}` : `${lead(t0, r.slice(0, i), pa)} → ${lead(t1, r.slice(i + 3), same ? null : pb)}${across}`;
+    }
+    return `${lead(t0, fmt.short(t0, refYear), pa)} → ${lead(t1, fmt.short(t1, refYear), same ? null : pb)} · ${esc(fmt.duration(win.span, { parts: 2 }))} across · ${esc(fmt.tag(win.c))}`;
+  }
+
   /** One-sentence-per-fact description of the view, for screen readers (no seconds: it must not tick). */
   function describeView(t, inRange) {
     const t0 = win.c - win.span / 2;
@@ -1182,8 +1220,11 @@ export function mount(el, ctx) {
       }
       // the date in words: every major period with its quarter over major ticks, else the short date one unit finer than the ticks
       const delta = ruler.unitIndex('delta');
-      const date = pure.dateText(t, { form: u <= delta ? 'full' : 'short', upTo: ruler.units[Math.max(delta, ruler.below(u, 1))].id });
-      out.push(`Cursor at ${date}${store.live ? ', live' : store.playing ? ', in time-lapse' : ''}.`);
+      const upTo = Math.max(delta, ruler.below(u, 1));
+      const date = pure.dateText(t, { form: u <= delta ? 'full' : 'short', upTo: ruler.units[upTo].id });
+      // led by its Pentad once the date reads down to the Helion
+      const said = upTo >= ruler.unitIndex('eta') ? leadText(model, t, date, { p: pentads.at(t), sep: ', ' }) : date;
+      out.push(`Cursor at ${said}${store.live ? ', live' : store.playing ? ', in time-lapse' : ''}.`);
       const L = selLevel();
       const cyc = data.cycleAt(L, t);
       if (cyc) out.push(words.selectedSentence(L, cyc.idx, cyc.local, model.levelInfo(L).siblings ?? data.alpha.length, cyc.end >= model.tMax - 1e-3));
@@ -1194,7 +1235,7 @@ export function mount(el, ctx) {
       out.push('The cursor is outside the Saros 141 catalogue.');
       return out.join(' ');
     }
-    out.push(`Cursor at ${fmt.long(t, { seconds: false })} ${fmt.tag(t)}${store.live ? ', live' : store.playing ? ', in time-lapse' : ''}.`);
+    out.push(`Cursor at ${leadText(model, t, `${fmt.long(t, { seconds: false })} ${fmt.tag(t)}`, { p: pentads.at(t), sep: ', ' })}${store.live ? ', live' : store.playing ? ', in time-lapse' : ''}.`);
     const L = selLevel();
     const info = model.levelInfo(L);
     const cyc = data.cycleAt(L, t);
@@ -1251,6 +1292,10 @@ export function mount(el, ctx) {
       },
       get axisLabels() {
         return [...(S.axisLabels ?? [])];
+      },
+      /** The cursor / now / hover flag labels of the last frame, their Pentad marks spelled out ("Pentad II 34η 29ι 21λ"). */
+      get flags() {
+        return { cursor: plainMarks(S.cursorLabel ?? ''), now: plainMarks(S.nowLabel ?? ''), hover: plainMarks(S.hoverLabel ?? '') };
       },
       setWindow: (w) => setWindow(w),
       animateTo,

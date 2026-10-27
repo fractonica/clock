@@ -1425,8 +1425,12 @@ test('pure tooltips: lane heads, ruler key, overview, eclipse lane and the plot 
   // the plot at vector A (ι ticks), pointer on the ε lane: the short date in words, the stamp, the position
   const html = tip({ gutter: false, kind: 'lane', lane: 4, inPlot: true, t: T_A, x: 300, y: 200 });
   const text = textOf(html);
-  assert.ok(text.startsWith(`${pure.dateText(T_A, { upTo: 'nu' })} ${pure.stamp(T_A, 'nu')} pos 22.9`), text.slice(0, 120));
-  assert.ok(text.startsWith('Delta Trifracton End ε#5 34η 29ι 21λ 3ν α#6 β#4 γ#9 δ#3 ε#5 34η 29ι 21λ 3ν pos 22.927850 · between #22 and #23'), 'SPEC §15.6 vector A');
+  // the date leads with its Pentad (SPEC §7.5: vector A is in Pentad II, its 2nd Helion), drawn as a mark named for
+  // screen readers; the stamp never carries it
+  assert.ok(text.startsWith(`II ${pure.dateText(T_A, { upTo: 'nu' })} ${pure.stamp(T_A, 'nu')} Pentad II · 2nd of its 5 Helions pos 22.9`), text.slice(0, 120));
+  assert.ok(text.startsWith('II Delta Trifracton End ε#5 34η 29ι 21λ 3ν α#6 β#4 γ#9 δ#3 ε#5 34η 29ι 21λ 3ν Pentad II · 2nd of its 5 Helions pos 22.927850 · between #22 and #23'), 'SPEC §15.6 vector A');
+  assert.match(html, /<div class="tl-tip-h"><span class="pentad-lead"><span class="pentad-mark is-gold" role="img" aria-label="Pentad II"/);
+  assert.doesNotMatch(html, /[\u2B20\uE000-\uE007]/, 'the mark is drawn, never a character');
   assert.match(text, /vs now 4η 34ι ago vs cursor now/);
   assert.match(text, /ε 5 ε#5 ends in [^·]+ → ε#1 begins/);
   assert.equal((html.match(/class="tl-tip-row/g) || []).length, 10, 'one row per lane');
@@ -1447,14 +1451,15 @@ test('pure tooltips: lane heads, ruler key, overview, eclipse lane and the plot 
   // over major ticks the date names every major period with its quarter; the focused major lane its words and quarter
   env.step = ruler.stepById('delta');
   const coarse = textOf(tip({ gutter: false, kind: 'lane', lane: 3, inPlot: true, t: T_A }));
-  assert.ok(coarse.startsWith('Alpha Hexafracton Valley, Beta Tetrafracton Valley, Gamma Nonafracton Valley, Delta Trifracton End, ε#5 34η α#6 β#4 γ#9 δ#3 ε#5 34η pos'), coarse.slice(0, 140));
+  assert.ok(coarse.startsWith('II Alpha Hexafracton Valley, Beta Tetrafracton Valley, Gamma Nonafracton Valley, Delta Trifracton End, ε#5 34η α#6 β#4 γ#9 δ#3 ε#5 34η Pentad II · 2nd of its 5 Helions pos'), coarse.slice(0, 140));
   assert.match(coarse, /δ 4 Delta Trifracton End δ#3 · 3\/5 · ends in [^→]+ → Delta Tetrafracton begins/);
   env.step = ruler.stepById('alpha');
+  // a date that stops at the Delta does not lead with a Pentad
   assert.match(textOf(tip({ gutter: false, kind: 'lane', lane: 0, inPlot: true, t: T_A })), /^Alpha Hexafracton Valley, Beta Tetrafracton Valley, Gamma Nonafracton Valley, Delta Trifracton End α#6 β#4 γ#9 δ#3 pos/);
   env.step = ruler.stepById('nu');
   env.store = { live: false, t: () => T_A, realNow: () => T_A + 0.1 };
   const fine = textOf(tip({ gutter: false, kind: 'lane', lane: 9, inPlot: true, t: T_A + 0.05 }));
-  assert.match(fine, /^Delta Trifracton End ε#5 34η 29ι 21λ 3ν /);
+  assert.match(fine, /^II Delta Trifracton End ε#5 34η 29ι 21λ 3ν /);
   assert.match(fine, /vs now 0\.16ν ago vs cursor in 0\.16ν/, 'below ten Blinks the readings are decimals');
   assert.match(fine, /κ 10 ε#5 34η 29ι 13λ lasts 13λ · ends in \d+λ \d+ν → 26λ begins/, 'a depth between the units names its start and its length');
   assert.equal(hardLeaks(fine).length, 0);
