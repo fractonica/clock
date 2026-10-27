@@ -129,7 +129,7 @@ final class JournalWaveSkyLayer {
 }
 
 extension JournalWavePainter {
-    /// The Pentads' ticks, then the events, under the entries' emoji.
+    /// The Pentads' ticks, then the events, over the entries' emoji.
     func drawSky(_ context: inout GraphicsContext, _ zoom: JournalArcZoom, dy: Double, w: Double, h: Double, margin: Double) {
         let sky = cache.sky
         sky.update(cache, k: frame.k, hidden: skyHidden, pentads: pentadTicks)

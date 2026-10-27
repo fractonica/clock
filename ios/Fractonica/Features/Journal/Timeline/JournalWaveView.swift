@@ -434,10 +434,11 @@ struct JournalWavePainter {
                          style: StrokeStyle(lineWidth: line.width, lineCap: .round, lineJoin: .round))
         }
         drawMarks(&context, zoom, arcs, dy: dy, w: w, h: h)
-        drawSky(&context, zoom, dy: dy, w: w, h: h, margin: margin)
 
         drawNow(&context, layout, w: w, h: h, margin: margin)
         let badges = drawBadges(&context, layout, w: w, h: h, margin: margin)
+        // the Pentads' ticks and the sky's events over the entries: they are few and small, an emoji shows round them
+        drawSky(&context, zoom, dy: dy, w: w, h: h, margin: margin)
         drawFrameNames(&context, zoom, p0, p1, badges, w: w, h: h, margin: margin)
         drawLegend(&context, zoom, h: h)
     }

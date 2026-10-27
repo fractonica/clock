@@ -5,8 +5,9 @@ import SwiftUI
 // readings beside it. Each redraws exactly when its own text changes (`FaceCadence`), so the λ of the stamp, the λ of
 // the face and the countdown all turn together.
 
-/// The date line (compact layouts): Earth "Thu 8 Oct 2026 · 12:00:00 UTC" over the short pure date led by its Pentad
-/// ("⬠II Delta Trifracton End ε#5 34η 29ι"); pure mode that date over the stamp.
+/// The date line (compact layouts): the running Pentad's badge beside Earth "Thu 8 Oct 2026 · 12:00:00" over the short
+/// pure date ("Delta Trifracton End ε#5 34η 29ι"); pure mode that date over the stamp. The zone shows only when one is
+/// chosen in Settings.
 struct NowDateLine: View {
     var fixed: Double?
 
@@ -15,42 +16,46 @@ struct NowDateLine: View {
     var body: some View {
         let words = settings.wording
         let pure = words.pure
+        // the zone only when one is chosen: the device's own goes without saying
+        let zoned = settings.zone != nil
         NowTimeline(fixed: fixed, next: { FaceCadence.dateLine(after: $0, pure: pure) }) { t in
             let inside = words.notation.model.inRange(t)
-            VStack(spacing: 3) {
-                if pure && !inside {
-                    Text(verbatim: "outside the catalogue")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(Theme.ink2)
-                    Text(verbatim: words.notation.catalogueText())
-                        .font(.caption)
-                        .foregroundStyle(Theme.ink3)
-                } else if pure {
-                    // the date leads with its Pentad, as a civil date with its weekday (SPEC §15.3)
-                    Text.ledByPentad(Pentads.index(at: t), Text(verbatim: words.notation.dateText(at: t)))
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(Theme.ink)
-                    Text(verbatim: words.notation.stamp(at: t, upTo: "lambda"))
-                        .font(.caption)
-                        .foregroundStyle(Theme.ink3)
-                } else {
-                    Text("\(Text(verbatim: "\(words.day(t)) · \(words.time(t))").foregroundStyle(Theme.ink)) \(Text(verbatim: words.tag(t)).font(.caption.weight(.medium)).foregroundStyle(Theme.ink3))")
-                        .font(.subheadline.weight(.semibold))
-                    Group {
-                        if inside {
-                            Text.ledByPentad(Pentads.index(at: t), Text(verbatim: words.notation.dateText(at: t)))
-                        } else {
-                            Text(verbatim: "outside the catalogue")
-                        }
-                    }
-                    .font(.caption)
-                    .foregroundStyle(inside ? Theme.ink2 : Theme.ink3)
+            // the date leads with its Pentad, as a civil date with its weekday (SPEC §15.3): its badge beside the two
+            // lines, the block centred
+            let pentad = inside ? Pentads.index(at: t) : nil
+            HStack(spacing: 10) {
+                if let pentad {
+                    PentadBadge(index: pentad, size: 30, filled: true)
                 }
+                VStack(alignment: pentad == nil ? .center : .leading, spacing: 2) {
+                    if !inside {
+                        Text(verbatim: pure ? "outside the catalogue" : "\(words.day(t)) · \(words.time(t))")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(pure ? Theme.ink2 : Theme.ink)
+                        Text(verbatim: pure ? words.notation.catalogueText() : "outside the catalogue")
+                            .font(.caption)
+                            .foregroundStyle(Theme.ink3)
+                    } else if pure {
+                        Text(verbatim: words.notation.dateText(at: t))
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(Theme.ink)
+                        Text(verbatim: words.notation.stamp(at: t, upTo: "lambda"))
+                            .font(.caption)
+                            .foregroundStyle(Theme.ink3)
+                    } else {
+                        Text("\(Text(verbatim: "\(words.day(t)) · \(words.time(t))").foregroundStyle(Theme.ink))\(zoned ? Text(verbatim: " " + words.tag(t)).font(.caption.weight(.medium)).foregroundStyle(Theme.ink3) : Text(verbatim: ""))")
+                            .font(.subheadline.weight(.semibold))
+                        Text(verbatim: words.notation.dateText(at: t))
+                            .font(.caption)
+                            .foregroundStyle(Theme.ink2)
+                    }
+                }
+                .multilineTextAlignment(pentad == nil ? .center : .leading)
             }
             .monospacedDigit()
             .lineLimit(1)
             .minimumScaleFactor(0.7)
-            .multilineTextAlignment(.center)
+            .frame(maxWidth: .infinity)
             .accessibilityElement(children: .combine)
         }
         .dynamicTypeSize(...DynamicTypeSize.accessibility1)

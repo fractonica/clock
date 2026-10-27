@@ -348,14 +348,15 @@ final class JournalWaveModel {
 
     /// A tap: an entry opens; a cluster zooms in until its entries come apart (or lists them when they cannot).
     func tap(at p: CGPoint, touch: Bool) {
-        guard let badge = hits.badge(at: p, slop: touch ? 8 : 2) else {
-            // an entry wins over a sky event under it
-            if let mark = hits.skyMark(at: p, slop: touch ? 8 : 3) {
-                Haptics.play(.selection)
-                skyChoice = JournalWaveSkyChoice(event: mark.event, x: mark.x, y: mark.y, radius: mark.radius)
-            }
+        // a sky event drawn over an entry wins where it is hit squarely; elsewhere the entry under it does
+        let mark = hits.skyMark(at: p, slop: touch ? 2 : 0) ?? (hits.badge(at: p, slop: touch ? 8 : 2) == nil
+            ? hits.skyMark(at: p, slop: touch ? 8 : 3) : nil)
+        if let mark {
+            Haptics.play(.selection)
+            skyChoice = JournalWaveSkyChoice(event: mark.event, x: mark.x, y: mark.y, radius: mark.radius)
             return
         }
+        guard let badge = hits.badge(at: p, slop: touch ? 8 : 2) else { return }
         Haptics.play(.selection)
         if !badge.isCluster, let id = badge.ids.first {
             open?(id)
