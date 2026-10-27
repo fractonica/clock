@@ -167,7 +167,7 @@ struct TimelineInspector: View {
                     .font(num(11))
                     .foregroundStyle(Theme.ink)
             } else {
-                Text("\(words.earth.long(e)) \(words.earth.tag(e))")
+                Text.ledByPentad(at: e, "\(words.earth.long(e)) \(words.earth.tag(e))")
                     .font(num(11))
                     .foregroundStyle(Theme.ink)
                     .fixedSize(horizontal: false, vertical: true)
@@ -191,7 +191,7 @@ struct TimelineInspector: View {
     private func plotCard(_ t: Double, lane: Int?) -> some View {
         let inRange = clock.inRange(t)
         return VStack(alignment: .leading, spacing: 6) {
-            Text(head(t))
+            (inRange ? Text.ledByPentad(at: t, head(t)) : Text(head(t)))
                 .font(num(13, .semibold))
                 .foregroundStyle(Theme.ink)
                 .fixedSize(horizontal: false, vertical: true)

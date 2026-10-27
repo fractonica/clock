@@ -18,6 +18,7 @@ struct TimelineChecks {
         dataChecks()
         wordingChecks()
         webWordingChecks(fixture)
+        flagPentadChecks()
         Checks.finish()
     }
 }

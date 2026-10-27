@@ -912,10 +912,40 @@ struct TimelinePainter {
         f.words.flagLabel(t, span: f.window.span, refYear: f.refYear, ruler: data.ruler, rulerUnit: f.rulerUnit)
     }
 
+    /// The Pentad that leads a flag's moment, where the flag names a time of day or a Helion (SPEC §15.3).
+    private func flagPentad(_ t: Double) -> Int? {
+        f.words.flagShowsPentad(span: f.window.span, rulerUnit: f.rulerUnit) ? Pentads.index(at: t) : nil
+    }
+
+    /// A Pentad's shape (SPEC §7.5) as a flag draws it: a pentagon outlined in the text's ink with its numeral after
+    /// it, the Hypopentad's square alone. Its width, and nothing drawn without a context.
     @discardableResult
-    private func flag(_ cg: CGContext, _ td: TimelineTextDrawing, _ x: CGFloat, _ label: String, _ color: CGColor, side: Int) -> CGRect {
+    private func pentadMark(_ cg: CGContext?, _ td: TimelineTextDrawing?, _ index: Int, x: CGFloat, cy: CGFloat,
+                            _ style: TimelineText.Style, _ color: CGColor) -> CGFloat {
+        let side = (style.size * 0.92).rounded()
+        let numeral = Notation.pentadNumerals[min(max(index, 0), 3)]
+        let width = side + (numeral.isEmpty ? 0 : 1.5 + text.width(numeral, style))
+        guard let cg, let td else { return width }
+        let box = CGRect(x: x, y: cy - side / 2 - 0.5, width: side, height: side).insetBy(dx: 0.6, dy: 0.6)
+        cg.saveGState()
+        cg.addPath(PentadPolygon(index: index).path(in: box).cgPath)
+        cg.setStrokeColor(color)
+        cg.setLineWidth(max(1, style.size / 9))
+        cg.setLineJoin(.round)
+        cg.strokePath()
+        cg.restoreGState()
+        if !numeral.isEmpty { td.draw(numeral, x: x + side + 1.5, y: cy, style, color) }
+        return width
+    }
+
+    /// A marker's flag: `prefix` ("NOW ", "now "), then the moment led by its Pentad.
+    @discardableResult
+    private func flag(_ cg: CGContext, _ td: TimelineTextDrawing, _ x: CGFloat, prefix: String = "", _ label: String,
+                      pentad: Int?, _ color: CGColor, side: Int) -> CGRect {
         let style = font(.mono(10.5, 600))
-        let w = text.width(label, style) + 12
+        let mark = pentad.map { pentadMark(nil, nil, $0, x: 0, cy: 0, style, color) + 5 } ?? 0
+        let lead = prefix.isEmpty ? 0 : text.width(prefix, style)
+        let w = lead + mark + text.width(label, style) + 12
         let y = L.markY + 1, h = L.markH - 3
         var x0 = side < 0 ? x - w + 1 : side > 0 ? x - 1 : x - w / 2
         x0 = min(L.px1 - w, max(L.px0, x0))
@@ -923,7 +953,10 @@ struct TimelinePainter {
         cg.addPath(roundRect(r, 5))
         cg.setFillColor(color)
         cg.fillPath()
-        td.draw(label, x: x0 + w / 2, y: y + h / 2, style, P.background, align: .center)
+        var at = x0 + 6
+        if !prefix.isEmpty { at += td.draw(prefix, x: at, y: y + h / 2, style, P.background) }
+        if let pentad { at += pentadMark(cg, td, pentad, x: at, cy: y + h / 2, style, P.background) + 5 }
+        td.draw(label, x: at, y: y + h / 2, style, P.background)
         return r
     }
 
@@ -957,15 +990,16 @@ struct TimelinePainter {
         let same = f.live || abs(cx - nx) < 1
 
         if same, nVis {
-            let r = flag(cg, td, nx, f.live ? "NOW \(flagLabel(f.now))" : flagLabel(f.cursor), f.live ? P.now : P.cursor, side: 0)
+            let at = f.live ? f.now : f.cursor
+            let r = flag(cg, td, nx, prefix: f.live ? "NOW " : "", flagLabel(at), pentad: flagPentad(at), f.live ? P.now : P.cursor, side: 0)
             flags.append(r)
             hits.cursorFlag = r
         } else {
             var cSide = 0, nSide = 0
             if cVis, nVis, abs(cx - nx) < 130 { (cSide, nSide) = cx < nx ? (-1, 1) : (1, -1) }
-            if nVis { flags.append(flag(cg, td, nx, "now \(flagLabel(f.now))", P.now, side: nSide)) }
+            if nVis { flags.append(flag(cg, td, nx, prefix: "now ", flagLabel(f.now), pentad: flagPentad(f.now), P.now, side: nSide)) }
             if cVis {
-                let r = flag(cg, td, cx, flagLabel(f.cursor), P.cursor, side: cSide)
+                let r = flag(cg, td, cx, flagLabel(f.cursor), pentad: flagPentad(f.cursor), P.cursor, side: cSide)
                 flags.append(r)
                 hits.cursorFlag = r
             }
@@ -978,7 +1012,9 @@ struct TimelinePainter {
             let label = clock.inRange(t) || !f.pure ? flagLabel(t) : ""
             if !label.isEmpty {
                 let style = font(.mono(10.5, 500))
-                let w = text.width(label, style) + 12
+                let pentad = clock.inRange(t) ? flagPentad(t) : nil
+                let mark = pentad.map { pentadMark(nil, nil, $0, x: 0, cy: 0, style, P.ink) + 5 } ?? 0
+                let w = mark + text.width(label, style) + 12
                 let x0 = min(px1 - w, max(px0, hv.x - w / 2))
                 let r = CGRect(x: x0, y: top + 1, width: w, height: L.markH - 3)
                 if !flags.contains(where: { r.insetBy(dx: -3, dy: 0).intersects($0) }) {
@@ -987,7 +1023,8 @@ struct TimelinePainter {
                     cg.setStrokeColor(P.ink(0.35))
                     cg.setLineWidth(1)
                     cg.drawPath(using: .fillStroke)
-                    td.draw(label, x: x0 + w / 2, y: r.midY, style, P.ink, align: .center)
+                    if let pentad { pentadMark(cg, td, pentad, x: x0 + 6, cy: r.midY, style, P.ink) }
+                    td.draw(label, x: x0 + 6 + mark, y: r.midY, style, P.ink)
                 }
             }
         }
