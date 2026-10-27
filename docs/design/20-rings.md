@@ -76,3 +76,10 @@ Same view, Fractonica terms only. Strings live in `src/ui/rings/pure-text.js`; `
 - **Real time is counted in Blinks** (`blinkSpan`, whole Blinks from 100 on): "one turn takes about 325 Blinks", `about 58 500 Blinks per cycle`.
 - **Help**: majors in words with their quarter, minors by their start, ordinals and the Helion numbered from 1 / finer counts from 0, the units below Delta skip every other
   depth, Blinks, glossary pointer. Toolbar, depth range and ring labels are depth chips (`η 7 · 1/11`).
+
+## Pentads (SPEC §7.5, §15.3)
+Dates lead with their Pentad like a weekday (`src/ui/pentad.js`; canvas marks in `rings/wave.js`): the centre's end date, quarter chips
+that show a date (a time alone stands under the cycle's own date, as before), the Started/Ends facts, the inset's boundary labels and
+pointer time, the sector tooltip's child times; titles and the jump announcement say `Pentad II · …`. A boundary is read 1 ms into it (the
+Pentad that begins there). Pure mode leads what counts down to the Helion: the name of a Helion or finer cycle (`⬠II ε#5 34η`), what
+begins at its end (`→ ⬠II 35η begins`), and the chips, facts and labels of rings whose quarters are counted in Helions (ε and finer).

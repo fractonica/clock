@@ -402,7 +402,10 @@ function drawPentadRail(P, scene, sf, sun, fit, amp, quiet, occ) {
     const cy = sf.y + r * ny;
     if (cx < 8 || cy < 8 || cx > P.W - 8 || cy > P.H - 8) continue;
     if (pin && Math.hypot(cx - pin.x, cy - pin.y) < 34) continue;
-    occ.push({ x0: cx - mw / 2 - 2, x1: cx + mw / 2 + 2, y0: cy - 7, y1: cy + 7, w: SOFT });
+    const rect = { x0: cx - mw / 2 - 2, x1: cx + mw / 2 + 2, y0: cy - 7, y1: cy + 7, w: SOFT };
+    // a quarter's name or a loop number already there keeps its place: the mark gives way (the dial names the Pentads too)
+    if (occ.some((r) => overlapArea(rect, r) > 24)) continue;
+    occ.push(rect);
     ledText(P, s.index, '', cx + (fontPx(small) * MARK_GAP) / 2, cy, style);
   }
 }

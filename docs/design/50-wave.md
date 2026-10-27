@@ -57,3 +57,18 @@ the view's own geometry (a cycle is a crest followed by a trough), not a unit.
   stamp (`δ#3 ε#5 34η`, `34η 29ι 21λ`); spans are the core's (`ends in 6ι 43λ`, a half-arc `18ι long`); depth buttons say what one cycle is
   (`1η (Helion) = 36ι`, `11η`).
 - Eclipse labels are `#k` like the position; drift reads `drift −6 236λ`; the solar texts are unchanged (`19η`, 19 Helions).
+
+## Pentads (SPEC §7.5, §15.3)
+A date leads with its Pentad like a weekday (`src/ui/pentad.js`: the shape mark – a pentagon with its numeral, the Hypopentad's
+square alone – in DOM and on the canvas). Files: `words.js` (which readings lead), `tooltip.js` (`spanHTML`, `ledHTML`), `draw.js`
+(`ledText`, the rail), `sun.js` (the band), `solar.js` (`pentadPhase`, `pentadSpans`, `dialPentads`).
+
+- **Readings**: the read-out's span and the tooltip's span lead each end with its Pentad (the end only when it is another one); the
+  hovered point's time and the label of the displayed time on the canvas lead with theirs (`⬠II 12:00:00`). Pure mode leads a reading
+  that counts down to the Helion: a Helion or finer half-arc in the short letter form (`⬠II δ#3 ε#5 34η`; a ζ, ε or major cycle spans
+  several Pentads and keeps its address alone), the label of the displayed time from the δ stage down (`⬠II ε#5 34η 29ι`).
+- **Solar mode**: the dial has a band of the sync's four Pentads under its wave (5η, 5η, 5η and the shorter Hypopentad of 4η), each
+  starting just after a quarter point – the quarters fall a solar day apart (4¾η), so the Pentads start ¼, ½, ¾ Helion later in the day
+  and the Hypopentad ends on the sync's end. The running Pentad is lit and named in the header (`⬠II·2`: Pentad II, its 2nd Helion);
+  the tooltip says it in words (pure: "4¾η is a solar day", no hours). On the stage a rail of the sync's Pentads rides just outside the
+  ripple (gaps where each starts; the running one bright), with its marks where they have room, clear of the pin and the quarter names.
