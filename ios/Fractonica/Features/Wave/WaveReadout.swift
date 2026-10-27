@@ -165,8 +165,19 @@ struct WaveSolarReadout: Equatable, Sendable {
     var start: Double
     var end: Double
     var sync: Int
+    /// The Pentad running (SPEC §7.5): the sync's 19 Helions as Pentad I, II, III and the Hypopentad.
+    var pentad: Int? = nil
 
     static func make(t: Double, words: WaveWords) -> WaveSolarReadout? {
+        guard var readout = reading(t: t, words: words) else { return nil }
+        if let p = Pentads.at(t) {
+            readout.pentad = p.index
+            readout.spoken = "\(PentadWords.full(p)). " + readout.spoken
+        }
+        return readout
+    }
+
+    private static func reading(t: Double, words: WaveWords) -> WaveSolarReadout? {
         let engine = words.engine
         guard engine.clock.inRange(t), let pos = engine.clock.position(at: t) else { return nil }
         guard let s = engine.clock.solar(at: t) else {

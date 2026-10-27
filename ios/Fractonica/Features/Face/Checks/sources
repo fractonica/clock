@@ -9,3 +9,6 @@ Fractonica/Core/AppSettings.swift
 Fractonica/Core/ClockStore.swift
 Shared/Notation+Standard.swift
 Fractonica/Features/Face/FaceTips.swift
+Fractonica/Features/Face/PentadCardModel.swift
+Shared/Pentads.swift
+Fractonica/Features/Face/PentadExplainerText.swift

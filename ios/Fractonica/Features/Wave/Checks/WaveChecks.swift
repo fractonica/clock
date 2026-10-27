@@ -443,6 +443,12 @@ private func readoutChecks(_ root: [String: Any], _ engine: WaveEngine) {
         }
     }
     check(count > 300, "readings were checked: \(count)")
+    // the solar strip names the running Pentad, and says it first (SPEC §7.5: vector A is Pentad II, 2nd Helion)
+    if let s = WaveSolarReadout.make(t: 1791460800, words: pure) {
+        check(s.pentad == 1 && s.spoken.hasPrefix("Pentad II, 2nd Helion of 5. "), "the solar strip leads with the Pentad: \(s.spoken)")
+    } else {
+        check(false, "a solar strip at vector A")
+    }
     // tooltips: every line of a half-arc, a point on it and a marker, at every depth
     for t in arr(root["times"]).map(dbl).prefix(12) {
         guard let cur = engine.readHalves(t) else { continue }

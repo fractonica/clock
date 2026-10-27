@@ -23,13 +23,14 @@ struct PentadMark: View {
 }
 
 extension Text {
-    /// A Pentad's shape and numeral as text, to flow in a line in its font and colour; VoiceOver reads its name.
+    /// A Pentad's shape and numeral as text, to flow in a line in its size, weight and colour; VoiceOver reads its name.
+    /// Always in the proportional design: in a code-face line the monospaced cells would spread "⬠ I I".
     static func pentadMark(_ index: Int) -> Text {
         let i = min(max(index, 0), 3)
         let shape = Text(Image(systemName: i == 3 ? "square" : "pentagon"))
         let numeral = Notation.pentadNumerals[i]
         let mark = numeral.isEmpty ? shape : Text("\(shape)\(Text(verbatim: "\u{200A}" + numeral))")
-        return mark.accessibilityLabel(Text(verbatim: PentadWords.spoken(i)))
+        return mark.fontDesign(.default).accessibilityLabel(Text(verbatim: PentadWords.spoken(i)))
     }
 
     /// A reading led by its Pentad's mark, as a date by its weekday: "⬠II 44η 15ι". Without a Pentad (outside the

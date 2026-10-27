@@ -61,6 +61,11 @@ struct WaveSidePanel: View {
                 if model.solar {
                     WaveSolarStrip(model: model, control: control, wide: !depthBar)
                         .transition(.opacity)
+                    if !depthBar {
+                        // the sync's Helions as Pentads, in the time of day: how the sync follows the Sun
+                        PentadCard()
+                            .transition(.opacity)
+                    }
                 }
                 WaveLegend(words: control.words, overview: model.overview, solar: model.solar, tint: Theme.levelColor(model.overview ? 0 : control.eff))
                     .padding(.top, 4)
@@ -436,6 +441,13 @@ struct WaveSolarStrip: View {
             Circle().fill(Theme.gold).frame(width: 7, height: 7)
             Text("Solar sync").font(.caption.weight(.semibold)).foregroundStyle(Theme.gold).textCase(.uppercase)
             Text(s.number).font(.footnote.monospacedDigit().weight(.semibold)).foregroundStyle(Theme.ink)
+            if let pentad = s.pentad {
+                // the Pentad running, the sync's "weekday" (SPEC §7.5)
+                Text("\(Text.pentadMark(pentad)) \(Text(verbatim: PentadWords.name(pentad)))")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Theme.gold)
+                    .lineLimit(1)
+            }
             Spacer(minLength: 4)
             if s.edge == nil {
                 WaveShareView(share: s.share, size: 15, color: Theme.ink, label: "sync phase")
@@ -482,8 +494,9 @@ struct WaveSolarStrip: View {
     }
 }
 
-/// One sync as a small sine with its four quarter points (passed filled, the coming one ringed) and the present
-/// phase; drag along it to travel within the sync.
+/// One sync as a small sine with its four quarter points (passed filled, the coming one ringed), its Pentads' starts
+/// as ticks across the axis (after 5, 10 and 15 of its 19 Helions) and the present phase; drag along it to travel
+/// within the sync.
 struct WaveSyncWave: View {
     let phase: Double
     let quarter: Int
@@ -505,6 +518,14 @@ struct WaveSyncWave: View {
             axis.move(to: CGPoint(x: 7, y: h / 2))
             axis.addLine(to: CGPoint(x: w - 7, y: h / 2))
             g.stroke(axis, with: .color(Theme.gold.opacity(0.15)), lineWidth: 1)
+            // where Pentad II, III and the Hypopentad begin
+            for k in [5.0, 10, 15] {
+                let p = WaveSolar.dialPoint(phase: k / 19, width: w, height: h)
+                var tick = Path()
+                tick.move(to: CGPoint(x: p.x, y: h / 2 - 4))
+                tick.addLine(to: CGPoint(x: p.x, y: h / 2 + 4))
+                g.stroke(tick, with: .color(Theme.gold.opacity(0.4)), lineWidth: 1)
+            }
             g.stroke(wave, with: .color(Theme.gold.opacity(0.35)), style: StrokeStyle(lineWidth: 1.4, lineCap: .round))
             g.stroke(wave.trimmedPath(from: 0, to: phase), with: .color(Theme.gold), style: StrokeStyle(lineWidth: 1.8, lineCap: .round))
             for k in 1...4 {

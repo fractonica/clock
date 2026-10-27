@@ -21,21 +21,30 @@ enum Pentads {
     /// Hypopentad ¾η; the next Pentad I is back at 0.
     static func dayOffset(_ index: Int) -> Double { Double(index) / 4 }
 
-    /// The Pentad running at t; nil outside the catalogue. The last few readings are kept for the Helion they were
-    /// read in, so the displayed time asks the engine about once a Helion.
+    /// The Pentad running at t; nil outside the catalogue. The readings of the last few Helions asked about are kept
+    /// (the most recently used first), so the displayed time asks the engine about once a Helion even while a screen
+    /// reads the Pentads of many other moments.
     static func at(_ t: Double, clock: FractonicaClock = .shared) -> PentadReading? {
         guard t.isFinite else { return nil }
-        if let hit = cache.withLock({ entries in entries.first { $0.from <= t && t < $0.to } }) { return hit.reading }
+        let hit = cache.withLock { entries -> PentadReading? in
+            guard let i = entries.firstIndex(where: { $0.from <= t && t < $0.to }) else { return nil }
+            if i > 0 { entries.insert(entries.remove(at: i), at: 0) }
+            return entries[0].reading
+        }
+        if let hit { return hit }
         guard let reading = clock.pentad(at: t) else { return nil }
         let helion = clock.level(at: t, 6) // the Helion (η), the sync's level
         let entry = Entry(reading: reading, from: max(helion?.start ?? reading.start, reading.start),
                           to: min(helion?.end ?? reading.end, reading.end))
         cache.withLock { entries in
             entries.insert(entry, at: 0)
-            if entries.count > 6 { entries.removeLast() }
+            if entries.count > capacity { entries.removeLast() }
         }
         return reading
     }
+
+    /// Helions kept by `at`.
+    private static let capacity = 16
 
     /// The index (0 … 3, 3 the Hypopentad) of the Pentad running at t; nil outside the catalogue.
     static func index(at t: Double) -> Int? { at(t)?.index }

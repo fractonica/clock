@@ -100,8 +100,6 @@ extension Notation {
         return head + (form == "full" ? ", " : " ") + minor.joined(separator: " ")
     }
 
-    /// The full letter address of t down to a resolution (default "iota"): "α#5 β#4 γ#2 δ#3 ε#2 5η 5ι". It identifies
-    /// a moment unambiguously and reads back.
     /// The Pentad at t in words (pure.js `pentadText`): form "full" "Pentad II" (default), "short" "⬠II", "ascii" "P2";
     /// with `helion`, its Helion too ("Pentad II, 3rd Helion" / "⬠II·3" / "P2.3"). "—" outside the catalogue.
     public func pentadText(at t: Double, form: String = "full", helion: Bool = false) -> String {
@@ -115,6 +113,8 @@ extension Notation {
         }
     }
 
+    /// The full letter address of t down to a resolution (default "iota"): "α#5 β#4 γ#2 δ#3 ε#2 5η 5ι". It identifies
+    /// a moment unambiguously and reads back.
     public func stamp(at t: Double, upTo: String = "iota") -> String {
         dateText(at: t, form: "full", letters: true, upTo: Self.stampLevels.contains(upTo) ? upTo : "iota")
     }

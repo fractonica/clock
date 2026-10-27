@@ -94,7 +94,7 @@ struct TravelIndicator: View {
                         .foregroundStyle(Theme.cursor)
                         .frame(width: 16)
                     ClockTimeline(.periodic(1)) { t in
-                        Text(verbatim: words.label(t, relativeTo: Date.now.timeIntervalSince1970))
+                        Text.ledByPentad(at: t, words.label(t, relativeTo: Date.now.timeIntervalSince1970))
                             .font(.reading(14, weight: .semibold))
                             .foregroundStyle(Theme.cursor)
                             .lineLimit(1)
@@ -182,8 +182,9 @@ struct TransportControls: View {
 
 // MARK: - Parts
 
-/// The displayed moment in one or two lines, with the live / travelling dot: "● 14:23:07 / Thu 8 Oct 2026",
-/// in pure mode "● 34η 29ι 21λ / Delta Trifracton End ε#5". During a time-lapse the second line is the speed.
+/// The displayed moment in one or two lines, with the live / travelling dot, led by its Pentad: "● ⬠II 14:23:07 /
+/// Thu 8 Oct 2026", in pure mode "● ⬠II 34η 29ι 21λ / Delta Trifracton End ε#5". During a time-lapse the second line
+/// is the speed.
 struct MomentLabel: View {
     var showsDetail: Bool
 
@@ -202,12 +203,15 @@ struct MomentLabel: View {
                 paused: store.isPaused,
                 time: { [store] in store.time(at: $0) },
                 text: { words.time($0) },
+                lead: { Pentads.index(at: $0) },
                 color: NSColor(store.isLive ? Theme.ink : Theme.cursor)
             )
             #else
             ClockTimeline(.periodic(1)) { t in
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(words.time(t))
+                    // the moment leads with its Pentad (SPEC §15.3); `Pentads` keeps it for the Helion, so a tick
+                    // pays a range check for it
+                    Text.ledByPentad(at: t, words.time(t))
                         .font(.reading(showsDetail ? 16 : 15, weight: .semibold))
                         .foregroundStyle(store.isLive ? Theme.ink : Theme.cursor)
                     if showsDetail {

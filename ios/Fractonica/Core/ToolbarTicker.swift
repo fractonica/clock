@@ -1,5 +1,6 @@
 #if os(macOS)
 import AppKit
+import FractonicaKit
 import SwiftUI
 
 /// A one-line reading of the displayed time for a macOS window toolbar, drawn by AppKit on the `ClockTimeline`
@@ -20,6 +21,8 @@ struct ToolbarTicker: NSViewRepresentable {
     /// Displayed seconds between redraws (`ClockCadence.periodic`).
     var interval: Double = 1
     var text: @MainActor (Double) -> String
+    /// The Pentad that leads the reading (SPEC §15.3), drawn as its shape and numeral; nil for none.
+    var lead: @MainActor (Double) -> Int? = { _ in nil }
     var font: NSFont = .monospacedDigitSystemFont(ofSize: 15, weight: .semibold)
     var color: NSColor
 
@@ -28,7 +31,7 @@ struct ToolbarTicker: NSViewRepresentable {
     func updateNSView(_ view: TickerView, context: Context) {
         view.configure(
             schedule: ClockTickSchedule(base: base, interval: interval, paused: paused),
-            time: time, text: text, font: font, color: color
+            time: time, text: text, lead: lead, font: font, color: color
         )
     }
 
@@ -41,8 +44,12 @@ struct ToolbarTicker: NSViewRepresentable {
         private var schedule = ClockTickSchedule(base: .live, interval: 1, paused: true)
         private var time: @MainActor (Date) -> Double = { $0.timeIntervalSince1970 }
         private var text: @MainActor (Double) -> String = { _ in "" }
+        private var lead: @MainActor (Double) -> Int? = { _ in nil }
         private var attributes: [NSAttributedString.Key: Any] = [:]
         private var current = NSAttributedString()
+        private var spoken = ""
+        /// Each Pentad's mark in the current font and colour, made once (the same attachment keeps equal readings equal).
+        private var marks: [Int: NSAttributedString] = [:]
         private var timer: Timer?
         private var occlusionObserver: NSObjectProtocol?
         /// The widest text seen with the current font and wording; only grows until they change.
@@ -51,12 +58,17 @@ struct ToolbarTicker: NSViewRepresentable {
         override var isFlipped: Bool { true }
 
         func configure(schedule: ClockTickSchedule, time: @escaping @MainActor (Date) -> Double,
-                       text: @escaping @MainActor (Double) -> String, font: NSFont, color: NSColor) {
+                       text: @escaping @MainActor (Double) -> String, lead: @escaping @MainActor (Double) -> Int?,
+                       font: NSFont, color: NSColor) {
             let restyled = attributes[.font] as? NSFont != font || attributes[.foregroundColor] as? NSColor != color
             self.schedule = schedule
             self.time = time
             self.text = text
-            if restyled { attributes = [.font: font, .foregroundColor: color] }
+            self.lead = lead
+            if restyled {
+                attributes = [.font: font, .foregroundColor: color]
+                marks = [:]
+            }
             // A new wording or font may need less room: measure afresh.
             render(resetWidth: true)
             start()
@@ -85,7 +97,7 @@ struct ToolbarTicker: NSViewRepresentable {
 
         override func isAccessibilityElement() -> Bool { true }
         override func accessibilityRole() -> NSAccessibility.Role? { .staticText }
-        override func accessibilityValue() -> Any? { current.string }
+        override func accessibilityValue() -> Any? { spoken }
 
         // MARK: Ticking
 
@@ -125,7 +137,16 @@ struct ToolbarTicker: NSViewRepresentable {
         /// Draws the reading of now; asks SwiftUI for more room only when the text outgrows the reserved width.
         private func render(resetWidth: Bool) {
             let t = time(.now)
-            let next = NSAttributedString(string: text(t), attributes: attributes)
+            let reading = text(t)
+            let next = NSMutableAttributedString()
+            if let index = lead(t) {
+                next.append(mark(index))
+                next.append(NSAttributedString(string: " ", attributes: attributes))
+                spoken = PentadWords.spoken(index) + " " + reading
+            } else {
+                spoken = reading
+            }
+            next.append(NSAttributedString(string: reading, attributes: attributes))
             let needed = next.size()
             let size = CGSize(width: ceil(needed.width), height: ceil(needed.height))
             let grow = resetWidth ? size : CGSize(width: max(size.width, reservedSize.width), height: max(size.height, reservedSize.height))
@@ -140,6 +161,33 @@ struct ToolbarTicker: NSViewRepresentable {
         }
 
         override var intrinsicContentSize: NSSize { reservedSize }
+
+        /// A Pentad's shape (the SF Symbol, in the text's size, weight and colour, on the cap height) and its numeral.
+        private func mark(_ index: Int) -> NSAttributedString {
+            if let made = marks[index] { return made }
+            let font = attributes[.font] as? NSFont ?? .systemFont(ofSize: 15)
+            let color = attributes[.foregroundColor] as? NSColor ?? .labelColor
+            let out = NSMutableAttributedString()
+            let config = NSImage.SymbolConfiguration(pointSize: font.pointSize * 0.9, weight: .semibold)
+                .applying(NSImage.SymbolConfiguration(paletteColors: [color]))
+            if let image = NSImage(systemSymbolName: index == 3 ? "square" : "pentagon",
+                                   accessibilityDescription: PentadWords.spoken(index))?.withSymbolConfiguration(config) {
+                let attachment = NSTextAttachment()
+                attachment.image = image
+                attachment.bounds = CGRect(x: 0, y: ((font.capHeight - image.size.height) / 2).rounded(),
+                                           width: image.size.width, height: image.size.height)
+                out.append(NSAttributedString(attachment: attachment))
+            }
+            let numeral = Notation.pentadNumerals[min(max(index, 0), 3)]
+            if !numeral.isEmpty {
+                // the numeral in the proportional face beside the shape: "⬠II"
+                var plain = attributes
+                plain[.font] = NSFont.systemFont(ofSize: font.pointSize, weight: .semibold)
+                out.append(NSAttributedString(string: "\u{200A}" + numeral, attributes: plain))
+            }
+            marks[index] = out
+            return out
+        }
     }
 }
 #endif
