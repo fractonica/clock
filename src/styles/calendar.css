@@ -744,3 +744,5 @@
 .cal-pnote { margin: 0 0 4px; font-size: 11.5px; }
 /* a led reading may wrap after its mark where the column is narrow (the mark itself stays whole) */
 .cal-root .pentad-lead, .cal-tip .pentad-lead { white-space: normal; }
+/* a jump result's moment leads with its Pentad (src/ui/jump.js) */
+.jump-detail .jump-pentad { margin-right: 0.4em; }

@@ -3,6 +3,7 @@
  * cells, the cached phase-glyph factory (normal mode), the pure-mode glyph pair, a hover tooltip built on the
  * shared `.tip` class, icons and the reduced-motion check. Browser only.
  */
+import { pentadMarkHTML, pentadName } from '../pentad.js';
 
 /** HTML-escape a string for innerHTML templates. */
 export function esc(s) {
@@ -49,6 +50,38 @@ export function textCell(el) {
     last = null;
   };
   return set;
+}
+
+/** Same for trusted HTML (our own marks, e.g. a Pentad's shape). */
+export function htmlCell(el) {
+  let last = null;
+  const set = (s) => {
+    if (s !== last) {
+      el.innerHTML = s;
+      last = s;
+    }
+  };
+  set.reset = () => {
+    last = null;
+  };
+  return set;
+}
+
+/**
+ * The Pentad mark that leads a moment's reading (SPEC §7.5, §15.3), from a cached lookup. A turnover or threshold at t is
+ * read as what begins there (t + 1 ms). Pure mode leads only readings that count down to the Helion (`level` ≥ ζ, whose
+ * cycles are named by a Helion); a Gregorian date always has one, like its weekday. '' outside the catalogue.
+ */
+export function pentadLead(lookup, t, { pure = false, level = 6 } = {}) {
+  if (t == null || (pure && level < 5)) return '';
+  const p = lookup(t + 0.001);
+  return p ? pentadMarkHTML(p) : '';
+}
+/** The same Pentad in words for labels and tooltips: "Pentad II · " ('' where pentadLead draws none). */
+export function pentadWords(lookup, t, { pure = false, level = 6 } = {}) {
+  if (t == null || (pure && level < 5)) return '';
+  const p = lookup(t + 0.001);
+  return p ? `${pentadName(p)} \u00B7 ` : '';
 }
 
 /** Same for an attribute. */

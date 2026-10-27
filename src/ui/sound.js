@@ -29,6 +29,7 @@ import { createTooltip } from './sound/tooltip.js';
 import { createMixer } from './sound/mixer.js';
 import { createScope } from './sound/scope.js';
 import { createRing } from './sound/ring.js';
+import { leadHTML } from './pentad.js';
 
 const BASE_REF = 110;
 const semitonesOf = (hz) => Math.round(12 * Math.log2(hz / BASE_REF));
@@ -280,7 +281,7 @@ export function mount(root, ctx) {
   const tipFor = {
     power: () => '<b>Sound on / off</b> (M)<br>Starts the drone and the bells. Audio can only start after a click, so it is off until you press this.',
     moment: () =>
-      `<b>Hear this moment</b><br>Plays the chord of ${curPure ? curPure.dateText(store.t()) : fmt.dateTime(store.t())} as a short arpeggio from α to the finest voice; each note is as loud as its cycle is high right now. Works while the sound is off.`,
+      `<b>Hear this moment</b><br>Plays the chord of ${leadHTML(model, store.t(), curPure ? curPure.dateText(store.t()) : fmt.dateTime(store.t()), { cls: 'is-gold' })} as a short arpeggio from α to the finest voice; each note is as loud as its cycle is high right now. Works while the sound is off.`,
     chord: () => '<b>Chord</b><br>One soft voice per cycle at its just-intonation pitch. It swells to the cycle’s peak and fades to its valley; the fast cycles (μ ν ξ) modulate at their true rates, the clock’s heartbeat.',
     chimes: () => '<b>Chimes</b><br>A bell at every peak, node, valley and end. A cycle end strums all finer cycles that end with it: a major turnover rings as a big chord.',
     physical: () =>

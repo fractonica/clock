@@ -387,3 +387,5 @@
   .snd-power-ring { animation: none !important; }
   .snd-strip, .snd-power, .snd-strip-on { transition: none; }
 }
+/* the moment in the "Hear this moment" tip leads with its Pentad (src/ui/pentad.js) and may wrap */
+.snd-tip .pentad-lead { white-space: normal; }

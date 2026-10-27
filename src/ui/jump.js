@@ -21,6 +21,7 @@
 import { h, ICONS, loadPrefs, savePrefs } from './calendar/dom.js';
 import { MAX_INPUT, dayFirstOfLocale, parseJump } from './calendar/parse.js';
 import { PURE_PLACEHOLDER, parsePure, pureExamples } from './calendar/pure-parse.js';
+import { pentadMarkEl } from './pentad.js';
 
 const KEY = 'fractonica-clock/jump/v1';
 const PURE_KEY = 'fractonica-clock/jump/pure/v1';
@@ -107,6 +108,16 @@ export function mount(el, ctx) {
   const touch = () => typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
   const selectable = (c) => c && c.time !== null && c.kind !== 'error';
 
+  /** A result's moment leads its detail with its Pentad (SPEC §7.5, §15.3), like a date with its weekday. */
+  function pentadOf(c) {
+    if (!selectable(c) || c.example || !Number.isFinite(c.time)) return null;
+    const p = ctx.model.pentadAt(c.time);
+    if (!p) return null;
+    const el = pentadMarkEl(p, { cls: 'is-gold' });
+    el.classList.add('jump-pentad');
+    return el;
+  }
+
   function render() {
     list.textContent = '';
     items.forEach((c, i) => {
@@ -120,7 +131,7 @@ export function mount(el, ctx) {
           class: (i === active && selectable(c) ? 'is-active ' : '') + (c.kind === 'error' ? 'is-error' : ''),
         },
         h('span.jump-kind.jump-k-' + c.kind, { text: c.recent ? 'Recent' : c.example ? 'Try' : KIND_LABEL[c.kind] ?? c.kind }),
-        h('span.jump-main', null, h('b.jump-label', { text: c.label }), c.detail ? h('span.jump-detail', { text: c.detail }) : null),
+        h('span.jump-main', null, h('b.jump-label', { text: c.label }), c.detail ? h('span.jump-detail', null, pentadOf(c), c.detail) : null),
         selectable(c) && !c.example ? h('span.jump-go', { html: ICONS.go, 'aria-hidden': 'true' }) : null,
       );
       li.addEventListener('pointerdown', (e) => e.preventDefault()); // keep focus in the input

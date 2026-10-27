@@ -70,7 +70,8 @@ import {
   unitSentence,
   unitWord,
 } from './ladder/pure-text.js';
-import { attrCell, classCell, createTip, esc, glyphFactory, icons, levelVars, pairCell, reducedMotion, textCell } from './ladder/dom.js';
+import { attrCell, classCell, createTip, esc, glyphFactory, htmlCell, icons, levelVars, pairCell, pentadLead, pentadWords, reducedMotion, textCell } from './ladder/dom.js';
+import { pentadLookup } from './pentad.js';
 
 /** Cycles shorter than this (s) are too fast for a ticking countdown: the row shows the length instead. */
 const STATIC_BELOW = 0.5;
@@ -107,6 +108,11 @@ export function mount(el, ctx) {
   const pure = ctx.pure;
   const wantPure = () => !!pure && !!ctx.isPure?.();
   let pureMode = null;
+  /** Each moment leads with its Pentad (SPEC §7.5, §15.3): cached spans, and in pure mode only Helion-or-finer readings. */
+  const pentAt = pentadLookup(model);
+  const markOf = (t, level) => pentadLead(pentAt, t, { pure: pureMode, level });
+  /** A Helion in seconds: a cycle shorter than a Pentad keeps one Pentad, so its quarters need no mark of their own. */
+  const HELION_S = model.levelInfo(6).meanSeconds;
 
   el.classList.add('ladder');
   el.innerHTML = `
@@ -273,13 +279,13 @@ export function mount(el, ctx) {
   const detail = document.createElement('div');
   detail.className = 'ladder-detail';
   detail.innerHTML = `
-    <div class="ladder-end"><span class="ladder-k ladder-end-k">Ends</span><span class="ladder-end-w"><span class="ladder-end-v"></span> <span class="ladder-end-z dim mono"></span></span></div>
+    <div class="ladder-end"><span class="ladder-k ladder-end-k">Ends</span><span class="ladder-end-w"><span class="ladder-pent ladder-end-p"></span><span class="ladder-end-v"></span> <span class="ladder-end-z dim mono"></span></span></div>
     <ol class="ladder-q" aria-label="Quarter thresholds of this cycle">
       ${QN.map(
         (n, i) => `<li class="ladder-qi">
           <span class="ladder-q-mark" aria-hidden="true"></span>
           <span class="ladder-q-name">${n}</span><span class="ladder-q-frac dim">${QUARTER_FRAC[i]}</span>
-          <span class="ladder-q-time mono"></span><span class="ladder-q-rel mono"></span></li>`,
+          <span class="ladder-q-time mono"><span class="ladder-pent"></span><span class="ladder-q-tv"></span></span><span class="ladder-q-rel mono"></span></li>`,
       ).join('')}
     </ol>
     <dl class="ladder-facts ladder-facts-now">
@@ -288,7 +294,7 @@ export function mount(el, ctx) {
     </dl>
     <dl class="ladder-facts ladder-facts-span">
       <div class="ladder-pure-only"><dt>Cycle</dt><dd class="ladder-cyc"><span class="ladder-cyc-n"></span><span class="ladder-cyc-a mono dim"></span></dd></div>
-      <div><dt>Started</dt><dd class="ladder-started"></dd></div>
+      <div><dt>Started</dt><dd class="ladder-started-d"><span class="ladder-pent"></span><span class="ladder-started"></span></dd></div>
       <div><dt>Length</dt><dd class="ladder-length mono"></dd></div>
       <div><dt class="ladder-saros-k">Saros span</dt><dd class="ladder-saros mono"></dd></div>
     </dl>
@@ -321,7 +327,8 @@ export function mount(el, ctx) {
     saros: detail.querySelector('.ladder-saros'),
     q: [...detail.querySelectorAll('.ladder-qi')].map((li) => ({
       li,
-      time: li.querySelector('.ladder-q-time'),
+      time: li.querySelector('.ladder-q-tv'),
+      pent: li.querySelector('.ladder-pent'),
       rel: li.querySelector('.ladder-q-rel'),
     })),
     key: '',
@@ -340,18 +347,21 @@ export function mount(el, ctx) {
   D.setAfterName = attrCell(D.afterBtn, 'aria-label');
   D.setThroughHidden = attrCell(D.throughT, 'aria-hidden'); // the pair next to it carries the name; its digits are not read twice
   D.setStarted = textCell(D.started);
+  D.setStartedP = htmlCell(D.started.previousElementSibling);
+  D.setEndP = htmlCell(detail.querySelector('.ladder-end-p'));
   D.setLength = textCell(D.length);
   D.setLengthTip = attrCell(D.length, 'title'); // pure: which unit a whole cycle of this depth is
   D.setSaros = textCell(D.saros);
   D.q.forEach((q) => {
     q.setTime = textCell(q.time);
+    q.setPent = htmlCell(q.pent);
     q.setRel = textCell(q.rel);
     q.state = '';
   });
   /** Every write-only-on-change cell of the detail: a mode switch empties their memory so nothing stale survives. */
   const detailCells = [
     D.setEndK, D.setEndV, D.setEndZ, D.setThrough, D.setThroughK, D.setSector, D.setCycN, D.setCycA, D.setBeforeTip, D.setBeforeName,
-    D.setAfterTip, D.setAfterName, D.setThroughHidden, D.setStarted, D.setLength, D.setLengthTip, D.setSaros, ...D.q.flatMap((q) => [q.setTime, q.setRel]),
+    D.setAfterTip, D.setAfterName, D.setThroughHidden, D.setStarted, D.setLength, D.setLengthTip, D.setSaros, D.setStartedP, D.setEndP, ...D.q.flatMap((q) => [q.setTime, q.setRel, q.setPent]),
   ];
 
   function applySelection(sel) {
@@ -395,8 +405,10 @@ export function mount(el, ctx) {
       const info = model.levelInfo(lv.level);
       D.setEndK(lv.clipped ? 'Catalogue ends' : 'Ends');
       D.setEndV(whenFull(fmt, lv.end, { precise }));
+      D.setEndP(markOf(lv.end, lv.level));
       D.setEndZ(fmt.tag(lv.end));
       D.setStarted(whenFull(fmt, lv.start, { precise }));
+      D.setStartedP(markOf(lv.start, lv.level));
       D.setLength(fmt.duration(lv.duration) + (lv.clipped ? ' · clipped' : ''));
       const name = `${info.letter} ${info.depth}`;
       const before = `Just before: jump to ${leadText(justBeforeLead(lv.duration))} before this ${name} cycle ends and watch it turn over (Shift+Enter)`;
@@ -410,6 +422,7 @@ export function mount(el, ctx) {
       for (let i = 0; i < 4; i++) {
         const when = lv.thresholds[i + 1]?.time;
         D.q[i].setTime(when == null ? '—' : whenLabel(fmt, when, lv.start, lv.duration));
+        D.q[i].setPent(when == null || lv.duration < 4.5 * HELION_S ? '' : markOf(when, lv.level));
       }
     }
     // cycles too fast to follow (nu, xi) show where each quarter falls inside the cycle instead of a
@@ -470,10 +483,13 @@ export function mount(el, ctx) {
       for (let i = 0; i < 4; i++) {
         const when = lv.thresholds[i + 1]?.time;
         D.q[i].setTime(when == null ? '—' : quarterWhere(model, pure, when, lv.level));
+        D.q[i].setPent(when == null || lv.duration < 4.5 * HELION_S ? '' : markOf(when, lv.level));
       }
     }
     D.setEndV(D.next ? endsText(D.next) : `in ${leftText(model, pure, t, lv.end)}`);
+    D.setEndP(D.next ? markOf(lv.end, lv.level) : '');
     D.setStarted(`${leftText(model, pure, lv.start, t)} ago`);
+    D.setStartedP('');
     const still = detailRow.still;
     if (still) {
       D.pairThrough.clear();
@@ -656,7 +672,7 @@ export function mount(el, ctx) {
       if (r.still) r.setLabel(`${head}: too fast to follow, one cycle lasts ${fmt.duration(r.info.meanSeconds)}`);
       else {
         const clipped = lv.clipped ? ', clipped by the end of the catalogue' : '';
-        r.setLabel(`${head}: ${counterText(r.L, lv.local, lv.siblings).replace('/', 'of')}, ${pct} percent through this cycle, ends ${whenFull(fmt, lv.end)}${clipped}`);
+        r.setLabel(`${head}: ${counterText(r.L, lv.local, lv.siblings).replace('/', 'of')}, ${pct} percent through this cycle, ends ${pentadWords(pentAt, lv.end, { level: r.L })}${whenFull(fmt, lv.end)}${clipped}`);
       }
     }
   }
@@ -822,7 +838,7 @@ export function mount(el, ctx) {
     return `<div class="ladder-tip-h"><b style="color:${color}">${esc(info.letter)} ${info.depth}</b><span>${esc(cycleTitle(pure, L, lv.cycleBig))} · ${lv.local + 1} of ${lv.siblings} in ${esc(parent)}</span></div>
       ${through}
       <div class="dim">${sector}</div>
-      <div class="ladder-tip-end">${lv.clipped ? 'Catalogue ends' : 'Ends'} <b>${esc(ends)}</b></div>
+      <div class="ladder-tip-end">${lv.clipped ? 'Catalogue ends' : 'Ends'} ${lv.clipped ? '' : markOf(lv.end, L)}<b>${esc(ends)}</b></div>
       <div class="dim">${esc(left)}</div>
       <div class="ladder-tip-hint dim">Click to select · double-click for Just after</div>`;
   }
@@ -843,7 +859,7 @@ export function mount(el, ctx) {
     return `<div class="ladder-tip-h"><b style="color:${color}">${esc(info.letter)} ${info.depth}</b><span>depth ${info.depth} · ${counterText(L, lv.local, lv.siblings).replace('/', 'of')} in ${esc(parent)}</span></div>
       ${through}
       <div class="dim">${sector}</div>
-      <div class="ladder-tip-end">${lv.clipped ? 'Catalogue ends' : 'Ends'} <b>${esc(ends)}</b> <span class="dim">${esc(fmt.tag(lv.end))}</span></div>
+      <div class="ladder-tip-end">${lv.clipped ? 'Catalogue ends' : 'Ends'} ${markOf(lv.end, L)}<b>${esc(ends)}</b> <span class="dim">${esc(fmt.tag(lv.end))}</span></div>
       <div class="dim">${esc(left)}</div>
       <div class="ladder-tip-hint dim">Click to select · double-click for Just after</div>`;
   }

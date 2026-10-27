@@ -7,6 +7,8 @@
  *            keeps its width and size: "72η 24ι 62λ", "ε#02 72η 24ι", "24ι 62λ 03ν"
  *   bottom   the cycle of the middle's longest unit as two half-arcs – the left one descending (below the axis), the
  *            right one ascending (above it) – with a tick at the present position, and its letter
+ *   pentad   a minor reading is led by its Pentad (SPEC §7.5, §15.3), like a date by its weekday: the shape and numeral
+ *            in gold just above the three units ("⬠II" over "34η 29ι 21λ")
  *   major    a major period (Alpha … Delta) is shown alone: its phase as one big 3-stroke glyph (52 states) at the top,
  *            four lines of words in the middle – the ordinal of its current child, its name, its fracton word, its
  *            quarter ("5th / Delta / Trifracton / End": the 5th Nuclide of Delta Trifracton, in its End quarter) – and
@@ -18,6 +20,7 @@
  */
 import { SCREEN, BEZEL } from './helpers.js';
 import { createGlyphBook } from './glyphs.js';
+import { shapePath, pentadSpoken, PENTAD_NUMERALS } from '../pentad.js';
 
 const NS = 'http://www.w3.org/2000/svg';
 /** The named units, long to short: [level, id]. */
@@ -52,7 +55,8 @@ export function ordinal(n) {
  *   unit, levels: number[],              // the three units' levels
  *   lead: {level, letter, phase},             // the longest unit shown: its phase is the top glyphs and the bottom cycle
  *   tokens: [{level, text}] | null,           // minor mode: "72η" "24ι" "62λ"
- *   major: {level, lines: [ordinal, name, fracton, quarter], index3} | null   // major mode: one period alone
+ *   major: {level, lines: [ordinal, name, fracton, quarter], index3} | null,  // major mode: one period alone
+ *   pentad: {index, helion, …} | null         // minor mode: the Pentad that leads the reading
  * }}
  */
 export function journalReading({ model, pure }, t, u) {
@@ -66,7 +70,7 @@ export function journalReading({ model, pure }, t, u) {
   const c = pure.clock(t);
   const d = pure.date(t);
   if (!c || !d) return null;
-  const out = { unit, levels, lead: { level: first, letter: LETTER[first], phase: lead.phase }, tokens: null, major: null };
+  const out = { unit, levels, lead: { level: first, letter: LETTER[first], phase: lead.phase }, tokens: null, major: null, pentad: null };
   if (first <= 3) {
     const ORD = { 0: d.beta, 1: d.gamma, 2: d.delta, 3: d.epsilon };
     const OWN = { 0: d.alpha, 1: d.beta, 2: d.gamma, 3: d.delta };
@@ -78,6 +82,7 @@ export function journalReading({ model, pure }, t, u) {
   const two = (n) => String(n).padStart(2, '0');
   const minorText = (L) => ({ 4: `ε#${two(c.epsilon)}`, 6: `${two(c.eta)}η`, 8: `${two(c.iota)}ι`, 10: `${two(c.lambda)}λ`, 12: `${two(c.nu)}ν` })[L];
   out.tokens = levels.map((L) => ({ level: L, text: minorText(L) }));
+  out.pentad = model.pentadAt(t);
   return out;
 }
 
@@ -145,7 +150,7 @@ export function createJournalFace({ model, pure, F, theme, uid, onStep }) {
     }
     const r = reading;
     const p2 = r.tokens ? pure.pair(r.lead.phase) : null;
-    const k = JSON.stringify([r.unit, p2?.index, r.tokens?.map((x) => x.text), r.major?.lines, r.major?.index3, Math.round(r.lead.phase * 720)]);
+    const k = JSON.stringify([r.unit, p2?.index, r.tokens?.map((x) => x.text), r.major?.lines, r.major?.index3, Math.round(r.lead.phase * 720), r.pentad?.index]);
     if (k === key) return;
     key = k;
 
@@ -184,6 +189,19 @@ export function createJournalFace({ model, pure, F, theme, uid, onStep }) {
         else t.append(node('tspan', { fill: color }, x.text));
       });
       mid.append(t);
+      // the Pentad leads the reading like a weekday: its shape and numeral, gold, centred above it
+      if (r.pentad) {
+        const s = 17;
+        const num = PENTAD_NUMERALS[r.pentad.index];
+        const nw = num.length * 7.6;
+        const w = s + (num ? 4 + nw : 0);
+        const x0 = SCREEN.cx - w / 2;
+        const yMid = SCREEN.cy - size * 1.05;
+        const mark = node('g', { class: 'jf-pentad', 'aria-hidden': 'true' },
+          node('path', { d: shapePath(r.pentad.index), transform: `translate(${x0.toFixed(2)} ${(yMid - s / 2).toFixed(2)}) scale(${(s / 12).toFixed(4)})`, fill: 'none', stroke: '#ffd60a', 'stroke-width': 1.5, 'stroke-linejoin': 'round' }));
+        if (num) mark.append(node('text', { x: (x0 + s + 4).toFixed(2), y: (yMid + 5.6).toFixed(2), 'font-size': 15, 'font-weight': 700, fill: '#ffd60a', 'font-family': 'var(--font-numeral, Georgia, serif)', 'letter-spacing': 0.4 }, num));
+        mid.append(mark);
+      }
     } else {
       // four lines: the child's ordinal, the name, the fracton word, the quarter
       const color = theme.levelColor(r.major.level);
@@ -268,6 +286,6 @@ export function arcPoint(f, { cl, cr, cy, R }) {
 
 /** What a screen reader hears: "Journal face: 72η 24ι 62λ; the η phase above and its cycle below. …". */
 function ariaOf(r) {
-  const middle = r.tokens ? r.tokens.map((x) => x.text).join(' ') : r.major.lines.join(' ');
+  const middle = r.tokens ? `${r.pentad ? pentadSpoken(r.pentad) + ', ' : ''}${r.tokens.map((x) => x.text).join(' ')}` : r.major.lines.join(' ');
   return `Journal face: ${middle}; the ${r.lead.letter} phase above and its cycle below. Tap the top for a longer unit, the bottom for a shorter one.`;
 }

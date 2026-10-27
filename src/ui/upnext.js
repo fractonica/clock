@@ -18,6 +18,9 @@
  * the heading of a group of several events on narrow cards ("Delta Trifracton ε#5"), the short letter date on every
  * row of a wide card ("δ#3 ε#5 35η"). The strip of a major level says which quarter begins ("→ Valley"). It switches live.
  *
+ * Every moment leads with its Pentad (SPEC §7.5, §15.3), like a date with its weekday: the hero's date, each row's day,
+ * the strip's time and the tooltips; in pure mode only the readings that count down to the Helion.
+ *
  * Contract: export mount(el, ctx) -> { render, alwaysOn, destroy } (docs/ARCHITECTURE.md).
  */
 import {
@@ -64,7 +67,8 @@ import {
   unitSentence,
   unitWord,
 } from './ladder/pure-text.js';
-import { attrCell, classCell, createTip, esc, icons, levelVars, pairCell, reducedMotion, textCell } from './ladder/dom.js';
+import { attrCell, classCell, createTip, esc, htmlCell, icons, levelVars, pairCell, pentadLead, pentadWords, reducedMotion, textCell } from './ladder/dom.js';
+import { pentadLookup } from './pentad.js';
 
 const PREF_KEY = 'fractonica-clock/upnext/importance';
 const COUNT = 8; // hero + 7 list rows
@@ -112,7 +116,7 @@ export function mount(el, ctx) {
           <div class="upnext-badge" role="img"><b></b><span class="mono"></span></div>
           <div class="upnext-hero-t">
             <div class="upnext-count mono"><span class="upnext-in">in</span> <span class="upnext-count-v"></span></div>
-            <div class="upnext-when"><span class="upnext-when-v"></span> <span class="dim mono upnext-zone"></span></div>
+            <div class="upnext-when"><span class="upnext-pent"></span><span class="upnext-when-v"></span> <span class="dim mono upnext-zone"></span></div>
           </div>
         </div>
         <p class="upnext-sentence"></p>
@@ -126,7 +130,7 @@ export function mount(el, ctx) {
       <button class="upnext-strip" type="button" hidden>
         <span class="upnext-chip" role="img"><b></b><span class="mono"></span></span>
         <span class="upnext-strip-t"><span class="upnext-strip-k">next</span> <b class="upnext-q"></b> <span class="mono upnext-strip-in"></span></span>
-        <span class="upnext-strip-c mono"></span>
+        <span class="upnext-strip-c"><span class="upnext-pent"></span><span class="upnext-strip-v mono"></span></span>
       </button>
       <ol class="upnext-list" aria-label="Following turnovers"></ol>
       <p class="upnext-empty" hidden></p>
@@ -148,6 +152,7 @@ export function mount(el, ctx) {
     countBox: $('.upnext-count'),
     size: 0,
     when: textCell($('.upnext-when-v')),
+    pent: htmlCell($('.upnext-when .upnext-pent')),
     zone: textCell($('.upnext-zone')),
     sentence: textCell($('.upnext-sentence')),
     p: -1,
@@ -165,7 +170,8 @@ export function mount(el, ctx) {
     chipD: strip.querySelector('.upnext-chip .mono'),
     q: textCell(strip.querySelector('.upnext-q')),
     inEl: textCell(strip.querySelector('.upnext-strip-in')),
-    clock: textCell(strip.querySelector('.upnext-strip-c')),
+    clock: textCell(strip.querySelector('.upnext-strip-v')),
+    pent: htmlCell(strip.querySelector('.upnext-strip-c .upnext-pent')),
     none: classCell(strip, 'is-none'),
     title: attrCell(strip, 'title'),
     off: attrCell(strip, 'disabled'),
@@ -176,7 +182,7 @@ export function mount(el, ctx) {
   const tip = createTip('upnext-tip');
   const setCap = textCell($('.upnext-cap'));
   /** Every write-only-on-change cell with live text: a mode switch empties their memory so nothing stale survives. */
-  const cells = [H.count, H.when, H.zone, H.sentence, H.since, H.pct, H.now, H.nowText, S.q, S.inEl, S.clock, S.title, S.off, setCap];
+  const cells = [H.count, H.when, H.pent, S.pent, H.zone, H.sentence, H.since, H.pct, H.now, H.nowText, S.q, S.inEl, S.clock, S.title, S.off, setCap];
   /** Finest level of the ladder's range (0-based): the hero sentence names the finer cycles down to it. */
   const maxLevel = () => normDepth(store.state.maxDepth, DEFAULT_MAX_DEPTH) - 1;
 
@@ -274,7 +280,7 @@ export function mount(el, ctx) {
       <button class="upnext-go" type="button">
         <span class="upnext-chip" role="img" aria-label="${esc(depthName(ev.top))}"><b>${esc(info.letter)}</b><span class="mono">${info.depth}</span></span>
         <span class="upnext-in-s mono"></span>
-        <span class="upnext-dt"><span class="upnext-day"></span><span class="upnext-clock mono"></span></span>
+        <span class="upnext-dt"><span class="upnext-pent"></span><span class="upnext-day"></span><span class="upnext-clock mono"></span></span>
         <span class="upnext-fin"><span class="upnext-fin-n"></span><span class="upnext-fin-w"> finer</span></span>
       </button>
       <button class="upnext-pre" type="button">${icons.before}</button>`;
@@ -289,7 +295,8 @@ export function mount(el, ctx) {
       grp: li.querySelector('.upnext-grp'),
       setHead: textCell(li.querySelector('.upnext-grp')),
       setIn: textCell(li.querySelector('.upnext-in-s')),
-      setDay: textCell(li.querySelector('.upnext-day')),
+      setDay: htmlCell(li.querySelector('.upnext-day')),
+      setPent: htmlCell(li.querySelector('.upnext-pent')),
       setClock: textCell(li.querySelector('.upnext-clock')),
       setFin: textCell(li.querySelector('.upnext-fin-n')),
       finEl: li.querySelector('.upnext-fin'),
@@ -300,6 +307,10 @@ export function mount(el, ctx) {
     return row;
   }
 
+  /** The Pentad of each moment shown (rows, hero, strip, tooltips), from cached spans. */
+  const pentAt = pentadLookup(model);
+  const markOf = (t, level) => pentadLead(pentAt, t, { pure: pureMode, level });
+  const wordsOf = (t, level) => pentadWords(pentAt, t, { pure: pureMode, level });
   /** "ζ, depth 6" ("Zeta, depth 6" in pure mode): the letter and the depth number a chip shows, spelled out. */
   const depthName = (top) => (pureMode ? depthWords(pure, top) : `${letterOf(top)}, depth ${top + 1}`);
   /** How far ahead "Just before" stops, as text ("2 s", "6.43 Blinks"); the cycles listed here are long, so it is always the full 2 s. */
@@ -315,13 +326,13 @@ export function mount(el, ctx) {
     const finer = ev.finer > 0 ? `, ${ev.finer} finer cycle${ev.finer === 1 ? '' : 's'} end with it` : '';
     if (pureMode) {
       const ti = turnoverInfo(model, pure, ev);
-      const what = ti.name ? `${name} turns over and ${ti.name} begins (${ti.address})` : `${name} turns over where the catalogue ends`;
+      const what = ti.name ? `${name} turns over and ${ti.name} begins (${wordsOf(ev.time, ev.top)}${ti.address})` : `${name} turns over where the catalogue ends`;
       return {
         go: `Just after: ${what}${finer}. Jump ${afterLead()} into the next cycle.`,
         pre: `Just before: jump to ${leadOf(ev.top)} before the ${name} turnover${ti.name ? ` that begins ${ti.name}` : ''} and play in real time.`,
       };
     }
-    const when = `${whenFull(fmt, ev.time)} ${fmt.tag(ev.time)}`;
+    const when = `${wordsOf(ev.time, ev.top)}${whenFull(fmt, ev.time)} ${fmt.tag(ev.time)}`;
     return {
       go: `Just after: ${name} turns over ${when}${finer}. Jump to 1 ms into the next cycle.`,
       pre: `Just before: jump to ${leadOf(ev.top)} before the ${name} turnover on ${when} and play in real time.`,
@@ -351,14 +362,16 @@ export function mount(el, ctx) {
       if (pureMode) {
         const ti = turnoverInfo(model, pure, ev);
         const what = ti.name ?? 'the catalogue ends';
-        r.setDay(what);
+        r.setDay(esc(what));
       } else {
-        r.setDay(ev.day ?? '');
+        // the weekday in its own span: a narrow card shows the Pentad in its place (styles/ladder.css)
+        r.setDay(esc(ev.day ?? '').replace(/^([A-Z][a-z]{2}) /, '<span class="upnext-wd">$1 </span>'));
       }
       // pure: the Nuclide in words heads a group of several events (narrow cards); nothing in normal mode
       r.setHead(pureMode ? (ev.head ?? '') : '');
       r.grp.hidden = !(pureMode && ev.head);
       r.setClock(ev.clock);
+      r.setPent(markOf(ev.time, ev.top));
       r.setFin(ev.finer > 0 ? `+${ev.finer}` : '');
       r.setSep(ev.newDay);
       const labels = itemLabels(ev);
@@ -406,6 +419,7 @@ export function mount(el, ctx) {
       H.when(whenFull(fmt, ev.time));
       H.zone(fmt.tag(ev.time));
     }
+    H.pent(markOf(ev.time, ev.top));
     H.sentence(pureMode ? turnoverWords(pure, ev.top, maxLevel()) : turnoverSentence(ev.top, maxLevel()));
     const cur = frame.level(ev.top);
     if (pureMode) H.cycleName = cur ? pure.cycleName(ev.top, cur.cycleBig) : '';
@@ -603,6 +617,7 @@ export function mount(el, ctx) {
             const QW = pure.QUARTER_WORDS;
             const name = pure.cycleName(sel, lv.cycleBig);
             S.clock(`→ ${lv.quarter < 3 ? QW[lv.quarter + 1] : QW[0]}`);
+            S.pent('');
             if (lv.quarter < 3) S.title(`Just after: ${name} ${QW[lv.quarter]} ends and its ${QW[lv.quarter + 1]} begins; jump to ${afterLead()} past it`);
             else {
               // its End quarter ends with the cycle: the next one begins (in its Peak)
@@ -613,12 +628,14 @@ export function mount(el, ctx) {
             // a minor one: where the threshold falls ("at 35η 0ι": a position, next to the countdown, a span)
             const where = quarterWhere(model, pure, lv.next.time, sel);
             S.clock(where ? `at ${where}` : '');
+            S.pent(where ? markOf(lv.next.time, sel) : '');
             S.title(`Just after: jump to ${afterLead()} past the next ${QN[lv.quarter]} of the current ${levelSay(pure, sel)} cycle`);
           }
         }
       } else {
         S.inEl(`in ${countdownText(fmt, lv.next.time - t)}`);
         S.clock(whenLabel(fmt, lv.next.time, t, lv.duration));
+        S.pent(markOf(lv.next.time, sel));
         S.title(`Just after: jump to ${afterLead()} past the next ${QN[lv.quarter]} of ${letterOf(sel)} ${sel + 1}`);
       }
     } else {
@@ -626,6 +643,7 @@ export function mount(el, ctx) {
       S.q('');
       S.inEl('No further threshold before the catalogue ends');
       S.clock('');
+      S.pent('');
       S.off(true);
       S.whereKey = '';
       S.title('No further quarter threshold before the catalogue ends');
@@ -646,13 +664,13 @@ export function mount(el, ctx) {
     if (pureMode) {
       const ti = turnoverInfo(model, pure, ev);
       return `<div class="upnext-tip-h"><b style="color:${color}">${esc(info.letter)} ${info.depth}</b><span class="upnext-tip-d dim">${esc(unitWord(pure, ev.top) || levelWord(pure, ev.top))}</span><span>${esc(heroLeft(model, pure, t, ev.time))}</span></div>
-      <div><b>${esc(ti.name ? `→ ${ti.name} begins` : '→ the catalogue ends')}</b></div>
+      <div>${markOf(ev.time, ev.top)}<b>${esc(ti.name ? `→ ${ti.name} begins` : '→ the catalogue ends')}</b></div>
       ${ti.address ? `<div class="dim mono">${esc(ti.address)}</div>` : ''}
       <div class="dim">${esc(turnoverWords(pure, ev.top, maxLevel()))}</div>
       <div class="upnext-tip-hint dim">Click: Just after · arrow button: Just before (${leadOf(ev.top)} ahead, then real time)</div>`;
     }
     return `<div class="upnext-tip-h"><b style="color:${color}">${esc(info.letter)} ${info.depth}</b><span class="upnext-tip-d dim">depth ${info.depth}</span><span>${esc(countdownLong(fmt, ev.time - t))}</span></div>
-      <div><b>${esc(whenFull(fmt, ev.time))}</b> <span class="dim">${esc(fmt.tag(ev.time))}</span></div>
+      <div>${markOf(ev.time, ev.top)}<b>${esc(whenFull(fmt, ev.time))}</b> <span class="dim">${esc(fmt.tag(ev.time))}</span></div>
       <div class="dim">${esc(turnoverSentence(ev.top, maxLevel()))}</div>
       <div class="upnext-tip-hint dim">Click: Just after · arrow button: Just before (${leadOf(ev.top)} ahead, then real time)</div>`;
   }

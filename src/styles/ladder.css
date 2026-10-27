@@ -461,3 +461,23 @@
   flex: 0 0 100%; margin: 0; padding: 1px 6px 0; font-size: 10.5px; line-height: 1.5;
   letter-spacing: 0.02em; color: var(--mute); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
+
+/* ---------- Pentads (SPEC §7.5): every moment leads with its Pentad's mark, like a date with its weekday ---------- */
+.upnext-pent:empty { display: none; }
+.upnext-pent .pentad-mark { color: rgb(255 214 10 / 0.82); }
+.upnext-when .upnext-pent .pentad-mark, .upnext-strip-c .upnext-pent .pentad-mark, .upnext-tip .pentad-mark { margin-right: 0.4em; }
+.upnext-dt > .upnext-pent { flex: none; margin-right: 1px; }
+@container upnext (min-width: 520px) {
+  .upnext-dt > .upnext-pent { margin-right: -12px; }
+}
+@container upnext (min-width: 640px) {
+  .upnext.is-pure .upnext-dt > .upnext-pent { margin-right: -6px; }
+}
+.ladder-pent:empty { display: none; }
+.ladder-pent .pentad-mark, .ladder-tip .pentad-mark { margin-right: 0.4em; color: rgb(255 214 10 / 0.82); }
+/* narrow cards: the Pentad takes the weekday's place in the rows ("⬠II 12 Oct 23:02"); wide cards keep both */
+.upnext.is-pure .upnext-dt { justify-content: flex-start; }
+@container upnext (max-width: 519px) {
+  .upnext-pent:not(:empty) + .upnext-day .upnext-wd { display: none; }
+  .upnext-strip-c .upnext-pent { display: none; }
+}

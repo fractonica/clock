@@ -35,6 +35,7 @@ import { createGlyphBook } from './face/glyphs.js';
 import { createScreen } from './face/screen.js';
 import { createJournalFace, journalReading, clampUnit, MAX_UNIT, JOURNAL_UNITS } from './face/journal.js';
 import { createTooltip } from './face/tooltip.js';
+import { leadHTML, pentadMarkHTML, pentadSpoken, PENTAD_HELIONS } from './pentad.js';
 import { buildHowTo, fillHowTo } from './face/howto.js';
 import { pureInfoLabels, pureInfoSpeech, pureTooltipModel, pureRowAriaLabel, pureCaption, letterName, placeText, bigOf, pureRange, PURE_SOLAR_NA, CAPTION_NOTE } from './face/pure.js';
 
@@ -235,6 +236,15 @@ export function mount(el, ctx) {
 
   // ---- tooltips ----------------------------------------------------------------------------
   function tooltipModel(row, frame, kind) {
+    const m = rowTooltipModel(row, frame, kind);
+    if (!m || row !== 'solar') return m;
+    // the sync's Helions as Pentads (SPEC §7.5): which one runs now, and its place in it
+    const p = model.pentadAt(frame.t);
+    if (!p) return m;
+    const of = `${pentadSpoken(p, { helion: true })} of ${PENTAD_HELIONS[p.index]}`;
+    return { ...m, lines: [...m.lines, { html: `${pentadMarkHTML(p, { cls: 'is-gold' })} ${of}: the sync's 19 Helions run as Pentads I, II, III and the Hypopentad` }] };
+  }
+  function rowTooltipModel(row, frame, kind) {
     if (!frame?.inRange) return null;
     if (isPure()) return pureTooltipModel({ model, pure, frame, row, topDepth: store.state.topDepth, by: kind === 'focus' ? 'key' : 'pointer' });
     const t = frame.t;
@@ -584,7 +594,16 @@ export function mount(el, ctx) {
     measureCtx ??= document.createElement('canvas').getContext('2d');
     if (!measureCtx) return words;
     measureCtx.font = ui.capFont;
-    return measureCtx.measureText(words).width <= ui.capW ? words : pureCaption(pure, t, { letters: true });
+    // the Pentad's mark leads the caption: leave it about four characters
+    const room = ui.capW - 4 * measureCtx.measureText('0').width;
+    return measureCtx.measureText(words).width <= room ? words : pureCaption(pure, t, { letters: true });
+  }
+  /** The caption under the pill while time travels: the date, led by its Pentad like a weekday (HTML, escaped). */
+  function captionHTML(t, pureOn) {
+    if (store.live) return '';
+    const text = pureOn ? pureCaptionFor(t) : `${fmt.dateTime(t)} ${fmt.tag(t)}`;
+    if (!text) return '';
+    return leadHTML(model, t, text.replace(/&/g, '&amp;').replace(/</g, '&lt;'), { cls: 'is-gold' });
   }
   const ro = typeof ResizeObserver === 'function' ? new ResizeObserver(() => (fit(), measureCaption(), (ui.dirty = true))) : null;
   ro?.observe(stage);
@@ -597,6 +616,12 @@ export function mount(el, ctx) {
     if (cached.get(key) !== text) {
       cached.set(key, text);
       node.textContent = text;
+    }
+  };
+  const setHTML = (key, node, html) => {
+    if (cached.get(key) !== html) {
+      cached.set(key, html);
+      node.innerHTML = html;
     }
   };
   const setAttr = (key, node, name, value) => {
@@ -681,7 +706,7 @@ export function mount(el, ctx) {
       ui.lastFrame = frame;
       journal.render(frame, frame.inRange ? journalReading({ model, pure }, frame.t, store.state.journalUnit) : null);
       const pureOn = isPure();
-      setText('caption', caption, store.live ? '' : pureOn ? pureCaptionFor(frame.t) : `${fmt.dateTime(frame.t)} ${fmt.tag(frame.t)}`);
+      setHTML('caption', caption, captionHTML(frame.t, pureOn));
       return;
     }
     const now = performance.now();
@@ -795,7 +820,7 @@ export function mount(el, ctx) {
     }
 
     // ---- caption (only when not live)
-    setText('caption', caption, store.live ? '' : pureOn ? pureCaptionFor(frame.t) : `${fmt.dateTime(frame.t)} ${fmt.tag(frame.t)}`);
+    setHTML('caption', caption, captionHTML(frame.t, pureOn));
 
     // ---- tooltip countdowns stay fresh while it is open
     if (tipDue) showRowTip(ui.tip.row, ui.tip.at);
