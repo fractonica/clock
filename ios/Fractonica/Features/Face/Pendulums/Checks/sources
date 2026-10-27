@@ -1,0 +1,5 @@
+# The app files PendulumChecks.swift compiles against (relative to ios/).
+Fractonica/Features/Face/Pendulums/PendulumGeometry.swift
+Fractonica/Features/Face/Pendulums/PendulumReading.swift
+Shared/Pentads.swift
+Shared/Notation+Standard.swift
