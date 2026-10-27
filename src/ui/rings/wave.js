@@ -11,6 +11,7 @@
 import { TAU, waveLayout, triangle, stateValue, glyphExtreme } from './geometry.js';
 import { valueText } from './text.js';
 import { roundRectPath, UI_FONT, MONO_FONT } from './canvas.js';
+import { drawPentadMark } from '../pentad.js';
 
 const BAND_CAPTIONS = ['rising', 'falling', 'falling', 'rising'];
 const font = (w, px, mono) => `${w} ${px}px ${mono ? MONO_FONT : UI_FONT}`;
@@ -18,6 +19,19 @@ const DATE_FONT = font(500, 10.5, true);
 const IN_FONT = font(600, 10, true); // also the font of the countdown that rings.js draws as DOM text
 /** Captions and boundary labels: 5.4:1 on the card (the shared --ink-3 is just under 4.5:1 at these sizes). */
 const LABEL = '#8493a3';
+/** The Pentad shape that leads a boundary label or the pointer's time (SPEC §7.5), px, and the gap after it. */
+const MARK = 8.5;
+const MARK_GAP = 4;
+const MARK_FONT = font(600, 10, false);
+/** Width the Pentad mark of a label adds in front of its first line (0 without one). */
+function markWidth(c, index) {
+  if (index === null || index === undefined) return 0;
+  return drawPentadMark(c, index, 0, 0, { size: MARK, font: MARK_FONT, measure: true }) + MARK_GAP;
+}
+/** Draw a Pentad mark with its left edge at x and its middle at y; the numeral in the mark font. */
+function drawMark(c, index, x, y, color) {
+  drawPentadMark(c, index, x, y, { size: MARK, font: MARK_FONT, color, lineWidth: 1.1 });
+}
 
 /**
  * @param {HTMLCanvasElement} canvas  the live layer (receives the pointer events)
@@ -197,10 +211,13 @@ export function createWave(canvas, theme, baseCanvas) {
         let w = c.measureText(nameText).width;
         c.font = DATE_FONT;
         const lines = labelLines(l, mode);
-        for (const ln of lines) w = Math.max(w, c.measureText(ln).width);
+        // a date leads with its Pentad, like a weekday (SPEC §7.5): the mark sits in front of the first line
+        const mw = markWidth(c, l.pentad);
+        c.font = DATE_FONT;
+        lines.forEach((ln, k) => (w = Math.max(w, c.measureText(ln).width + (k === 0 ? mw : 0))));
         const x = xOf(i / 4);
         const left = i === 0 ? x - 4 : i === 4 ? x + 4 - w : x - w / 2;
-        return { l, i, x, w, left, nameText, lines };
+        return { l, i, x, w, left, nameText, lines, mw };
       });
     // five year-scale dates do not fit side by side on a phone: stack the years under the day and month
     // (pure mode: five coordinates that do not fit give up their context step by step, down to the last counter)
@@ -241,16 +258,21 @@ export function createWave(canvas, theme, baseCanvas) {
       c.fillText(b.nameText, b.left, ly);
       c.fillStyle = l.next ? theme.INK : theme.INK_2;
       c.font = DATE_FONT;
-      b.lines.forEach((ln, k) => c.fillText(ln, b.left, ly + 13 * (k + 1)));
+      if (b.mw) drawMark(c, l.pentad, b.left, ly + 13 - 3.5, c.fillStyle);
+      c.font = DATE_FONT;
+      c.textAlign = 'left';
+      c.textBaseline = 'alphabetic';
+      b.lines.forEach((ln, k) => c.fillText(ln, b.left + (k === 0 ? b.mw : 0), ly + 13 * (k + 1)));
       if (l.passed && l.time) {
         // passed boundaries get their time struck through
         const tw = c.measureText(l.time).width;
+        const tx = b.left + (b.lines.length === 1 ? b.mw : 0); // a time on the first line follows the mark
         c.strokeStyle = theme.INK_3;
         c.lineWidth = 1;
         c.beginPath();
         const sy = ly + 13 * b.lines.length - 3.5; // through the last line, which is the time
-        c.moveTo(b.left, sy);
-        c.lineTo(b.left + tw, sy);
+        c.moveTo(tx, sy);
+        c.lineTo(tx + tw, sy);
         c.stroke();
       }
       c.globalAlpha = 1;
@@ -278,8 +300,9 @@ export function createWave(canvas, theme, baseCanvas) {
    * @param {number} s.quarter                 0..3
    * @param {number} s.limit                   highest phase inside the catalogue (1 = complete cycle)
    * @param {string} s.key                     identity of the cycle (level, cycle, zone, ...)
-   * @param {{name:string,date:string,time:string,alt?:{date:string,time:string}[],passed:boolean,next:boolean,in:string}[]} s.labels  5 boundaries
-   * @param {null|{phase:number,text:string}} s.hover
+   * @param {{name:string,date:string,time:string,alt?:{date:string,time:string}[],passed:boolean,next:boolean,in:string,pentad?:number|null}[]} s.labels  5 boundaries
+   *   (pentad: the Pentad, 0..3, that leads the label's first line like a weekday; null for none)
+   * @param {null|{phase:number,text:string,pentad?:number|null}} s.hover   pentad: the Pentad that leads the pointer's time
    * @param {boolean} s.scrubbing
    * @param {boolean} s.focused
    */
@@ -292,13 +315,13 @@ export function createWave(canvas, theme, baseCanvas) {
           Math.round(xOf(s.phase) * R),
           s.quarter,
           s.index,
-          s.hover ? Math.round(xOf(s.hover.phase)) + s.hover.text : '-',
+          s.hover ? Math.round(xOf(s.hover.phase)) + s.hover.text + (s.hover.pentad ?? '') : '-',
           s.scrubbing ? 1 : 0,
           s.focused ? 1 : 0,
           nextSlot ? 1 : 0,
         ].join('~')
       : 'off';
-    const key = `${W}|${H}|${R}|${s.level}|${s.inRange}|${s.key}|${s.limit}|${s.M}|${s.labels.map((l) => `${+l.passed}${+l.next}${l.date}${l.time}${l.alt ? l.alt.map((a) => a.date + a.time).join('~') : ''}`).join(';')}`;
+    const key = `${W}|${H}|${R}|${s.level}|${s.inRange}|${s.key}|${s.limit}|${s.M}|${s.labels.map((l) => `${+l.passed}${+l.next}${l.pentad ?? ''}${l.date}${l.time}${l.alt ? l.alt.map((a) => a.date + a.time).join('~') : ''}`).join(';')}`;
     let repaint = false;
     if (key !== baseKey) {
       if (s.inRange) drawBase(s);
@@ -408,18 +431,21 @@ export function createWave(canvas, theme, baseCanvas) {
       g.lineTo(hx, y1 + 5);
       g.stroke();
       g.setLineDash([]);
+      const mw = markWidth(g, s.hover.pentad);
       g.font = font(600, 10.5, true);
-      const tw = g.measureText(s.hover.text).width + 12;
+      const tw = g.measureText(s.hover.text).width + 12 + mw;
       const bx = Math.min(x1 - tw, Math.max(x0, hx - tw / 2));
       roundRectPath(g, bx, y0 + 4, tw, 18, 9);
       g.fillStyle = 'rgba(10,14,19,0.94)';
       g.fill();
       g.strokeStyle = 'rgba(255,255,255,0.22)';
       g.stroke();
+      if (mw) drawMark(g, s.hover.pentad, bx + 6, y0 + 13.5, theme.INK);
+      g.font = font(600, 10.5, true);
       g.fillStyle = theme.INK;
       g.textAlign = 'center';
       g.textBaseline = 'middle';
-      g.fillText(s.hover.text, bx + tw / 2, y0 + 13.5);
+      g.fillText(s.hover.text, bx + mw + (tw - mw) / 2, y0 + 13.5);
     }
 
     g.globalAlpha = 1;

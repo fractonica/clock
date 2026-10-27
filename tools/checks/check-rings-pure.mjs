@@ -124,7 +124,15 @@ const boot = async (page, url, query) => {
   await page.waitForFunction(() => window.__fractonica?.instances?.rings?.inspect?.().layout, null, { timeout: 8000 });
   await page.waitForTimeout(450);
 };
-const text = (page, sel) => page.evaluate((s) => document.querySelector(s)?.textContent?.replace(/\s+/g, ' ').trim() ?? null, sel);
+// a Pentad mark (the shape that leads a date, SPEC §7.5) is read as its name: "Pentad II ε#5 34η"
+const text = (page, sel) =>
+  page.evaluate((s) => {
+    const el = document.querySelector(s);
+    if (!el) return null;
+    const c = el.cloneNode(true);
+    for (const m of c.querySelectorAll('.pentad-mark')) m.replaceWith(`${m.getAttribute('aria-label')} `);
+    return c.textContent.replace(/\s+/g, ' ').trim();
+  }, sel);
 const textAll = (page, sel) => page.evaluate((s) => [...document.querySelectorAll(s)].map((e) => e.textContent.replace(/\s+/g, ' ').trim()), sel);
 const tipText = (page) => page.evaluate(() => { const t = document.querySelector('.rings-tip'); return t && !t.hidden ? t.innerText.replace(/\s+/g, ' ').trim() : ''; });
 const insp = (page) => page.evaluate(() => window.__fractonica.instances.rings.inspect());
@@ -179,13 +187,13 @@ await withApp(
     const generic = await scan(page, 'rings @ vector A');
     genericLeaks.push(...generic.filter((l) => /rings-/.test(l.where)));
     const all = items.map((i) => i.text).join(' | ');
-    check('name of the selected cycle: a minor one by where it starts in its Nuclide', (await text(page, '.rings-cn-name')) === 'ε#5 34η', await text(page, '.rings-cn-name'));
+    check('name of the selected cycle: a minor one by where it starts in its Nuclide', (await text(page, '.rings-cn-name')) === 'Pentad II ε#5 34η', await text(page, '.rings-cn-name'));
     check('pill carries depth chip, counter, phase word and next threshold', /^η 7 · 1\/11 · [↗↘▲▼] (Rising|Falling|Peak|Valley) · to \w+$/.test(await text(page, '.rings-cn-phase')), await text(page, '.rings-cn-phase'));
     // two counts like the chips / ladder / face: a third one is added only while it stays steady (never finer than λ)
     const centre = await text(page, '.rings-count');
     const endIn = await text(page, '.rings-chip[data-q="3"] .rings-chip-in');
     check('centre countdown is the two counts of SPEC §15.6 (6ι 43λ), the string of the end chip', centre === '6ι 43λ' && endIn === centre, `${centre} / ${endIn}`);
-    check('the end says what begins: the next Helion, by the number that changes', (await text(page, '.rings-end')) === '→ 35η begins', await text(page, '.rings-end'));
+    check('the end says what begins: the next Helion, by the number that changes', (await text(page, '.rings-end')) === '→ Pentad II 35η begins', await text(page, '.rings-end'));
     const chipIn = await textAll(page, '.rings-chip-in');
     check('every quarter chip has a countdown, passed ones are negative', chipIn.length === 4 && chipIn.every(Boolean) && chipIn.slice(0, 3).every((c) => c.startsWith('−')) && !chipIn[3].startsWith('−'), chipIn.join(' | '));
     const chipTitles = await page.evaluate(() => [...document.querySelectorAll('.rings-chip')].map((c) => c.title));
@@ -401,7 +409,7 @@ await withApp(
     await page.setViewportSize({ width: 390, height: 844 });
     await boot(page, url, `?pure=1&t=${A}&view=rings`);
     await sweepFresh(page, 'phone');
-    check('phone: the centre keeps the short tag, the full name moves to the card', (await text(page, '.rings-cn-name')) === 'η 7 · 1/11' && (await page.evaluate(() => getComputedStyle(document.querySelector('.rings-fullname')).display)) === 'block' && (await text(page, '.rings-fullname')) === 'ε#5 34η', `${await text(page, '.rings-cn-name')} / ${await text(page, '.rings-fullname')}`);
+    check('phone: the centre keeps the short tag, the full name moves to the card', (await text(page, '.rings-cn-name')) === 'η 7 · 1/11' && (await page.evaluate(() => getComputedStyle(document.querySelector('.rings-fullname')).display)) === 'block' && (await text(page, '.rings-fullname')) === 'Pentad II ε#5 34η', `${await text(page, '.rings-cn-name')} / ${await text(page, '.rings-fullname')}`);
     check('phone: centre countdown is two units and fits the hole', await page.evaluate(() => {
       const c = document.querySelector('.rings-count');
       const hole = document.querySelector('.rings-centre').getBoundingClientRect();
@@ -445,7 +453,7 @@ await withApp(
       await page.waitForTimeout(450);
       const inPure = await sweepFresh(page, `switched on with ${how}`);
       check(`switch on (${how}): no reload`, (await page.evaluate(() => window.__noReload)) === 'same page');
-      check(`switch on (${how}): pure texts replace the Gregorian ones`, (await text(page, '.rings-cn-name')) === 'ε#5 34η' && !/%/.test(inPure.map((i) => i.text).join(' ')));
+      check(`switch on (${how}): pure texts replace the Gregorian ones`, (await text(page, '.rings-cn-name')) === 'Pentad II ε#5 34η' && !/%/.test(inPure.map((i) => i.text).join(' ')));
       if (how === 'header button') {
         await page.click('.rings-help-btn');
         check('switch on: help panel rebuilt in pure vocabulary while open', /Delta Trifracton End/.test(await text(page, '.rings-help')));
@@ -474,7 +482,7 @@ await withApp(
     await page.waitForTimeout(250);
     // ?pure=1 deep link and the stored setting
     await boot(page, url, `?pure=1&t=${A}&view=rings`);
-    check('?pure=1 opens straight in pure mode', (await text(page, '.rings-cn-name')) === 'ε#5 34η');
+    check('?pure=1 opens straight in pure mode', (await text(page, '.rings-cn-name')) === 'Pentad II ε#5 34η');
 
     // ------------------------------------------------------------------ cost of a pure-mode frame
     await boot(page, url, `?pure=1&t=${A}&view=rings`);

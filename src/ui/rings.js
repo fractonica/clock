@@ -47,6 +47,7 @@ import {
   valueText,
 } from './rings/text.js';
 import * as PT from './rings/pure-text.js';
+import { pentadLookup, pentadMarkHTML, pentadName } from './pentad.js';
 
 const PREF_KEY = 'fractonica-clock/rings';
 /** Innermost depth of the range the dial opens with (the shared default of `store.state.maxDepth`) and the deepest there is. */
@@ -97,6 +98,28 @@ export function mount(el, ctx) {
   const P = ctx.pure;
   const isPure = () => !!ctx.isPure?.();
   let pureNow = isPure();
+
+  // Pentads (SPEC §7.5): a date leads with its Pentad, like a weekday. A boundary is read 1 ms into the state that
+  // starts there (the Pentad that begins at it), the catalogue's closing instant reads the last one.
+  const pentadAt = pentadLookup(model);
+  const pentadOf = (t) => (t === null || t === undefined || !Number.isFinite(t) ? null : (pentadAt(t + 0.001) ?? pentadAt(t)));
+  /** HTML: `text` (escaped here) led by the mark of the moment t (or alone, outside the catalogue). */
+  const led = (t, text) => {
+    const p = pentadOf(t);
+    return p ? `<span class="pentad-lead">${pentadMarkHTML(p)}<span class="pentad-rest">${esc(text)}</span></span>` : esc(text);
+  };
+  /** Plain text led by the Pentad's name, for titles and spoken text: "Pentad II · Thu 8 Oct 2026, 12:56:12". */
+  const ledPlain = (t, text) => {
+    const p = pentadOf(t);
+    return p ? `${pentadName(p)} · ${text}` : text;
+  };
+  /**
+   * Does a pure coordinate on a ring of `level` read down to the Helion, and so lead with its Pentad? A Helion or finer
+   * cycle, and the ε and ζ rings whose quarters are counted in Helions; a Delta's coordinates stop at the Nuclide.
+   */
+  const pureLeads = (level) => PT.resolutionIndex(P, PT.cycleSpanPos(model, level)) >= PT.COORD.indexOf('eta');
+  /** Is a pure cycle of `level` inside one Pentad (a Helion or finer), so that its name is a moment of it? */
+  const pureNameLeads = (level) => level >= 6;
   const prefs = loadPrefs();
   const reduceQuery = window.matchMedia?.('(prefers-reduced-motion: reduce)');
   let reduced = !!reduceQuery?.matches;
@@ -469,7 +492,9 @@ export function mount(el, ctx) {
     if (pm) {
       // a coordinate per threshold (ordinals written once, then only where they change), with a shorter one for narrow plots
       const labels = PT.boundaryLabels(P, model, lv.level, times);
-      cache = { key, times, parts: labels, alt: labels.map((l) => l && l.alt), chip: labels, facts: PT.factParts(P, model, lv.level, lv), refYear: 0 };
+      const leads = pureLeads(lv.level);
+      const pent = times.map((t) => (leads && t !== null ? (pentadOf(t)?.index ?? null) : null));
+      cache = { key, times, parts: labels, alt: labels.map((l) => l && l.alt), chip: labels, facts: PT.factParts(P, model, lv.level, lv), refYear: 0, pent, leads };
       return cache;
     }
     const refYear = fmt.parts(frame.t).year;
@@ -481,7 +506,9 @@ export function mount(el, ctx) {
       if (lv.duration < 86400 && parts[i].time && fmt.date(t) === day) return { date: '', time: parts[i].time };
       return { date: parts[i].date, time: parts[i].time };
     });
-    cache = { key, times, parts, alt: null, chip, facts: null, refYear };
+    // every date leads with its Pentad (the chips only where they show the date: a time alone is a clock under it)
+    const pent = times.map((t) => (t === null ? null : (pentadOf(t)?.index ?? null)));
+    cache = { key, times, parts, alt: null, chip, facts: null, refYear, pent, leads: true };
     return cache;
   }
 
@@ -530,9 +557,12 @@ export function mount(el, ctx) {
       // the big name is the cycle's own: a major one in words with its quarter ("Delta Trifracton End"), a minor one by
       // where it starts in its Nuclide ("ε#5 34η"); a small hole keeps the short tag and leaves the name to the card below
       const name = PT.displayName(P, sel, lv);
-      setText(nodes.name, compactNow ? cycleTag(info, lv) : name);
+      // a Helion or finer cycle is a moment of one Pentad: its name leads with it ("⬠II ε#5 34η")
+      const nameHTML = pureNameLeads(sel) ? led(lv.start, name) : esc(name);
+      if (compactNow) setText(nodes.name, cycleTag(info, lv));
+      else setHTML(nodes.name, nameHTML);
       setText(nodes.phase, compactNow ? pillCore : `${cycleTag(info, lv)} · ${pillCore}`);
-      setText(nodes.fullName, name);
+      setHTML(nodes.fullName, nameHTML);
     } else {
       setText(nodes.name, cycleTag(info, lv));
       setText(nodes.phase, pillCore);
@@ -542,11 +572,15 @@ export function mount(el, ctx) {
     if (pm) {
       // two units like everywhere else; a roomy dial adds a third one while it is steady (never finer than λ, as in Up next)
       setText(nodes.count, PT.centreSpan(P, model, frame.t, lv.end, { compact: compactNow }));
-      setText(nodes.end, PT.endLine(P, model, sel, lv));
+      // "→ ⬠II 35η begins": what begins is a moment of its Pentad when it is a Helion or finer
+      const next = pureNameLeads(sel) ? PT.followerName(P, model, sel, lv) : null;
+      if (next) setHTML(nodes.end, `→ ${led(lv.end, next)} begins`);
+      else setText(nodes.end, PT.endLine(P, model, sel, lv));
     } else {
       setText(nodes.count, countdownBody(fmt, lv.remaining));
       const endLabel = whenText(fmt, lv.end, lv.duration);
-      setText(nodes.end, `${endLabel}${lv.duration < YEAR * 0.9 ? ' · ' + fmt.tag(lv.end) : ''}`);
+      // the end's date leads with its Pentad, like a weekday
+      setHTML(nodes.end, led(lv.end, `${endLabel}${lv.duration < YEAR * 0.9 ? ' · ' + fmt.tag(lv.end) : ''}`));
     }
 
     // chips: peak / node / valley / end
@@ -562,16 +596,22 @@ export function mount(el, ctx) {
       if (pm) {
         // every chip counts to (or from) its threshold and says where it sits on the clock of the header
         const c = PT.chipText(P, model, sel, lv, k, t, frame.t, strings.chip[k + 1]);
-        setHTML(chip.time, `${c.date ? `<span>${esc(c.date)}</span>` : ''}${c.time ? `<span>${esc(c.time)}</span>` : ''}`);
+        // a coordinate down to the Helion leads with its Pentad, on its first part (the date, or the time when the date is the cycle's own)
+        const lead = strings.leads && t !== null;
+        setHTML(
+          chip.time,
+          `${c.date ? `<span>${lead ? led(t, c.date) : esc(c.date)}</span>` : ''}${c.time ? `<span>${lead && !c.date ? led(t, c.time) : esc(c.time)}</span>` : ''}`,
+        );
         setText(chip.in, c.count);
-        setAttr(chip.b, 'title', c.title);
-        setAttr(chip.b, 'aria-label', c.label);
+        setAttr(chip.b, 'title', lead ? c.title.replace(/ · /, ` · ${ledPlain(t, '')}`) : c.title);
+        setAttr(chip.b, 'aria-label', lead && pentadOf(t) ? `${c.label}, ${pentadName(pentadOf(t))}` : c.label);
         return;
       }
       setAttr(chip.b, 'aria-label', null);
       const c = strings.chip[k + 1];
-      // date and time are separate spans: when both do not fit on one line the time wraps, nothing is cut off
-      setHTML(chip.time, `${c.date ? `<span>${esc(c.date)}</span>` : ''}${c.time ? `<span>${esc(c.time)}</span>` : ''}`);
+      // date and time are separate spans: when both do not fit on one line the time wraps, nothing is cut off; the date
+      // leads with its Pentad like a weekday (a time alone stands under the cycle's own date, as it always did)
+      setHTML(chip.time, `${c.date ? `<span>${t !== null && c.date !== '—' ? led(t, c.date) : esc(c.date)}</span>` : ''}${c.time ? `<span>${esc(c.time)}</span>` : ''}`);
       setText(chip.in, isNext ? countdownBody(fmt, t - frame.t) : '');
       setAttr(
         chip.b,
@@ -579,8 +619,8 @@ export function mount(el, ctx) {
         t === null
           ? `${name}: beyond the end of the catalogue`
           : passed
-            ? `Jump back to the ${name} of this cycle (${whenText(fmt, t, lv.duration)})`
-            : `Jump just past the ${name} (${whenText(fmt, t, lv.duration)})`,
+            ? `Jump back to the ${name} of this cycle (${ledPlain(t, whenText(fmt, t, lv.duration))})`
+            : `Jump just past the ${name} (${ledPlain(t, whenText(fmt, t, lv.duration))})`,
       );
     });
     setAttr(nodes.thr, 'disabled', lv.next.time === null);
@@ -606,7 +646,8 @@ export function mount(el, ctx) {
     }
     const pw = phaseWord(lv.index, lv.derivative, M);
     setText(nodes.chip, `${levelTag(info)}`);
-    setText(nodes.whName, pm ? PT.cycleName(P, sel, lv) : cycleTag(info, lv));
+    if (pm && pureNameLeads(sel)) setHTML(nodes.whName, led(lv.start, PT.cycleName(P, sel, lv))); // a moment of one Pentad
+    else setText(nodes.whName, pm ? PT.cycleName(P, sel, lv) : cycleTag(info, lv));
     setAttr(nodes.whName, 'title', `${levelTag(info)}: cycle ${lv.local + 1} of ${lv.siblings}${info.siblings === null ? ' in the catalogue' : ' inside its parent cycle'}`);
     setText(nodes.whSub, `${pw.word} · value ${valueText(lv.value)}`);
     if (pm && P.isMajor(sel)) {
@@ -634,10 +675,13 @@ export function mount(el, ctx) {
     if (pm) {
       // coordinates and spans on the ladder; the cycle that begins when this one ends takes the place of the end date
       // (everything but the distances is worked out once per cycle)
-      const f = cycleStrings(frame, lv).facts;
-      const when = (p) => `<span class="mono">${esc(p.date)}</span>${p.time ? `<span class="mono">${esc(p.time)}</span>` : ''}`;
-      setHTML(nodes.fStart, `${when(f.start)}<span class="dim">${esc(PT.inText(P, frame.t, lv.start))}</span>`);
-      setHTML(nodes.fEnd, `${when(f.end)}<span class="mono rings-f-next">${esc(f.endLine)}</span><span class="dim">${esc(PT.inText(P, frame.t, lv.end))}</span>`);
+      const strings = cycleStrings(frame, lv);
+      const f = strings.facts;
+      // a coordinate down to the Helion leads with its Pentad
+      const when = (p, t) =>
+        `<span class="mono">${strings.leads ? led(t, p.date) : esc(p.date)}</span>${p.time ? `<span class="mono">${esc(p.time)}</span>` : ''}`;
+      setHTML(nodes.fStart, `${when(f.start, lv.start)}<span class="dim">${esc(PT.inText(P, frame.t, lv.start))}</span>`);
+      setHTML(nodes.fEnd, `${when(f.end, lv.end)}<span class="mono rings-f-next">${esc(f.endLine)}</span><span class="dim">${esc(PT.inText(P, frame.t, lv.end))}</span>`);
       setText(nodes.fLen, `${f.lengthNamed}${lv.clipped ? ' (clipped by the catalogue)' : ''}`);
       setHTML(nodes.fGlyph, `<span>${esc(PT.stateText(P, lv.phase, sel))}</span><span>value ${valueText(lv.value)}${lv.dotted ? ' · dotted' : ''}</span>`);
     } else {
@@ -646,7 +690,8 @@ export function mount(el, ctx) {
       // date, time and the relative phrase each own a line: the block keeps its height as the numbers change
       const when = (t) => {
         const p = whenParts(fmt, t, lv.duration);
-        return `<span class="mono">${esc(p.date)}</span>${p.time ? `<span class="mono">${esc(p.time)}</span>` : ''}`;
+        // the date leads with its Pentad, like a weekday
+        return `<span class="mono">${led(t, p.date)}</span>${p.time ? `<span class="mono">${esc(p.time)}</span>` : ''}`;
       };
       setHTML(nodes.fStart, `${when(lv.start)}<span class="dim">${esc(startRel)}</span>`);
       setHTML(nodes.fEnd, `${when(lv.end)}${lv.clipped ? '<span class="dim">end of the catalogue</span>' : ''}<span class="dim">in ${esc(rel(lv.end))}</span>`);
@@ -731,6 +776,7 @@ export function mount(el, ctx) {
         alt: pm && p ? strings.alt[i] : undefined,
         passed: strings.times[i] !== null && i <= lv.quarter,
         next: i === nextIdx,
+        pentad: strings.pent[i],
         in: i === nextIdx ? (pm ? PT.inText(P, frame.t, strings.times[i]) : fmt.countdown(strings.times[i] - frame.t)) : '',
       };
     });
@@ -738,7 +784,9 @@ export function mount(el, ctx) {
     if (waveHover !== null && !scrubbing) {
       const t = timeAtPhase(model, sel, lv.cycle, Math.min(waveHover, limit));
       const text = pm ? (t === null ? '—' : PT.pointerText(P, model, sel, t)) : compactText(t === null ? null : whenParts(fmt, t, lv.duration, { compact: true, refYear: strings.refYear }));
-      hoverState = { phase: Math.min(waveHover, limit), text };
+      // the pointer's time leads with its Pentad (pure: where the coordinate reads down to the Helion)
+      const pentad = t !== null && strings.leads ? (pentadAt(t)?.index ?? null) : null;
+      hoverState = { phase: Math.min(waveHover, limit), text, pentad };
     }
     return {
       inRange: true,
@@ -796,18 +844,21 @@ export function mount(el, ctx) {
       if (pm) {
         // the child is named, then what follows it; spans and distances are counted on the ladder
         const follower = PT.followerName(P, model, ch.level, { cycle: ch.index, cycleBig: BigInt(ch.index), clipped: ch.clipped, end: ch.end });
+        // a Helion or finer child is a moment of one Pentad: its name and what follows it lead with theirs
+        const leads = pureNameLeads(ch.level);
+        const childName = P.cycleName(ch.level, BigInt(ch.index));
         body =
           `<div class="rings-tip-sep"></div>` +
-          `<div class="rings-tip-h"><b style="color:${theme.levelColor(L + 1, 1, 72)}">${esc(P.cycleName(ch.level, BigInt(ch.index)))}</b><span class="dim">child · ${esc(cInfo.letter)} ${cInfo.depth} · ${j + 1}/${info.factor}</span></div>` +
-          `<div class="rings-tip-row mono">${esc(follower ? `ends → ${follower} begins` : 'the catalogue ends here')}</div>` +
+          `<div class="rings-tip-h"><b style="color:${theme.levelColor(L + 1, 1, 72)}">${leads ? led(ch.start, childName) : esc(childName)}</b><span class="dim">child · ${esc(cInfo.letter)} ${cInfo.depth} · ${j + 1}/${info.factor}</span></div>` +
+          `<div class="rings-tip-row mono">${follower ? `ends → ${leads ? led(ch.end, follower) : esc(follower)} begins` : 'the catalogue ends here'}</div>` +
           `<div class="rings-tip-row dim">lasts ${esc(PT.lengthWithName(P, ch.level, ch))} · ${esc(PT.startPhrase(P, ch.start, ch.end, frame.t))}</div>` +
           hint;
       } else {
         body =
           `<div class="rings-tip-sep"></div>` +
           `<div class="rings-tip-h"><b style="color:${theme.levelColor(L + 1, 1, 72)}">${esc(cInfo.letter)} ${cInfo.depth} · ${j + 1}/${info.factor}</b><span class="dim">child cycle</span></div>` +
-          `<div class="rings-tip-row mono">${esc(whenText(fmt, ch.start, span))}</div>` +
-          `<div class="rings-tip-row mono">→ ${esc(whenText(fmt, ch.end, span))}${ch.clipped ? ' (catalogue end)' : ''}</div>` +
+          `<div class="rings-tip-row mono">${led(ch.start, whenText(fmt, ch.start, span))}</div>` +
+          `<div class="rings-tip-row mono">→ ${led(ch.end, whenText(fmt, ch.end, span))}${ch.clipped ? ' (catalogue end)' : ''}</div>` +
           `<div class="rings-tip-row dim">lasts ${esc(fmt.duration(span))} · ${esc(startPhrase(fmt, ch.start, ch.end, frame.t))}</div>` +
           hint;
       }
@@ -1088,7 +1139,7 @@ export function mount(el, ctx) {
       announce(
         pureNow
           ? `Jumped to the start of ${PT.cycleName(P, L + 1, now)}, ${cycleTag(model.levelInfo(L + 1), now)}`
-          : `Jumped to the start of ${cycleTag(model.levelInfo(L + 1), now)}, ${fmt.long(now.start)}`,
+          : `Jumped to the start of ${cycleTag(model.levelInfo(L + 1), now)}, ${ledPlain(now.start, fmt.long(now.start))}`,
       );
     }
   }
