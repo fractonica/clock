@@ -1,7 +1,7 @@
 import SwiftUI
 
 // The Now screen's faces as pages, in `AppSettings.FaceMode.allCases` order. The journal and watch faces step through
-// units or depths (a rail of letters beside them, drags up and down); the analog, pendulum and star faces show a fixed
+// units or depths (a rail of letters beside them, drags up and down); the analog, epicycle and star faces show a fixed
 // set of cycles and fill their page without a rail.
 
 extension AppSettings.FaceMode {
@@ -14,7 +14,7 @@ extension AppSettings.FaceMode {
     var title: String {
         switch self {
         case .analog: "Analog"
-        case .pendulums: "Pendulums"
+        case .epicycles: "Epicycles"
         case .star: "Star"
         case .journal: "Journal"
         case .watch: "Watch"
@@ -24,7 +24,7 @@ extension AppSettings.FaceMode {
     var systemImage: String {
         switch self {
         case .analog: "clock"
-        case .pendulums: "metronome"
+        case .epicycles: "circle.circle"
         case .star: "star.circle"
         case .journal: "text.line.first.and.arrowtriangle.forward"
         case .watch: "applewatch.watchface"
@@ -35,7 +35,7 @@ extension AppSettings.FaceMode {
     var aspectRatio: CGFloat {
         switch self {
         case .analog: AnalogFace.aspectRatio
-        case .pendulums: PendulumFace.aspectRatio
+        case .epicycles: EpicycleFace.aspectRatio
         case .star: StarFace.aspectRatio
         case .journal, .watch: FaceSpace.aspectRatio
         }

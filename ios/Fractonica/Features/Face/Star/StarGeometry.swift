@@ -113,9 +113,9 @@ enum StarGeometry {
 /// at a tip of the 9-pointed figure; the absolute turns per Helion, 1, −8 and 28, are all 1 mod 9, so each θ draws
 /// the same cell a ninth of a turn on.
 ///
-/// As on the pendulums, each arm stands at the top at its cycle's start and, turning clockwise in its carrier's frame
-/// (the η and ι arms; the θ arm mirrors), crosses the right at its peak (¼), the bottom at its node (½), the left at its
-/// valley (¾).
+/// Each arm stands at the top at its cycle's start and, turning clockwise in its carrier's frame (the η and ι arms; the
+/// θ arm mirrors), crosses the right at its peak (¼), the bottom at its node (½), the left at its valley (¾), as the
+/// analog face's balance swings (`Swing`).
 enum StarRose {
     /// Absolute turns of each arm per Helion (η, θ, ι).
     static let frequencies: [Double] = [1, -8, 28]

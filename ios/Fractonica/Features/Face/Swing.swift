@@ -1,8 +1,8 @@
 import Foundation
 
-/// The swing law of the faces that swing (the pendulums, the analog face's balance): angle = A · sin(2π · phase). A
-/// pendulum leaves the centre at the cycle's start, reaches its right extreme at the peak (¼), passes the centre at the
-/// node (½), its left extreme at the valley (¾) and is home at the end: two swings, right then left, per period.
+/// The swing law of what swings on a face (the analog face's balance): angle = A · sin(2π · phase). It leaves the
+/// centre at the cycle's start, reaches its right extreme at the peak (¼), passes the centre at the node (½), its left
+/// extreme at the valley (¾) and is home at the end: two swings, right then left, per period.
 enum Swing {
     static func angle(phase: Double, amplitude: Double) -> Double { amplitude * sin(2 * .pi * phase) }
 

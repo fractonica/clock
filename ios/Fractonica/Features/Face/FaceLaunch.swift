@@ -4,7 +4,7 @@ import Foundation
 /// The Now screen's own test hooks, read from the launch arguments (UserDefaults' argument domain: never saved). They
 /// set what the screen shows until the first interaction that changes it, and never touch the stored settings:
 ///
-///     -FXFace analog|pendulums|star|journal|watch  the face shown
+///     -FXFace analog|epicycles|star|journal|watch  the face shown
 ///     -FXFaceUnit 0…6            the journal face's unit (0 α … 3 δ, 4 ε η ι, 5 η ι λ, 6 ι λ ν)
 ///     -FXFaceDepth 2…11          the watch face's top depth
 ///     -FXFaceOverlay letters|info  the watch face's letters or info labels, kept until a tap

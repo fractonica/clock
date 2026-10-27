@@ -45,7 +45,7 @@ struct SettingsScreen: View {
                         LabeledContent("Periods", value: "\(words.levelChip(settings.topDepth - 1)) over \(words.levelChip(settings.topDepth))")
                     }
                     Toggle("Period letters", isOn: $settings.showLetters)
-                case .analog, .pendulums, .star:
+                case .analog, .epicycles, .star:
                     EmptyView()
                 }
             }

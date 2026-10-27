@@ -12,7 +12,7 @@ import SwiftUI
 /// - The **Pentad register** at 12 o'clock turns once a solar sync over its 19 Helions as Pentad I, II, III and the
 ///   Hypopentad: the running Pentad's badge filled, its Helions' pips lit. A tap opens the Pentad explainer.
 /// - The **Helion window** at 3 o'clock shows the Helion's number in its Nuclide.
-/// - The **balance** at 9 o'clock swings with the μ cycle, as the pendulums do.
+/// - The **balance** at 9 o'clock swings with the μ cycle (`Swing`).
 ///
 /// Still parts are drawn once per size; the calendar (ring Pentads, register, window) once a Helion; the hands once a
 /// Blink; the balance swings in Core Animation, re-synchronised with the clock on every change of its time base, so

@@ -88,6 +88,8 @@ private func settingsChecks() {
     let g = AppSettings(defaults: defaults)
     check(!g.pure && g.zone == nil && g.topDepth == 7 && g.selectedLevel == 2 && g.minDepth == 1 && g.maxDepth == 4
         && g.faceMode == .analog && !g.haptics, "stored garbage falls back per field: \(g.values)")
+    defaults.set(Data(#"{"faceMode":"pendulums"}"#.utf8), forKey: "settings.v1")
+    check(AppSettings(defaults: defaults).faceMode == .epicycles, "the pendulums' page reads as the epicycles")
     defaults.set(Data("not json".utf8), forKey: "settings.v1")
     check(AppSettings(defaults: defaults).values == AppSettings.Values(), "unreadable storage gives the defaults")
 }

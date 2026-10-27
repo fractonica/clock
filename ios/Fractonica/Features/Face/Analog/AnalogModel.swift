@@ -132,9 +132,8 @@ enum AnalogDial {
         return arcs
     }
 
-    /// The balance's angle, in degrees clockwise, at phase `phase` of the μ cycle: two swings a period, the family's
-    /// swing law (the pendulums swing the same way) — the right extreme at the peak (¼), back through the centre at
-    /// the node (½), the left extreme at the valley (¾).
+    /// The balance's angle, in degrees clockwise, at phase `phase` of the μ cycle: two swings a period (`Swing`) — the
+    /// right extreme at the peak (¼), back through the centre at the node (½), the left extreme at the valley (¾).
     static func balanceAngle(phase: Double, amplitude: Double = 210) -> Double {
         Swing.angle(phase: phase, amplitude: amplitude)
     }

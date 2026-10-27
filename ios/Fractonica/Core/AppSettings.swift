@@ -20,8 +20,8 @@ final class AppSettings {
         /// A mechanical dial: the Helion's 36 Preons, a Preon's 65 Flavons in a sub-dial, the Nuclide's 77 Helions
         /// around (Features/Face/Analog).
         case analog
-        /// A cascade of pendulums from depth 12 up, each swinging twice a period (Features/Face/Pendulums).
-        case pendulums
+        /// Arms turning with their periods' phases, each riding the tip of the one before (Features/Face/Epicycles).
+        case epicycles
         /// The solar day's star: the sync's 19 Helions as the chords of {19/4}, by Pentad (Features/Face/Star).
         case star
         /// Units as the diary writes them ("34η 29ι 21λ"), src/ui/face/journal.js.
@@ -164,7 +164,8 @@ extension AppSettings {
             var v = Values()
             if let x = read(.pure, Bool.self) { v.pure = x }
             if let x = read(.zone, String.self) { v.zone = x }
-            if let x = read(.faceMode, FaceMode.self) { v.faceMode = x }
+            // the epicycles took the pendulums' page
+            if let x = read(.faceMode, String.self), let m = FaceMode(rawValue: x == "pendulums" ? "epicycles" : x) { v.faceMode = m }
             if let x = read(.journalUnit, Int.self) { v.journalUnit = x }
             if let x = read(.topDepth, Int.self) { v.topDepth = x }
             if let x = read(.selectedLevel, Int.self) { v.selectedLevel = x }

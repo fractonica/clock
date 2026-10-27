@@ -133,7 +133,7 @@ settings = settings` inside `body`.
 |---|---|---|
 | `pure` | Bool, false | Pure mode: Fractonica terms only (no Gregorian dates, Earth units, percentages) |
 | `zone` | IANA id or nil (system) | Earth times' zone; `timeZone` gives the `TimeZone` |
-| `faceMode` | `.analog` / `.pendulums` / `.star` / `.journal` / `.watch`, `.analog` | The Now screen's face (page order) |
+| `faceMode` | `.analog` / `.epicycles` / `.star` / `.journal` / `.watch`, `.analog` | The Now screen's face (page order) |
 | `journalUnit` | 0 … 6, 5 | The journal face's first unit (`Journal.units`) |
 | `topDepth` | 2 … 11, 7 | Upper period of the watch face |
 | `selectedLevel` | 0 … 13, 6 | The level highlighted everywhere and stepped by ◀︎ ▶︎ |
@@ -267,11 +267,8 @@ often as it changes:
   the sync's 19 Helions (a tap opens the explainer), and a balance swinging with the μ. The balance is a Core
   Animation layer kept in step with the displayed time (`AnalogBalance`): a 60 Hz SwiftUI timeline cost ~21 % of a
   core on the Mac, the layer next to nothing — the pattern for anything that swings continuously.
-- **Pendulums** (Face/Pendulums): twelve pendulums from depth 12 (μ) to α on one beam, lengths by the log of their
-  periods, two swings a period (`Swing`, Face/Swing.swift, shared with the balance); trails show where the slow ones
-  head and how fast, the quick ones blur and fan out when a time-lapse outruns the display. The Helion's bob is the
-  running Pentad's shape, and a dial under the cascade shows the sync's 19 Helions by Pentad. κ λ μ draw in a canvas
-  of their own corner at `.frameRate(60)`, the rest a few times a displayed second.
+- **Epicycles** (Face/Epicycles): arms turning with their periods' phases, each riding the tip of the one before
+  (in progress).
 - **Star** (Face/Star): one solar day round the rim, the sync's 19 Helions as the chords of the star polygon {19/4}
   (Helion k from point 4k mod 19 to the next, so each chord spans the Sun's arc in it), the running Pentad's chords
   in gold, the rim's points marked by Pentad, and the running Helion as a 9 × 4 rose of η, θ and ι arms.

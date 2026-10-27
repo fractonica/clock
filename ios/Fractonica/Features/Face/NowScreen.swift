@@ -4,7 +4,7 @@ import SwiftUI
 /// Now: the clock face, the app's hero (src/ui/face.js, docs/design/10-face.md, SPEC §8–§10).
 ///
 /// The faces as pages (`AppSettings.FaceMode.allCases`, FaceCatalog.swift) — the analog dial (the default), the
-/// pendulums, the solar star, the journal face ("34η 29ι 21λ" with the lead unit's phase above and its cycle below) and
+/// epicycles, the solar star, the journal face ("34η 29ι 21λ" with the lead unit's phase above and its cycle below) and
 /// the spec's watch face (period odometers over the solar sync) — switched by a sideways drag, the dots, the face menu
 /// or ← →. On the journal and watch faces a tap on the top or bottom third (or a drag down or up, or ↑ ↓) moves to a
 /// longer or shorter unit or depth, with a haptic tick, and a soft bounce at the ends; the watch face shows its info
@@ -41,7 +41,7 @@ struct NowScreen: View {
         switch face {
         case .journal: Journal.units[FaceStepper.clampUnit(unit)].level
         case .watch: depth - 1
-        case .analog, .pendulums, .star: 6 // the Helion
+        case .analog, .epicycles, .star: 6 // the Helion
         }
     }
 
@@ -157,8 +157,8 @@ struct NowScreen: View {
         switch mode {
         case .analog:
             FacePage(layout: layout, aspect: mode.aspectRatio) { AnalogFace(fixed: launch.time) }
-        case .pendulums:
-            FacePage(layout: layout, aspect: mode.aspectRatio) { PendulumFace(fixed: launch.time) }
+        case .epicycles:
+            FacePage(layout: layout, aspect: mode.aspectRatio) { EpicycleFace(fixed: launch.time) }
         case .star:
             FacePage(layout: layout, aspect: mode.aspectRatio) { StarFace(fixed: launch.time) }
         case .journal:
@@ -306,7 +306,7 @@ struct NowScreen: View {
         switch face {
         case .journal: FaceStepper.unit(unit, step: dir) != nil
         case .watch: FaceStepper.depth(depth, step: dir) != nil
-        case .analog, .pendulums, .star: false
+        case .analog, .epicycles, .star: false
         }
     }
 
