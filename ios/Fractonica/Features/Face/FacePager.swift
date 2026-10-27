@@ -1,21 +1,22 @@
 import FractonicaKit
 import SwiftUI
 
-// How the Now screen moves: the two faces side by side as pages (drag sideways, or the dots, the menu, ← →), a drag
-// up or down on a face steps its unit or depth, and a rail of letters beside the face shows where the face stands on
-// the ladder and jumps there with a tap or a scrub.
+// How the Now screen moves: the faces side by side as pages (drag sideways, or the dots, the menu, ← →), a drag up or
+// down on a stepping face steps its unit or depth, and a rail of letters beside it shows where the face stands on the
+// ladder and jumps there with a tap or a scrub.
 
-/// Two pages side by side. A sideways drag pages between them (with a rubber band past the ends); an up or down drag
-/// steps the face on the current page. A page out of sight is not drawn at all (a deep watch face would otherwise keep
-/// redrawing offscreen): it comes back as soon as a drag or a page change brings it into view.
-struct FacePager<First: View, Second: View>: View {
-    /// 0 or 1.
+/// Pages side by side. A sideways drag pages between them (with a rubber band past the ends); an up or down drag steps
+/// the face on the current page. A page out of sight is not drawn at all (a deep watch face would otherwise keep
+/// redrawing offscreen): it comes back as soon as a drag or a page change brings it into view, and only its
+/// neighbours are drawn while a drag is under way.
+struct FacePager<Content: View>: View {
+    /// 0 ..< count.
     let page: Int
+    let count: Int
     let onPage: (Int) -> Void
     /// −1 longer (dragged down), +1 shorter (dragged up).
     let onStep: (Int) -> Void
-    @ViewBuilder let first: First
-    @ViewBuilder let second: Second
+    @ViewBuilder let content: (Int) -> Content
 
     @State private var dragX: CGFloat = 0
     @State private var nudgeY: CGFloat = 0
@@ -30,8 +31,9 @@ struct FacePager<First: View, Second: View>: View {
         GeometryReader { geo in
             let w = geo.size.width
             HStack(spacing: 0) {
-                pageView(first, index: 0, size: geo.size)
-                pageView(second, index: 1, size: geo.size)
+                ForEach(0..<count, id: \.self) { i in
+                    pageView(content(i), index: i, size: geo.size)
+                }
             }
             .offset(x: -CGFloat(page) * w + dragX)
             .frame(width: w, height: geo.size.height, alignment: .leading)
@@ -49,7 +51,8 @@ struct FacePager<First: View, Second: View>: View {
     }
 
     private func pageView(_ content: some View, index: Int, size: CGSize) -> some View {
-        let visible = index == page || index == (settled ?? page) || axis == .horizontal || springing
+        let near = abs(index - page) <= 1 || abs(index - (settled ?? page)) <= 1
+        let visible = index == page || index == (settled ?? page) || ((axis == .horizontal || springing) && near)
         return ZStack {
             if visible { content }
         }
@@ -65,7 +68,7 @@ struct FacePager<First: View, Second: View>: View {
                 if axis == nil { axis = FaceSwipe.axis(of: value.translation) }
                 switch axis {
                 case .horizontal:
-                    dragX = FaceSwipe.rubberBand(value.translation.width, page: page, count: 2, width: width)
+                    dragX = FaceSwipe.rubberBand(value.translation.width, page: page, count: count, width: width)
                 case .vertical:
                     nudgeY = reduceMotion ? 0 : max(-12, min(12, value.translation.height * 0.12))
                 case nil:
@@ -76,7 +79,7 @@ struct FacePager<First: View, Second: View>: View {
                 defer { axis = nil }
                 switch axis {
                 case .horizontal:
-                    let next = FaceSwipe.page(page, count: 2, translation: value.translation.width,
+                    let next = FaceSwipe.page(page, count: count, translation: value.translation.width,
                                               predicted: value.predictedEndTranslation.width, width: width)
                     springing = true
                     withAnimation(reduceMotion ? .easeInOut(duration: 0.2) : .spring(duration: 0.42, bounce: 0.12)) {
@@ -97,7 +100,7 @@ struct FacePager<First: View, Second: View>: View {
     }
 }
 
-/// Two dots under the faces: which one shows; a tap switches.
+/// A dot for each face under the faces: which one shows; a tap switches.
 struct PageDots: View {
     let page: Int
     let titles: [String]

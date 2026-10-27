@@ -3,12 +3,14 @@ import SwiftUI
 
 /// Now: the clock face, the app's hero (src/ui/face.js, docs/design/10-face.md, SPEC §8–§10).
 ///
-/// Two faces as pages — the journal face (the default: "34η 29ι 21λ" with the lead unit's phase above and its cycle
-/// below) and the spec's watch face (period odometers over the solar sync) — switched by a sideways drag, the dots,
-/// the face menu or ← →. On a face, a tap on the top or bottom third (or a drag down or up, or ↑ ↓) moves to a longer
-/// or shorter unit or depth, with a haptic tick, and a soft bounce at the ends; the watch face shows its info labels
-/// on a tap in the middle and keeps its letters on a double tap. A rail of letters beside the face shows where it
-/// stands on the ladder. Around it: the date line and what turns over next (compact), or a column of readings (wide).
+/// The faces as pages (`AppSettings.FaceMode.allCases`, FaceCatalog.swift) — the analog dial (the default), the
+/// pendulums, the solar star, the journal face ("34η 29ι 21λ" with the lead unit's phase above and its cycle below) and
+/// the spec's watch face (period odometers over the solar sync) — switched by a sideways drag, the dots, the face menu
+/// or ← →. On the journal and watch faces a tap on the top or bottom third (or a drag down or up, or ↑ ↓) moves to a
+/// longer or shorter unit or depth, with a haptic tick, and a soft bounce at the ends; the watch face shows its info
+/// labels on a tap in the middle and keeps its letters on a double tap. A rail of letters beside them shows where they
+/// stand on the ladder. Around a face: the date line and what turns over next (compact), or a column of readings (wide);
+/// the Pentad card under the faces that do not draw the Pentads themselves.
 struct NowScreen: View {
     @Environment(ClockStore.self) private var store
     @Environment(AppSettings.self) private var settings
@@ -33,15 +35,21 @@ struct NowScreen: View {
     private var face: AppSettings.FaceMode { launch.face ?? settings.faceMode }
     private var unit: Int { launch.unit ?? settings.journalUnit }
     private var depth: Int { launch.depth ?? settings.topDepth }
-    private var page: Int { face == .journal ? 0 : 1 }
+    private var page: Int { face.page }
     /// The level whose turnover the line below the face counts down to.
-    private var leadLevel: Int { face == .journal ? Journal.units[FaceStepper.clampUnit(unit)].level : depth - 1 }
+    private var leadLevel: Int {
+        switch face {
+        case .journal: Journal.units[FaceStepper.clampUnit(unit)].level
+        case .watch: depth - 1
+        case .analog, .pendulums, .star: 6 // the Helion
+        }
+    }
 
     var body: some View {
         GeometryReader { geo in
             // the -FXFaceCanvas hook lays the screen out in a box of another size (landscape, Mac windows)
             let size = launch.canvas ?? geo.size
-            let layout = NowLayout(size: size)
+            let layout = NowLayout(size: size, aspect: face.aspectRatio, rails: face.steps)
             Group {
                 if layout.wide {
                     wide(layout)
@@ -109,7 +117,7 @@ struct NowScreen: View {
                 .padding(.vertical, 10)
             TurnoverLine(level: leadLevel, fixed: launch.time)
                 .padding(.horizontal, 20)
-            if layout.size.height >= 560 {
+            if layout.size.height >= 560 && !face.showsPentads {
                 PentadCard(fixed: launch.time, compact: true, explains: launch.pentads)
                     .padding(.horizontal, 16)
                     .padding(.top, 10)
@@ -127,25 +135,40 @@ struct NowScreen: View {
                 dots
             }
             ReadingsPanel(leadLevel: leadLevel, fixed: launch.time, showsPeriods: layout.size.height >= 460, roomy: layout.roomy,
-                          showsPentads: layout.size.height >= 620, explainsPentads: launch.pentads)
+                          showsPentads: layout.size.height >= 620 && !face.showsPentads, explainsPentads: launch.pentads)
                 .frame(width: layout.panelWidth, alignment: .leading)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private var dots: some View {
-        PageDots(page: page, titles: ["Journal", "Watch"]) { setFace($0 == 0 ? .journal : .watch) }
+        PageDots(page: page, titles: AppSettings.FaceMode.allCases.map(\.title)) { setFace(.at(page: $0)) }
     }
 
     private func pager(_ layout: NowLayout) -> some View {
-        FacePager(page: page, onPage: { setFace($0 == 0 ? .journal : .watch) }, onStep: { step($0) }) {
-            FacePage(layout: layout) {
+        FacePager(page: page, count: AppSettings.FaceMode.allCases.count, onPage: { setFace(.at(page: $0)) },
+                  onStep: { step($0) }) { i in
+            pageContent(.at(page: i), layout: layout)
+        }
+    }
+
+    @ViewBuilder
+    private func pageContent(_ mode: AppSettings.FaceMode, layout: NowLayout) -> some View {
+        switch mode {
+        case .analog:
+            FacePage(layout: layout, aspect: mode.aspectRatio) { AnalogFace(fixed: launch.time) }
+        case .pendulums:
+            FacePage(layout: layout, aspect: mode.aspectRatio) { PendulumFace(fixed: launch.time) }
+        case .star:
+            FacePage(layout: layout, aspect: mode.aspectRatio) { StarFace(fixed: launch.time) }
+        case .journal:
+            FacePage(layout: layout, aspect: mode.aspectRatio) {
                 journalFace
             } rail: {
                 UnitRail(items: UnitRail.journal(unit: unit), title: "Journal unit", scale: layout.railScale) { selectUnit($0) }
             }
-        } second: {
-            FacePage(layout: layout) {
+        case .watch:
+            FacePage(layout: layout, aspect: mode.aspectRatio) {
                 watchFace
             } rail: {
                 UnitRail(items: UnitRail.watch(topDepth: depth), title: "Watch depth", scale: layout.railScale) { selectDepth($0 + 2) }
@@ -245,17 +268,20 @@ struct NowScreen: View {
         ToolbarItem(placement: placement) {
             Menu {
                 Picker("Face", selection: Binding(get: { face }, set: { setFace($0) })) {
-                    Label("Journal", systemImage: "text.line.first.and.arrowtriangle.forward").tag(AppSettings.FaceMode.journal)
-                    Label("Watch", systemImage: "applewatch.watchface").tag(AppSettings.FaceMode.watch)
+                    ForEach(AppSettings.FaceMode.allCases, id: \.self) { mode in
+                        Label(mode.title, systemImage: mode.systemImage).tag(mode)
+                    }
                 }
                 .pickerStyle(.inline)
-                Section {
-                    Button(face == .journal ? "Longer Unit" : "Longer Period", systemImage: "chevron.up") { step(-1) }
-                        .disabled(!canStep(-1))
-                        .keepsMenuOpen()
-                    Button(face == .journal ? "Shorter Unit" : "Shorter Period", systemImage: "chevron.down") { step(1) }
-                        .disabled(!canStep(1))
-                        .keepsMenuOpen()
+                if face.steps {
+                    Section {
+                        Button(face == .journal ? "Longer Unit" : "Longer Period", systemImage: "chevron.up") { step(-1) }
+                            .disabled(!canStep(-1))
+                            .keepsMenuOpen()
+                        Button(face == .journal ? "Shorter Unit" : "Shorter Period", systemImage: "chevron.down") { step(1) }
+                            .disabled(!canStep(1))
+                            .keepsMenuOpen()
+                    }
                 }
                 if face == .watch {
                     Section {
@@ -277,19 +303,24 @@ struct NowScreen: View {
     // MARK: - Actions
 
     private func canStep(_ dir: Int) -> Bool {
-        face == .journal ? FaceStepper.unit(unit, step: dir) != nil : FaceStepper.depth(depth, step: dir) != nil
+        switch face {
+        case .journal: FaceStepper.unit(unit, step: dir) != nil
+        case .watch: FaceStepper.depth(depth, step: dir) != nil
+        case .analog, .pendulums, .star: false
+        }
     }
 
     /// −1 one unit (or depth) longer, +1 shorter, on the face that shows. `selected`: the same tap also selected a
     /// row's level, so a step that cannot happen is no refusal (helpers.js: no red pulse when a row was hit).
     private func step(_ dir: Int, selected: Bool = false) {
+        guard face.steps else { return } // (the other faces show a fixed set of cycles)
         stepDirection = dir
         let region: FaceRegion = dir < 0 ? .top : .bottom
         switch face {
         case .journal:
             guard let next = FaceStepper.unit(unit, step: dir) else { return refuse(region) }
             withAnimation(reduceMotion ? .easeInOut(duration: 0.2) : .smooth(duration: 0.42)) { setUnit(next) }
-        case .watch:
+        default:
             guard let next = FaceStepper.depth(depth, step: dir) else {
                 guard selected else { return refuse(region) }
                 pulse(region, refused: false)
@@ -439,8 +470,8 @@ struct NowScreen: View {
         switch key {
         case .upArrow: step(-1)
         case .downArrow: step(1)
-        case .leftArrow: setFace(.journal)
-        case .rightArrow: setFace(.watch)
+        case .leftArrow: setFace(.at(page: page - 1))
+        case .rightArrow: setFace(.at(page: page + 1))
         case "i" where face == .watch: showInfo()
         case "l" where face == .watch: toggleLetters()
         default: return .ignored
@@ -469,29 +500,53 @@ struct TransientOverlay: Equatable {
     var id = 0
 }
 
-/// One face centred in its page with its rail beside it (and the rail's width of space on the other side, so the
-/// face stays centred).
+/// One face centred in its page, with its rail beside it (and the rail's width of space on the other side, so the
+/// face stays centred) or, without a rail, as large as the page allows.
 private struct FacePage<Face: View, Rail: View>: View {
     let layout: NowLayout
+    /// The face's width over its height.
+    let aspect: CGFloat
+    let rails: Bool
     @ViewBuilder let face: Face
     @ViewBuilder let rail: Rail
 
+    init(layout: NowLayout, aspect: CGFloat, @ViewBuilder face: () -> Face, @ViewBuilder rail: () -> Rail) {
+        self.layout = layout
+        self.aspect = aspect
+        rails = true
+        self.face = face()
+        self.rail = rail()
+    }
+
     var body: some View {
         GeometryReader { geo in
-            let size = layout.faceSize(in: geo.size)
+            let size = layout.faceSize(in: geo.size, aspect: aspect, rails: rails)
             HStack(spacing: layout.railGap) {
-                Color.clear.frame(width: layout.railWidth, height: 1)
+                if rails { Color.clear.frame(width: layout.railWidth, height: 1) }
                 face.frame(width: size.width, height: size.height)
-                rail.frame(width: layout.railWidth)
+                if rails { rail.frame(width: layout.railWidth) }
             }
             .frame(width: geo.size.width, height: geo.size.height)
         }
     }
 }
 
+extension FacePage where Rail == EmptyView {
+    init(layout: NowLayout, aspect: CGFloat, @ViewBuilder face: () -> Face) {
+        self.layout = layout
+        self.aspect = aspect
+        rails = false
+        self.face = face()
+        rail = EmptyView()
+    }
+}
+
 /// The Now screen's proportions for a size: compact (face over the turnover line) or wide (face beside readings).
 struct NowLayout: Equatable {
     let size: CGSize
+    /// The face shown: its width over its height, and whether a rail of letters stands beside it.
+    var aspect: CGFloat = FaceSpace.aspectRatio
+    var rails = true
 
     /// Room for the rail of letters on each side of the face.
     var railWidth: CGFloat { 28 * railScale }
@@ -510,20 +565,26 @@ struct NowLayout: Equatable {
     var verticalPadding: CGFloat { size.height > 500 ? 28 : 10 }
     var gap: CGFloat { size.width > 900 ? 64 : 32 }
 
-    /// The face's size inside a page of `page` points: as tall as fits, never wider than the page leaves.
-    func faceSize(in page: CGSize) -> CGSize {
-        let maxWidth = max(0, page.width - 2 * (railWidth + railGap))
-        let height = max(0, min(page.height, maxFaceHeight, maxWidth / FaceSpace.aspectRatio))
-        return CGSize(width: height * FaceSpace.aspectRatio, height: height)
+    /// Without a rail: the margin on each side of a face.
+    let faceMargin: CGFloat = 14
+
+    /// A face's size inside a page of `page` points: as tall as fits, never wider than the page leaves.
+    func faceSize(in page: CGSize, aspect: CGFloat, rails: Bool) -> CGSize {
+        let maxWidth = max(0, page.width - 2 * (rails ? railWidth + railGap : faceMargin))
+        let height = max(0, min(page.height, maxFaceHeight, maxWidth / aspect))
+        return CGSize(width: height * aspect, height: height)
     }
 
     /// Wide layouts: the face's height, as tall as the space allows.
     var wideFaceHeight: CGFloat {
-        max(0, min(size.height - 2 * verticalPadding - dotsHeight, maxFaceHeight))
+        let byHeight = min(size.height - 2 * verticalPadding - dotsHeight, maxFaceHeight)
+        // a broad face (the round ones) leaves the readings at least 280 points
+        let byWidth = (size.width - 2 * gap - 280 - 2 * (rails ? railWidth + railGap : faceMargin)) / aspect
+        return max(0, min(byHeight, byWidth))
     }
 
     /// Wide layouts: the width of the face's column (face and rails).
-    var faceAreaWidth: CGFloat { wideFaceHeight * FaceSpace.aspectRatio + 2 * (railWidth + railGap) }
+    var faceAreaWidth: CGFloat { wideFaceHeight * aspect + 2 * (rails ? railWidth + railGap : faceMargin) }
 
     /// Wide layouts: the readings column, as wide as its longest line wants and the space allows.
     var panelWidth: CGFloat { max(200, min(roomy ? 460 : 360, size.width - faceAreaWidth - 2 * gap)) }

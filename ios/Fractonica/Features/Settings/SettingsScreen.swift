@@ -29,10 +29,10 @@ struct SettingsScreen: View {
 
             Section("Clock face") {
                 Picker("Face", selection: $settings.faceMode) {
-                    Text("Journal").tag(AppSettings.FaceMode.journal)
-                    Text("Watch").tag(AppSettings.FaceMode.watch)
+                    ForEach(AppSettings.FaceMode.allCases, id: \.self) { mode in
+                        Text(mode.title).tag(mode)
+                    }
                 }
-                .pickerStyle(.segmented)
                 switch settings.faceMode {
                 case .journal:
                     Picker("Reads", selection: $settings.journalUnit) {
@@ -45,6 +45,8 @@ struct SettingsScreen: View {
                         LabeledContent("Periods", value: "\(words.levelChip(settings.topDepth - 1)) over \(words.levelChip(settings.topDepth))")
                     }
                     Toggle("Period letters", isOn: $settings.showLetters)
+                case .analog, .pendulums, .star:
+                    EmptyView()
                 }
             }
 

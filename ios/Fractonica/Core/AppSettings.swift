@@ -15,7 +15,15 @@ final class AppSettings {
     static let shared = AppSettings()
 
     /// The clock face of the Now screen.
+    /// In page order (the Now screen's pager and dots follow `allCases`).
     enum FaceMode: String, Codable, CaseIterable, Sendable {
+        /// A mechanical dial: the Helion's 36 Preons, a Preon's 65 Flavons in a sub-dial, the Nuclide's 77 Helions
+        /// around (Features/Face/Analog).
+        case analog
+        /// A cascade of pendulums from depth 12 up, each swinging twice a period (Features/Face/Pendulums).
+        case pendulums
+        /// The solar day's star: the sync's 19 Helions as the chords of {19/4}, by Pentad (Features/Face/Star).
+        case star
         /// Units as the diary writes them ("34η 29ι 21λ"), src/ui/face/journal.js.
         case journal
         /// The spec's watch face (SPEC §8–§10).
@@ -138,7 +146,7 @@ extension AppSettings {
     struct Values: Codable, Equatable, Sendable {
         var pure = false
         var zone: String? = nil
-        var faceMode = FaceMode.journal
+        var faceMode = FaceMode.analog // (the web app has only the journal and watch faces; its default is the journal)
         var journalUnit = 5
         var topDepth = 7
         var selectedLevel = 6

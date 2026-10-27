@@ -28,7 +28,7 @@ private func settingsChecks() {
 
     let a = AppSettings(defaults: defaults)
     check(a.values == AppSettings.Values(), "fresh settings are the defaults")
-    check(!a.pure && a.zone == nil && a.faceMode == .journal && a.journalUnit == 5 && a.topDepth == 7
+    check(!a.pure && a.zone == nil && a.faceMode == .analog && a.journalUnit == 5 && a.topDepth == 7
         && a.selectedLevel == 6 && a.minDepth == 1 && a.maxDepth == 10 && !a.showLetters && a.haptics,
         "the defaults are store.js DEFAULTS: \(a.values)")
 
@@ -84,10 +84,10 @@ private func settingsChecks() {
     check(saved.topDepth == 9 && saved.selectedLevel == before.selectedLevel && saved.minDepth == before.minDepth
           && saved.maxDepth == before.maxDepth, "a later change is saved without the overrides: \(saved)")
 
-    defaults.set(Data(#"{"pure":"yes","zone":"Nowhere/Land","topDepth":3.5,"selectedLevel":2,"minDepth":9,"maxDepth":4,"faceMode":"analog","haptics":false}"#.utf8), forKey: "settings.v1")
+    defaults.set(Data(#"{"pure":"yes","zone":"Nowhere/Land","topDepth":3.5,"selectedLevel":2,"minDepth":9,"maxDepth":4,"faceMode":"cuckoo","haptics":false}"#.utf8), forKey: "settings.v1")
     let g = AppSettings(defaults: defaults)
     check(!g.pure && g.zone == nil && g.topDepth == 7 && g.selectedLevel == 2 && g.minDepth == 1 && g.maxDepth == 4
-        && g.faceMode == .journal && !g.haptics, "stored garbage falls back per field: \(g.values)")
+        && g.faceMode == .analog && !g.haptics, "stored garbage falls back per field: \(g.values)")
     defaults.set(Data("not json".utf8), forKey: "settings.v1")
     check(AppSettings(defaults: defaults).values == AppSettings.Values(), "unreadable storage gives the defaults")
 }
