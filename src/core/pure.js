@@ -53,6 +53,17 @@ export const ORDINAL_NAMES = Object.freeze([
 /** The quarter of a major period, named by the threshold that ends it (SPEC §6.2). */
 export const QUARTER_WORDS = Object.freeze(['Peak', 'Node', 'Valley', 'End']);
 
+/**
+ * The Pentads of a solar sync (SPEC §7.5), said like weekdays: index 0..3. The short form draws the Helion count as a
+ * shape (a pentagon for five, a square for the Hypopentad's four); apps draw the shapes themselves, and text that must
+ * stay plain uses the ASCII form.
+ */
+export const PENTAD_NAMES = Object.freeze(['Pentad I', 'Pentad II', 'Pentad III', 'Hypopentad']);
+export const PENTAD_SHORT = Object.freeze(['\u2B20I', '\u2B20II', '\u2B20III', '\u25FB']);
+export const PENTAD_ASCII = Object.freeze(['P1', 'P2', 'P3', 'H']);
+/** The numeral of a Pentad's short form ("II"), empty for the Hypopentad (its shape alone says it). */
+export const PENTAD_NUMERALS = Object.freeze(['I', 'II', 'III', '']);
+
 /** Levels said in words (α β γ δ). */
 export const MAJOR_LEVELS = Object.freeze([0, 1, 2, 3]);
 export const isMajor = (level) => level >= 0 && level <= 3;
@@ -409,6 +420,20 @@ export function createPure(model, { now = () => model.tMin } = {}) {
     return `${head}${form === 'full' ? ', ' : ' '}${minor.join(' ')}`;
   }
   /**
+   * The Pentad at t in words: 'full' "Pentad II" (default), 'short' "⬠II", 'ascii' "P2"; with `helion`, the Helion's
+   * place in it too ("Pentad II, 3rd Helion" / "⬠II·3" / "P2.3"). '—' outside the catalogue.
+   */
+  function pentadText(t, { form = 'full', helion = false } = {}) {
+    const p = model.pentadAt(t);
+    if (!p) return '—';
+    const name = (form === 'short' ? PENTAD_SHORT : form === 'ascii' ? PENTAD_ASCII : PENTAD_NAMES)[p.index];
+    if (!helion) return name;
+    if (form === 'short') return `${name}\u00B7${p.helion}`;
+    if (form === 'ascii') return `${name}.${p.helion}`;
+    return `${name}, ${['1st', '2nd', '3rd', '4th', '5th'][p.helion - 1]} Helion`;
+  }
+
+  /**
    * An instant as its full letter address down to a resolution (default 'iota'): "α#5 β#4 γ#2 δ#3 ε#2 5η 5ι". This is
    * the unambiguous identity of a moment (tooltips, copy, the jump box reads it back).
    */
@@ -567,6 +592,7 @@ export function createPure(model, { now = () => model.tMin } = {}) {
 
   return Object.freeze({
     LEVEL_NAMES, ORDINAL_NAMES, QUARTER_WORDS, MAJOR_LEVELS, UNIT_LEVELS, UNITS, RATES, PLAY_RATE, BLINK, PER_BLINK,
+    PENTAD_NAMES, PENTAD_SHORT, PENTAD_ASCII, PENTAD_NUMERALS, pentadText,
     isMajor, isUnitLevel, levelKind, unitOf, unitName, ordinalName, periodName, shortName,
     unitPos, cyclePos, unitSeconds, blinkSeconds, secondsPerPosition, EPS_POS,
     decompose, durationPos, duration, countdown, between,

@@ -259,6 +259,43 @@ export function createModel() {
     return { sync: n, start, end, nominalStart: nominal, drift: start - nominal };
   }
 
+  /**
+   * The Pentad running at t (SPEC §7.5): the solar sync's 19 Helions as Pentad I, II, III (5 Helions each) and the
+   * Hypopentad (4), so that a Pentad is about a day: each one starts a quarter Helion later in the day than the one
+   * before, and the Hypopentad, one Helion short, brings the next Pentad I back to the same time of day.
+   * Counted from the sync anchor like the sync itself, but on whole Helions, so it is defined in the partial syncs at
+   * the catalogue's ends too. Null outside the catalogue.
+   * @returns {null | { sync:number, index:number, helion:number, helions:number, start:number, end:number }}
+   *   index 0..3 (3 = Hypopentad), helion 1..5 the Helion's place in it, helions 5 or 4.
+   */
+  function pentadAt(t) {
+    const l = levelAt(t, 6);
+    if (!l) return null;
+    const a = 20n * clock.prefix(6) / 4n; // the sync anchor's Helion
+    const k = l.cycleBig - a;
+    const sync = k >= 0n ? k / 19n : -((-k + 18n) / 19n);
+    const within = Number(k - sync * 19n); // 0..18
+    const index = Math.min(3, Math.floor(within / 5));
+    const span = pentadByNumber(Number(sync), index);
+    if (!span) return null;
+    return { sync: Number(sync), index, helion: within - 5 * index + 1, helions: index === 3 ? 4 : 5, start: span.start, end: span.end };
+  }
+  /** Start and end of Pentad `index` (0..3) of sync `n`, or null where it runs outside the catalogue. */
+  function pentadByNumber(n, index) {
+    const a = 20n * clock.prefix(6) / 4n;
+    const p = clock.prefix(6);
+    const first = a + 19n * BigInt(n) + 5n * BigInt(index);
+    const last = first + (index === 3 ? 4n : 5n);
+    const lo = R(first * 4n, p);
+    const hi = R(last * 4n, p);
+    const ext = R(clock.extent);
+    // the catalogue's first and last Pentads are cut at its edges
+    if (F.compare(hi, R(0)) <= 0 || F.compare(lo, ext) >= 0) return null;
+    const start = F.compare(lo, R(0)) < 0 ? tMin : num(clock.timestampAt(lo));
+    const end = F.compare(hi, ext) > 0 ? tMax : num(clock.timestampAt(hi));
+    return { start, end };
+  }
+
   /** The five-level calendar address (Alpha..Epsilon), 1-based like the library UI. */
   function addressAt(t) {
     t = ms(t);
@@ -416,6 +453,7 @@ export function createModel() {
    * @property {(level:number, opts?:{strokes?:number}) => ReturnType<typeof levelAt>} level
    * @property {(level:number, opts?:{strokes?:number,digits?:number}) => ReturnType<typeof odometerAt>} odometer
    * @property {() => ReturnType<typeof solarAt>} solar
+   * @property {() => ReturnType<typeof pentadAt>} pentad
    * @property {() => number[]|null} address
    */
   function frame(t) {
@@ -433,6 +471,7 @@ export function createModel() {
       level: (L, o) => cached('L' + L + ':' + (o?.strokes ?? 2), () => levelAt(t, L, o)),
       odometer: (L, o) => cached('O' + L + ':' + (o?.strokes ?? 2) + ':' + (o?.digits ?? 2), () => odometerAt(t, L, o)),
       solar: () => cached('S', () => solarAt(t)),
+      pentad: () => cached('P', () => pentadAt(t)),
       address: () => cached('A', () => addressAt(t)),
     };
   }
@@ -452,6 +491,8 @@ export function createModel() {
     odometerAt,
     solarAt,
     solarSyncByNumber,
+    pentadAt,
+    pentadByNumber,
     addressAt,
     pathToCycle,
     cycleToPath,

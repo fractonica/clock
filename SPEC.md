@@ -255,6 +255,47 @@ The library function is `clock.solarSync({anchor, level, cycles, days, daySecond
 
 These statistics use the TT intervals of every series. The mean Saros (6585.3211 d) gives −10.77 s per sync and a lap of 87.86 years, which differs visibly from the catalogue values above. Across all solar and lunar series, real intervals range from 6585.2595 d to 6585.3712 d. That puts the per-sync drift between −14.0 s and −8.1 s, and the lap between 68 and 116 years. Where an eclipse falls in Earth's orbit explains about 71% of the variation: intervals starting near perihelion are about 46 min longer, and those near aphelion are about 44 min shorter. No real interval comes close to the 6585.5263 d needed for zero drift, so this drift never runs forward.
 
+### 7.5 Pentads
+
+The Helion is the clock's link to the Sun. A solar day is 4¾ Helions (4.75 × 5.052 h ≈ 23.997 h), so the relation runs
+both ways:
+
+- **From the Sun:** when the Sun returns to the same place in the sky a day later, the Helion grid has moved a quarter
+  Helion back. The Helion's quarter phase falls at the same time of day every day, and after 4 days (19 Helions, one
+  solar sync) the whole grid repeats, a few seconds earlier (§7.2).
+- **From the Helion:** after 5 Helions the Sun is a quarter Helion (≈ 1.26 h) later in its day. Three such runs drift
+  ¾ Helion; the fourth run is one Helion shorter, which brings the Sun back.
+
+A **Pentad** is one of those runs. Each solar sync (§7.1, anchor A = 20, N = 19 Helions) is divided into four, on whole
+Helions, the way a week names its days:
+
+| Index | Name | Short | Helions of the sync | Length | Starts after the sync's start |
+|---|---|---|---|---|---|
+| 0 | Pentad I | ⬠I | 0 – 4 | 5η ≈ 25.26 h | 0 |
+| 1 | Pentad II | ⬠II | 5 – 9 | 5η ≈ 25.26 h | 1 day + ¼η |
+| 2 | Pentad III | ⬠III | 10 – 14 | 5η ≈ 25.26 h | 2 days + ½η |
+| 3 | Hypopentad | ◻ | 15 – 18 | 4η ≈ 20.21 h | 3 days + ¾η |
+
+So every Pentad is about a day: it begins ¼η later in the day than the one before, and the Hypopentad, one Helion short
+(the leap year's mechanism run backwards: it takes a period out instead of adding one), lands the next Pentad I on the
+time of day the sync started at.
+
+```
+k        = cycle(6) − A · P(6) / 4          Helions since the anchor's Helion
+sync     = floor(k / 19)
+within   = k − 19 · sync                    0 … 18
+index    = min(3, floor(within / 5))
+helion   = within − 5 · index + 1           the Helion's place in its Pentad, 1 … 5 (1 … 4 in the Hypopentad)
+```
+
+Pentads count whole Helions, so unlike the sync reading (§7.1) they are defined in the catalogue's first and last
+partial syncs too (the first and last Pentads are cut at its edges). The short form draws the Helion count as a shape: a
+pentagon for the five-Helion Pentads with their numeral, a square alone for the Hypopentad's four. Text that must stay
+plain writes `P1`, `P2`, `P3`, `H`.
+
+A date leads with its Pentad, as a civil date leads with the weekday (§15.3). Vector A (§12, 1791460800) is in
+Pentad II (its 2nd Helion) of sync 4820; the anchor eclipse itself starts Pentad I of sync 0.
+
 ## 8. Display model
 
 The elements below are platform-neutral. The reference watch face is one arrangement of them, on a 192 × 490 px pill-shaped screen.
@@ -488,6 +529,10 @@ A **date** is the major periods in words, then the minor reading. Flavons and Bl
 | Short | `Delta Trifracton Node ε#2 5η 5ι` |
 | Letters | `α#5 β#4 γ#2 δ#3 ε#2 5η 5ι 5λ` |
 | Short letters | `δ#3 ε#2 5η 5ι` |
+
+On screen a date **leads with its Pentad** (§7.5), as a civil date leads with the weekday: `Pentad II · Delta
+Trifracton Node ε#2 5η 5ι`, or with the short form, `⬠II δ#3 ε#2 5η 5ι`. The Pentad is implied by the rest, so the
+stamp below does not carry it and a parser reading a date ignores it.
 
 The letter forms omit the quarter words, which the counts imply. The full letter form is the **stamp**: it identifies a moment exactly and can be read back. The Nuclide ordinal is required because a Delta has 5 Nuclides but 4 quarters, so a quarter alone does not say which Nuclide a Helion count belongs to.
 

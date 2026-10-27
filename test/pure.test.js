@@ -236,3 +236,14 @@ test('solar drift is counted in λ with narrow digit groups', () => {
   assert.equal(pure.EPS_POS, 1e-12);
   assert.equal(pure.eclipseName(22), '#22');
 });
+
+test('pentad names (SPEC §7.5)', () => {
+  assert.equal(pure.pentadText(T), 'Pentad II');
+  assert.equal(pure.pentadText(T, { helion: true }), 'Pentad II, 2nd Helion');
+  assert.equal(pure.pentadText(T, { form: 'short' }), '⬠II');
+  assert.equal(pure.pentadText(T, { form: 'ascii', helion: true }), 'P2.2');
+  const hypo = model.pentadByNumber(model.pentadAt(T).sync, 3);
+  assert.equal(pure.pentadText(hypo.start + 1), 'Hypopentad');
+  assert.equal(pure.pentadText(hypo.start + 1, { form: 'short' }), '◻');
+  assert.equal(pure.pentadText(model.tMin - 1), '—');
+});

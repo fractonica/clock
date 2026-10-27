@@ -212,3 +212,39 @@ test('catalogue edges: closing instant belongs to the last cycle, partial syncs 
   assert.ok(model.solarAt(model.tMin + 4 * 86400));
   assert.ok(model.odometerAt(model.tMax, 6));
 });
+
+test('pentads (SPEC §7.5): a sync is Pentad I, II, III and the Hypopentad, each a day-ish run of Helions', () => {
+  const A = 1791460800;
+  const p = model.pentadAt(A);
+  assert.deepEqual([p.sync, p.index, p.helion, p.helions], [4820, 1, 2, 5], 'vector A: Pentad II, 2nd Helion');
+  const sync = model.solarSyncByNumber(p.sync);
+  const parts = [0, 1, 2, 3].map((i) => model.pentadByNumber(p.sync, i));
+  assert.equal(parts[0].start, sync.start, 'Pentad I starts the sync');
+  assert.equal(parts[3].end, sync.end, 'the Hypopentad ends it');
+  for (let i = 1; i < 4; i++) assert.equal(parts[i].start, parts[i - 1].end, `Pentad ${i} follows on`);
+  const helion = model.levelInfo(6).meanSeconds;
+  for (let i = 0; i < 4; i++) {
+    near(parts[i].end - parts[i].start, (i === 3 ? 4 : 5) * helion, 60, `length of ${i}`);
+    // each starts a quarter Helion later in the day than the one before
+    near(parts[i].start - sync.start - i * 86400, (i * helion) / 4, 60, `time of day of ${i}`);
+  }
+  // inside: the Helion's place, and the Pentad's own start and end
+  const mid = (parts[3].start + parts[3].end) / 2;
+  const h = model.pentadAt(mid);
+  assert.equal(h.index, 3);
+  assert.equal(h.helions, 4);
+  assert.ok(h.helion >= 1 && h.helion <= 4);
+  // starts are exact, like the sync's; the clock reads to the millisecond, so a Pentad holds from the next one
+  assert.equal(model.pentadAt(parts[2].start + 0.001).index, 2, 'a Pentad holds from its start');
+  assert.equal(model.pentadAt(parts[2].start - 0.001).index, 1, 'and not before');
+  // the anchor eclipse starts Pentad I of sync 0
+  const anchor = model.pentadAt(125593319.816);
+  assert.deepEqual([anchor.sync, anchor.index, anchor.helion], [0, 0, 1]);
+  // defined at the catalogue's edges too, cut there
+  const first = model.pentadAt(model.tMin);
+  const last = model.pentadAt(model.tMax);
+  assert.ok(first && last);
+  assert.equal(first.start, model.tMin);
+  assert.equal(last.end, model.tMax);
+  assert.equal(model.pentadAt(model.tMin - 1), null);
+});
