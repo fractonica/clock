@@ -148,10 +148,10 @@ struct JournalWaveCanvas: View {
                 let pins = model.pins
                 let live = store.isLive
                 let hidden = sky.hidden
-                let solar = sky.solarTicks
+                let pentads = sky.pentadTicks
                 Canvas(opaque: false, rendersAsynchronously: false) { context, size in
                     JournalWavePainter(frame: frame, now: now, live: live, words: words, pins: pins, model: model, cache: cache,
-                                       skyHidden: hidden, solarTicks: solar)
+                                       skyHidden: hidden, pentadTicks: pentads)
                         .draw(&context, size)
                 } symbols: {
                     ForEach(model.symbols, id: \.self) { key in
@@ -232,7 +232,7 @@ final class JournalWaveCache {
     let clock = FractonicaClock.shared
     /// The texts as pictures.
     let labels = JournalWaveLabels()
-    /// The sky events and the solar sync's ticks laid out over the window.
+    /// The sky events and the Pentads' ticks laid out over the window.
     let sky = JournalWaveSkyLayer()
 
     /// The moments the cached window spans.
@@ -379,9 +379,9 @@ struct JournalWavePainter {
     let pins: [JournalWavePin]
     let model: JournalWaveModel
     let cache: JournalWaveCache
-    /// The sky families switched off, and whether the solar sync's ticks show.
+    /// The sky families switched off, and whether the Pentads' ticks show.
     var skyHidden: Set<SkyFamily> = []
-    var solarTicks = true
+    var pentadTicks = true
 
     /// The label margin on the left.
     static func margin(_ width: Double) -> Double { width > 700 ? 92 : 64 }

@@ -3,9 +3,9 @@ import SwiftUI
 
 // The sky on the journal's wave: the diary's events at their exact moments on the curve (their symbols in their
 // families' colours, eclipses larger and ringed), fewer as the wave zooms out (`JournalSkyPlacer`), tap one for its
-// name and moments; and the solar sync's quarter thresholds (SPEC §7, as the Wave screen's ripple marks them) as gold
-// ticks across the curve, named when there is room. Both are laid out once per cache rebuild, in the cache's
-// coordinates; each frame draws the ticks as two paths moved into place and each mark in sight as a picture.
+// name and moments; and the Pentads' starts (SPEC §7.5) as gold ticks across the curve with the Pentad's shape beside
+// them when there is room, the Hypopentad's longer, bolder and filled. Both are laid out once per cache rebuild, in the
+// cache's coordinates; each frame draws the ticks as two paths moved into place and each mark in sight as a picture.
 
 /// A sky event tapped on the wave: the popover's subject and where its mark is.
 struct JournalWaveSkyChoice: Identifiable, Equatable {
@@ -31,20 +31,20 @@ final class JournalWaveSkyLayer {
     private struct Key: Equatable {
         let generation: Int
         let hidden: Set<SkyFamily>
-        let solar: Bool
+        let pentads: Bool
     }
 
     private(set) var marks: [JournalSkyMark] = []
-    private(set) var ticks: [JournalSolarTick] = []
-    private(set) var quarterTicks = Path()
-    private(set) var endTicks = Path()
+    private(set) var ticks: [JournalPentadTick] = []
+    private(set) var pentadTicks = Path()
+    private(set) var hypopentadTicks = Path()
     private var key: Key?
     /// The marks as pictures, by kind (×2, +1 for an eclipse's larger one), for one display scale.
     private var images: [Int: JournalWaveLabels.Label] = [:]
     private var imageScale: CGFloat = 0
 
-    func update(_ cache: JournalWaveCache, k: Double, hidden: Set<SkyFamily>, solar: Bool) {
-        let key = Key(generation: cache.generation, hidden: hidden, solar: solar)
+    func update(_ cache: JournalWaveCache, k: Double, hidden: Set<SkyFamily>, pentads: Bool) {
+        let key = Key(generation: cache.generation, hidden: hidden, pentads: pentads)
         guard key != self.key else { return }
         self.key = key
         let signpost = JournalWaveSignposts.signposter.beginInterval("wave sky")
@@ -57,23 +57,46 @@ final class JournalWaveSkyLayer {
         marks = JournalSkyPlacer.place(SkyEvents.shared, from: lo, to: hi, k: k, hidden: hidden) { t in
             cache.trace(t, through: level).map { ($0.point.x, $0.point.y) }
         }
-        ticks = solar ? JournalSkyPlacer.solarTicks(from: lo, to: hi, k: k, clock: cache.clock) { t in
+        ticks = pentads ? JournalSkyPlacer.pentadTicks(from: lo, to: hi, k: k, clock: cache.clock) { t in
             cache.trace(t, through: level).map { ($0.point.x, $0.point.y, Double($0.normal.x), Double($0.normal.y)) }
         } : []
 
-        var quarters = Path(), ends = Path()
+        var fives = Path(), fours = Path()
         for tick in ticks {
-            let len = tick.isEnd ? 10.0 : 7.0
-            if tick.isEnd {
-                ends.move(to: CGPoint(x: tick.x - tick.nx * len, y: tick.y - tick.ny * len))
-                ends.addLine(to: CGPoint(x: tick.x + tick.nx * len, y: tick.y + tick.ny * len))
+            let len = Self.tickLength(tick)
+            let a = CGPoint(x: tick.x - tick.nx * len, y: tick.y - tick.ny * len)
+            let b = CGPoint(x: tick.x + tick.nx * len, y: tick.y + tick.ny * len)
+            if tick.isHypopentad {
+                fours.move(to: a)
+                fours.addLine(to: b)
             } else {
-                quarters.move(to: CGPoint(x: tick.x - tick.nx * len, y: tick.y - tick.ny * len))
-                quarters.addLine(to: CGPoint(x: tick.x + tick.nx * len, y: tick.y + tick.ny * len))
+                fives.move(to: a)
+                fives.addLine(to: b)
             }
         }
-        quarterTicks = quarters
-        endTicks = ends
+        pentadTicks = fives
+        hypopentadTicks = fours
+    }
+
+    /// Half a tick's length across the curve: the Hypopentad's longer.
+    static func tickLength(_ tick: JournalPentadTick) -> Double { tick.isHypopentad ? 11 : 7 }
+
+    /// A Pentad's shape as a picture, made once per Pentad and display scale: the pentagon with its numeral on a dark
+    /// disc; the Hypopentad's square filled, inside a fine square ring.
+    func shape(_ index: Int, labels: JournalWaveLabels, scale: CGFloat) -> JournalWaveLabels.Label {
+        labels.label("pentad|\(index)", scale: scale) {
+            ZStack {
+                if index == 3 {
+                    PentadPolygon(index: 3).fill(Theme.background.opacity(0.9)).frame(width: 17, height: 17)
+                    PentadPolygon(index: 3).strokeBorder(Theme.gold.opacity(0.85), lineWidth: 1.2).frame(width: 17, height: 17)
+                    PentadPolygon(index: 3).fill(Theme.gold).frame(width: 9, height: 9)
+                } else {
+                    PentadPolygon(index: index).fill(Theme.background.opacity(0.9)).frame(width: 15, height: 15)
+                    PentadBadge(index: index, size: 15, color: Theme.gold.opacity(0.9))
+                }
+            }
+            .frame(width: 21, height: 21)
+        }
     }
 
     /// A kind's mark as a picture, made once per kind, size and display scale: a dark disc ringed in the family's colour
@@ -106,37 +129,31 @@ final class JournalWaveSkyLayer {
 }
 
 extension JournalWavePainter {
-    /// The solar ticks, then the events, under the entries' emoji.
+    /// The Pentads' ticks, then the events, under the entries' emoji.
     func drawSky(_ context: inout GraphicsContext, _ zoom: JournalArcZoom, dy: Double, w: Double, h: Double, margin: Double) {
         let sky = cache.sky
-        sky.update(cache, k: frame.k, hidden: skyHidden, solar: solarTicks)
+        sky.update(cache, k: frame.k, hidden: skyHidden, pentads: pentadTicks)
         var moved = context
         moved.translateBy(x: 0, y: dy)
 
-        // solar ticks across the curve: gold, the syncs' ends longer; their names where there is room
+        // where each Pentad begins, a gold tick across the curve (the Hypopentad's longer and bolder) and its shape on
+        // the curve's inner side where there is room
         if !sky.ticks.isEmpty {
-            moved.stroke(sky.quarterTicks, with: .color(Theme.gold.opacity(0.75)), style: StrokeStyle(lineWidth: 1.8, lineCap: .round))
-            moved.stroke(sky.endTicks, with: .color(Theme.gold), style: StrokeStyle(lineWidth: 2.6, lineCap: .round))
+            moved.stroke(sky.pentadTicks, with: .color(Theme.gold.opacity(0.7)), style: StrokeStyle(lineWidth: 1.6, lineCap: .round))
+            moved.stroke(sky.hypopentadTicks, with: .color(Theme.gold), style: StrokeStyle(lineWidth: 3, lineCap: .round))
             let left = margin + 2, right = w - 6
             let scale = context.environment.displayScale
-            var budget = 40
+            var budget = 60
             for tick in sky.ticks where tick.labelled {
                 let y = tick.y + dy
-                guard y > 0, y < h - 30, budget > 0 else { continue }
+                guard y > -20, y < h + 20, budget > 0 else { continue }
                 budget -= 1
-                let text = tick.isEnd ? "☉ end #\(tick.sync)" : "☉ \(tick.name)"
-                let label = cache.labels.label("sun|\(text)", scale: scale) {
-                    Text(verbatim: text)
-                        .font(.system(size: 10, weight: .medium, design: .monospaced))
-                        .foregroundStyle(Theme.gold.opacity(0.9))
-                        .padding(.horizontal, 3)
-                        .background(Theme.background.opacity(0.72), in: .capsule)
-                }
-                // on the inner side of the curve, clear of the tick
-                let len = (tick.isEnd ? 10.0 : 7.0) + 4
-                let c = CGPoint(x: tick.x - tick.nx * (len + label.size.width / 2), y: y - tick.ny * (len + label.size.height / 2))
-                let x = min(right - label.size.width, max(left, c.x - label.size.width / 2))
-                context.draw(label.image, in: CGRect(x: x, y: c.y - label.size.height / 2, width: label.size.width, height: label.size.height))
+                let shape = sky.shape(tick.index, labels: cache.labels, scale: scale)
+                let len = JournalWaveSkyLayer.tickLength(tick) + 1
+                let r = shape.size.width / 2
+                let c = CGPoint(x: tick.x - tick.nx * (len + r), y: y - tick.ny * (len + r))
+                let x = min(right - shape.size.width, max(left, c.x - r))
+                context.draw(shape.image, in: CGRect(x: x, y: c.y - shape.size.height / 2, width: shape.size.width, height: shape.size.height))
             }
         }
 

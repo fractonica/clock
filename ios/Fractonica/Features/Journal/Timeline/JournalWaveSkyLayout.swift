@@ -2,8 +2,8 @@ import FractonicaKit
 import Foundation
 
 // The sky on the journal's wave, as geometry: which events show at a zoom (level of detail by tier, then the most
-// notable first wherever marks would collide) and where the solar sync's quarter thresholds cross the curve. Pure logic
-// on plain numbers, checked by Timeline/Checks; JournalWaveSky draws it.
+// notable first wherever marks would collide) and where the Pentads begin on the curve (SPEC §7.5). Pure logic on
+// plain numbers, checked by Timeline/Checks; JournalWaveSky draws it.
 
 /// A sky event placed on the wave: the table's index, the event, its point (in the coordinates of the trace it was
 /// placed with), its mark's radius and how strongly it shows.
@@ -16,21 +16,21 @@ struct JournalSkyMark: Equatable, Sendable {
     let alpha: Double
 }
 
-/// A solar sync quarter threshold on the wave: the sync, which quarter ends there (1 peak, 2 node, 3 valley, 4 end),
-/// its moment, the point on the curve and the curve's outward normal there.
-struct JournalSolarTick: Equatable, Sendable {
+/// A Pentad's start on the wave: its sync and index (0 … 3, 3 the Hypopentad), its moment, the point on the curve and
+/// the curve's outward normal there.
+struct JournalPentadTick: Equatable, Sendable {
     let sync: Int
-    let quarter: Int
+    let index: Int
     let time: Double
     let x: Double
     let y: Double
     let nx: Double
     let ny: Double
-    /// Its name is drawn beside it.
+    /// Its shape is drawn beside it.
     let labelled: Bool
 
-    var name: String { WaveSolar.quarters[quarter - 1] }
-    var isEnd: Bool { quarter == 4 }
+    /// The Hypopentad, drawn stronger: its four Helions bring the Sun back.
+    var isHypopentad: Bool { index == 3 }
 }
 
 enum JournalSkyPlacer {
@@ -116,44 +116,45 @@ enum JournalSkyPlacer {
         return marks.sorted { $0.index < $1.index }
     }
 
-    // MARK: The solar sync
+    // MARK: The Pentads
 
-    /// About how far apart (seconds) the sync's quarter thresholds come: a quarter of 19 mean Helions.
-    static func quarterSeconds(clock: FractonicaClock = .shared) -> Double {
+    /// About how far apart (seconds) the Pentads begin: a quarter of the sync's 19 mean Helions, about a day.
+    static func pentadSeconds(clock: FractonicaClock = .shared) -> Double {
         WaveSolar.syncCycles * clock.levelInfo(WaveSolar.syncLevel).meanSeconds / 4
     }
 
-    /// Ticks show once they come this far apart (points): every quarter, or only the syncs' ends while the quarters are
-    /// closer; names from `labelGap` (quarters) or `4 · labelGap` apart (ends alone).
+    /// Ticks show once they come this far apart (points): every Pentad, or only the Hypopentads while the Pentads are
+    /// closer; shapes from `labelGap` (Pentads) or `4 · labelGap` apart (Hypopentads alone).
     static let tickGap = 9.0
-    static let labelGap = 46.0
+    static let labelGap = 26.0
 
-    /// The syncs' quarter thresholds in [lo, hi] at k points per second, each where `trace` puts it on the curve (with
-    /// the normal), latest first; empty when even the syncs' ends would crowd. At most `limit`.
-    static func solarTicks(from lo: Double, to hi: Double, k: Double, clock: FractonicaClock = .shared, limit: Int = 800,
-                           trace: (Double) -> (x: Double, y: Double, nx: Double, ny: Double)?) -> [JournalSolarTick] {
-        let q = quarterSeconds(clock: clock) * k
-        guard 4 * q >= tickGap, hi > lo, let p0 = clock.position(at: max(clock.tMin, lo)), let p1 = clock.position(at: min(clock.tMax, hi)) else {
-            return []
+    /// The Pentads that begin in [lo, hi] at k points per second, each where `trace` puts it on the curve (with the
+    /// normal), latest first; empty when even the Hypopentads would crowd. At most `limit`.
+    static func pentadTicks(from lo: Double, to hi: Double, k: Double, clock: FractonicaClock = .shared, limit: Int = 800,
+                            trace: (Double) -> (x: Double, y: Double, nx: Double, ny: Double)?) -> [JournalPentadTick] {
+        let q = pentadSeconds(clock: clock) * k
+        let lo = max(clock.tMin, lo), hi = min(clock.tMax, hi)
+        guard 4 * q >= tickGap, hi > lo, (hi - lo) / pentadSeconds(clock: clock) < Double(limit) * (q >= tickGap ? 1 : 4),
+              let p = clock.pentad(at: lo) else { return [] }
+        let all = q >= tickGap
+        let labelled = all ? q >= labelGap : 4 * q >= 4 * labelGap
+        // the first start at or after lo, then each next Pentad's
+        var sync = p.sync, index = p.index, start = p.start
+        if start < lo {
+            (sync, index) = index == 3 ? (sync + 1, 0) : (sync, index + 1)
+            guard let next = clock.pentad(sync: sync, index: index) else { return [] }
+            start = next.start
         }
-        let quarters = q >= tickGap
-        let labelled = quarters ? q >= labelGap : 4 * q >= 4 * labelGap
-        let grid = WaveSolar.Grid(p6: clock.levelInfo(WaveSolar.syncLevel).prefixDouble)
-        let c0 = grid.coord(min(p0, p1)), c1 = grid.coord(max(p0, p1))
-        let first = Int64((c0 * 4).rounded(.up)), last = Int64((c1 * 4).rounded(.down))
-        guard last >= first, last - first < Int64(limit) * (quarters ? 1 : 4) else { return [] }
-        var out: [JournalSolarTick] = []
-        for n in stride(from: last, through: first, by: -1) {
-            let quarter = Int(((n % 4) + 4) % 4)
-            guard quarters || quarter == 0 else { continue }
-            let coord = Double(n) / 4
-            let t = clock.time(atPosition: grid.position(ofCoord: coord))
-            guard t >= lo, t <= hi, let p = trace(t) else { continue }
-            // a sync's end (its fourth quarter) is the next one's start
-            let sync = Int((Double(n) / 4).rounded(.down)) - (quarter == 0 ? 1 : 0)
-            out.append(JournalSolarTick(sync: sync, quarter: quarter == 0 ? 4 : quarter, time: t, x: p.x, y: p.y, nx: p.nx, ny: p.ny,
-                                        labelled: labelled))
+        var out: [JournalPentadTick] = []
+        while start <= hi, out.count < limit {
+            if all || index == 3, let c = trace(start) {
+                out.append(JournalPentadTick(sync: sync, index: index, time: start, x: c.x, y: c.y, nx: c.nx, ny: c.ny,
+                                             labelled: labelled))
+            }
+            (sync, index) = index == 3 ? (sync + 1, 0) : (sync, index + 1)
+            guard let next = clock.pentad(sync: sync, index: index) else { break }
+            start = next.start
         }
-        return out
+        return out.reversed()
     }
 }

@@ -5,7 +5,7 @@ import Foundation
 // wave's frame and limits, its arc geometry (the spine and its band at every zoom, regular arcs of one radius joining
 // smoothly, children perpendicular to their parent, emoji exactly on the curve, no jump anywhere across the zoom), the
 // cycle starts, the emoji placement (fanning, clusters, hits, the zoom that opens a cluster), and the sky on the wave
-// (which events show at a zoom, most notable first, never overlapping; the solar sync's ticks).
+// (which events show at a zoom, most notable first, never overlapping; the Pentads' ticks).
 // Run: ios/scripts/check.sh ios/Fractonica/Features/Journal/Timeline/Checks
 
 @main
@@ -25,7 +25,7 @@ struct TimelineChecks {
         tickChecks()
         placementChecks()
         skyChecks()
-        solarTickChecks()
+        pentadTickChecks()
         Checks.finish()
     }
 }
@@ -566,29 +566,31 @@ private func skyChecks() {
         sky.events(from: vectorA - 60 * 86_400, to: vectorA + 60 * 86_400).contains { $0.tier == t } }, "all in one spot, the most notable stays: \(crowd.map(\.event.name))")
 }
 
-private func solarTickChecks() {
-    let q = JournalSkyPlacer.quarterSeconds()
-    check(abs(q - 86_400) < 0.05 * 86_400, "the sync's quarters come about a day apart: \(q)")
+private func pentadTickChecks() {
+    let q = JournalSkyPlacer.pentadSeconds()
+    check(abs(q - 86_400) < 0.05 * 86_400, "Pentads begin about a day apart: \(q)")
     let line: (Double) -> (x: Double, y: Double, nx: Double, ny: Double)? = { t in (200, vectorA - t, 1, 0) }
-    // quarters at ~40 points a day
-    let k = 40 / q
-    let ticks = JournalSkyPlacer.solarTicks(from: vectorA - 10 * 86_400, to: vectorA + 10 * 86_400, k: k, trace: line)
-    check(ticks.count >= 18 && ticks.count <= 22, "twenty days hold about twenty quarters: \(ticks.count)")
-    check(zip(ticks, ticks.dropFirst()).allSatisfy { $0.time > $1.time && abs(($0.time - $1.time) - q) < 0.05 * q }, "latest first, a quarter apart")
-    check(zip(ticks, ticks.dropFirst()).allSatisfy { $0.quarter == $1.quarter % 4 + 1 }, "peak, node, valley, end in turn")
-    let grid = WaveSolar.Grid(p6: clock.levelInfo(WaveSolar.syncLevel).prefixDouble)
-    let right = ticks.allSatisfy { t in
-        let c = grid.coord(clock.position(at: t.time)!)
-        return abs(c - (Double(t.sync) + Double(t.quarter) / 4)) < 1e-6
+    // Pentads at ~20 points a day: ticks, no shapes
+    let ticks = JournalSkyPlacer.pentadTicks(from: vectorA - 10 * 86_400, to: vectorA + 10 * 86_400, k: 20 / q, trace: line)
+    check(ticks.count >= 18 && ticks.count <= 22, "twenty days hold about twenty Pentads: \(ticks.count)")
+    check(zip(ticks, ticks.dropFirst()).allSatisfy { $0.time > $1.time }, "latest first")
+    check(zip(ticks, ticks.dropFirst()).allSatisfy { $0.index == ($1.index + 1) % 4 && $0.sync == $1.sync + ($0.index == 0 ? 1 : 0) },
+          "Pentad I, II, III and the Hypopentad in turn, a new sync at each Pentad I")
+    let right = ticks.allSatisfy { tick in
+        guard let p = clock.pentad(at: tick.time + 0.001) else { return false }
+        return p.sync == tick.sync && p.index == tick.index && abs(p.start - tick.time) < 1e-6
     }
-    check(right, "each tick is its sync's quarter on the Wave screen's grid")
-    let reading = clock.solar(at: ticks[0].time - 60)
-    check(reading.map { $0.sync == ticks[0].sync && $0.quarter == ticks[0].quarter - 1 } ?? false,
-          "and the engine's sync and quarter agree: \(String(describing: reading?.sync)) \(ticks[0].sync)")
-    check(ticks.allSatisfy { !$0.labelled }, "no names at 40 points a quarter")
-    check(JournalSkyPlacer.solarTicks(from: vectorA - 86_400, to: vectorA + 86_400, k: 60 / q, trace: line).allSatisfy(\.labelled), "names from 46")
-    // closer than 9 points a quarter: only the syncs' ends; closer than 9 a sync: nothing
-    let ends = JournalSkyPlacer.solarTicks(from: vectorA - 40 * 86_400, to: vectorA + 40 * 86_400, k: 4 / q, trace: line)
-    check(!ends.isEmpty && ends.allSatisfy(\.isEnd), "only the syncs' ends: \(ends.count)")
-    check(JournalSkyPlacer.solarTicks(from: vectorA - 400 * 86_400, to: vectorA, k: 1 / q, trace: line).isEmpty, "none when even the syncs crowd")
+    check(right, "each tick is where the engine's Pentad begins")
+    check(zip(ticks, ticks.dropFirst()).allSatisfy { abs(($0.time - $1.time) - ($1.index == 3 ? 4.0 : 5.0) / 4.75 * 86_400) < 120 },
+          "a Pentad's five Helions (the Hypopentad's four) between ticks")
+    check(ticks.allSatisfy { !$0.labelled }, "no shapes at 20 points a Pentad")
+    check(JournalSkyPlacer.pentadTicks(from: vectorA - 86_400, to: vectorA + 86_400, k: 30 / q, trace: line).allSatisfy(\.labelled),
+          "shapes from 26")
+    // closer than 9 points a Pentad: only the Hypopentads; closer than 9 a sync: nothing
+    let hypos = JournalSkyPlacer.pentadTicks(from: vectorA - 40 * 86_400, to: vectorA + 40 * 86_400, k: 4 / q, trace: line)
+    check(!hypos.isEmpty && hypos.allSatisfy(\.isHypopentad), "only the Hypopentads: \(hypos.count)")
+    check(JournalSkyPlacer.pentadTicks(from: vectorA - 400 * 86_400, to: vectorA, k: 1 / q, trace: line).isEmpty,
+          "none when even the Hypopentads crowd")
+    check(JournalSkyPlacer.pentadTicks(from: clock.tMin - 86_400 * 3, to: clock.tMin + 86_400 * 3, k: 20 / q, trace: line).allSatisfy { $0.time >= clock.tMin },
+          "none before the catalogue")
 }

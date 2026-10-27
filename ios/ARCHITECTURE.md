@@ -236,7 +236,8 @@ nodes, lunistices, seasons, eclipses, planets…) precomputed for 1900–2200 by
 Resources/Sky/sky-events.bin (its header documents the format; the script also generates SkyEventKinds.swift from
 `EVENT_INFO` and the checks' fixture) and read lazily by `SkyEvents.shared` (binary-search range queries). The wave
 draws them on its strongest line at their moments, fewer as it zooms out (`JournalSkyPlacer`: total solar eclipses
-always, then by tier), tap for a popover, with the solar sync's quarter thresholds as gold ticks across the curve; the
+always, then by tier), tap for a popover, with each Pentad's start as a gold tick across the curve and its shape beside
+it where there is room (the Hypopentad's tick longer and its square filled; only Hypopentads when Pentads crowd); the
 stack shows a Helion's events beside its header and a block's most notable ones; the timeline menu's Sky Events turns
 families and the ticks on and off (`SkyDisplay`). Every local save carries `sky:<event>` tags for the events within a
 Helion of the entry (hub/API.md): the store applies `JournalStore.normalise` (`SkyTags.normalise`, installed by

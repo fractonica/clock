@@ -65,7 +65,7 @@ enum SkyStyle {
 }
 
 /// What sky events the journal shows (the wave and the stack; an entry's tags are not filtered): families on or off,
-/// and the solar sync's ticks on the wave. Remembered under `journal.sky…` keys.
+/// and the Pentads' ticks on the wave. Remembered under `journal.sky…` keys.
 @MainActor @Observable
 final class SkyDisplay {
     static let shared = SkyDisplay()
@@ -74,22 +74,22 @@ final class SkyDisplay {
     var hidden: Set<SkyFamily> {
         didSet { defaults.set(hidden.map(\.rawValue).sorted(), forKey: Keys.hidden) }
     }
-    /// The solar sync's quarter thresholds as ticks across the wave.
-    var solarTicks: Bool {
-        didSet { defaults.set(solarTicks, forKey: Keys.solar) }
+    /// Where each Pentad begins, as ticks across the wave with the Pentad's shape.
+    var pentadTicks: Bool {
+        didSet { defaults.set(pentadTicks, forKey: Keys.pentads) }
     }
 
     @ObservationIgnored private let defaults: UserDefaults
 
     private enum Keys {
         static let hidden = "journal.skyHidden"
-        static let solar = "journal.skySolarTicks"
+        static let pentads = "journal.skyPentadTicks"
     }
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
         hidden = Set((defaults.stringArray(forKey: Keys.hidden) ?? []).compactMap(SkyFamily.init(rawValue:)))
-        solarTicks = defaults.object(forKey: Keys.solar) as? Bool ?? true
+        pentadTicks = defaults.object(forKey: Keys.pentads) as? Bool ?? true
     }
 
     func binding(_ family: SkyFamily) -> Binding<Bool> {
@@ -98,7 +98,7 @@ final class SkyDisplay {
     }
 }
 
-/// The families on and off, and the solar ticks: a menu section (the timeline's options).
+/// The families on and off, and the Pentads' ticks: a menu section (the timeline's options).
 struct SkyMenuSection: View {
     @State private var display = SkyDisplay.shared
 
@@ -110,8 +110,8 @@ struct SkyMenuSection: View {
                 }
             }
             Divider()
-            Toggle(isOn: Bindable(display).solarTicks) {
-                Text("Solar Sync Ticks")
+            Toggle(isOn: Bindable(display).pentadTicks) {
+                Text("Pentads")
             }
         } label: {
             Label("Sky Events", systemImage: "moon.stars")
