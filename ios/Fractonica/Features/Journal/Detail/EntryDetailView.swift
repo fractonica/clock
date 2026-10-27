@@ -81,7 +81,8 @@ struct EntryDetailView: View {
         }
         .background { Backdrop() }
         // a plain title: the Pentad by name ("Pentad II · 34η 29ι")
-        .navigationTitle(FractonicaClock.shared.inRange(record.time) ? words.led(words.notation.clockText(at: record.time, upTo: "iota"), at: record.time) : "Entry")
+        .navigationTitle(FractonicaClock.shared.inRange(record.time)
+            ? words.led(words.notation.clockText(at: record.time, upTo: "iota"), at: record.time) : "Entry")
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
         #endif

@@ -47,6 +47,17 @@ struct JournalPentadHeader: View {
     }
 }
 
+extension Text {
+    /// A reading in the code face led by its Pentad's mark in the system face of the same size (the monospaced face
+    /// spreads the mark's thin space and numeral over whole cells): "⬠II δ#3 ε#2 5η 5ι". Without a Pentad (outside
+    /// the catalogue, or `t` nil) the reading alone.
+    static func journalCode(_ reading: String, at t: Double?, size: CGFloat, weight: Font.Weight = .medium) -> Text {
+        let code = Text(verbatim: reading).font(.code(size, weight: weight))
+        guard let t, FractonicaClock.shared.inRange(t), let index = Pentads.index(at: t) else { return code }
+        return Text.ledByPentad(index, code).font(.system(size: size, weight: weight))
+    }
+}
+
 /// A Pentad's Helions as small cells in time order, lit where the journal has entries.
 struct JournalPentadCells: View {
     let helions: Int

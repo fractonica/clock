@@ -119,8 +119,7 @@ struct JournalStampText: View {
 
     var body: some View {
         HStack(spacing: 6) {
-            Text.ledByPentad(FractonicaClock.shared.inRange(time) ? Pentads.index(at: time) : nil, Text(verbatim: fractonica))
-                .font(.code(12, weight: .medium))
+            Text.journalCode(fractonica, at: time, size: 12)
                 .foregroundStyle(Theme.teal)
             if !words.pure {
                 Text(verbatim: "·").foregroundStyle(Theme.ink3)
