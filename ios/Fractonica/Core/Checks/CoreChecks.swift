@@ -15,6 +15,7 @@ struct CoreChecks {
         scheduleChecks()
         linkChecks()
         wordingChecks()
+        pentadChecks()
         Checks.finish()
     }
 }
