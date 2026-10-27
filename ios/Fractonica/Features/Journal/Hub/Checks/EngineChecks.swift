@@ -224,6 +224,35 @@ func engineChecks() async {
         check(false, "pairing again works")
     }
 
+    // ---- the hub moves: a new address keeps the pairing; an address where no hub answers, or another hub's, is refused
+    do {
+        try await engineA.changeAddress("localhost:\(hub.port)")
+        check(engineA.credentials?.hubURL.host() == "localhost" && engineA.credentials?.clientId == revokedId,
+              "a new address keeps the token and the client: \(String(describing: engineA.credentials))")
+        await engineA.syncNow()
+        check(engineA.status == .idle, "and syncs there: \(engineA.status)")
+    } catch {
+        check(false, "changing the address works: \(error)")
+    }
+    do {
+        try await engineA.changeAddress("127.0.0.1:1")
+        check(false, "an address where no hub answers is refused")
+    } catch {
+        check(engineA.credentials?.hubURL.host() == "localhost", "an unreachable address changes nothing: \(error)")
+    }
+    if let stranger = MockHub(codes: []), stranger.start() {
+        defer { stranger.cleanUp() }
+        do {
+            try await engineA.changeAddress(stranger.url.absoluteString)
+            check(false, "another hub's address is refused")
+        } catch {
+            let refused = if case .otherHub = HubError.from(error) { true } else { false }
+            check(refused && engineA.credentials?.hubURL.host() == "localhost", "another hub's address is refused, nothing changes: \(error)")
+        }
+    } else {
+        check(false, "a stranger mock hub starts")
+    }
+
     // ---- unpair keeps the journal; pairing with another hub uploads everything to it
     engineA.unpair()
     check(engineA.status == .unpaired && !engineA.isPaired && storeA.entries.count > 1000, "unpairing keeps local data")

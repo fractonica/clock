@@ -496,6 +496,8 @@ enum HubError: Error, Sendable, LocalizedError {
     case hashMismatch(expected: String, actual: String)
     /// A local file could not be read or written.
     case file(String)
+    /// The address answers as another hub (its name): a device moves between hubs by pairing.
+    case otherHub(String)
     case cancelled
 
     var code: HubErrorCode? {
@@ -531,6 +533,7 @@ enum HubError: Error, Sendable, LocalizedError {
         case .decoding(let what): "Unexpected answer from the hub (\(what))"
         case .hashMismatch: "A downloaded file was damaged"
         case .file(let what): what
+        case .otherHub(let name): "That address is another hub (\(name)). To switch hubs, unpair and pair with its code."
         case .cancelled: "Cancelled"
         }
     }

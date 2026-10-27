@@ -309,6 +309,32 @@ final class SyncEngine {
         return response
     }
 
+    /// The paired hub moved (a new network address, a domain, https in front): this device follows it there, keeping its
+    /// token, its client and everything synced. The hub at `text` must be the same hub (its id) and still accept the
+    /// token; otherwise nothing changes. Throws `HubError` (`.otherHub` for another hub's address).
+    func changeAddress(_ text: String) async throws {
+        guard var credentials else { throw HubError.notPaired }
+        guard let url = HubAddress.normalize(text) else { throw HubError.invalidAddress(text) }
+        let info = try await HubClient(base: url, session: session).info()
+        guard info.hub.id == credentials.hubId else { throw HubError.otherHub(info.hub.name) }
+        _ = try await HubClient(base: url, token: credentials.token, session: session).me()
+        credentials.hubURL = url
+        credentials.hubName = info.hub.name
+        do {
+            try secrets.save(credentials)
+        } catch {
+            throw HubError.file("Could not keep the hub’s new address: \(error.localizedDescription)")
+        }
+        cancelWork()
+        self.credentials = credentials
+        hubInfo = info
+        problem = nil
+        status = .idle
+        retryDelay = .seconds(5)
+        requestPass()
+        startLive()
+    }
+
     /// Forgets the hub on this device. Local entries stay; pairing again (with the same hub) continues where it left.
     /// The hub keeps this device's client until it is removed in the hub's web page; pairing again replaces its token.
     func unpair() {

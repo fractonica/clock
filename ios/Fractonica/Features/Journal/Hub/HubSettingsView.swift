@@ -11,6 +11,10 @@ struct HubSettingsView: View {
     @State private var discovery = HubDiscovery()
     @State private var confirmUnpair = false
     @State private var repairing = false
+    /// The hub's new address while it is being typed (nil: not editing), why it was refused, and the check under way.
+    @State private var newAddress: String?
+    @State private var addressProblem: String?
+    @State private var movingAddress = false
     @Environment(\.colorScheme) private var colorScheme
 
     private var engine: SyncEngine { model.engine }
@@ -114,8 +118,16 @@ struct HubSettingsView: View {
         Section {
             if let credentials = engine.credentials {
                 LabeledContent("This device", value: credentials.clientName)
-                LabeledContent("Hub") {
-                    Text(verbatim: HubAddress.display(credentials.hubURL)).textSelection(.enabled)
+                if let typed = newAddress {
+                    addressEditor(typed)
+                } else {
+                    LabeledContent("Hub") {
+                        Text(verbatim: HubAddress.display(credentials.hubURL)).textSelection(.enabled)
+                    }
+                    Button("Change Address…") {
+                        addressProblem = nil
+                        newAddress = HubAddress.display(credentials.hubURL)
+                    }
                 }
                 if let version = engine.hubInfo?.hub.version {
                     LabeledContent("Version") { Text(verbatim: version) }
@@ -146,7 +158,57 @@ struct HubSettingsView: View {
         } header: {
             Text("Pairing")
         } footer: {
-            Text("Unpairing keeps every entry on this device.")
+            Text("If the hub moves to another address, change it here: this device stays paired. Unpairing keeps every entry on this device.")
+        }
+    }
+
+    /// The hub's new address: typed, then checked against the paired hub (same hub, token still good) before it is kept.
+    @ViewBuilder
+    private func addressEditor(_ typed: String) -> some View {
+        TextField("Hub address", text: Binding(get: { newAddress ?? typed }, set: { newAddress = $0; addressProblem = nil }),
+                  prompt: Text(verbatim: "192.168.1.20:8787"))
+            .font(.body.monospaced())
+            .autocorrectionDisabled()
+            #if os(iOS)
+            .keyboardType(.URL)
+            .textInputAutocapitalization(.never)
+            .textContentType(.URL)
+            #endif
+            .submitLabel(.done)
+            .onSubmit { Task { await moveAddress() } }
+            .disabled(movingAddress)
+        if let addressProblem {
+            Label(addressProblem, systemImage: "exclamationmark.triangle").foregroundStyle(.orange)
+        }
+        HStack {
+            Button("Cancel") {
+                newAddress = nil
+                addressProblem = nil
+            }
+            .buttonStyle(.borderless)
+            .disabled(movingAddress)
+            Spacer()
+            if movingAddress {
+                ProgressView().controlSize(.small)
+            }
+            Button("Save") { Task { await moveAddress() } }
+                .buttonStyle(.borderless)
+                .fontWeight(.semibold)
+                .disabled(movingAddress || HubAddress.normalize(typed) == nil)
+        }
+    }
+
+    private func moveAddress() async {
+        guard let typed = newAddress, !movingAddress else { return }
+        movingAddress = true
+        defer { movingAddress = false }
+        do {
+            try await engine.changeAddress(typed)
+            newAddress = nil
+            addressProblem = nil
+        } catch {
+            let error = HubError.from(error)
+            addressProblem = error.isUnauthorized ? "The hub at that address does not know this device." : error.localizedDescription
         }
     }
 
