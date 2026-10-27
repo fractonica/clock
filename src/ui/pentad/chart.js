@@ -165,7 +165,8 @@ export function createPentadChart({ model, fmt, isPure }) {
     }
     const row = c.row;
     const place = now - [0, 5, 10, 15][row] + 1;
-    const label = `The solar sync's 19 Helions as four Pentads against the solar day: now ${pentadName(row)}, ${helionPlace(place)}. Each Pentad starts a quarter Helion later in the day; the Hypopentad, one Helion short, ends on the day and brings Pentad I back.`;
+    const day = isPure() ? 'the solar day' : 'the day';
+    const label = `The solar sync's 19 Helions as four Pentads against the solar day: now ${pentadName(row)}, ${helionPlace(place)}. Each Pentad starts a quarter Helion later in ${day}; the Hypopentad, one Helion short, ends on ${day} and brings Pentad I back.`;
     if (label !== lastLabel) {
       svg.setAttribute('aria-label', label);
       lastLabel = label;

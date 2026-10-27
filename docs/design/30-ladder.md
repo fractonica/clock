@@ -26,6 +26,15 @@ a `listbox` (↑/↓ select, Enter = go to next boundary). Rows below ~0.3 s per
 Header of the card: title "Cycle ladder" and the depth-range control (`store.set({minDepth,maxDepth})`).
 Out of range: rows disabled with a one-line message.
 
+## Pentads (both cards; SPEC §7.5, §15.3)
+
+Every moment leads with its Pentad's mark, like a date with its weekday: the hero's date (or "→ 45η begins"), each row's
+day, the strip's time, the tooltips, and the ladder detail's Ends, Started and quarter times (quarters only for cycles
+longer than a Pentad: a shorter cycle keeps one Pentad, and four equal marks would be noise). A turnover is read as what
+begins there (t + 1 ms). Pure mode marks only readings that count down to the Helion (ζ and finer); majors read in words.
+On narrow cards the Pentad takes the weekday's place in the rows ("⬠II 12 Oct 23:02"); wide cards keep both. Labels and
+tooltips say the full name ("Pentad II · Mon 12 Oct 2026 23:02 UTC"). Marks come from a cached `pentadLookup`.
+
 ## upnext – what turns over next ("estimate the next major cycle")
 
 Source: `model.upcomingEnds(t, {fromLevel, toLevel, count, perLevel})`. Remember: when a cycle at level L ends, every

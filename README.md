@@ -95,9 +95,10 @@ print dialog, where "Save as PDF" writes the file. From the command line, `npm r
 writes the PDF directly; add `--pairing duplex` for double-sided A4: print the odd pages, put the stack back in, print
 the even pages, cut the sheets in half and lay the left halves on the right halves. Each lined Helion carries its quarter ticks with their glyphs and a curve of its wave in the
 outer margin. Lunar events (synodic, anomalistic, draconic and sidereal months, with quarters) and solar events (equinoxes,
-solstices, perihelion, aphelion) appear at their exact place, with Gregorian and Fractonica times. Each solar lock is three Pentads (5 Helions: 3 lined, 2
-canvases) and an all-canvas Semi-pentad; a thumb index on the outer edge links each page to the same Helion in the
-next and previous Nuclide and to the neighbouring Semi-pentads, locks, Nuclides and Delta sheets. The Sun and Moon over
+solstices, perihelion, aphelion) appear at their exact place, with Gregorian and Fractonica times. Each lock of 19 Helions is three 5-Helion sheets (3 lined, 2
+canvases) and an all-canvas 4-Helion sheet; every Helion's header leads with its Pentad (SPEC §7.5). A thumb index on the
+outer edge links each page to the same Helion in the next and previous Nuclide and to the neighbouring 4-Helion sheets,
+locks, Nuclides and Delta sheets. The Sun and Moon over
 your place (the zone's city by default) are drawn on every page with their rises, culminations and sets, and the 77th
 Helion of each Nuclide has a 7 × 11 grid to mark every Helion. Each eclipse gets two sheets: its path on a gnomonic cube map (or the Moon in the Earth's shadow) with
 its circumstances and Saros series, the whole series with Fractonica addresses, and its Helion with every contact on a

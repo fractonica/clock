@@ -4,8 +4,9 @@
  * The diary (docs/design/90-diary.md):
  *   front matter   index · Gregorian index · ephemeris · reference sheet (period ladder | milestones) · planning ·
  *                  predictions
- *   per Nuclide    header page · 4 solar locks of 19 Helions: 3 Pentads (5 Helions: 3 lined on the front, 2 canvases
- *                  on the back) and a Semi-pentad (4 Helions, all canvases: 2 on each side)
+ *   per Nuclide    header page · 4 locks of 19 Helions, counted from the Nuclide's start: three 5-Helion sheets (3 lined
+ *                  on the front, 2 canvases on the back) and a 4-Helion sheet (all canvases: 2 on each side). These
+ *                  sheets are not the solar sync's Pentads (SPEC §7.5); every Helion's header names its true Pentad
  *                  · the 77th Helion on its own (a fine lined page + 2 canvas pages): the retrospection
  *   inserts        a Delta sheet before the lock that holds each Delta quarter threshold (Peak, Node, Valley)
  *   closing        retrospection / summary pages of the whole Delta
@@ -51,7 +52,7 @@ export const DIARY_DEFAULTS = Object.freeze({
     { type: 'blank' },
   ],
   /**
-   * A Semi-pentad: a sheet of 4 Helions (the last of the default lock). With `allCanvas` both its sides are canvases,
+   * The 4-Helion sheet (the last of the default lock; option key `semi` kept for stored settings). With `allCanvas` both its sides are canvases,
    * 2 Helions each, in the order of `canvases`; otherwise it is laid out like any sheet.
    */
   semi: { allCanvas: true, canvases: [{ type: 'blank' }, { type: 'blank' }, { type: 'blank' }, { type: 'blank' }] },

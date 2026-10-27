@@ -61,6 +61,14 @@ Pure mode is a *presentation* mode: same clock, views and navigation, but it nev
 - The **Helion** is the basic reading: its count and its **phase pair** (`pure.pairHTML(levelAt(t, 6).phase)`, the SPEC §5
   odometer at depth 7). Preons and Flavons are the fine time.
 
+### Pentads (SPEC §7.5)
+- The solar sync's 19 Helions run as **Pentad I, II, III** (5 Helions) and the **Hypopentad** (4): `model.pentadAt(t)`,
+  `pure.pentadText(t, {form, helion})`, the UI helpers in `src/ui/pentad.js`. A solar day is 4¾η, so each Pentad starts ¼η
+  later in it and the Hypopentad, one Helion short, brings Pentad I back.
+- A date or reading **leads with its Pentad** like a weekday: the shape mark in HTML and on canvases (a pentagon with its
+  numeral, a square alone), "Pentad II · …" in plain text. The stamp does not carry it.
+- Pure wording: "4¾η is a solar day" – the scanner allows *solar day* and *the Sun*, never hours or plain days.
+
 ### Notation (one rule)
 `X#n` ordinal from 1 (α#6, δ#3, ε#2); `nX` count from 0 (5ι, spans `6ι 43λ`, ruler ticks `9ι`, speeds `4ι per Blink`) –
 except the Helion of a date or clock, numbered from 1 (`1η` … `77η`); `η 7` only a depth chip.

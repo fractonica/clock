@@ -15,6 +15,10 @@ src/core/theme.js          colours (TEAL, GOLD, level hues) and glyph style help
 src/core/pure.js           pure-mode vocabulary: cycle names, major periods in words (Alpha … Delta) and minor units in letters (Nuclide, Helion, Preon, Flavon, Blink; SPEC.md §15), Blinks and pB for real time, phase pairs, pure clock/date/stamps (docs/design/80-pure.md)
 src/ui/*.js                one module per UI region (face, rings, ladder, upnext, timeline, wave,
                            calendar, jump, sound)  –  helpers go in src/ui/<module>/
+src/ui/pentad.js           Pentads (SPEC §7.5): the shape mark (pentagon + numeral, the Hypopentad's square), names,
+                           leadHTML / leadText ("a date leads with its Pentad"), drawPentadMark for canvases,
+                           pentadsIn / pentadLookup for many instants, pentadChart geometry
+src/ui/pentad/*.js         the Pentad card (side panel) and the header's Pentad button + popover, its chart
 src/audio/*.js             sonification engine (pure scheduling/tuning + Web Audio)
 src/diary/*.js             the printable diary of one Delta: options, page plan, ephemeris (astro/), page renderers (docs/design/90-diary.md)
 src/styles/app.css         tokens + shell + shared components;  src/styles/<module>.css per module
@@ -100,12 +104,20 @@ requestRender(), QUARTER_NAMES, modules` (other mounted instances by id, e.g. `c
 `!info.dirty` and you have no animation / hover of your own. Call `ctx.requestRender()` after your own
 state changes. A throwing `render` is isolated and logged once; a throwing `mount` shows an error card.
 
-Slots: `face → #slot-face`, `ladder → #slot-ladder`, `upnext → #slot-upnext`, `jump → #slot-jump` (header),
+Slots: `face → #slot-face`, `pentad → #slot-pentad`, `ladder → #slot-ladder`, `upnext → #slot-upnext`, `jump → #slot-jump` (header),
 tabs `rings / timeline / wave / calendar / sound / diary → #view-<id>`. Tab modules are only rendered while active.
 The sound module must expose `{ enabled, toggle() }` for the header speaker button and keep running when
 its tab is hidden (`alwaysOn: true`; drive audio scheduling from its own timer, not requestAnimationFrame).
 
 ## Conventions
+
+- **Pentads lead dates** (SPEC §7.5, §15.3). Wherever a date or a reading of a moment is shown, its Pentad leads it like a
+  weekday: in HTML the mark from `src/ui/pentad.js` (`pentadMarkHTML`, `leadHTML`; an inline SVG pentagon with its serif
+  Roman numeral, or the Hypopentad's square alone, in `currentColor`, named "Pentad II" for screen readers – never the
+  ⬠ character, which only one Apple font has), on canvases `drawPentadMark`, in tooltips / aria labels / copied text the
+  full name ("Pentad II · δ#4 ε#1 44η 15ι", `leadText`). `pure.stamp()` never carries it (the jump box reads stamps back and
+  ignores a leading Pentad). In pure mode only readings that count down to the Helion get one; a Gregorian date always
+  does. Many instants at once (rows, cells): `pentadLookup(model)`, not `model.pentadAt` per item.
 
 - **Words and labels.** The user-facing number is the **depth** (never "level" in visible text). A bare letter + number
   such as `ε 5` is a *depth chip* (ε is always depth 5). An *ordinal* inside its parent is written with a hash:

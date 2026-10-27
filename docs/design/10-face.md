@@ -73,7 +73,11 @@ Update only glyph groups whose digits changed (compare a signature string per od
 
 - Out of catalogue: dim screen, no glyphs, the text "outside Saros 141 catalogue" with the valid range.
 - Time travel / time-lapse: the face just shows the displayed time; show a small caption under the pill with the
-  displayed Gregorian time only if it is not live (the header already does, so keep it minimal).
+  displayed Gregorian time only if it is not live (the header already does, so keep it minimal). The caption leads with
+  its Pentad's mark (SPEC §7.5, §15.3), like a date with its weekday.
+- Pentads: the journal face draws the Pentad's mark (gold, src/ui/pentad.js geometry) centred just above a minor reading
+  ("⬠II" over "34η 29ι 21λ") and says it first to screen readers; the solar row's tooltip names the Pentad and its
+  Helion. The chart of the sync's four Pentads lives in the side card and the header's Pentad button (src/ui/pentad/).
 - Reduced motion: no transitions on glyph change.
 
 ## Notes
