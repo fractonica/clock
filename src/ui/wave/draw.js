@@ -375,6 +375,8 @@ function drawPentadRail(P, scene, sf, sun, fit, amp, quiet, occ) {
   const rail = { x: sf.x, y: sf.y, r: sf.r + amp + RAIL_OFF, a0: sf.a0, sweep: sf.sweep };
   const gapP = RAIL_GAP / len / 2;
   const small = P.fonts.small;
+  // the pin of the displayed time stands on the ripple: a mark is not written where it would sit under the pin
+  const pin = sun.here ? ripplePointAt(sf, sun.spec, sun.grid, Math.min(scene.fraction, Math.max(0, sun.pNow)), amp, {}) : null;
   g.lineCap = 'butt'; // square ends: the gap at each Pentad start stays as wide as it is meant to be
   for (const s of spans) {
     const passed = s.sync < sun.sync || (s.sync === sun.sync && s.index < sun.pentad);
@@ -399,6 +401,7 @@ function drawPentadRail(P, scene, sf, sun, fit, amp, quiet, occ) {
     const cx = sf.x + r * nx;
     const cy = sf.y + r * ny;
     if (cx < 8 || cy < 8 || cx > P.W - 8 || cy > P.H - 8) continue;
+    if (pin && Math.hypot(cx - pin.x, cy - pin.y) < 34) continue;
     occ.push({ x0: cx - mw / 2 - 2, x1: cx + mw / 2 + 2, y0: cy - 7, y1: cy + 7, w: SOFT });
     ledText(P, s.index, '', cx + (fontPx(small) * MARK_GAP) / 2, cy, style);
   }

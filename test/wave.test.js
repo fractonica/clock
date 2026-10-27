@@ -2197,3 +2197,73 @@ test('tipHTMLPure escapes what it is given', () => {
   assert.doesNotMatch(html, /<img/);
   assert.match(html, /&lt;img src=x&gt;/);
 });
+
+// ================================================================== the Pentads of the solar sync (SPEC §7.5) ====
+
+test('solar Pentads: four runs of a sync, 5 + 5 + 5 + 4 Helions, each just after its quarter (a solar day)', () => {
+  assert.deepEqual([0, 1, 2, 3, 4].map(SUN.pentadPhase), [0, 5 / 19, 10 / 19, 15 / 19, 1]);
+  // each starts ¼, ½, ¾ Helion (1/76 of a sync each) after the quarter before it; the Hypopentad ends on the sync's end
+  for (let i = 1; i < 4; i++) assert.ok(Math.abs(SUN.pentadPhase(i) - i / 4 - i / 76) < 1e-12);
+  assert.deepEqual([0, 0.2, 5 / 19 + 1e-9, 0.5, 10 / 19 + 1e-9, 0.78, 15 / 19 + 1e-9, 0.9999, 1].map(SUN.pentadOfPhase), [0, 0, 1, 1, 2, 2, 3, 3, 3]);
+  // the grid agrees with the model's Pentad of the displayed time
+  const g = SUN.syncGrid(model.levelInfo(6).prefixNum);
+  for (const t of [TIMES.A, 946684800, 2886085800, TIMES.A + 86400 * 2.7]) {
+    const sy = SUN.syncAt(model.positionOf(t), g);
+    const p = model.pentadAt(t);
+    assert.equal(sy.sync, p.sync, `sync at ${t}`);
+    assert.equal(SUN.pentadOfPhase(sy.phase), p.index, `pentad at ${t}`);
+  }
+  // the dial's band: four segments in order, the Hypopentad 4/5 of the others
+  const shape = SUN.dialShape(220, 30);
+  const band = SUN.dialPentads(shape, 0);
+  assert.deepEqual(band.map((b) => b.index), [0, 1, 2, 3]);
+  const w = band.map((b) => b.x1 - b.x0);
+  assert.ok(Math.abs(w[0] - w[1]) < 1e-9 && Math.abs(w[1] - w[2]) < 1e-9 && Math.abs(w[3] / w[0] - 0.8) < 1e-9);
+  assert.ok(Math.abs(band[0].x0 - shape.padX) < 1e-9 && Math.abs(band[3].x1 - (shape.padX + shape.W)) < 1e-9);
+  const gapped = SUN.dialPentads(shape, 2);
+  assert.ok(gapped[1].x0 - gapped[0].x1 > 1.99, 'a gap where each Pentad starts');
+});
+
+test('solar Pentads along an arc: the spans of the syncs it carries, clipped to the arc', () => {
+  const g = SUN.syncGrid(model.levelInfo(6).prefixNum);
+  const f = model.frame(TIMES.A);
+  const P4 = model.levelInfo(4).prefixNum;
+  const idx = Math.floor((f.pos * P4) / 2); // the ε half-arc of vector A
+  const spec = SUN.arcSpec(idx, P4, 1);
+  const all = SUN.pentadSpans(spec, g);
+  // an ε half-arc is 38.5 Helions: two syncs and a bit, so 8 to 10 Pentads, in order and tiling the arc
+  assert.ok(all.length >= 8 && all.length <= 10, `count ${all.length}`);
+  assert.equal(all[0].p0, 0);
+  assert.equal(all.at(-1).p1, 1);
+  for (let i = 1; i < all.length; i++) {
+    assert.ok(Math.abs(all[i].p0 - all[i - 1].p1) < 1e-9, 'they follow on');
+    assert.equal(all[i].index, (all[i - 1].index + 1) % 4);
+  }
+  // a whole Pentad on the arc is 5 (or 4) Helions of 38.5
+  const whole = all.filter((s) => s.p0 > 0 && s.p1 < 1);
+  for (const s of whole) assert.ok(Math.abs((s.p1 - s.p0) * 38.5 - (s.index === 3 ? 4 : 5)) < 1e-6, `length of ${s.index}`);
+  const now = SUN.syncAt(f.pos, g).sync;
+  const one = SUN.pentadSpans(spec, g, now);
+  assert.ok(one.length >= 1 && one.length <= 4 && one.every((s) => s.sync === now));
+});
+
+test('pure readings lead with their Pentad where they read down to the Helion', () => {
+  assert.deepEqual([3, 4, 5, 6, 8, 12].map(pureCycleLeads), [false, false, false, true, true, true], 'a Helion or finer cycle lies in one Pentad');
+  assert.deepEqual([0, 2, 3, 6].map(pureNowLeads), [false, false, true, true]);
+  const cur = eng.readHalves(model.frame(TIMES.A));
+  const d = eng.describe(6, cur[6].idx);
+  assert.equal(chainShort(pureT, model, 6, d.cycle), 'δ#3 ε#5 34η', 'the short letter form of SPEC §15.3');
+  flag.on = true;
+  const html = words.spanHTML(d);
+  assert.match(html, /^<span class="pentad-lead"><span class="pentad-mark" role="img" aria-label="Pentad II"/);
+  assert.match(html, /δ#3 ε#5 34η<\/span><\/span>$/);
+  assert.equal(words.nowPentad({ t: TIMES.A, level: 2 }), null, 'α#6 β#4 γ#9 has no Helion: no Pentad');
+  assert.equal(words.nowPentad({ t: TIMES.A, level: 6 }), 1);
+  assert.equal(words.nowPentad({ t: TIMES.A, level: 0, overview: true }), null);
+  assertClean(words.spanHTML(d), 'pure span');
+  flag.on = false;
+  assert.equal(words.nowPentad({ t: TIMES.A, level: 0, overview: true }), 1, 'normal mode: a date always leads with its Pentad');
+  const n = words.spanHTML(d);
+  assert.match(n, /aria-label="Pentad II"/);
+  assert.equal(n.replace(/<[^>]+>/g, ''), 'II' + spanText(fmt, d.start, d.end).replace(' → ', ' → '), 'one mark: both ends are in Pentad II');
+});
