@@ -68,7 +68,8 @@ struct TimelineReadout: View {
                             ForEach(Array(facts.events.enumerated()), id: \.offset) { i, event in
                                 row(eventName(i, pure: pure),
                                     event.time.map { stamp($0, level: level, facts: facts, words: words) } ?? "after the catalogue",
-                                    marked: event.time.map { abs($0 - t) < 0.5 } ?? false)
+                                    marked: event.time.map { abs($0 - t) < 0.5 } ?? false,
+                                    pentad: event.time.flatMap(Pentads.index(at:)))
                                 if i < 4 { Divider().overlay(Theme.line) }
                             }
                         }
@@ -205,14 +206,15 @@ struct TimelineReadout: View {
                                      : AnyLayout(HStackLayout(alignment: .firstTextBaseline))
     }
 
-    private func row(_ name: String, _ value: String, marked: Bool) -> some View {
+    /// `pentad`: the value is a moment, led by its Pentad (SPEC §15.3).
+    private func row(_ name: String, _ value: String, marked: Bool, pentad: Int? = nil) -> some View {
         let stacked = typeSize.isAccessibilitySize
         return rowLayout {
             Text(name)
                 .font(.subheadline)
                 .foregroundStyle(Theme.ink2)
             if !stacked { Spacer(minLength: 12) }
-            Text(value)
+            Text.ledByPentad(pentad, Text(value))
                 .font(Self.value)
                 .foregroundStyle(marked ? Theme.cursor : Theme.ink)
                 .multilineTextAlignment(stacked ? .leading : .trailing)
@@ -342,9 +344,9 @@ struct TimelineReadout: View {
         ClockTimeline(.periodic(1)) { t in
             VStack(spacing: 0) {
                 if pure {
-                    row("Address", words.notation.stamp(at: e, upTo: "iota"), marked: false)
+                    row("Address", words.notation.stamp(at: e, upTo: "iota"), marked: false, pentad: Pentads.index(at: e))
                 } else {
-                    row("Moment", "\(words.earth.long(e)) \(words.earth.tag(e))", marked: false)
+                    row("Moment", "\(words.earth.long(e)) \(words.earth.tag(e))", marked: false, pentad: Pentads.index(at: e))
                 }
                 Divider().overlay(Theme.line)
                 row("Position", "pos \(k)" + (k % 4 == 0 ? (pure ? " · α#\(k / 4 + 1) begins" : " · starts α cycle \(k / 4 + 1)") : ""), marked: false)

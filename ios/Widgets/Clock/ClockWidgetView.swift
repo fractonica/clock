@@ -42,7 +42,7 @@ struct ClockWidgetView: View {
 
     private func readout(_ s: ClockSnapshot, height h: CGFloat) -> some View {
         VStack(alignment: .leading, spacing: h * 0.035) {
-            Text("\(s.major) · \(s.nuclide)")
+            PentadLedText(pentad: s.pentad, text: "\(s.major) · \(s.nuclide)")
                 .font(.system(size: 12, weight: .semibold))
                 .ink(.secondary)
                 .lineLimit(1)

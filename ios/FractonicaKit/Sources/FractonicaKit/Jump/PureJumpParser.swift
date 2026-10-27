@@ -13,7 +13,8 @@ import Foundation
 ///     position     pos 22.9278 · sync 4820 · S4820 node · η [13,0] · η 13·4 · now · live
 ///
 /// Old forms get one short pointer each; Earth input (a date, a clock time, "+3d", a city, Unix seconds) is answered
-/// with one message instead of being read. Nothing returned contains a Gregorian date, a zone or an Earth unit.
+/// with one message instead of being read. Nothing returned contains a Gregorian date, a zone or an Earth unit. A
+/// leading Pentad is read past, as a weekday before a date (`PentadLead`): "Pentad II · δ#3 ε#2 5η 5ι", "⬠II 34η 29ι".
 public enum PureJumpParser {
     /// The placeholder of the pure box.
     public static let placeholder = "Delta Trifracton Node · ε#2 5η · +2ε 5η · next Helion · pos 24.5"
@@ -42,8 +43,11 @@ public enum PureJumpParser {
             return [.error("That is \(text.jsTrim.jsLength) characters: the jump box reads up to \(JumpParser.maxInput)",
                            "Paste a date, a stamp, counts or an offset")]
         }
-        let raw = normalize(text)
-        if raw.isEmpty { return [] }
+        let typed = normalize(text)
+        if typed.isEmpty { return [] }
+        // a leading Pentad is implied by the rest of the date (SPEC §15.3)
+        let (pentad, raw) = PentadLead.strip(typed)
+        if !pentad.isEmpty && raw.isEmpty { return [PentadLead.alone(pentad, example: "δ#3 ε#2 5η 5ι")] }
         let lower = raw.jsLower
         // old forms: one pointer each, whatever else the text says (and the pointer never repeats them)
         if halfRE.test(lower) { return [.error(halfAnswer.0, halfAnswer.1)] }

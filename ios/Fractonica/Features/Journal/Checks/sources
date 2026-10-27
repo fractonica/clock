@@ -13,3 +13,4 @@ Fractonica/Features/Journal/Sky/SkyEventKinds.swift
 Fractonica/Features/Journal/Sky/SkyEvents.swift
 Fractonica/Features/Journal/Sky/SkyTags.swift
 Fractonica/Features/Journal/Sky/SkyTagging.swift
+Shared/Pentads.swift

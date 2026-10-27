@@ -35,6 +35,59 @@ struct TokensText: View {
     }
 }
 
+// MARK: - Pentad
+
+/// The ink of a Pentad's mark (SPEC §7.5): gold, the solar colour, in full colour; where the system tints the widget
+/// (accented, vibrant) the primary ink, so it reads as the date's first word.
+enum PentadInk {
+    static func color(in mode: WidgetRenderingMode) -> Color {
+        mode == .fullColor ? Theme.gold : Ink.primary.color(in: mode)
+    }
+
+    /// The mark as text, to lead a line: "⬠II".
+    static func mark(_ index: Int, in mode: WidgetRenderingMode) -> Text {
+        Text.pentadMark(index).foregroundStyle(color(in: mode))
+    }
+}
+
+/// A Pentad's mark on its own, at a size: the corner of a face, a legend's column.
+struct WidgetPentadMark: View {
+    var index: Int
+    var size: CGFloat
+    var weight: Font.Weight = .semibold
+    @Environment(\.widgetRenderingMode) private var mode
+
+    var body: some View {
+        PentadInk.mark(index, in: mode)
+            .font(.system(size: size, weight: weight))
+            .lineLimit(1)
+            .fixedSize()
+            .widgetAccentable()
+    }
+}
+
+/// A line led by its Pentad's mark: "⬠II Delta Trifracton End · ε#5" (the line alone without a Pentad). `markSize`
+/// sets the mark's own size where a line must not grow taller than its text (the shape stands above the cap height).
+struct PentadLedText: View {
+    var pentad: Int?
+    var text: String
+    var markSize: CGFloat? = nil
+    @Environment(\.widgetRenderingMode) private var mode
+
+    var body: some View {
+        if let pentad {
+            let mark = PentadInk.mark(pentad, in: mode)
+            if let markSize {
+                Text("\(mark.font(.system(size: markSize, weight: .semibold))) \(Text(verbatim: text))")
+            } else {
+                Text("\(mark) \(Text(verbatim: text))")
+            }
+        } else {
+            Text(verbatim: text)
+        }
+    }
+}
+
 // MARK: - Inks
 
 /// Text by rank. In full colour (and in the vibrant mode, which keeps luminance) the ranks are the theme's greys. In

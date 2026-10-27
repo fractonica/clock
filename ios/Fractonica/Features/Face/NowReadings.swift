@@ -5,8 +5,8 @@ import SwiftUI
 // readings beside it. Each redraws exactly when its own text changes (`FaceCadence`), so the λ of the stamp, the λ of
 // the face and the countdown all turn together.
 
-/// The date line (compact layouts): Earth "Thu 8 Oct 2026 · 12:00:00 UTC" over the short pure date; pure mode the
-/// short pure date over the stamp.
+/// The date line (compact layouts): Earth "Thu 8 Oct 2026 · 12:00:00 UTC" over the short pure date led by its Pentad
+/// ("⬠II Delta Trifracton End ε#5 34η 29ι"); pure mode that date over the stamp.
 struct NowDateLine: View {
     var fixed: Double?
 
@@ -26,7 +26,8 @@ struct NowDateLine: View {
                         .font(.caption)
                         .foregroundStyle(Theme.ink3)
                 } else if pure {
-                    Text(verbatim: words.notation.dateText(at: t))
+                    // the date leads with its Pentad, as a civil date with its weekday (SPEC §15.3)
+                    Text.ledByPentad(Pentads.index(at: t), Text(verbatim: words.notation.dateText(at: t)))
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(Theme.ink)
                     Text(verbatim: words.notation.stamp(at: t, upTo: "lambda"))
@@ -35,9 +36,15 @@ struct NowDateLine: View {
                 } else {
                     Text("\(Text(verbatim: "\(words.day(t)) · \(words.time(t))").foregroundStyle(Theme.ink)) \(Text(verbatim: words.tag(t)).font(.caption.weight(.medium)).foregroundStyle(Theme.ink3))")
                         .font(.subheadline.weight(.semibold))
-                    Text(verbatim: inside ? words.notation.dateText(at: t) : "outside the catalogue")
-                        .font(.caption)
-                        .foregroundStyle(inside ? Theme.ink2 : Theme.ink3)
+                    Group {
+                        if inside {
+                            Text.ledByPentad(Pentads.index(at: t), Text(verbatim: words.notation.dateText(at: t)))
+                        } else {
+                            Text(verbatim: "outside the catalogue")
+                        }
+                    }
+                    .font(.caption)
+                    .foregroundStyle(inside ? Theme.ink2 : Theme.ink3)
                 }
             }
             .monospacedDigit()
@@ -92,7 +99,7 @@ struct TurnoverLine: View {
 }
 
 /// The column beside the face on wide layouts: the moment in large type, the four major periods in words with the
-/// minor reading, the stamp, and the turnover line.
+/// minor reading, the stamp, the turnover line and the Pentad card.
 struct ReadingsPanel: View {
     let leadLevel: Int
     var fixed: Double?
@@ -100,6 +107,10 @@ struct ReadingsPanel: View {
     var showsPeriods = true
     /// Beside a tall face (a big iPad): everything a size larger.
     var roomy = false
+    /// The Pentad card under the readings (when there is the height for it).
+    var showsPentads = true
+    /// Open the Pentad explainer at once (the `-FXFacePentads` hook).
+    var explainsPentads = false
 
     @Environment(AppSettings.self) private var settings
     @ScaledMetric(relativeTo: .largeTitle) private var bigSize: CGFloat = 50
@@ -119,6 +130,9 @@ struct ReadingsPanel: View {
                 }
             }
             TurnoverLine(level: leadLevel, fixed: fixed, alignment: .leading, font: roomy ? .title3 : .subheadline)
+            if showsPentads {
+                PentadCard(fixed: fixed, explains: explainsPentads)
+            }
         }
     }
 
@@ -137,14 +151,14 @@ struct ReadingsPanel: View {
                 Text(verbatim: n.clockText(at: t))
                     .font(.system(size: bigSize * (roomy ? 1.4 : 1), weight: .light))
                     .foregroundStyle(Theme.ink)
-                Text(verbatim: n.dateText(at: t, upTo: "epsilon"))
+                Text.ledByPentad(Pentads.index(at: t), Text(verbatim: n.dateText(at: t, upTo: "epsilon")))
                     .font(roomy ? .title2 : .title3)
                     .foregroundStyle(Theme.ink2)
             } else {
                 Text(verbatim: words.time(t))
                     .font(.system(size: bigSize * (roomy ? 1.4 : 1), weight: .light))
                     .foregroundStyle(Theme.ink)
-                Text(verbatim: "\(words.day(t)) · \(words.tag(t))")
+                Text.ledByPentad(Pentads.index(at: t), Text(verbatim: "\(words.day(t)) · \(words.tag(t))"))
                     .font(roomy ? .title2 : .title3)
                     .foregroundStyle(Theme.ink2)
             }

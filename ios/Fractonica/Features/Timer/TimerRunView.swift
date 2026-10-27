@@ -106,8 +106,13 @@ struct TimerRunView: View {
                     if let end = run.end {
                         // a small dial (iPhone landscape) has room for the ring time only without its clock reading
                         let text = words.ringTime(end, withReading: innerDiameter >= 180)
-                        Label(text, systemImage: "bell.fill")
-                            .accessibilityLabel("Rings at \(words.ringTime(end))")
+                        // the ring time led by its Pentad's mark, as a date by its weekday
+                        Label {
+                            Text.ledByPentad(words.pentad(end), Text(verbatim: text))
+                        } icon: {
+                            Image(systemName: "bell.fill")
+                        }
+                        .accessibilityLabel("Rings at \(words.led(words.ringTime(end), at: end))")
                     } else {
                         Label("Paused", systemImage: "pause.fill")
                     }

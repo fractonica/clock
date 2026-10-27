@@ -231,19 +231,27 @@ enum JournalPeriods {
     /// Where a period lies, in Earth time (not for pure mode): "8 Aug – 24 Oct 2026", "12 Dec 2025 – 3 Mar 2026" for a
     /// Delta or a Gamma, "Mar 2019 – Jan 2033" for a Beta. The end is exclusive: the last day shown is the one before it.
     static func earthSpan(start: Double, end: Double, level: Int, earth: EarthFormatter) -> String {
+        let ends = earthSpanEnds(start: start, end: end, level: level, earth: earth)
+        return ends.last.map { "\(ends.first) – \($0)" } ?? ends.first
+    }
+
+    /// The two ends of `earthSpan` ("8 Aug", "24 Oct 2026"; the second nil when the span is one month or one day) and
+    /// whether they name days, which lead with their Pentads on screen as dates with their weekdays (Gammas and
+    /// Deltas; a Beta's months have none).
+    static func earthSpanEnds(start: Double, end: Double, level: Int, earth: EarthFormatter) -> (first: String, last: String?, days: Bool) {
         let a = earth.parts(start)
         let b = earth.parts(max(start, end - 1))
         let months = EarthTime.monthsShort
         if level <= 1 {
             return a.year == b.year && a.month == b.month
-                ? "\(months[a.month - 1]) \(a.year)"
-                : "\(months[a.month - 1]) \(a.year) – \(months[b.month - 1]) \(b.year)"
+                ? ("\(months[a.month - 1]) \(a.year)", nil, false)
+                : ("\(months[a.month - 1]) \(a.year)", "\(months[b.month - 1]) \(b.year)", false)
         }
         if a.year == b.year {
-            if a.month == b.month, a.day == b.day { return "\(a.day) \(months[a.month - 1]) \(a.year)" }
-            return "\(a.day) \(months[a.month - 1]) – \(b.day) \(months[b.month - 1]) \(b.year)"
+            if a.month == b.month, a.day == b.day { return ("\(a.day) \(months[a.month - 1]) \(a.year)", nil, true) }
+            return ("\(a.day) \(months[a.month - 1])", "\(b.day) \(months[b.month - 1]) \(b.year)", true)
         }
-        return "\(a.day) \(months[a.month - 1]) \(a.year) – \(b.day) \(months[b.month - 1]) \(b.year)"
+        return ("\(a.day) \(months[a.month - 1]) \(a.year)", "\(b.day) \(months[b.month - 1]) \(b.year)", true)
     }
 
     /// Where a period lies in pure mode: the letter address of its parents ("α#6 β#4 γ#9" for a Delta, "α#6" for a

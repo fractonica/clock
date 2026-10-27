@@ -269,6 +269,25 @@ for (let i = 0; i < 25; i++) {
   addP(`d${int(1, 14)}#${int(0, 400000)}${pick(['', ' peak', ' node'])}`);
 }
 
+// a leading Pentad (SPEC §7.5, §15.3) is read past, as a weekday before a date; alone it is answered; "p2" and "p2.3"
+// stay Saros positions (after the random sample, so the inputs above keep their places)
+const pentadLeads = [
+  'Pentad II · ', 'Pentad I, ', 'pentad 3 ', 'PENTAD III: ', 'Hypopentad ', 'Pentad II, 3rd Helion · ', 'Hypopentad, 4th Helion ',
+  '⬠II ', '⬠III·4 ', '⬠ I | ', '⬠Ⅱ ', '◻ ', '□ · ', 'P2 · ', 'p3 ', 'P1.5 ', 'H · ', 'H.2 ',
+];
+const earthBodies = ['2031-06-01 14:30', 'sync 4820 node', '+3d', 'α#6 β#3 γ#11', 'next ε', 'pos 24.5', '1791460800', 'Thu 8 Oct 2026, 12:00:00', 'now'];
+const pureBodies = ['δ#3 ε#2 5η 5ι', 'Delta Trifracton Node ε#2 21η 12ι', 'α#6 β#4 γ#9 δ#3 ε#5 34η 29ι', '34η 17ι', '+2ε 5η', 'next Helion', 'sync 4820', 'pos 24.5', 'now'];
+pentadLeads.forEach((lead, i) => {
+  addE(lead + earthBodies[i % earthBodies.length], lead + earthBodies[(i + 4) % earthBodies.length]);
+  addP(lead + pureBodies[i % pureBodies.length], lead + pureBodies[(i + 4) % pureBodies.length]);
+});
+const pentadEdges = [
+  'Pentad II', 'Hypopentad', '⬠II', '◻', 'Pentad III, 2nd Helion', 'P2', 'p2.3', 'H', 'h.2', 'H ·', 'pentad iota',
+  'Pentad IV · sync 4820', 'Pentad II·sync 4820', 'pentadii sync 4820', 'h 5', 'P2 5', 'p2.9278',
+];
+addE(...pentadEdges);
+addP(...pentadEdges);
+
 // ---- cases ------------------------------------------------------------------------------------------------------
 const formatters = new Map(ZONES.map((z) => [z, createFormatter(() => z)]));
 const r = (x) => (x === null || x === undefined ? null : x);

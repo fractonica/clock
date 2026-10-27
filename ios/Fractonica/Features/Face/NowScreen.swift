@@ -98,7 +98,8 @@ struct NowScreen: View {
 
     // MARK: - Layouts
 
-    /// iPhone portrait (and narrow windows): the date line, the face filling the height, the turnover line and dots.
+    /// iPhone portrait (and narrow windows): the date line, the face filling the height, the turnover line, the Pentad
+    /// card (when there is the height) and dots.
     private func compact(_ layout: NowLayout) -> some View {
         VStack(spacing: 0) {
             NowDateLine(fixed: launch.time)
@@ -108,6 +109,11 @@ struct NowScreen: View {
                 .padding(.vertical, 10)
             TurnoverLine(level: leadLevel, fixed: launch.time)
                 .padding(.horizontal, 20)
+            if layout.size.height >= 560 {
+                PentadCard(fixed: launch.time, compact: true, explains: launch.pentads)
+                    .padding(.horizontal, 16)
+                    .padding(.top, 10)
+            }
             dots
         }
     }
@@ -120,7 +126,8 @@ struct NowScreen: View {
                     .frame(width: layout.faceAreaWidth, height: layout.wideFaceHeight)
                 dots
             }
-            ReadingsPanel(leadLevel: leadLevel, fixed: launch.time, showsPeriods: layout.size.height >= 460, roomy: layout.roomy)
+            ReadingsPanel(leadLevel: leadLevel, fixed: launch.time, showsPeriods: layout.size.height >= 460, roomy: layout.roomy,
+                          showsPentads: layout.size.height >= 620, explainsPentads: launch.pentads)
                 .frame(width: layout.panelWidth, alignment: .leading)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)

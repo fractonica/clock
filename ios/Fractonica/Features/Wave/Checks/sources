@@ -14,3 +14,4 @@ Fractonica/Core/Formatting.swift
 Fractonica/Core/AppSettings.swift
 Fractonica/Core/ClockStore.swift
 Shared/Notation+Standard.swift
+Shared/Pentads.swift

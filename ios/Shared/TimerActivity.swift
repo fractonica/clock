@@ -136,10 +136,12 @@ struct TimerActivityLockScreen: View {
                         .font(.headline)
                         .foregroundStyle(Theme.ink)
                         .lineLimit(1)
+                    // the end led by its Pentad ("Ends P1 · 17:11 · 49η 3ι") may take a second line beside a
+                    // running countdown
                     Text(state.detail)
                         .font(.subheadline.monospacedDigit())
                         .foregroundStyle(Theme.ink2)
-                        .lineLimit(1)
+                        .lineLimit(2)
                         .minimumScaleFactor(0.8)
                 }
                 Spacer(minLength: 8)

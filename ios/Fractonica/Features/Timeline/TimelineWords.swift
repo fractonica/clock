@@ -301,6 +301,13 @@ struct TimelineWords: Sendable {
         return earth.date(t)
     }
 
+    /// Whether a flag's moment leads with its Pentad (SPEC §15.3): where it names a time of day or a date (Earth, a
+    /// window up to 400 days wide) or counts Helions (pure, ticks of Nuclides or finer). Wider, the flag is a date
+    /// years across, where a Pentad (about a day) says nothing.
+    func flagShowsPentad(span: Double, rulerUnit: Int) -> Bool {
+        pure ? rulerUnit >= TimelineRuler.epsilon : span <= 400 * 86_400
+    }
+
     /// How often (in displayed seconds) a flag's label changes at this zoom.
     func flagResolution(span: Double, ruler: TimelineRuler, rulerUnit: Int) -> Double {
         if pure { return ruler.flagResolution(rulerUnit) }

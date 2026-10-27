@@ -252,8 +252,16 @@ func textChecks() {
     let h = planner.occurrences(of: helion, after: vectorA, limit: 1)[0]
     check(pure.title(helion, h) == "35η begins", "pure title: \(pure.title(helion, h))")
     check(earth.title(helion, h) == "35η begins", "Earth title: \(earth.title(helion, h))")
-    check(earth.body(helion, h) == "A new Helion · 12:56:12", "Earth body: \(earth.body(helion, h))")
-    check(pure.body(helion, h) == "A new Helion · 35η 0ι 0λ", "pure body: \(pure.body(helion, h))")
+    // {time} leads with the Pentad (SPEC §7.5): the next Helion after vector A is Pentad II's third
+    check(earth.body(helion, h) == "A new Helion · Pentad II · 12:56:12", "Earth body: \(earth.body(helion, h))")
+    check(pure.body(helion, h) == "A new Helion · Pentad II · 35η 0ι 0λ", "pure body: \(pure.body(helion, h))")
+    check(pure.time(h) == "Pentad II · 35η 0ι 0λ", "{time}: \(pure.time(h))")
+    // a Helion that begins a Pentad reads the new one
+    if let p = clock.pentad(at: vectorA) {
+        let starts = planner.occurrences(of: helion, after: p.end - 1, limit: 1)[0]
+        check(abs(starts.time - p.end) < 0.01 && earth.time(starts).hasPrefix("Pentad III · "),
+              "a Pentad's first Helion is told in it: \(earth.time(starts))")
+    }
 
     // a Helion that starts a Nuclide carries the Nuclide
     let n = planner.occurrences(of: rule(.level(6), [.begin], coarser: 4), after: vectorA, limit: 1)[0]
@@ -282,7 +290,8 @@ func textChecks() {
     let eclipse = AlertPreset.eclipse.rule(pure: false)
     let e = planner.occurrences(of: eclipse, after: vectorA, limit: 1)[0]
     check(earth.title(eclipse, e) == "Saros 141 eclipse #23", "eclipse title: \(earth.title(eclipse, e))")
-    check(earth.body(eclipse, e).hasPrefix("Greatest eclipse in 1\u{00A0}day · Jan 26 "), "eclipse body: \(earth.body(eclipse, e))")
+    check(earth.body(eclipse, e).hasPrefix("Greatest eclipse in 1\u{00A0}day · \(PentadWords.name(Pentads.index(at: e.time + 0.002)!)) · Jan 26 "),
+          "eclipse body: \(earth.body(eclipse, e))")
     let pureEclipse = AlertPreset.eclipse.rule(pure: true)
     let pe = planner.occurrences(of: pureEclipse, after: vectorA, limit: 1)[0]
     check(pure.body(pureEclipse, pe).hasPrefix("Greatest eclipse in 5η · "), "pure eclipse body: \(pure.body(pureEclipse, pe))")

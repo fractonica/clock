@@ -13,6 +13,8 @@ import Foundation
 ///     boundaries     next ε · prev ζ · next end of δ · next peak η · next peak (the selected level) · next 3 ε
 ///     odometer       d7 13,0 · η [13,0]
 ///
+/// A leading Pentad is read past, as a weekday before a date (`PentadLead`): "Pentad II · 2031-06-01", "P2 · +3d".
+///
 /// "ε#5" is the 5th ε inside its parent; a bare "ε 5" is the depth chip of the other screens, so it is offered both
 /// ways. Candidates come best first; errors only when nothing parsed.
 public enum JumpParser {
@@ -55,8 +57,11 @@ public enum JumpParser {
             return [.error("That is \(text.jsTrim.jsLength) characters: the jump box reads up to \(maxInput)",
                            "Paste a date, a Unix time, an offset or a cycle address")]
         }
-        let raw = GregorianParser.normalize(text)
-        if raw.isEmpty { return [] }
+        let typed = GregorianParser.normalize(text)
+        if typed.isEmpty { return [] }
+        // a leading Pentad is implied by the rest of the date (SPEC §15.3)
+        let (pentad, raw) = PentadLead.strip(typed)
+        if !pentad.isEmpty && raw.isEmpty { return [PentadLead.alone(pentad, example: "2031-06-01 14:30")] }
         let zone = TimeZone(identifier: context.zone) != nil ? context.zone : EarthTime.systemZone
         let now = JumpMaths.r3(context.now.isFinite ? context.now : 0)
         let level = context.level.flatMap { (0..<14).contains($0) ? $0 : nil }

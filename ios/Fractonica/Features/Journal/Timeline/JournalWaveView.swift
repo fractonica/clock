@@ -117,13 +117,17 @@ struct JournalWaveView: View {
         }
         let words = settings.wording
         ForEach(Array(model.hits.sky.prefix(30)), id: \.event.id) { mark in
-            Text(verbatim: "\(mark.event.label(pure: words.pure)), \(words.pure ? words.notation.clockText(at: mark.event.time, upTo: "iota") : words.earth.short(mark.event.time))")
+            Text(verbatim: "\(mark.event.label(pure: words.pure)), \(moment(mark.event.time, words))")
         }
     }
 
     private func accessibilityText(_ pin: JournalWavePin) -> String {
-        let words = settings.wording
-        return "\(title(pin.id)), \(words.pure ? words.notation.clockText(at: pin.time, upTo: "iota") : words.earth.short(pin.time))"
+        "\(title(pin.id)), \(moment(pin.time, settings.wording))"
+    }
+
+    /// "Pentad II · 34η 29ι" · Earth "Pentad II · Oct 8 14:23": a moment led by its Pentad, for VoiceOver.
+    private func moment(_ t: Double, _ words: Wording) -> String {
+        words.led(words.pure ? words.notation.clockText(at: t, upTo: "iota") : words.earth.short(t), at: t)
     }
 }
 
@@ -221,6 +225,7 @@ final class JournalWaveCache {
     private var lo = 0.0
     private var hi = 0.0
     private var names: [Int64: String] = [:]
+    private var pentads: [Int64: Int] = [:]
     /// The layout in the cache's coordinates, and the wave points of moments worked out so far (kept while it lasts).
     private var layout: JournalArcLayout?
     private var points: [Double: JournalWavePoint] = [:]
@@ -337,6 +342,17 @@ final class JournalWaveCache {
     /// "Delta Trifracton", "ε#2 23η": a cycle's name.
     func full(level: Int, cycle: Int64, notation: Notation) -> String {
         name(level: level, cycle: cycle, salt: 1) { notation.cycleName(level: level, cycle: cycle) }
+    }
+
+    /// The Pentad a cycle starts in (SPEC §7.5), which leads its name on the frame's hairline; memoised like the names,
+    /// so a frame of the wave asks the engine nothing for it.
+    func pentad(level: Int, cycle: Int64, time: Double) -> Int? {
+        let key = (cycle &* 64) &+ Int64(level)
+        if let v = pentads[key] { return v < 0 ? nil : v }
+        if pentads.count > 4000 { pentads.removeAll(keepingCapacity: true) }
+        let v = Pentads.index(at: time + 1e-3)
+        pentads[key] = v ?? -1
+        return v
     }
 
     private func name(level: Int, cycle: Int64, salt: Int64, make: () -> String) -> String {

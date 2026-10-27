@@ -2,3 +2,5 @@
 Fractonica/Features/Calendar/CalendarMath.swift
 Fractonica/Features/Calendar/PureCalendarMath.swift
 Shared/Notation+Standard.swift
+Fractonica/Features/Calendar/CalendarPentads.swift
+Shared/Pentads.swift

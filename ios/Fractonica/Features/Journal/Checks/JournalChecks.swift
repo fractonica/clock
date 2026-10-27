@@ -446,6 +446,29 @@ private func dayChecks() {
     let names = days[0].names()
     check(names?.helion.hasSuffix("η") == true && names?.nuclide.hasPrefix("ε#") == true && names?.delta.hasPrefix("Delta") == true, "day names: \(String(describing: names))")
     check(h.duration > 4 * 3600 && h.duration < 6 * 3600, "a Helion lasts about five hours: \(h.duration)")
+
+    // the days group under their Pentads (SPEC §7.5): vector A is in Pentad II, its 2nd Helion
+    check(days[0].pentad?.index == 1 && days[0].pentad?.helion == 2 && days[2].pentad == nil, "a day knows its Pentad")
+    check(days[0].band?.places == [1, 2] && days[0].band?.helions == 5 && days[1].band == nil && days[2].band == nil,
+          "the newest day of a Pentad carries its band: \(String(describing: days[0].band))")
+    // one entry a Helion over the eight days around vector A: four Pentads a sync, the Hypopentad four Helions long
+    let span = (0..<40).map { k in entry("e\(k)", time: h.start + h.duration * (Double(k) - 30) + 60, title: "", updated: 1) }
+    let week = JournalDays.group(span.reversed(), clock: clock)
+    let bands = week.compactMap(\.band)
+    check(week.count == 40 && week.allSatisfy { $0.pentad != nil }, "forty Helions, each in a Pentad")
+    check(Set(bands.map(\.index)) == [0, 1, 2, 3], "the bands go through every Pentad: \(bands.map(\.index))")
+    let whole = bands.dropFirst().dropLast()
+    check(whole.allSatisfy { $0.places.count == $0.helions } && whole.allSatisfy { $0.helions == ($0.index == 3 ? 4 : 5) },
+          "a Pentad with an entry each Helion fills its band, the Hypopentad four: \(whole.map { ($0.index, $0.places.count) })")
+    check(zip(bands, bands.dropFirst()).allSatisfy { ($0.index + 3) % 4 == $1.index }, "newest first, each band is the Pentad before")
+    check(bands.first.map { $0.summary.hasPrefix(PentadWords.name($0.index)) } == true, "a band's summary names its Pentad")
+    if let p = Pentads.at(t) {
+        let earth = EarthFormatter(zone: "UTC")
+        let text = JournalPentadWords.earthSpan(start: p.start, end: p.end, earth: earth)
+        check(text.hasPrefix("Thu 8 Oct ") && text.contains(" – Fri "), "Pentad II at vector A runs Thursday to Friday: \(text)")
+        let short = JournalPentadWords.earthSpan(start: p.start, end: p.start + 3600, earth: earth)
+        check(!short.contains(" – ") && short.contains("–"), "within a day, the end is a time: \(short)")
+    }
 }
 
 // MARK: - Markdown blocks

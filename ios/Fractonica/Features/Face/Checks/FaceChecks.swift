@@ -17,6 +17,7 @@ struct FaceChecks {
         frameChecks()
         wordChecks()
         tipChecks()
+        pentadCardChecks()
         Checks.finish()
     }
 }

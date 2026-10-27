@@ -157,6 +157,38 @@ guarantees pure mode never prints a Gregorian date or "3 h 20 min":
 `levelName(_:)`, `levelLabel(_:)`, `levelLength(_:)`; `words.earth` (`EarthFormatter` in the zone) and
 `words.notation` for anything mode-specific.
 
+### Pentads — a date leads with its Pentad (SPEC §7.5, §15.3)
+
+The Helion is the clock's link to the Sun: a solar day is 4¾ Helions, so a solar sync's 19 Helions run as Pentad I, II,
+III (five Helions) and the Hypopentad (four), each about a day, each starting ¼η later in the day than the one before
+until the Hypopentad brings the Sun back. **Everywhere a moment's date or reading is shown, it leads with its Pentad**,
+as a civil date leads with its weekday: "⬠II 44η 15ι", "Pentad II · δ#4 ε#1 44η 15ι". The stamp itself does not carry
+it, and both jump boxes read past it (`stripPentad` in parse.js, `PentadLead` in FractonicaKit).
+
+- `Pentads.at(t)` (Shared/Pentads.swift) is the reading (`PentadReading`: sync, index 0 … 3, the Helion's place,
+  start, end), kept for the Helion it was read in (the 16 most recently used Helions), so a line that ticks pays a range
+  check for it; `index(at:)`, `next(after:)`, `change(after:)` (its end: a view that shows only the Pentad redraws then,
+  never per second). `PentadWords`: plain text — `name` ("Pentad II", ASCII "P2", the Hypopentad "H"), `lead(_:at:)`
+  ("Pentad II · …"), `full` ("Pentad II, 2nd Helion of 5").
+- Drawn, the short form is a **shape**: a pentagon with the numeral, a square alone for the Hypopentad (sides = Helions).
+  `Text.pentadMark(i)` / `PentadMark(index:)` flow in a line of text (the SF Symbols `pentagon` and `square`, in the
+  line's size and colour, always in the proportional face so a code-face line does not spread "⬠ I I"); `Text.ledByPentad(i,
+  reading)` leads a reading; `PentadPolygon` and `PentadBadge` draw the shape at a size of their own. Never the "⬠"
+  character, which only Apple Symbols draws. `Wording` adds `led(_:at:)`, `pentadName(_:)` and `ledLetters(_:)`
+  (Core/Wording+Pentad.swift).
+- Plain text (notifications, Live Activity strings, copy and share, accessibility labels) says the name, or the ASCII
+  form where room is short. Where SwiftUI cannot draw a symbol in text: the Timeline's canvas draws the polygon itself,
+  the Mac toolbar's `ToolbarTicker` draws the symbol as a text attachment (`lead:`), and the menu bar extra's label is an
+  `HStack` of the symbol and "II 34η 29ι" (an image inside a `Text` shows nothing in a `MenuBarExtra` label).
+- The **Pentad card** (Features/Face: `PentadCard`, its pure `PentadCardModel`, `PentadExplainer`): the running sync's
+  Helions as four rows in the time of day between gold lines a solar day apart, the running Helion lit by its Preons,
+  the next Pentad's countdown; it redraws once a Preon (and a minute for an Earth countdown). It sits under the face on
+  iPhone, in the readings column on wide layouts and in the Wave screen's side panel with the solar wave on; a tap opens
+  the explainer (`-FXFacePentads 1` opens it at launch). Features keep their own Pentad logic: the Journal's days group
+  under Pentad bands (`JournalDays.bandsByPentad`), the Calendar's Pentad rows (`CalPentads`, `CalendarBand.pentad`,
+  the pure page's `MonthModel.pentadBand`), Up next and Rings read each turnover's Pentad once per list or cycle
+  (`RingsPentads`), and widget timelines hold an entry at every Pentad boundary (`WidgetChange.pentad`).
+
 ### Theme, type and glyphs (Shared/)
 
 - Colours: `Theme.background` #07090d, `background2`, `panel` #10161d, `panel2`, `panel3`, `line` #1f2a36, `line2`,

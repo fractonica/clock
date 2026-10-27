@@ -32,6 +32,26 @@ struct GlossaryScreen: View {
                 Text(betweenText(words))
             }
 
+            Section {
+                ForEach(0..<4, id: \.self) { index in
+                    HStack(spacing: 12) {
+                        PentadBadge(index: index, size: 24)
+                        Text(verbatim: PentadWords.name(index)).font(.body.weight(.medium))
+                        Spacer()
+                        Text(verbatim: index == 3 ? "4η" : "5η")
+                            .font(.callout.monospacedDigit())
+                            .foregroundStyle(Theme.ink2)
+                    }
+                    .accessibilityElement(children: .combine)
+                }
+            } header: {
+                Text("Pentads")
+            } footer: {
+                Text(verbatim: words.pure
+                     ? "The Helion is the link to the Sun: 4¾η is a solar day. A solar sync's 19 Helions run as Pentad I, II and III and the Hypopentad, each about a day: every Pentad starts ¼η later in the day, and the Hypopentad, one Helion short, brings the Sun back. A date leads with its Pentad as with a weekday: “Pentad II · δ#3 ε#2 5η 5ι”, or with its shape."
+                     : "The Helion is the link to the Sun: a solar day is 4¾ Helions. A solar sync's 19 Helions (about 4 days) run as Pentad I, II and III and the Hypopentad, each about a day: every Pentad starts ¼ Helion (≈ 1.26 h) later in the day, and the Hypopentad, one Helion short, brings the Sun back. A date leads with its Pentad as with a weekday: “Pentad II · δ#3 ε#2 5η 5ι”, or with its shape.")
+            }
+
             Section("Reading the clock") {
                 ClockTimeline(.periodic(1)) { t in
                     ReadingExamples(t: t, words: words)

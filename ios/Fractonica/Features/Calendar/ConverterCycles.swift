@@ -643,8 +643,10 @@ struct ConverterSolarCard: View {
                 }
                 if pure {
                     // to the Preon, like the quarters below: a phone's width keeps both on one line with their label
-                    CalValueRow(label: "Begins", value: n.stamp(at: s.start, upTo: "iota"), mono: true)
-                    CalValueRow(label: "Ends", value: n.stamp(at: s.end, upTo: "iota"), mono: true)
+                    // landed on their first millisecond: the exact boundary can read as the Helion before it, a Preon
+                    // short of the Pentad I it begins (listed below)
+                    CalValueRow(label: "Begins", value: n.stamp(at: CalMath.landOn(clock, s.start, level: 6), upTo: "iota"), mono: true)
+                    CalValueRow(label: "Ends", value: n.stamp(at: CalMath.landOn(clock, s.end, level: 6), upTo: "iota"), mono: true)
                     CalValueRow(label: "Drift", value: n.driftText(start: s.start, nominalStart: s.nominalStart, drift: s.drift))
                 } else {
                     CalValueRow(label: "Begins", value: "\(earth.dateTime(s.start)) \(earth.tag(s.start))")
@@ -671,8 +673,59 @@ struct ConverterSolarCard: View {
                     .font(.subheadline)
                     .foregroundStyle(Theme.ink3)
             }
+            if let p = Pentads.at(snap.t) {
+                pentads(p, n)
+            }
         }
         .task { if range == nil { range = CalMath.syncRange(clock) } }
+    }
+}
+
+extension ConverterSolarCard {
+    /// The sync's four Pentads, its "weekdays": each about a solar day (4¾η), five Helions (the Hypopentad four), the
+    /// moment's lit with its Helion's place; tap one to set the converter where it begins.
+    @ViewBuilder
+    fileprivate func pentads(_ p: PentadReading, _ n: Notation) -> some View {
+        let clock = store.clock
+        VStack(alignment: .leading, spacing: 6) {
+            Divider().overlay(Theme.line)
+            Text.ledByPentad(p.index, Text(verbatim: PentadWords.place(p)))
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(Theme.gold)
+                .padding(.top, 2)
+            ForEach(0..<4, id: \.self) { i in
+                // its first millisecond: the exact start can read as the Helion before it
+                let start = clock.pentad(sync: p.sync, index: i).map { CalMath.landOn(clock, $0.start, level: 6) }
+                Button {
+                    if let start { model.set(start, from: .sync) }
+                } label: {
+                    HStack(spacing: 10) {
+                        CalPentadChip(index: i, named: true, filled: i == p.index)
+                            .frame(minWidth: 110, alignment: .leading)
+                        Text(verbatim: i == 3 ? "4η" : "5η")
+                            .font(.caption.monospacedDigit())
+                            .foregroundStyle(Theme.ink3)
+                        Spacer(minLength: 4)
+                        if let start {
+                            Text(verbatim: pure ? n.stamp(at: start, upTo: "iota") : earth.dateTime(start))
+                                .font(pure ? .code(12) : .subheadline.monospacedDigit())
+                                .foregroundStyle(i == p.index ? Theme.ink : Theme.ink2)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.7)
+                        }
+                    }
+                    .contentShape(.rect)
+                }
+                .buttonStyle(.plain)
+                .disabled(start == nil)
+                .accessibilityLabel(Text(verbatim: "\(PentadWords.name(i))\(i == p.index ? ", the moment's" : ""): set the converter where it begins"))
+            }
+            Text(pure ? "4¾η is a solar day: each Pentad begins a quarter Helion later in it, and the Hypopentad, one Helion short, brings Pentad I back."
+                 : "A solar day is 4¾ Helions: each Pentad begins a quarter Helion (≈ 1.26 h) later in the day, and the Hypopentad, one Helion short, brings Pentad I back.")
+                .font(.caption)
+                .foregroundStyle(Theme.ink3)
+                .fixedSize(horizontal: false, vertical: true)
+        }
     }
 }
 

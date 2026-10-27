@@ -23,6 +23,8 @@ struct HelionArcSnapshot: Hashable, Sendable {
     /// "34η" and "29ι".
     let helionToken: CountToken
     let preonToken: CountToken
+    /// The Pentad (SPEC §7.5, 0 … 3) the Helion is in: its mark leads the Helion's count, "⬠II 34η".
+    let pentad: Int?
     /// What VoiceOver reads.
     let accessibility: String
 
@@ -32,7 +34,7 @@ struct HelionArcSnapshot: Hashable, Sendable {
 
     /// The dot steps sixteen times a Preon, an entry every ~32 s (each Preon start is one of them: there the counts
     /// and the wave move on too); a timeline's 150 entries last about 9ι.
-    static let changes: Set<WidgetChange> = [.glyph2(level: 8)]
+    static let changes: Set<WidgetChange> = [.glyph2(level: 8), .pentad]
 
     init?(at t: Double, notation: Notation = .standard) {
         guard let c = notation.clock(at: t),
@@ -43,8 +45,9 @@ struct HelionArcSnapshot: Hashable, Sendable {
         let two = { (n: Int) in n >= 0 && n < 10 ? "0\(n)" : String(n) }
         helionToken = CountToken(level: 6, number: two(c.eta), suffix: "η")
         preonToken = CountToken(level: 8, number: two(c.iota), suffix: "ι")
-        accessibility = "Helion \(c.eta) of its Nuclide, \(c.iota) of its 36 Preons complete; the running Preon rides "
-            + "the Helion's arc as a wave"
+        pentad = Pentads.at(t, clock: notation.model)?.index
+        accessibility = PentadWords.lead("Helion \(c.eta) of its Nuclide, \(c.iota) of its 36 Preons complete; the running "
+            + "Preon rides the Helion's arc as a wave", index: pentad)
     }
 }
 

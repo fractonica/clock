@@ -96,6 +96,14 @@ struct Moment: Hashable, Identifiable, Sendable {
         "\(periodName(notation)) \(boundary.word)"
     }
 
+    /// The Pentad the moment falls in (SPEC §7.5; a moment on a Helion boundary belongs to the Helion it starts).
+    var pentad: Int? { Pentads.index(at: time + 1e-3) }
+
+    /// The title led by the Pentad, for plain text (notifications): "Pentad II · Delta Trifracton Node".
+    func ledTitle(_ notation: Notation = .standard) -> String {
+        PentadWords.lead(title(notation), index: pentad)
+    }
+
     /// "Delta Trifracton", "Nuclide ε#3", "Helion 34η": the period whose boundary it is.
     func periodName(_ notation: Notation = .standard) -> String {
         switch level {

@@ -6,3 +6,7 @@ Fractonica/Core/Formatting.swift
 Shared/AppLink.swift
 Shared/Notation+Standard.swift
 Shared/Screen.swift
+Fractonica/Core/Wording+Pentad.swift
+Shared/Pentads.swift
+Shared/PentadMark.swift
+Shared/Theme.swift

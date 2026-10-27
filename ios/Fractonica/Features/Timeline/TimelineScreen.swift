@@ -222,7 +222,8 @@ struct TimelineScreen: View {
             return out.joined(separator: " ")
         }
         let state = store.isLive ? ", live" : store.isPlaying ? ", in time-lapse" : ""
-        out.append("Cursor at \(words.pure ? words.notation.dateText(at: t, upTo: "eta") : words.earth.long(t, seconds: false))\(state).")
+        let cursor = words.pure ? words.notation.dateText(at: t, upTo: "eta") : words.earth.long(t, seconds: false)
+        out.append("Cursor at \(PentadWords.lead(cursor, at: t))\(state).")
         let level = settings.selectedLevel
         if let c = data.cycle(level, at: t) {
             let info = clock.levelInfo(level)

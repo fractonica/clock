@@ -37,9 +37,17 @@ struct WaveReadout: Equatable, Sendable {
     var message: String?
     /// One sentence for VoiceOver.
     var spoken: String
+    /// The Pentad of the displayed time (SPEC §7.5), which leads the "now in" line as a weekday leads a date.
+    var pentad: Int?
 
     /// The reading at displayed time t. `level` is the shared selection, `eff` the level focused.
     static func make(t: Double, overview: Bool, level: Int, eff: Int, words: WaveWords) -> WaveReadout {
+        var reading = make(at: t, overview: overview, level: level, eff: eff, words: words)
+        if reading.kind != .outOfRange { reading.pentad = Pentads.index(at: t) }
+        return reading
+    }
+
+    private static func make(at t: Double, overview: Bool, level: Int, eff: Int, words: WaveWords) -> WaveReadout {
         let engine = words.engine
         let clock = engine.clock
         guard let cur = engine.readHalves(t) else {
@@ -165,8 +173,19 @@ struct WaveSolarReadout: Equatable, Sendable {
     var start: Double
     var end: Double
     var sync: Int
+    /// The Pentad running (SPEC §7.5): the sync's 19 Helions as Pentad I, II, III and the Hypopentad.
+    var pentad: Int? = nil
 
     static func make(t: Double, words: WaveWords) -> WaveSolarReadout? {
+        guard var readout = reading(t: t, words: words) else { return nil }
+        if let p = Pentads.at(t) {
+            readout.pentad = p.index
+            readout.spoken = "\(PentadWords.full(p)). " + readout.spoken
+        }
+        return readout
+    }
+
+    private static func reading(t: Double, words: WaveWords) -> WaveSolarReadout? {
         let engine = words.engine
         guard engine.clock.inRange(t), let pos = engine.clock.position(at: t) else { return nil }
         guard let s = engine.clock.solar(at: t) else {

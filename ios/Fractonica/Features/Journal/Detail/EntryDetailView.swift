@@ -80,7 +80,9 @@ struct EntryDetailView: View {
             .frame(maxWidth: .infinity)
         }
         .background { Backdrop() }
-        .navigationTitle(FractonicaClock.shared.inRange(record.time) ? words.notation.clockText(at: record.time, upTo: "iota") : "Entry")
+        // a plain title: the Pentad by name ("Pentad II · 34η 29ι")
+        .navigationTitle(FractonicaClock.shared.inRange(record.time)
+            ? words.led(words.notation.clockText(at: record.time, upTo: "iota"), at: record.time) : "Entry")
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
         #endif
@@ -134,7 +136,9 @@ struct EntryDetailView: View {
             }
             VStack(alignment: .leading, spacing: 4) {
                 if FractonicaClock.shared.inRange(record.time) {
-                    Text(verbatim: words.notation.dateText(at: record.time, upTo: "iota"))
+                    // led by its Pentad, as a date by its weekday: "Pentad II · Delta Trifracton Node ε#2 5η 5ι" (the
+                    // stamp under it does not carry it, SPEC §15.3)
+                    Text(verbatim: words.led(words.notation.dateText(at: record.time, upTo: "iota"), at: record.time))
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(Theme.ink2)
                     Text(verbatim: words.notation.stamp(at: record.time, upTo: "lambda"))

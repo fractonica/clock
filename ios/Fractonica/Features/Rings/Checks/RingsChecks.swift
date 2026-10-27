@@ -20,6 +20,7 @@ struct RingsChecks {
         }
         leakChecks()
         nativeChecks()
+        ringsPentadChecks()
         Checks.finish()
     }
 }

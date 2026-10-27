@@ -10,6 +10,7 @@ import Foundation
 ///     -FXFaceOverlay letters|info  the watch face's letters or info labels, kept until a tap
 ///     -FXFaceTime <unix s>       the screen reads this instant, unclamped (shows the out-of-catalogue state)
 ///     -FXFaceGuide 1             open "How to read"
+///     -FXFacePentads 1           open the Pentad explainer (the Pentad card's sheet)
 ///     -FXFaceTip top|solar|bottom  show that watch row's press-and-hold card under the face (to look at it)
 ///     -FXFaceCanvas <W>x<H>      the screen lays itself out in a W × H point box, outlined (to check landscape and Mac
 ///                                window layouts on a portrait simulator)
@@ -23,6 +24,7 @@ struct FaceLaunch: Equatable, Sendable {
     var time: Double?
     var canvas: CGSize?
     var guide = false
+    var pentads = false
     var tip: WatchGeometry.Row?
 
     /// The hooks this process was launched with.
@@ -45,6 +47,7 @@ struct FaceLaunch: Equatable, Sendable {
         overlay = string("FXFaceOverlay").flatMap { ["letters": WatchOverlay.letters, "info": .info][$0.lowercased()] }
         time = string("FXFaceTime").flatMap(Double.init).flatMap { $0.isFinite ? $0 : nil }
         guide = string("FXFaceGuide") == "1"
+        pentads = string("FXFacePentads") == "1"
         tip = string("FXFaceTip").flatMap { ["top": WatchGeometry.Row.top, "solar": .solar, "bottom": .bottom][$0.lowercased()] }
         canvas = string("FXFaceCanvas").flatMap { value in
             let parts = value.lowercased().split(separator: "x").compactMap { Double($0) }

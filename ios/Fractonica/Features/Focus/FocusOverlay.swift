@@ -1,8 +1,8 @@
 import FractonicaKit
 import SwiftUI
 
-/// The minor clock with the Helion's phase pair, "34η ‹pair› 29ι 21λ", at the displayed time (or Focus's fixed test
-/// moment); outside the catalogue, a short note instead.
+/// The minor clock with the Helion's phase pair, led by its Pentad as a date by its weekday, "⬠II 34η ‹pair› 29ι
+/// 21λ", at the displayed time (or Focus's fixed test moment); outside the catalogue, a short note instead.
 struct FocusClockReading: View {
     var timeOverride: Double?
     /// Larger on iPad and Mac.
@@ -28,12 +28,13 @@ struct FocusClockReading: View {
             // The whole line, glyphs included, steps down together where it does not fit (never one word alone).
             ViewThatFits(in: .horizontal) {
                 ForEach([1.0, 0.85, 0.72, 0.6], id: \.self) { scale in
-                    line(eta: minor.eta, rest: "\(minor.iota)ι \(minor.lambda)λ", pair: helion.phase, size: size * scale)
+                    line(pentad: Pentads.index(at: t), eta: minor.eta, rest: "\(minor.iota)ι \(minor.lambda)λ", pair: helion.phase,
+                         size: size * scale)
                 }
             }
             .foregroundStyle(Theme.ink)
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel(Text("Clock \(settings.wording.notation.clockText(at: t))"))
+            .accessibilityLabel(Text("Clock \(PentadWords.lead(settings.wording.notation.clockText(at: t), at: t))"))
         } else {
             VStack(spacing: 6) {
                 Text("Outside the catalogue")
@@ -47,9 +48,13 @@ struct FocusClockReading: View {
         }
     }
 
-    /// "34η", the Helion's phase pair, "29ι 21λ", at one size.
-    private func line(eta: Int, rest: String, pair: Double, size: CGFloat) -> some View {
+    /// The Pentad, "34η", the Helion's phase pair, "29ι 21λ", at one size.
+    private func line(pentad: Int?, eta: Int, rest: String, pair: Double, size: CGFloat) -> some View {
         HStack(alignment: .center, spacing: size * 0.22) {
+            if let pentad {
+                PentadMark(index: pentad)
+                    .foregroundStyle(Theme.ink2)
+            }
             Text(verbatim: "\(eta)η")
             PairView(fraction: pair, color: Theme.teal, height: size * 0.62)
             Text(verbatim: rest)

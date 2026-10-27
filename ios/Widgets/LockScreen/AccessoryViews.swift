@@ -17,6 +17,12 @@ struct HelionGaugeView: View {
                     .padding(3.5)
                     .widgetAccentable()
                 VStack(spacing: -3) {
+                    if let pentad = s.pentad {
+                        // the Helion's Pentad above its number, small: the gauge's day
+                        Text.pentadMark(pentad)
+                            .font(.system(size: 9, weight: .semibold))
+                            .padding(.bottom, 2)
+                    }
                     Text(verbatim: String(s.helion))
                         .font(.system(size: 23, weight: .semibold, design: .rounded).monospacedDigit())
                         .minimumScaleFactor(0.6)
@@ -29,7 +35,8 @@ struct HelionGaugeView: View {
             }
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(snapshot.map { "Helion \($0.helion) of its Nuclide" } ?? "outside the catalogue")
+        .accessibilityLabel(snapshot.map { PentadWords.lead("Helion \($0.helion) of its Nuclide", index: $0.pentad) }
+            ?? "outside the catalogue")
     }
 }
 
@@ -74,24 +81,38 @@ struct ClockRectangularView: View {
                     .font(.system(size: 13, weight: .medium))
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
-                Text(s.nuclide)
-                    .font(.system(size: 13))
-                    .foregroundStyle(.secondary)
+                Group {
+                    if let pentad = s.pentad {
+                        // the name in full here (the circular and inline accessories draw the shape)
+                        Text(verbatim: "\(PentadWords.name(pentad)) · \(s.nuclide)")
+                    } else {
+                        Text(s.nuclide)
+                    }
+                }
+                .font(.system(size: 13))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel("\(s.inline), \(s.major), \(s.nuclide)")
+            .accessibilityLabel(s.spoken)
         } else {
             Text("outside the catalogue").font(.caption)
         }
     }
 }
 
-/// accessoryInline: "34η 29ι".
+/// accessoryInline: "⬠II 34η 29ι · ε#5" (the Pentad's shape as a symbol in the line).
 struct ClockInlineView: View {
     var snapshot: AccessorySnapshot?
 
     var body: some View {
-        Text(snapshot.map { "\($0.inline) · \($0.nuclide)" } ?? "outside the catalogue")
+        if let s = snapshot {
+            Text.ledByPentad(s.pentad, Text(verbatim: "\(s.inline) · \(s.nuclide)"))
+                .accessibilityLabel(s.spoken)
+        } else {
+            Text("outside the catalogue")
+        }
     }
 }

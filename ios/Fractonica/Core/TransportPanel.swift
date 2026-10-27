@@ -155,7 +155,8 @@ private struct MomentSummary: View {
                     PairView(fraction: helion.phase, color: Theme.teal, height: 34)
                 }
             }
-            Text(words.pure ? words.day(t) : [words.day(t), words.tag(t)].joined(separator: " · "))
+            // the day leads with its Pentad, as a civil date with its weekday
+            Text.ledByPentad(Pentads.index(at: t), Text(words.pure ? words.day(t) : [words.day(t), words.tag(t)].joined(separator: " · ")))
                 .font(.subheadline)
                 .foregroundStyle(Theme.ink2)
             Text(words.notation.stamp(at: t, upTo: words.pure ? "nu" : "iota"))
