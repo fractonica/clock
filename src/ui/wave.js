@@ -27,7 +27,7 @@ import { followableLevel, MAX_LEVEL, OUT_OF_RANGE_HINT, sanitizeLevel, solarAtLo
 import { loopHint } from './wave/tooltip.js';
 import { cap, createWords } from './wave/words.js';
 import { createSunDial } from './wave/sun.js';
-import { arcSpec, hintDepths, pinPhase, quarterOf, rippleFit, SYNC_LEVEL, syncAt, syncGrid, syncsOnArc, travelTime } from './wave/solar.js';
+import { arcSpec, hintDepths, pentadOfPhase, pinPhase, quarterOf, rippleFit, SYNC_LEVEL, syncAt, syncGrid, syncsOnArc, travelTime } from './wave/solar.js';
 
 const STORE_KEY = 'fractonica-clock/wave';
 const MIN_FADE_GAP = 500; // ms: neighbour half-arcs that change faster than this swap instantly
@@ -201,7 +201,7 @@ export function mount(el, ctx) {
     pos: 0,
     dialHover: false,
     dialFocus: false, // the dial's slider has keyboard focus: its tooltip is shown
-    nowMemo: { key: '', text: '' },
+    nowMemo: { key: '', text: '', pentad: null },
     dialOn: false,
     lastSel: levelOf(store.state.selectedLevel),
     level: levelOf(store.state.selectedLevel), // the shared selection
@@ -370,7 +370,7 @@ export function mount(el, ctx) {
     S.labeled = -1;
     S.years = [];
     S.yearsZone = null;
-    S.nowMemo = { key: '', text: '' };
+    S.nowMemo = { key: '', text: '', pentad: null };
     S.drawKey = '';
     S.mkFor = null;
     S.dirty = true;
@@ -676,9 +676,19 @@ export function mount(el, ctx) {
     const overview = scene.kind === 'overview';
     if (!overview && scene.idx !== S.cur?.[scene.level]?.idx) return '';
     const key = `${words.on() ? 'p' : fmt.zone()}|${S.lastT}|${overview ? 'O' : scene.level}`;
-    if (S.nowMemo.key !== key) S.nowMemo = { key, text: words.nowLabel({ t: S.lastT, level: overview ? 0 : scene.level, duration: overview ? 0 : scene.desc.duration, overview }) };
+    if (S.nowMemo.key !== key) {
+      const level = overview ? 0 : scene.level;
+      S.nowMemo = {
+        key,
+        text: words.nowLabel({ t: S.lastT, level, duration: overview ? 0 : scene.desc.duration, overview }),
+        // the label leads with its Pentad like a date with its weekday (SPEC §7.5): the shape is drawn on the canvas
+        pentad: words.nowPentad({ t: S.lastT, level, overview }),
+      };
+    }
     return S.nowMemo.text;
   }
+  /** The Pentad (0..3) that leads the label of the displayed time, or null (read with nowLabelFor, same memo). */
+  const nowPentadFor = (scene) => (nowLabelFor(scene) ? S.nowMemo.pentad : null);
 
   function drawScene(scene, cam, alpha, interactive, quiet = false) {
     const view = G.makeView(cam, S.w, S.h);
@@ -696,6 +706,7 @@ export function mount(el, ctx) {
         quiet,
         avoid: S.avoid ?? { x0: S.w - 56, y0: 0, x1: S.w, y1: 88 }, // the zoom buttons
         nowLabel: nowLabelFor(scene),
+        nowPentad: nowPentadFor(scene),
         sun: sunFor(scene),
       });
     } else {
@@ -710,6 +721,7 @@ export function mount(el, ctx) {
         endYear: S.endYear,
         quiet,
         nowLabel: nowLabelFor(scene),
+        nowPentad: nowPentadFor(scene),
         edge: !S.inRange && interactive ? { before: S.lastT < model.tMin } : undefined, // where the displayed time lies beyond
       });
     }
@@ -731,6 +743,7 @@ export function mount(el, ctx) {
       spec: arcSpec(scene.idx, infos[scene.level].prefixNum, scene.fraction),
       sync: S.sunSync.sync,
       quarter: S.sunSync.quarter,
+      pentad: S.sunSync.pentad,
       here,
       pNow: here ? S.cur[scene.level].local : 0,
       label: words.sunNumber(S.sunSync),
@@ -750,7 +763,7 @@ export function mount(el, ctx) {
   function visualKey() {
     const sc = S.scene;
     if (!sc) return '';
-    let k = `${sc.key}|${S.inRange}|${S.yearsZone}|${nowLabelFor(sc)}`;
+    let k = `${sc.key}|${S.inRange}|${S.yearsZone}|${nowLabelFor(sc)}|${nowPentadFor(sc)}`;
     // the pin and the quarter dots of the solar ripple move with the sync phase (to 1/256 of a sync)
     if (S.solar && S.sunSync && sc.kind === 'focus') k += `|sun${S.sunSync.sync}:${Math.round(S.sunSync.phase * 256)}`;
     if (S.cur) {
@@ -1164,7 +1177,8 @@ export function mount(el, ctx) {
       R.title,
       `<b>half-arc ${d.signed}</b> <span class="wave-r-sign">${d.crest ? 'crest' : 'trough'}</span>${S.level > L ? ` <span class="wave-r-fast" title="${infos[S.level].text} half-arcs last ${words.halfLength(infos[S.level])}: too short to follow, so the view stays on ${d.letter}; the finer depths are its loops">${infos[S.level].text} is too fast to follow</span>` : ''}`,
     );
-    setText('span', R.span, glue(words.span(d)));
+    // the span leads with its Pentads, like dates with their weekdays (SPEC §7.5)
+    setHTML('span', R.span, words.spanHTML(d));
     // two numberings of one thing, side by side: the loop number of the picture (inside the parent HALF-ARC)
     // and the cycle number every other view shows (inside the parent CYCLE)
     setHidden(R.loop, false);
@@ -1267,7 +1281,7 @@ export function mount(el, ctx) {
         S.sunT = frame.t;
       }
       const sy = syncAt(frame.pos, grid);
-      S.sunSync = { sync: sy.sync, phase: sy.phase, quarter: quarterOf(sy.phase) };
+      S.sunSync = { sync: sy.sync, phase: sy.phase, quarter: quarterOf(sy.phase), pentad: pentadOfPhase(sy.phase) };
     } else {
       S.sun = null;
       S.sunT = NaN;

@@ -59,8 +59,8 @@ export function instantText(fmt, t, dur) {
   return fmt.dateTime(dur < 10 ? roundMs(t) : t, { seconds: true, ms: dur < 10 });
 }
 
-/** "2026-03-02 12:00 → 2033-01-07 04:30"; the end drops its date when it is the same day. */
-export function spanText(fmt, start, end) {
+/** The two ends of a span as text: [start, end], the end without its date when it is the same day. */
+export function spanParts(fmt, start, end) {
   const dur = end - start;
   if (dur < 10) {
     // the milliseconds are rounded first, so that ".9996" carries into the next second (and day) before the dates are compared
@@ -70,7 +70,35 @@ export function spanText(fmt, start, end) {
   const a = instantText(fmt, start, dur);
   let b = instantText(fmt, end, dur);
   if (dur < 86400 && fmt.date(start) === fmt.date(end)) b = fmt.time(end, { seconds: true, ms: dur < 10 });
-  return `${a} → ${b}`;
+  return [a, b];
+}
+
+/** "2026-03-02 12:00 → 2033-01-07 04:30"; the end drops its date when it is the same day. */
+export function spanText(fmt, start, end) {
+  return spanParts(fmt, start, end).join(' → ');
+}
+
+/**
+ * A reading led by its Pentad (SPEC §7.5) as HTML: `lead(t)` is the mark of the moment t ('' when there is none) and
+ * the text is escaped here. The two keep together: a span wraps at its arrow, never between the mark and its date.
+ */
+export const ledHTML = (lead, t, text) => {
+  const mark = lead ? lead(t) : '';
+  return mark ? `<span class="pentad-lead">${mark}<span class="pentad-rest">${esc(text)}</span></span>` : esc(text);
+};
+
+/**
+ * The span as HTML, each end led by the Pentad it falls in like a weekday ("⬠II 2026-10-01 09:09 → ⬠III 2026-10-09 11:40");
+ * the end repeats its mark only when it is in another Pentad (a clock under its date, the way the end drops a same-day date).
+ * `pentad(t)` = the Pentad of a moment ({sync, index} or null), `mark(p)` = its mark HTML.
+ */
+export function spanHTML(fmt, start, end, pentad, mark) {
+  const [a, b] = spanParts(fmt, start, end);
+  if (!pentad) return `${esc(a)} → ${esc(b)}`;
+  const pa = pentad(start);
+  const pb = pentad(end);
+  const same = pa && pb && pa.sync === pb.sync && pa.index === pb.index;
+  return `${ledHTML(pa ? () => mark(pa) : null, start, a)} → ${ledHTML(pb && !same ? () => mark(pb) : null, end, b)}`;
 }
 
 /** fmt.countdown, with milliseconds for the very short cycles: "in 12 ms", "3 min 04 s ago". */
@@ -116,14 +144,14 @@ export function glyphState(F, index, strokes = 2) {
  *   d = engine.describe(), p = progress 0..1 of the hovered/marked point (null = none),
  *   at = Unix time of that point.
  */
-export function tipHTML({ d, p, at, now, fmt, model, theme, marker = false, action = 'Click to jump here' }) {
+export function tipHTML({ d, p, at, now, fmt, model, theme, marker = false, action = 'Click to jump here', pentad = null, mark = null }) {
   const lines = [];
   lines.push(
     `<div class="wave-tip-h"><span class="wave-tip-badge" style="--c:${theme.levelColor(d.level, 1, 64)}">${esc(d.letter)}</span>` +
       `<b>${marker ? 'marker · ' : ''}half-arc ${esc(d.signed)}</b>` +
       `<span class="wave-tip-sign">${d.crest ? 'crest' : 'trough'}</span></div>`,
   );
-  lines.push(`<div class="wave-tip-r mono">${esc(spanText(fmt, d.start, d.end))}</div>`);
+  lines.push(`<div class="wave-tip-r mono">${pentad ? spanHTML(fmt, d.start, d.end, pentad, mark) : esc(spanText(fmt, d.start, d.end))}</div>`);
   lines.push(`<div class="wave-tip-r dim">${esc(loopText(d))} · ${esc(cycleText(d))}</div>`);
   const bits = [`${fmt.duration(d.duration)} long`];
   if (now >= d.start && now < d.end) bits.push(`${floorPercent((now - d.start) / d.duration)} % of this half-arc travelled`);
@@ -137,7 +165,9 @@ export function tipHTML({ d, p, at, now, fmt, model, theme, marker = false, acti
       `<div class="wave-tip-g"><span class="wave-tip-glyph" aria-hidden="true">${svg}</span>` +
         `<span><b class="mono">${esc(st.label)}</b> ${esc(st.dir)}<br>` +
         `<span class="dim">glyph index ${st.index} (0\u2013${st.states - 1}) ${marker ? 'at the displayed time' : 'at this point'}</span>` +
-        (at !== null && at !== undefined && !marker ? `<br><span class="mono dim">${esc(instantText(fmt, at, d.duration))}</span>` : '') +
+        (at !== null && at !== undefined && !marker
+          ? `<br><span class="mono dim">${ledHTML(pentad ? (x) => (pentad(x) ? mark(pentad(x)) : '') : null, at, instantText(fmt, at, d.duration))}</span>`
+          : '') +
         '</span></div>',
     );
   }

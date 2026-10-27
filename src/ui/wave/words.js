@@ -18,15 +18,18 @@ import {
   cycleText,
   floorPercent,
   glyphState,
+  ledHTML,
   loopText,
   nextLines,
   roundMs,
+  spanHTML,
   spanText,
   tipHTML,
   whenText,
 } from './tooltip.js';
 import { glyphIndexAt } from './geometry.js';
 import { QUARTERS } from './solar.js';
+import { DAY_TEXT, QUARTER_TEXT, helionPlace, pentadLookup, pentadMarkHTML, pentadName } from '../pentad.js';
 
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 export const cap = (str) => str.charAt(0).toUpperCase() + str.slice(1);
@@ -104,6 +107,22 @@ export function chainText(pure, model, level, cycleIdx, links = 5) {
 }
 
 /**
+ * The short letter form of a cycle's address ("δ#3 ε#5 34η", "δ#3 ε#5 34η 28ι"): what a reading led by its Pentad shows
+ * (SPEC §15.3, "Pentad II · δ#3 ε#5 34η"), the stamp from δ down.
+ */
+export function chainShort(pure, model, level, cycleIdx) {
+  return chainText(pure, model, level, cycleIdx, 99).split(' ').slice(3).join(' ');
+}
+
+/**
+ * Does a pure reading of a cycle of `level` lead with its Pentad? Only a cycle that lies inside one Pentad: a Helion or
+ * anything finer (Pentads are whole Helions). A ζ, a Nuclide or a major period spans several: it is a name, not a date.
+ */
+export const pureCycleLeads = (level) => level >= 6;
+/** Does the pure label of the displayed time at a stage of `level` lead with its Pentad? When it reads down to the Helion. */
+export const pureNowLeads = (level) => level >= 3;
+
+/**
  * The displayed time written next to the focus marker: three consecutive tokens of the stamp (pure.stamp: the ordinals
  * α# β# γ# δ# ε#, then the counts η ι λ), chosen by the depth of the arc, like the date or clock a Gregorian label would
  * show at that scale:
@@ -152,14 +171,17 @@ export function eclipseLabels(pure, model, halfCount) {
 }
 
 /** Tooltip body of a half-arc, a point on it or a level marker, in pure terms. */
-export function tipHTMLPure({ d, p, at, now, pure, model, theme, marker = false, action = 'Click to jump here' }) {
+export function tipHTMLPure({ d, p, at, now, pure, model, theme, marker = false, action = 'Click to jump here', pentad = null, mark = null }) {
   const lines = [];
   lines.push(
     `<div class="wave-tip-h"><span class="wave-tip-badge" style="--c:${theme.levelColor(d.level, 1, 64)}">${esc(d.letter)}</span>` +
       `<b>${marker ? 'marker · ' : ''}half-arc ${esc(d.signed)}</b>` +
       `<span class="wave-tip-sign">${d.crest ? 'crest' : 'trough'}</span></div>`,
   );
-  lines.push(`<div class="wave-tip-r mono">${esc(chainText(pure, model, d.level, d.cycle))}</div>`);
+  const lead = (x) => (pentad && pentad(x) ? mark(pentad(x)) : '');
+  lines.push(
+    `<div class="wave-tip-r mono">${pentad && pureCycleLeads(d.level) ? ledHTML(lead, d.start, chainShort(pure, model, d.level, d.cycle)) : esc(chainText(pure, model, d.level, d.cycle))}</div>`,
+  );
   lines.push(`<div class="wave-tip-r dim">${esc(loopText(d))} · ${esc(cyclePure(pure, d))}</div>`);
   let len = `${esc(halfLengthPure(pure, model, d))} long`;
   if (now >= d.start && now < d.end) {
@@ -177,7 +199,9 @@ export function tipHTMLPure({ d, p, at, now, pure, model, theme, marker = false,
       `<div class="wave-tip-g"><span class="wave-tip-glyph" aria-hidden="true">${svg}</span>` +
         `<span><b class="mono">${esc(st.label)}</b> ${esc(st.dir)}<br>` +
         `<span class="dim">glyph index ${st.index} (0–${st.states - 1}) ${marker ? 'at the displayed time' : 'at this point'}</span>` +
-        (at !== null && at !== undefined && !marker ? `<br><span class="mono dim">${esc(nowLabelPure(pure, at, d.level))}</span>` : '') +
+        (at !== null && at !== undefined && !marker
+          ? `<br><span class="mono dim">${ledHTML(pentad && pureNowLeads(d.level) ? lead : null, at, nowLabelPure(pure, at, d.level))}</span>`
+          : '') +
         '</span></div>',
     );
   }
@@ -193,6 +217,15 @@ export function tipHTMLPure({ d, p, at, now, pure, model, theme, marker = false,
 export function createWords({ fmt, pure, model, theme, isPure }) {
   const on = () => !!isPure();
   const pct = (frac, decimals = 0) => `${floorPercent(frac, decimals)} %`;
+  // ---- Pentads (SPEC §7.5): a date leads with its Pentad, like a weekday
+  const lookup = pentadLookup(model);
+  /**
+   * The Pentad of a moment, read 1 ms into it like every boundary (the one that begins there; the catalogue's closing
+   * instant reads the last one); null outside the catalogue.
+   */
+  const pentadOf = (t) => (Number.isFinite(t) ? (lookup(t + 0.001) ?? lookup(t)) : null);
+  const markOf = (p) => (p ? pentadMarkHTML(p) : '');
+  const lead = (t) => markOf(pentadOf(t));
   /** A share of something: "87 %" (normal) or the glyph pair (pure). */
   const share = (frac, label, decimals = 0) => (on() ? pure.pairHTML(frac, { label }) : esc(pct(frac, decimals)));
 
@@ -234,6 +267,21 @@ export function createWords({ fmt, pure, model, theme, isPure }) {
       if (on()) return chainText(pure, model, d.level, d.cycle) + (d.clipped ? '  (clipped)' : '');
       return spanText(fmt, d.start, d.end) + (d.clipped ? '  (clipped)' : '');
     },
+    /**
+     * The read-out's span as HTML, led by its Pentads: normal mode each end like a weekday ("⬠II 2026-10-08 10:24:37 →
+     * 12:56:12"); pure mode a Helion or finer cycle in the short letter form ("⬠II δ#3 ε#5 34η"), a longer one by its
+     * address alone (it spans several Pentads).
+     */
+    spanHTML(d) {
+      const clipped = d.clipped ? esc('  (clipped)') : '';
+      if (on()) {
+        if (!pureCycleLeads(d.level)) return esc(chainText(pure, model, d.level, d.cycle)) + clipped;
+        return ledHTML(lead, d.start, chainShort(pure, model, d.level, d.cycle)) + clipped;
+      }
+      return spanHTML(fmt, d.start, d.end, pentadOf, markOf) + clipped;
+    },
+    /** The Pentad of a moment ({sync, index, helion, …} or null). */
+    pentadOf,
     catalogueSpan: () => (on() ? pure.catalogueText() : spanText(fmt, model.tMin, model.tMax)),
     /** Second line of the catalogue read-out: where the current α half-arc lies. */
     alphaSpan(d) {
@@ -241,7 +289,7 @@ export function createWords({ fmt, pure, model, theme, isPure }) {
         const a = 2 * d.idx;
         return `pos ${a} → ${Number((a + 2 * d.fraction).toFixed(3))}`;
       }
-      return `${fmt.date(d.start)} → ${fmt.date(d.end)}`;
+      return `${ledHTML(lead, d.start, fmt.date(d.start))} → ${ledHTML(lead, d.end, fmt.date(d.end))}`;
     },
     nextLines: (eng, d, h, t) => (on() ? nextLinesPure(pure, model, eng, d, h, t) : nextLines(fmt, eng, d, h, t)),
     when: (d, now) => (on() ? whenPure(pure, model, d, now) : whenText(fmt, d, now)),
@@ -252,6 +300,14 @@ export function createWords({ fmt, pure, model, theme, isPure }) {
       if (duration >= 2 * 365.25 * 86400) return fmt.date(t);
       if (duration >= 86400) return fmt.dateTime(t, { seconds: false });
       return fmt.time(duration < 10 ? roundMs(t) : t, { seconds: true, ms: duration < 10 });
+    },
+    /**
+     * The Pentad that leads the label of the displayed time (index 0..3, or null): always in normal mode (a date or a
+     * clock), in pure mode where the label reads down to the Helion (δ and finer stages).
+     */
+    nowPentad({ t, level, overview = false }) {
+      if (on() && (overview || !pureNowLeads(level))) return null;
+      return pentadOf(t)?.index ?? null;
     },
     /** Eclipse labels of the overview: years (normal) or numbers (pure). */
     eclipses(halfCount) {
@@ -300,8 +356,8 @@ export function createWords({ fmt, pure, model, theme, isPure }) {
 
     /** Tooltip HTML of a half-arc / marker (both modes). */
     tip(a) {
-      if (on()) return tipHTMLPure({ ...a, pure, model, theme });
-      return tipHTML({ ...a, fmt, model, theme });
+      if (on()) return tipHTMLPure({ ...a, pure, model, theme, pentad: pentadOf, mark: markOf });
+      return tipHTML({ ...a, fmt, model, theme, pentad: pentadOf, mark: markOf });
     },
 
     // ---- the solar sync
@@ -348,10 +404,25 @@ export function createWords({ fmt, pure, model, theme, isPure }) {
     /** The keys of the dial (its aria-description). */
     sunKeys: () => 'Arrow keys travel within the sync, Page Up and Page Down by a quarter, Home and End to its start and end',
     sunAria(s, t) {
-      if (!s) return `Solar sync. ${this.sunEdge()}`;
+      const p = pentadOf(t);
+      const where = p ? ` ${pentadName(p)}, ${helionPlace(p.helion)}.` : '';
+      if (!s) return `Solar sync. ${this.sunEdge()}${where}`;
       const phase = on() ? pairSpoken(pure, s.phase, 'phase') : `phase ${floorPercent(s.phase)} percent`;
-      return `Solar sync ${signed(s.sync)}, ${phase}, next ${this.sunNext(s, t)}, ${this.sunDriftLine(s, t).replace(/^Drift/, 'drift')}.`;
+      return `Solar sync ${signed(s.sync)}, ${phase}, next ${this.sunNext(s, t)}, ${this.sunDriftLine(s, t).replace(/^Drift/, 'drift')}.${where}`;
     },
+    /** The mark of the Pentad at t with the Helion's place, for the dial's header ("⬠II·2"), or ''. */
+    sunPentadHTML(t) {
+      const p = pentadOf(t);
+      return p ? pentadMarkHTML(p, { helion: true, title: `${pentadName(p)}, ${helionPlace(p.helion)} of ${p.helions}` }) : '';
+    },
+    /**
+     * What the Pentads say about the Sun, one line: a solar day is 4¾η, so each Pentad starts a quarter Helion later in
+     * the day and the Hypopentad, a Helion short, brings the next Pentad I back (no hours in pure mode).
+     */
+    sunPentadNote: () =>
+      on()
+        ? `${DAY_TEXT} is a solar day: each Pentad starts ${QUARTER_TEXT} later in it, and the Hypopentad, one Helion short, brings Pentad I back`
+        : `A solar day is ${DAY_TEXT}: each Pentad (5η, about 25 h) starts ${QUARTER_TEXT} (about 1 h 16 min) later in the day, and the Hypopentad (4η), one Helion short, brings Pentad I back`,
     /**
      * Tooltip of the sync, for the pin on the ripple (`by: 'pin'`), the dial (`'dial'`) and the focused dial (`'key'`).
      * The last line says how to travel within the sync, and it is true for the thing hovered.
@@ -360,9 +431,16 @@ export function createWords({ fmt, pure, model, theme, isPure }) {
       const head = `<div class="wave-tip-h"><i class="wave-sun-dot" aria-hidden="true"></i><b>Solar sync ${esc(this.sunNumber(s))}</b><span class="wave-tip-sign">${esc(this.sunDefinition())}</span></div>`;
       const phase = on() ? `Phase ${pure.pairHTML(s.phase, { label: 'sync phase' })} of this sync` : `Phase ${esc(pct(s.phase))} of this 4-day sync`;
       const action = by === 'pin' ? 'Drag the pin to travel within this sync' : by === 'key' ? 'Arrow keys travel within this sync, Page keys by a quarter' : `${touch ? 'Tap' : 'Click'} or drag the wave to travel within this sync`;
+      const p = pentadOf(t);
       const lines = [
         head,
         `<div class="wave-tip-r wave-tip-len">${phase}</div>`,
+        ...(p
+          ? [
+              `<div class="wave-tip-r wave-tip-pentad">${pentadMarkHTML(p, { cls: 'is-gold' })} <span>${esc(pentadName(p))}, ${esc(helionPlace(p.helion))} of ${p.helions}</span></div>`,
+              `<div class="wave-tip-r dim">${esc(this.sunPentadNote())}</div>`,
+            ]
+          : []),
         `<div class="wave-tip-r">Next ${esc(this.sunNext(s, t))}</div>`,
         `<div class="wave-tip-r dim">${esc(this.sunDriftLine(s, t))}</div>`,
         `<div class="wave-tip-r dim">${QUARTERS.join(', ')}: ${on() ? 'a quarter of the sync apart' : 'about a day apart'}</div>`,

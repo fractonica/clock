@@ -227,3 +227,51 @@ export function dialState(shape, sun) {
     quarters: QUARTERS.map((name, i) => ({ k: i + 1, name, past: i + 1 <= sun.quarter, next: i === sun.quarter, r: i === sun.quarter ? 3.4 : 2.2 })),
   };
 }
+
+// ------------------------------------------------------------------ the Pentads of a sync (SPEC §7.5)
+
+/**
+ * A sync's 19 Helions as four Pentads, the way a week names its days: Pentad I, II, III (5 Helions each) and the
+ * Hypopentad (4). Pentad i starts at Helion PENTAD_STARTS[i] of the sync, so in sync phase at 5i/19; its quarter
+ * neighbour (the sync's quarters fall a solar day apart) sits at i/4, and the Pentad starts ¼, ½, ¾ Helion after it:
+ * the Sun link. The Hypopentad, one Helion short, ends on the sync's end.
+ */
+export const PENTAD_STARTS = Object.freeze([0, 5, 10, 15]);
+/** Sync phase (0..1) where Pentad `i` starts (i = 4: the sync's end). */
+export const pentadPhase = (i) => (i >= 4 ? 1 : PENTAD_STARTS[i] / SYNC_CYCLES);
+/** The Pentad (0..3) a sync phase falls in (the model's pentadAt is the authority for the present; this is for drawing). */
+export const pentadOfPhase = (phase) => Math.min(3, Math.max(0, Math.floor((clamp01(phase) * SYNC_CYCLES) / 5)));
+
+/**
+ * The Pentads of the syncs that overlap the arc `spec`: {sync, index, coord0, coord1, p0, p1} with p0/p1 the progress
+ * on the half-arc of the Pentad's start and end, clipped to [0, fraction]; only those with a part on the arc. `only`
+ * limits it to one sync.
+ */
+export function pentadSpans(spec, g, only = null) {
+  const c0 = syncCoord(spec.pos0, g);
+  const c1 = syncCoord(spec.pos0 + spec.fraction * spec.span, g);
+  const prog = (coord) => (positionOfCoord(coord, g) - spec.pos0) / spec.span;
+  const out = [];
+  for (let s = Math.floor(c0); s <= Math.floor(c1); s++) {
+    if (only !== null && s !== only) continue;
+    for (let i = 0; i < 4; i++) {
+      const coord0 = s + pentadPhase(i);
+      const coord1 = s + pentadPhase(i + 1);
+      if (coord1 <= c0 || coord0 >= c1) continue;
+      out.push({ sync: s, index: i, coord0, coord1, p0: Math.max(0, prog(coord0)), p1: Math.min(spec.fraction, prog(coord1)) });
+    }
+  }
+  return out;
+}
+
+/**
+ * The Pentad band under the dial's mini wave (`shape` = dialShape): four segments [x0, x1] with a small gap at each
+ * Pentad start, and the x of the label in the middle. The Hypopentad's segment is 4/5 of the others.
+ */
+export function dialPentads(shape, gap = 1.5) {
+  return [0, 1, 2, 3].map((i) => {
+    const a = shape.padX + shape.W * pentadPhase(i);
+    const b = shape.padX + shape.W * pentadPhase(i + 1);
+    return { index: i, x0: a + gap / 2, x1: b - gap / 2, mid: (a + b) / 2, start: a };
+  });
+}

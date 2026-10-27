@@ -4,7 +4,8 @@
  * full precision; nothing here touches the clock or the DOM except the canvas itself.
  */
 import * as G from './geometry.js';
-import { pinGeometry, QUARTERS, quarterMarks, rippleAmp, rippleFit, ripplePointAt, ripplePoints, rippleSplit, syncsOnArc } from './solar.js';
+import { pentadSpans, pinGeometry, QUARTERS, quarterMarks, rippleAmp, rippleFit, ripplePointAt, ripplePoints, rippleSplit, syncsOnArc } from './solar.js';
+import { drawPentadMark, PENTAD_NUMERALS } from '../pentad.js';
 
 const BIG_R = 3000; // px: arcs bigger than this are drawn as a polyline of their visible stretch
 const PANEL = '11, 16, 21'; // --bg-2, used for text halos
@@ -189,8 +190,8 @@ const LABEL_MAX_STEP = 14; // px a label may move per frame while it glides
  * near-tied sides several times a second.
  * @returns {{x:number, y:number, align:'center', cost:number}} centre of the text (baseline middle)
  */
-export function placeLabel(P, occ, key, str, x, y, nx, ny, font, clear = 12, weight = 1) {
-  const hw = textWidth(P, str.replace(/\d/g, '0'), font) / 2 + 3;
+export function placeLabel(P, occ, key, str, x, y, nx, ny, font, clear = 12, weight = 1, extra = 0) {
+  const hw = (textWidth(P, str.replace(/\d/g, '0'), font) + extra) / 2 + 3;
   const hh = 8;
   const dirs = [
     [nx, ny],
@@ -347,8 +348,60 @@ function drawRipple(P, scene, sf, trF, sun, quiet, occ) {
       placeAndLabel(P, occ, 'sq' + m.k, QUARTERS[m.k - 1], pt.x, pt.y, pt.nx, pt.ny, { color: goldA(next ? 1 : 0.78), font: P.fonts.small }, 7);
     }
   }
+  drawPentadRail(P, scene, sf, sun, fit, amp, quiet, occ);
   g.restore();
   return { fit, amp };
+}
+
+/** px from the ripple's crest to the Pentad rail, and the rail's gap at each Pentad start. */
+const RAIL_OFF = 7;
+const RAIL_GAP = 4;
+/** A Pentad's mark is written on the rail only where the Pentad is at least this long (px). */
+const RAIL_LABEL_PX = 30;
+
+/**
+ * The Pentads of the sync along the ripple (SPEC §7.5): a rail just outside the ripple's crests, one segment per Pentad –
+ * Pentad I, II and III five Helions each, the Hypopentad four, so its segment is visibly shorter – with a gap where each
+ * one starts. Each Pentad starts a quarter Helion after the quarter dot before it (the quarters fall a solar day apart):
+ * ¼, ½, ¾ Helion, and the Hypopentad ends on the sync's end. The running Pentad is bright, the passed ones solid and
+ * dim, the coming ones dim; the marks of the sync with the displayed time are written on the rail where there is room.
+ */
+function drawPentadRail(P, scene, sf, sun, fit, amp, quiet, occ) {
+  const g = P.g;
+  const len = sf.r * Math.abs(sf.sweep); // px per unit of progress
+  if (!(len > 0)) return;
+  const pentadPx = (fit.wavelength * 5) / 19;
+  const spans = pentadSpans(sun.spec, sun.grid, fit.wavelength / 4 >= 40 ? null : sun.sync);
+  const rail = { x: sf.x, y: sf.y, r: sf.r + amp + RAIL_OFF, a0: sf.a0, sweep: sf.sweep };
+  const gapP = RAIL_GAP / len / 2;
+  const small = P.fonts.small;
+  g.lineCap = 'butt'; // square ends: the gap at each Pentad start stays as wide as it is meant to be
+  for (const s of spans) {
+    const passed = s.sync < sun.sync || (s.sync === sun.sync && s.index < sun.pentad);
+    const now = s.sync === sun.sync && s.index === sun.pentad;
+    const p0 = s.p0 + (s.p0 > 0 ? gapP : 0);
+    const p1 = s.p1 - (s.p1 < scene.fraction ? gapP : 0);
+    if (!(p1 > p0)) continue;
+    g.beginPath();
+    pathArc(P, rail, p0, p1);
+    stroke(P, goldA(now ? 0.95 : passed ? 0.55 : 0.32), now ? 3 : 2);
+    if (quiet || s.sync !== sun.sync || pentadPx < RAIL_LABEL_PX) continue;
+    // the mark sits on the rail, in the middle of the Pentad's part on the arc, beyond it from the ripple
+    const mid = (s.p0 + s.p1) / 2;
+    const vis = (s.p1 - s.p0) * len;
+    if (vis < RAIL_LABEL_PX * 0.8) continue;
+    const a = sf.a0 + sf.sweep * mid;
+    const nx = Math.cos(a);
+    const ny = Math.sin(a);
+    const r = rail.r + 9;
+    const style = { color: goldA(now ? 1 : passed ? 0.7 : 0.62), font: small };
+    const mw = markWidth(P, s.index, small) - fontPx(small) * MARK_GAP;
+    const cx = sf.x + r * nx;
+    const cy = sf.y + r * ny;
+    if (cx < 8 || cy < 8 || cx > P.W - 8 || cy > P.H - 8) continue;
+    occ.push({ x0: cx - mw / 2 - 2, x1: cx + mw / 2 + 2, y0: cy - 7, y1: cy + 7, w: SOFT });
+    ledText(P, s.index, '', cx + (fontPx(small) * MARK_GAP) / 2, cy, style);
+  }
 }
 
 /** A label next to (x, y) on the side with room, drawn in its own colour; the spot is remembered per key. */
@@ -356,6 +409,37 @@ function placeAndLabel(P, occ, key, str, x, y, nx, ny, style, clear = 8) {
   const spot = placeLabel(P, occ, key, str, x, y, nx, ny, style.font, clear, SOFT);
   text(P, str, spot.x, spot.y, style);
   return spot;
+}
+
+// ------------------------------------------------------ the Pentad mark ----
+
+const fontPx = (font) => Number(/(\d+(?:\.\d+)?)px/.exec(font)?.[1] ?? 12);
+/** Height of a Pentad shape that sits with text of this font (a little under the cap height of the digits). */
+const markSize = (font) => Math.round(fontPx(font) * 0.84 * 2) / 2;
+const MARK_GAP = 0.42; // em between the mark and the text it leads
+/** The width a Pentad mark (shape + numeral + the gap to the text) adds in front of a label; 0 without a Pentad. */
+export function markWidth(P, index, font) {
+  if (index === null || index === undefined || index < 0 || index > 3) return 0;
+  const size = markSize(font);
+  const num = PENTAD_NUMERALS[index];
+  return size + (num ? size * 0.16 + textWidth(P, num, font) : 0) + fontPx(font) * MARK_GAP;
+}
+/**
+ * A label led by its Pentad (SPEC §7.5), centred at (cx, cy) like `text`: the shape (a pentagon, the Hypopentad a
+ * square), its numeral and the text, all with the same halo, in the label's colour.
+ */
+function ledText(P, index, str, cx, cy, style) {
+  const mw = markWidth(P, index, style.font);
+  if (!mw) return text(P, str, cx, cy, style);
+  const tw = textWidth(P, str, style.font);
+  const x0 = cx - (mw + tw) / 2;
+  const size = markSize(style.font);
+  const g = P.g;
+  if (style.halo !== false) drawPentadMark(g, index, x0, cy, { size, numeral: false, color: `rgba(${PANEL}, 0.82)`, lineWidth: size * 0.125 + 3 });
+  drawPentadMark(g, index, x0, cy, { size, numeral: false, color: style.color });
+  const num = PENTAD_NUMERALS[index];
+  if (num) text(P, num, x0 + size * 1.16, cy, { ...style, align: 'left' });
+  text(P, str, x0 + mw, cy, { ...style, align: 'left' });
 }
 
 /**
@@ -652,8 +736,10 @@ export function drawFocus(P, scene, view, o) {
       const nx = (nowAt.x - sf.x) / (sf.r || 1);
       const ny = (nowAt.y - sf.y) / (sf.r || 1);
       const len = Math.hypot(nx, ny) || 1;
-      const spot = placeLabel(P, occ, 'now', o.nowLabel, nowAt.x, nowAt.y, nx / len, ny / len, font.labelBold);
-      text(P, o.nowLabel, spot.x, spot.y, { color: '#fff', font: font.labelBold });
+      // led by its Pentad, like a date by its weekday (SPEC §7.5)
+      const mw = markWidth(P, o.nowPentad, font.labelBold);
+      const spot = placeLabel(P, occ, 'now', o.nowLabel, nowAt.x, nowAt.y, nx / len, ny / len, font.labelBold, 12, 1, mw);
+      ledText(P, o.nowPentad, o.nowLabel, spot.x, spot.y, { color: '#fff', font: font.labelBold });
     }
     for (const b of badges) {
       if (hits) hits.markers.push({ level: b.level, idx: b.idx, local: b.local, x: b.x, y: b.y, badge: true });
@@ -843,8 +929,9 @@ export function drawOverview(P, ov, view, o) {
     if (o.nowLabel && !o.quiet && pts.length) {
       const q = pts[0];
       occ.push({ x0: q.x - 10, x1: q.x + 10, y0: q.y - 10, y1: q.y + 10 });
-      const spot = placeLabel(P, occ, 'now-all', o.nowLabel, q.x, q.y, 0, -1, font.labelBold);
-      text(P, o.nowLabel, spot.x, spot.y, { color: '#fff', font: font.labelBold });
+      const mw = markWidth(P, o.nowPentad, font.labelBold);
+      const spot = placeLabel(P, occ, 'now-all', o.nowLabel, q.x, q.y, 0, -1, font.labelBold, 12, 1, mw);
+      ledText(P, o.nowPentad, o.nowLabel, spot.x, spot.y, { color: '#fff', font: font.labelBold });
     }
   }
   if (o.edge && !o.quiet) {

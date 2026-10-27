@@ -8,12 +8,13 @@ import * as G from '../src/ui/wave/geometry.js';
 import { createEngine, LAND } from '../src/ui/wave/scene.js';
 import { createPainter, drawFocus, placeLabel, REST_ALPHA } from '../src/ui/wave/draw.js';
 import { followableLevel, parseFlag, sanitizeLevel, solarAtLoad, storedSettings, throughOf, zoomEnabled, zoomPlan } from '../src/ui/wave/nav.js';
-import { countdownText, cycleText, floorPercent, glyphState, instantText, loopHint, loopText, nextLines, roundMs, spanText, tipHTML, whenText } from '../src/ui/wave/tooltip.js';
+import { countdownText, cycleText, floorPercent, glyphState, instantText, loopHint, loopText, nextLines, roundMs, spanHTML, spanParts, spanText, tipHTML, whenText } from '../src/ui/wave/tooltip.js';
+import { pentadMarkHTML } from '../src/ui/pentad.js';
 import fs from 'node:fs';
 import { createPure } from '../src/core/pure.js';
 import { RULES } from '../tools/pure-scan.mjs';
 import * as SUN from '../src/ui/wave/solar.js';
-import { chainText, cycleNamedPure, cyclePhaseOf, cyclePure, createWords, eclipseLabels, halfLengthPure, nextLinesPure, nowLabelPure, pairSpoken, pureCountdown, pureSpan, quarterWord, tipHTMLPure, whenPure } from '../src/ui/wave/words.js';
+import { chainShort, chainText, cycleNamedPure, cyclePhaseOf, cyclePure, createWords, eclipseLabels, halfLengthPure, nextLinesPure, nowLabelPure, pairSpoken, pureCountdown, pureCycleLeads, pureNowLeads, pureSpan, quarterWord, tipHTMLPure, whenPure } from '../src/ui/wave/words.js';
 
 const model = createModel();
 const clock = model.clock;
@@ -1837,7 +1838,8 @@ function seen(html) {
   return [String(html).replace(/<[^>]*>/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"'), ...attrs];
 }
 function assertClean(str, where) {
-  for (const text of seen(str)) {
+  // "a solar day" names the Sun's return the Pentads count against (SPEC §7.5: "4¾η is a solar day"), not an Earth unit
+  for (const text of seen(str).map((x) => x.replace(/\bsolar day\b/g, 'solar turn'))) {
     for (const [id, re] of HARD) assert.doesNotMatch(text, re, `${where}: ${id} in "${text}"`);
   }
 }
@@ -2076,7 +2078,12 @@ test('normal mode words are the ones tooltip.js always produced', () => {
     assert.equal(words.loop(d), loopText(d));
     assert.equal(words.when(d, t), whenText(fmt, d, t));
     assert.deepEqual(words.nextLines(eng, d, cur[L], t), nextLines(fmt, eng, d, cur[L], t));
-    assert.equal(words.tip({ d, p: 0.4, at: eng.timeAt(L, d.idx, 0.4), now: t, marker: false, action: 'x' }), tipHTML({ d, p: 0.4, at: eng.timeAt(L, d.idx, 0.4), now: t, fmt, model: { F: model.F, glyphSVG: model.glyphSVG }, theme, marker: false, action: 'x' }));
+    // the tooltip is tooltip.js's own, its dates led by their Pentads
+    const pen = { pentad: words.pentadOf, mark: (p) => pentadMarkHTML(p) };
+    assert.equal(words.tip({ d, p: 0.4, at: eng.timeAt(L, d.idx, 0.4), now: t, marker: false, action: 'x' }), tipHTML({ d, p: 0.4, at: eng.timeAt(L, d.idx, 0.4), now: t, fmt, model: { F: model.F, glyphSVG: model.glyphSVG }, theme, marker: false, action: 'x', ...pen }));
+    assert.equal(words.spanHTML(d), spanHTML(fmt, d.start, d.end, words.pentadOf, pen.mark) + (d.clipped ? '  (clipped)' : ''));
+    // without the marks the tooltip is the text it always was
+    assert.equal(tipHTML({ d, p: null, at: null, now: t, fmt, model, theme, action: '' }).replace(/<[^>]+>/g, '').includes(spanText(fmt, d.start, d.end)), true);
   }
   assert.equal(words.share(0.2749), '27 %');
   assert.equal(words.share(0.1349, 'x', 1), '13.4 %');
@@ -2114,7 +2121,11 @@ test('solar words: the sync, its phase, the next quarter and the drift in both v
   assert.match(words.sunTip(s, TIMES.A), /Phase 35 % of this 4-day sync/);
   assert.match(words.sunTip(s, TIMES.A), /Drift against civil days −\d+ h \d+ min/);
   assert.match(words.sunToggleTitle(), /19 η cycles \(about 4 days\)/);
-  assert.match(words.sunAria(s, TIMES.A), /^Solar sync 4820, phase 35 percent, next node in \d+ h \d+ min, drift against civil days −\d+ h \d+ min\.$/);
+  assert.match(words.sunAria(s, TIMES.A), /^Solar sync 4820, phase 35 percent, next node in \d+ h \d+ min, drift against civil days −\d+ h \d+ min\. Pentad II, 2nd Helion\.$/);
+  assert.match(words.sunTip(s, TIMES.A), /aria-label="Pentad II"/, 'the tooltip names the Pentad with its shape');
+  assert.match(words.sunTip(s, TIMES.A), /Pentad II, 2nd Helion of 5/);
+  assert.match(words.sunTip(s, TIMES.A), /A solar day is 4¾η: each Pentad \(5η, about 25 h\) starts ¼η \(about 1 h 16 min\) later in the day/);
+  assert.match(words.sunPentadHTML(TIMES.A), /aria-label="Pentad II, 2nd Helion"/);
   assert.equal(words.sunPhaseText(s), '35 percent of sync 4820');
   flag.on = true;
   assert.match(words.sunNext(s, TIMES.A), /^node in \d+η \d+ι$/);
@@ -2127,8 +2138,10 @@ test('solar words: the sync, its phase, the next quarter and the drift in both v
   assert.match(tip, /pure-pair/);
   assert.match(tip, /Drift −[\d\u202f]+λ</);
   assert.match(tip, /One sync is 19η: 19 Helions</, 'the unit name where the tooltip explains the sync');
-  assert.doesNotMatch(tip, /civil|day|%|steady|beat/);
-  assert.match(words.sunAria(s, TIMES.A), /^Solar sync 4820, phase 5 and \d+ of 256, next node in \d+η \d+ι, drift −[\d\u202f]+λ\.$/);
+  assert.doesNotMatch(tip.replace(/4¾η is a solar day/, ''), /civil|day|%|steady|beat/);
+  assert.doesNotMatch(tip.replace(/<[^>]+>/g, ' '), /\b\d+ ?(h|min)\b|hours?/, 'no hours');
+  assert.match(tip, /4¾η is a solar day: each Pentad starts ¼η later in it, and the Hypopentad, one Helion short, brings Pentad I back/, 'pure: no hours, the solar day in Helions');
+  assert.match(words.sunAria(s, TIMES.A), /^Solar sync 4820, phase 5 and \d+ of 256, next node in \d+η \d+ι, drift −[\d\u202f]+λ\. Pentad II, 2nd Helion\.$/);
   assert.match(words.sunPhaseText(s), /^sync 4820, phase 5 and \d+ of 256$/);
   assert.equal(words.sunPhaseText(s), `sync 4820, ${pairSpoken(pureT, s.phase, 'phase')}`);
   assert.match(words.sunToggleTitle(), /one yellow wave of 19η \(19 Helions\)\./);

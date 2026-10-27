@@ -31,7 +31,7 @@
 .wave-sun-h { display: inline-flex; align-items: center; gap: 8px; flex: none; }
 .wave-sun-t { font-size: 11px; font-weight: 650; letter-spacing: 0.08em; text-transform: uppercase; color: var(--gold); }
 .wave-sun-n { min-width: 5.2ch; font-size: 12.5px; font-weight: 600; color: var(--ink); }
-.wave-sun-svg { flex: 0 1 220px; min-width: 150px; width: 220px; height: 30px; display: block; cursor: ew-resize; touch-action: none; overflow: visible; }
+.wave-sun-svg { flex: 0 1 220px; min-width: 150px; width: 220px; height: 47px; display: block; cursor: ew-resize; touch-action: none; overflow: visible; }
 .wave-sun-svg:focus-visible { outline: 2px solid var(--cursor); outline-offset: 3px; border-radius: 4px; }
 .wave-sun-svg[aria-disabled="true"] { cursor: default; }
 .wave-sun-axis { stroke: var(--line-2); stroke-width: 1; stroke-dasharray: 2 4; }
@@ -46,6 +46,19 @@
 .wave-sun-nx { flex: none; white-space: nowrap; color: var(--ink-2); }
 .wave-sun-hint { flex: 1 1 auto; min-width: 0; text-align: right; font-size: 11.5px; color: var(--wave-ink-3); }
 .wave-sun[data-state="edge"] .wave-sun-nx { white-space: normal; }
+/* the sync's Pentads (SPEC §7.5): a band under the wave, the running one lit; the Hypopentad is one Helion shorter */
+.wave-sun-p { display: inline-flex; align-items: center; min-width: 4.2em; font-size: 13px; color: var(--gold); }
+.wave-sun-p:empty { display: none; }
+.wave-sun-pd-tick { stroke: rgb(255 214 10 / 0.26); stroke-width: 1; stroke-dasharray: 1.5 2.5; }
+.wave-sun-pd-bar { fill: rgb(255 214 10 / 0.06); stroke: rgb(255 214 10 / 0.22); stroke-width: 0.8; }
+.wave-sun-pd-shape { fill: none; stroke: rgb(255 214 10 / 0.7); stroke-width: 1.6; stroke-linejoin: round; }
+.wave-sun-pd-num { font: 600 9px var(--font-ui); fill: rgb(255 214 10 / 0.75); dominant-baseline: central; letter-spacing: 0.02em; }
+.wave-sun-pd.is-past .wave-sun-pd-bar { fill: rgb(255 214 10 / 0.13); }
+.wave-sun-pd.is-now .wave-sun-pd-bar { fill: rgb(255 214 10 / 0.26); stroke: var(--gold); stroke-width: 1.1; }
+.wave-sun-pd.is-now .wave-sun-pd-shape { stroke: var(--gold); }
+.wave-sun-pd.is-now .wave-sun-pd-num { fill: var(--gold); }
+.wave-sun[data-state="edge"] .wave-sun-pd { opacity: 0.5; }
+.wave-tip-pentad { display: flex; align-items: center; gap: 6px; }
 .wave-key-sun { width: 24px; height: 12px; color: var(--gold); }
 .wave-caption-sun { color: var(--ink-2); }
 .wave-card:not([data-solar]) .wave-legend [data-for="sun"] { display: none; }
@@ -184,6 +197,7 @@
 .wave-tip-sign { margin-left: auto; font-size: 11px; color: var(--ink-2); padding: 0 7px; border-radius: 999px; background: var(--panel-3); border: 1px solid var(--line-2); }
 .wave-tip-r { font-size: 12px; line-height: 1.45; }
 .wave-tip-r.mono { font-size: 11.5px; }
+.wave-r-span .pentad-mark, .wave-tip-r .pentad-mark { font-size: 1.04em; }
 .wave-tip-g { display: flex; gap: 10px; align-items: center; margin-top: 7px; padding-top: 7px; border-top: 1px solid var(--line-2); font-size: 12px; line-height: 1.4; }
 .wave-tip-glyph svg { display: block; height: 38px; width: auto; }
 .wave-tip-a { margin-top: 7px; font-size: 11px; color: var(--ink-3); }
