@@ -46,6 +46,8 @@ struct TurnoverRow: Hashable, Identifiable, Sendable {
     let separated: Bool
     /// "03:41" (Earth); what begins (pure): "45η".
     let label: String
+    /// The Pentad the turnover lands in (`Turnovers.pentad(at:)`); the row shows it when it is not the running one.
+    let pentad: PentadReading?
 
     var id: Double { turnover.time }
 }
@@ -74,7 +76,8 @@ enum Turnovers {
                 group: key,
                 heading: first ? LadderText.dayLabel(earth, e.time, refYear: refYear) : nil,
                 separated: i > 0 && first,
-                label: LadderText.clockLabel(earth, e.time)
+                label: LadderText.clockLabel(earth, e.time),
+                pentad: pentad(at: e.time)
             )
         }
     }
@@ -95,9 +98,21 @@ enum Turnovers {
                 group: String(info.group),
                 heading: first && (size[info.group] ?? 0) > 1 ? info.heading : nil,
                 separated: i > 0 && first,
-                label: info.name ?? "the catalogue ends"
+                label: info.name ?? "the catalogue ends",
+                pentad: pentad(at: e.time)
             )
         }
+    }
+
+    /// The Pentad a turnover or threshold at t lands in (SPEC §7.5), read just after it: where it meets a Pentad's
+    /// edge, the Pentad that begins there.
+    static func pentad(at t: Double) -> PentadReading? { Pentads.at(t + 0.001) }
+
+    /// The Pentad to show beside a moment in Up next: its index when it is another Pentad than the running one
+    /// (`current`, the running Pentad's start), nil when it is the same one (a weekday is only said when it changes).
+    static func shownPentad(_ p: PentadReading?, current: Double?) -> Int? {
+        guard let p, p.start != current else { return nil }
+        return p.index
     }
 
     /// How many leading turnovers of `previous` have passed when `next` is the same list advanced; −1 when the lists

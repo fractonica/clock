@@ -45,6 +45,8 @@ struct UpNextView: View {
                 let next = [turnovers.first?.time, selected?.next.time].compactMap { $0 }.min()
                 let wanted = LadderCadence.upNext(untilNext: next.map { $0 - t })
                 let animate = memo.passed && !reduceMotion
+                // the running Pentad's start: the card changes with it only when a Pentad begins
+                let currentPentad = Pentads.at(t)?.start
                 // only what changes when a turnover or a threshold passes: the same card from one tick to the next
                 UpNextContent(
                     inRange: store.clock.inRange(t),
@@ -56,7 +58,8 @@ struct UpNextView: View {
                     words: words,
                     navigator: navigator,
                     glow: animate,
-                    cadence: cadence
+                    cadence: cadence,
+                    currentPentad: currentPentad
                 )
                 .onChange(of: wanted, initial: true) { _, wanted in cadence = wanted }
                 .animation(animate ? .snappy(duration: 0.35) : nil, value: turnovers.first?.time)
@@ -113,9 +116,12 @@ private struct UpNextContent: View {
     let glow: Bool
     /// The container's cadence, for the countdowns' lookahead.
     let cadence: Double
+    /// The running Pentad's start: moments in another Pentad show theirs.
+    let currentPentad: Double?
 
     var body: some View {
         let clock = words.notation.model
+        let thresholdPentad = Turnovers.shownPentad(threshold?.time.flatMap(Turnovers.pentad(at:)), current: currentPentad)
         VStack(alignment: .leading, spacing: 12) {
             if !inRange {
                 UpNextNote(
@@ -126,8 +132,8 @@ private struct UpNextContent: View {
                 )
             } else if let first = turnovers.first {
                 TurnoverHero(turnover: first, importance: importance, maxLevel: maxLevel, words: words, navigator: navigator, glow: glow, cadence: cadence)
-                ThresholdStrip(threshold: threshold, words: words, navigator: navigator, cadence: cadence)
-                TurnoverList(rows: rows, words: words, navigator: navigator, cadence: cadence)
+                ThresholdStrip(threshold: threshold, words: words, navigator: navigator, cadence: cadence, pentad: thresholdPentad)
+                TurnoverList(rows: rows, words: words, navigator: navigator, cadence: cadence, currentPentad: currentPentad)
                 if turnovers.count < Turnovers.listed {
                     // the catalogue ends before the list is full
                     Label(lastWords, systemImage: "flag.checkered")
@@ -136,7 +142,7 @@ private struct UpNextContent: View {
                         .padding(.top, rows.isEmpty ? 0 : 4)
                 }
             } else {
-                ThresholdStrip(threshold: threshold, words: words, navigator: navigator, cadence: cadence)
+                ThresholdStrip(threshold: threshold, words: words, navigator: navigator, cadence: cadence, pentad: thresholdPentad)
                 UpNextNote(symbol: "flag.checkered", text: lastWords)
             }
         }
@@ -228,22 +234,26 @@ private struct TurnoverHero: View {
         .minimumScaleFactor(0.55)
     }
 
+    /// The Pentad the turnover lands in, which leads its moment.
+    private var pentad: Int? { Turnovers.pentad(at: turnover.time)?.index }
+
     @ViewBuilder
     private var when: some View {
         if pure {
             let info = text.turnoverInfo(time: turnover.time, top: turnover.top)
-            Text(info.begins)
+            (info.address.isEmpty ? Text.ledByPentad(pentad, Text(info.begins)) : Text(info.begins))
                 .font(.subheadline.weight(.medium))
                 .foregroundStyle(Theme.ink)
             if !info.address.isEmpty {
-                Text(info.address).font(.code(11)).foregroundStyle(Theme.ink3).lineLimit(stacked ? nil : 1).minimumScaleFactor(0.7)
+                Text.ledByPentad(pentad, Text(info.address))
+                    .font(.code(11)).foregroundStyle(Theme.ink3).lineLimit(stacked ? nil : 1).minimumScaleFactor(0.7)
             }
         } else {
             let line = stacked
                 ? AnyLayout(VStackLayout(alignment: .leading, spacing: 2))
                 : AnyLayout(HStackLayout(alignment: .firstTextBaseline, spacing: 5))
             line {
-                Text(LadderText.whenFull(words.earth, turnover.time))
+                Text.ledByPentad(pentad, Text(LadderText.whenFull(words.earth, turnover.time)))
                     .font(.subheadline.monospacedDigit())
                     .foregroundStyle(Theme.ink2)
                 Text(words.tag(turnover.time)).font(.caption).foregroundStyle(Theme.ink3)
@@ -397,6 +407,8 @@ private struct ThresholdStrip: View {
     let navigator: LadderNavigator
     /// How often the countdown redraws.
     let cadence: Double
+    /// The threshold's Pentad when it falls in another one than the running Pentad.
+    let pentad: Int?
 
     @Environment(AppSettings.self) private var settings
     @Environment(\.dynamicTypeSize) private var typeSize
@@ -432,7 +444,7 @@ private struct ThresholdStrip: View {
                 }
                 .font(.footnote.monospacedDigit())
                 .foregroundStyle(Theme.ink2)
-                let spot = Text(place(threshold, when: when, t: t, text: text))
+                let spot = Text.ledByPentad(pentad, Text(place(threshold, when: when, t: t, text: text)))
                     .font(.footnote.monospacedDigit())
                     .foregroundStyle(Theme.ink3)
                 let go = Image(systemName: "forward.end")
@@ -485,7 +497,8 @@ private struct ThresholdStrip: View {
         let text = LadderPureText(notation: words.notation)
         let left = words.pure ? text.left(from: t, to: when) : LadderText.countdown(when - t)
         let spot = place(threshold, when: when, t: t, text: text)
-        return "\(head): next \(Notation.quarterWords[threshold.quarter]) in \(left)\(spot.isEmpty ? "" : ", \(spot)")"
+        let pentad = self.pentad.map { ", in \(PentadWords.name($0))" } ?? ""
+        return "\(head): next \(Notation.quarterWords[threshold.quarter]) in \(left)\(spot.isEmpty ? "" : ", \(spot)")\(pentad)"
     }
 
     /// Where the threshold falls: a Gregorian label · pure: the next quarter word (a major) or two stamp tokens.
@@ -504,6 +517,7 @@ private struct TurnoverList: View {
     let words: Wording
     let navigator: LadderNavigator
     let cadence: Double
+    let currentPentad: Double?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -518,7 +532,8 @@ private struct TurnoverList: View {
                 } else if row.separated {
                     Rectangle().fill(Theme.line2).frame(height: 1).padding(.vertical, 6)
                 }
-                TurnoverRowView(row: row, words: words, navigator: navigator, cadence: cadence)
+                TurnoverRowView(row: row, words: words, navigator: navigator, cadence: cadence,
+                                pentad: Turnovers.shownPentad(row.pentad, current: currentPentad))
             }
         }
     }
@@ -530,6 +545,8 @@ private struct TurnoverRowView: View {
     let navigator: LadderNavigator
     /// How often the countdown redraws.
     let cadence: Double
+    /// The turnover's Pentad when it lands in another one than the running Pentad.
+    let pentad: Int?
 
     @ScaledMetric(relativeTo: .subheadline) private var readingSize = 15.0
     @Environment(\.dynamicTypeSize) private var typeSize
@@ -581,7 +598,7 @@ private struct TurnoverRowView: View {
         .foregroundStyle(Theme.ink)
         .lineLimit(1)
         let when = HStack(spacing: 8) {
-            Text(row.label)
+            Text.ledByPentad(pentad, Text(row.label))
                 .font(.subheadline.monospacedDigit())
                 .foregroundStyle(Theme.ink2)
                 .lineLimit(1)
@@ -619,7 +636,8 @@ private struct TurnoverRowView: View {
 
     private func label(_ e: Turnover, t: Double) -> String {
         let text = LadderPureText(notation: words.notation)
-        let finer = e.finer > 0 ? ", \(e.finer) finer \(e.finer == 1 ? "cycle ends" : "cycles end") with it" : ""
+        let finer = (e.finer > 0 ? ", \(e.finer) finer \(e.finer == 1 ? "cycle ends" : "cycles end") with it" : "")
+            + (pentad.map { ", in \(PentadWords.name($0))" } ?? "")
         if words.pure {
             // the row's label is what begins there (`Turnovers.byNuclide`)
             let what = words.notation.model.inRange(e.time + 0.001) ? "\(row.label) begins" : "the catalogue ends"
