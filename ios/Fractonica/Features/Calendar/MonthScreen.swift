@@ -474,18 +474,23 @@ private struct CalDayCell: View, Equatable {
                     .frame(minWidth: metrics.regular ? 24 : 20, minHeight: metrics.regular ? 24 : 20)
                     .background { if isToday { Circle().fill(Theme.now) } }
                 Spacer(minLength: 0)
-                if events.isEmpty, let p = day.pentads.first {
-                    // the Pentad that begins on the day, as its weekday (roomy cells list it with its time)
-                    PentadMark(index: p.index)
-                        .font(.system(size: metrics.cellWidth < 44 ? 9 : 10, weight: .semibold))
-                        .foregroundStyle(Theme.gold.opacity(day.inMonth ? 0.9 : 0.45))
-                        .lineLimit(1)
-                        .fixedSize()
-                        .padding(.top, 4)
+            }
+            .overlay(alignment: .topTrailing) {
+                // in an overlay at its own size, so a "⬠III" neither widens its column nor truncates
+                HStack(alignment: .top, spacing: 2) {
+                    if events.isEmpty, let p = day.pentads.first {
+                        // the Pentad that begins on the day, as its weekday (roomy cells list it with its time)
+                        PentadMark(index: p.index)
+                            .font(.system(size: metrics.cellWidth < 44 ? 8 : metrics.cellWidth < 56 ? 9 : 10, weight: .semibold))
+                            .foregroundStyle(Theme.gold.opacity(day.inMonth ? 0.9 : 0.45))
+                            .padding(.top, 4)
+                    }
+                    if day.eclipse != nil {
+                        CalendarEclipseMark(size: metrics.regular ? 13 : 10).padding(.top, 3)
+                    }
                 }
-                if day.eclipse != nil {
-                    CalendarEclipseMark(size: metrics.regular ? 13 : 10).padding(.top, 3)
-                }
+                .fixedSize()
+                .offset(x: metrics.regular ? 0 : 2) // into the padding, clear of a two-digit day
             }
             if !events.isEmpty {
                 VStack(alignment: .leading, spacing: 1) {
@@ -509,7 +514,8 @@ private struct CalDayCell: View, Equatable {
             }
         }
         .padding(metrics.regular ? 6 : 4)
-        .frame(maxWidth: .infinity, minHeight: metrics.cellHeight, maxHeight: metrics.cellHeight, alignment: .topLeading)
+        // a fixed width: sized by its contents, a day with "⬠III" would widen its column past the weekday's
+        .frame(width: metrics.cellWidth, height: metrics.cellHeight, alignment: .topLeading)
         .background {
             RoundedRectangle(cornerRadius: metrics.regular ? 12 : 9, style: .continuous)
                 .fill(isSelected ? Theme.panel3 : day.inMonth ? Theme.panel.opacity(0.7) : Theme.panel.opacity(0.25))
