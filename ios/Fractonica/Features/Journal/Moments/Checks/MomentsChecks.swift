@@ -163,6 +163,16 @@ private func labelChecks() {
         check(m.title().hasPrefix("Nuclide ε#") && m.title().hasSuffix(" Start") && m.rarity == .rare, "a Nuclide start's name: \(m.title())")
         check(m.spoken == "A new Nuclide begins", "a start is announced as a beginning")
     }
+    // a moment leads with its Pentad (SPEC §7.5): a Helion start belongs to the Pentad it starts in
+    var starts = 0
+    for m in calendar.upcoming(after: vectorA, count: 80, where: { $0.boundary == .start }) {
+        guard let p = clock.pentad(at: m.time + 1) else { continue }
+        if m.pentad != p.index { check(false, "a moment's Pentad is the one running just after it: \(m.title())") }
+        if p.helion == 1 { starts += 1 }
+        let led = m.ledTitle(notation)
+        check(led == "\(PentadWords.name(p.index)) · \(m.title(notation))", "a moment's title led by its Pentad: \(led)")
+    }
+    check(starts > 0, "some starts open a Pentad, and belong to it")
 }
 
 private func promptChecks() {

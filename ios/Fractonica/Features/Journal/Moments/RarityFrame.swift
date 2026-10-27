@@ -167,7 +167,8 @@ private struct MomentHeader: ViewModifier {
             VStack(alignment: .leading, spacing: 12) {
                 HStack(spacing: 8) {
                     RarityBadge(rarity: capture.rarity)
-                    Text(verbatim: captureName(capture))
+                    // the moment led by its Pentad
+                    Text.ledByPentad(Pentads.index(at: capture.at + 1e-3), Text(verbatim: captureName(capture)))
                         .font(.footnote.weight(.semibold))
                         .foregroundStyle(Theme.ink2)
                         .lineLimit(1)

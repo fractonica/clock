@@ -165,7 +165,7 @@ struct SkyEventRow: View {
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(Theme.ink)
                 if FractonicaClock.shared.inRange(event.time) {
-                    Text(verbatim: words.notation.dateText(at: event.time, letters: true, upTo: "iota"))
+                    Text.ledByPentad(at: event.time, words.notation.dateText(at: event.time, letters: true, upTo: "iota"))
                         .font(.code(12, weight: .medium))
                         .foregroundStyle(Theme.teal)
                 }

@@ -274,7 +274,7 @@ private struct NextMomentCard: View {
                     Spacer()
                     RarityBadge(rarity: m.rarity, compact: true)
                 }
-                Text(verbatim: m.title(words.notation))
+                Text.ledByPentad(m.pentad, Text(verbatim: m.title(words.notation)))
                     .font(.title3.weight(.semibold))
                     .foregroundStyle(Theme.levelColor(m.level.kitLevel, lightness: 0.7))
                 Text(verbatim: words.countdown(m.time - t, at: t))
@@ -412,7 +412,7 @@ private struct RareAhead: View {
                             .foregroundStyle(level.rarity.color)
                             .frame(width: 20)
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(verbatim: m.title(words.notation))
+                            Text.ledByPentad(m.pentad, Text(verbatim: m.title(words.notation)))
                                 .font(.subheadline.weight(.semibold))
                                 .foregroundStyle(Theme.ink)
                             Text(verbatim: "\(level.rarity.title) · \(words.countdown(m.time - t, at: t))")

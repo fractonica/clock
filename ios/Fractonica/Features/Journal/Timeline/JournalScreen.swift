@@ -140,11 +140,19 @@ struct JournalScreen: View {
             // the day headers are rows, not pinned section headers: a journal reads as one flowing page
             ForEach(feed.days) { day in
                 Section {
+                    // the days group under their Pentad, as days under their week (SPEC §7.5)
+                    if let band = day.band {
+                        JournalPentadHeader(band: band, words: words)
+                            .readableColumn()
+                            .listRowBackground(Color.clear)
+                            .listRowSeparator(.hidden)
+                            .listRowInsets(EdgeInsets(top: day.id == feed.days.first?.id ? 4 : 22, leading: 20, bottom: 0, trailing: 20))
+                    }
                     JournalDayHeader(day: day, words: words)
                         .readableColumn()
                         .listRowBackground(Color.clear)
                         .listRowSeparator(.hidden)
-                        .listRowInsets(EdgeInsets(top: day.id == feed.days.first?.id ? 4 : 18, leading: 20, bottom: 2, trailing: 20))
+                        .listRowInsets(EdgeInsets(top: day.band != nil ? 2 : day.id == feed.days.first?.id ? 4 : 18, leading: 20, bottom: 2, trailing: 20))
                         .id(day.id)
                         .onAppear { visibility.appear(day.id, time: day.start) }
                         .onDisappear { visibility.disappear(day.id) }
@@ -561,7 +569,8 @@ struct JournalDayHeader: View {
                     .foregroundStyle(Theme.teal)
                     .frame(minWidth: 44, alignment: .leading)
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(verbatim: "\(names.nuclide) · \(names.delta)")
+                    // led by the Pentad, as a day by its weekday
+                    Text.ledByPentad(day.pentad?.index, Text(verbatim: "\(names.nuclide) · \(names.delta)"))
                         .font(.footnote.weight(.semibold))
                         .foregroundStyle(Theme.ink2)
                     if !words.pure {

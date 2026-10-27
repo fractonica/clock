@@ -469,7 +469,7 @@ struct MomentEditor: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     VStack(alignment: .leading, spacing: 6) {
-                        Text(verbatim: words.notation.dateText(at: t, upTo: "iota"))
+                        Text(verbatim: words.led(words.notation.dateText(at: t, upTo: "iota"), at: t))
                             .font(.headline)
                             .foregroundStyle(Theme.ink)
                         Text(verbatim: words.notation.stamp(at: t, upTo: "lambda"))

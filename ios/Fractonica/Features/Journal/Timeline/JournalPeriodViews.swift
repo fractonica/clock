@@ -71,6 +71,24 @@ struct JournalBlockList: View {
     }
 }
 
+extension JournalPeriods {
+    /// Where a period lies, under its name: the Earth span with each day led by its Pentad, as dates by their weekdays
+    /// ("⬠II 8 Aug – ◻ 24 Oct 2026"; a Beta's months have none); pure mode the letter address of its parents. Nil
+    /// outside the catalogue.
+    static func secondaryText(level: Int, cycle: Int64?, start: Double, end: Double, words: Wording) -> Text? {
+        guard cycle != nil else { return nil }
+        if words.pure {
+            let address = address(level: level, at: (start + end) / 2, notation: words.notation)
+            return address.isEmpty ? nil : Text(verbatim: address)
+        }
+        let ends = earthSpanEnds(start: start, end: end, level: level, earth: words.earth)
+        guard ends.days else { return Text(verbatim: earthSpan(start: start, end: end, level: level, earth: words.earth)) }
+        let first = Text.ledByPentad(Pentads.index(at: start + 1e-3), Text(verbatim: ends.first))
+        guard let last = ends.last else { return first }
+        return Text("\(first) – \(Text.ledByPentad(Pentads.index(at: max(start, end - 1)), Text(verbatim: last)))")
+    }
+}
+
 /// The coordinate space the stack reports taps and pinches in (its container, not the leaning content).
 enum JournalStackSpace {
     static let name = "journal.stack"
@@ -94,8 +112,9 @@ struct JournalSectionHeader: View {
                 Text(verbatim: JournalPeriods.name(level: section.level, cycle: section.cycle, notation: words.notation))
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(Theme.levelColor(section.level, lightness: 0.72))
-                if let secondary {
-                    Text(verbatim: secondary)
+                if let secondary = JournalPeriods.secondaryText(level: section.level, cycle: section.cycle, start: section.start,
+                                                                 end: section.end, words: words) {
+                    secondary
                         .font(.caption)
                         .foregroundStyle(Theme.ink3)
                 }
@@ -120,15 +139,6 @@ struct JournalSectionHeader: View {
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(.isHeader)
     }
-
-    private var secondary: String? {
-        guard section.cycle != nil else { return nil }
-        if words.pure {
-            let address = JournalPeriods.address(level: section.level, at: (section.start + section.end) / 2, notation: words.notation)
-            return address.isEmpty ? nil : address
-        }
-        return JournalPeriods.earthSpan(start: section.start, end: section.end, level: section.level, earth: words.earth)
-    }
 }
 
 /// A period as a block: its name ("Delta Trifracton"), where it lies (the Earth span; pure mode: its parents' address),
@@ -146,8 +156,9 @@ struct JournalPeriodBlock: View {
                     Text(verbatim: JournalPeriods.name(level: period.level, cycle: period.cycle, notation: words.notation))
                         .font(.headline)
                         .foregroundStyle(Theme.ink)
-                    if let secondary {
-                        Text(verbatim: secondary)
+                    if let secondary = JournalPeriods.secondaryText(level: period.level, cycle: period.cycle, start: period.start,
+                                                                     end: period.end, words: words) {
+                        secondary
                             .font(.caption)
                             .foregroundStyle(Theme.ink3)
                     }
@@ -184,13 +195,19 @@ struct JournalPeriodBlock: View {
         .accessibilityLabel(accessibilityText)
     }
 
+    /// What VoiceOver says for where the block lies: the span with each day's Pentad ("Pentad II 8 Aug – Hypopentad
+    /// 24 Oct 2026"), or the address.
     private var secondary: String? {
         guard period.cycle != nil else { return nil }
         if words.pure {
             let address = JournalPeriods.address(level: period.level, at: (period.start + period.end) / 2, notation: words.notation)
             return address.isEmpty ? nil : address
         }
-        return JournalPeriods.earthSpan(start: period.start, end: period.end, level: period.level, earth: words.earth)
+        let ends = JournalPeriods.earthSpanEnds(start: period.start, end: period.end, level: period.level, earth: words.earth)
+        guard ends.days else { return JournalPeriods.earthSpan(start: period.start, end: period.end, level: period.level, earth: words.earth) }
+        let name = { (t: Double) in Pentads.index(at: t).map { PentadWords.name($0) + " " } ?? "" }
+        let first = name(period.start + 1e-3) + ends.first
+        return ends.last.map { "\(first) – \(name(max(period.start, period.end - 1)))\($0)" } ?? first
     }
 
     private var accessibilityText: String {

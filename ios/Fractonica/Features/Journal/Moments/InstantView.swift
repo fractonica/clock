@@ -99,7 +99,7 @@ struct InstantView: View {
 
     private func title(_ words: Wording) -> some View {
         VStack(spacing: 4) {
-            Text(verbatim: model.moment.title(words.notation))
+            Text.ledByPentad(model.moment.pentad, Text(verbatim: model.moment.title(words.notation)))
                 .font(.title2.weight(.bold))
                 .foregroundStyle(Theme.levelColor(model.moment.level.kitLevel, lightness: 0.7))
                 .multilineTextAlignment(.center)

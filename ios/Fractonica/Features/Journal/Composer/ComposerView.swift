@@ -209,7 +209,7 @@ struct ComposerView: View {
                         .font(.caption.weight(.semibold))
                         .textCase(.uppercase)
                         .foregroundStyle(Theme.ink3)
-                    Text(verbatim: words.notation.dateText(at: model.draft.time, letters: true, upTo: "iota"))
+                    Text.ledByPentad(at: model.draft.time, words.notation.dateText(at: model.draft.time, letters: true, upTo: "iota"))
                         .font(.code(14, weight: .medium))
                         .foregroundStyle(Theme.teal)
                         .lineLimit(1)

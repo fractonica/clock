@@ -362,7 +362,7 @@ enum MomentScheduling {
             id: "\(prefix)\(m.index)",
             index: m.index,
             fire: fire,
-            title: m.title(),
+            title: m.ledTitle(),
             subtitle: "\(m.rarity.title) moment · in \(MomentCalendar.leadFlavons) Flavons",
             body: "Get ready: both cameras and your voice capture it at the exact moment. Choose an emoji, write a line.",
             sound: voice ? "\(m.soundName).caf" : nil
