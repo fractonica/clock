@@ -602,6 +602,7 @@ private struct TurnoverRowView: View {
                 .font(.subheadline.monospacedDigit())
                 .foregroundStyle(Theme.ink2)
                 .lineLimit(1)
+                .minimumScaleFactor(0.8)
             if e.finer > 0 {
                 Text(verbatim: "+\(e.finer)")
                     .font(.caption2.weight(.medium).monospacedDigit())

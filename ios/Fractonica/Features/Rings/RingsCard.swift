@@ -191,14 +191,14 @@ struct RingsCard: View {
                 Text(Fractonica.quarterNames[item.k])
                     .font(.caption.weight(isNext ? .bold : .semibold))
                     .foregroundStyle(isNext ? color : passed ? Theme.ink3 : Theme.ink2)
-                // the moment's first line leads with its Pentad
-                if !item.date.isEmpty {
+                // the moment leads with its Pentad, on the date's line (alone there when the time of day says it all)
+                if !item.date.isEmpty || item.pentad != nil {
                     Text.ledByPentad(item.pentad, Text(item.date))
                         .font(.caption2.monospacedDigit())
                         .foregroundStyle(Theme.ink3)
                 }
                 if !item.clock.isEmpty {
-                    Text.ledByPentad(item.date.isEmpty ? item.pentad : nil, Text(item.clock))
+                    Text(item.clock)
                         .font(.footnote.monospacedDigit())
                         .foregroundStyle(passed ? Theme.ink3 : Theme.ink)
                         .strikethrough(passed, color: Theme.ink3)
