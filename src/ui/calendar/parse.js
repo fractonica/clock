@@ -13,6 +13,9 @@
  *   boundaries     next ε · prev ζ · next end of δ · next peak η · next peak (the selected level) · next 3 ε
  *   odometer       d7 13,0 · η [13,0]
  *
+ * A leading Pentad is read past (SPEC §7.5, §15.3: a date leads with its Pentad as with a weekday, and the rest implies
+ * it): "Pentad II · 2031-06-01", "⬠II α#6 β#3 γ#11", "P2 · +3d", "Hypopentad sync 4820" (`stripPentad`).
+ *
  * Notation: a bare "letter number" such as "ε 5" is the DEPTH chip shown by the ladder, Up next, rings and
  * timeline, so this module writes an ordinal with a hash: "ε#5" is the 5th ε inside its parent. The parser
  * still reads the old spellings (α6 β3 γ11, a6.b3.g11, 6.3.11, "ε 5"); the spaced single form is ambiguous,
@@ -71,6 +74,37 @@ export function normalize(text) {
     .replace(/\s+/g, ' ')
     .trim();
 }
+
+/**
+ * A leading Pentad (SPEC §7.5). A date on screen leads with its Pentad as a civil date leads with its weekday (§15.3),
+ * and the rest of the date implies it, so both jump boxes read past it: "Pentad II · …", "Pentad 2, 3rd Helion …",
+ * "Hypopentad …", the short forms "⬠II …", "⬠II·3 …", "◻ …" and the plain "P2 …", "P2.3 …", "H.2 …", "H · …" (a bare
+ * "H" only before a separator). It must be followed by a space, a separator or the end; "P2" or "H" with nothing after
+ * it stays as it is ("p2" is a Saros position). Returns the Pentad as typed ('' when there is none) and the text after it.
+ * @param {string} text normalized input
+ * @returns {{pentad:string, rest:string}}
+ */
+export function stripPentad(text) {
+  const m = PENTAD_LEAD.exec(text);
+  if (!m) return { pentad: '', rest: text };
+  const rest = text.slice(m[0].length).trim();
+  if (!rest && /^(?:p[1-3]|h)(?![a-z])/i.test(m[0])) return { pentad: '', rest: text };
+  return { pentad: m[0].replace(/[\s·,:|]+$/, ''), rest };
+}
+const PENTAD_LEAD = new RegExp(
+  '^(?:(?:pentad\\s*(?:iii|ii|i|[1-3]|[\u2160-\u2162])|hypopentad)(?:\\s*,?\\s*[1-5](?:st|nd|rd|th)\\s+helion)?' +
+    '|\u2B20\\s*(?:iii|ii|i|[1-3]|[\u2160-\u2162])(?:\\s*\u00B7\\s*[1-5])?' +
+    '|[\u25FB\u25A1\u2B1C\u25FD\u25A2](?:\\s*\u00B7\\s*[1-4])?' +
+    '|p[1-3](?:\\.[1-5])?' +
+    '|h\\.[1-4]|h(?=\\s*[\u00B7,:|]))' +
+    '(?=\\s|[\u00B7,:|]|$)\\s*(?:[\u00B7,:|]\\s*)?',
+  'i',
+);
+/** The answer to a Pentad with nothing after it. */
+export const PENTAD_ALONE = [
+  'A Pentad names a day of the solar sync, not a moment',
+  'It leads a date the way a weekday does: type the date after it',
+];
 
 const LEVEL_WORDS = ['alpha', 'beta', 'gamma', 'delta', 'epsilon', 'zeta', 'eta', 'theta', 'iota', 'kappa', 'lambda', 'mu', 'nu', 'xi'];
 const LATIN = { a: 0, b: 1, g: 2, d: 3, e: 4, z: 5, h: 6, t: 7, th: 7, i: 8, k: 9, l: 10, m: 11, n: 12, x: 13 };
@@ -874,8 +908,11 @@ export function parseJump(text, opts = {}) {
   if (s.length > MAX_INPUT && s.trim().length > MAX_INPUT) {
     return [err(`That is ${s.trim().length} characters: the jump box reads up to ${MAX_INPUT}`, 'Paste a date, a Unix time, an offset or a cycle address')];
   }
-  const raw = normalize(s);
-  if (!raw) return [];
+  const typed = normalize(s);
+  if (!typed) return [];
+  // a leading Pentad is implied by the rest of the date (SPEC §15.3)
+  const { pentad, rest: raw } = stripPentad(typed);
+  if (pentad && !raw) return [err(PENTAD_ALONE[0], `${PENTAD_ALONE[1]}: ${pentad} · 2031-06-01 14:30`)];
   const fmt = opts.fmt ?? createFormatter(() => opts.zone ?? 'UTC');
   const zone = opts.zone ?? fmt.zone();
   const now = r3(opts.now ?? opts.real ?? 0);

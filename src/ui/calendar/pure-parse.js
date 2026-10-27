@@ -20,6 +20,9 @@
  *   odometer       η [13,0] · d7 13,0 · η 13·4 (the glyph pair; major periods have none, they say a quarter word)
  *   now            now · live
  *
+ * A leading Pentad is read past, as a weekday before a date ("Pentad II · δ#3 ε#2 5η 5ι", "⬠II 34η 29ι", "P2 · …",
+ * "Hypopentad …"; parse.js `stripPentad`).
+ *
  * UNIT NAMES (core/pure.js `UNITS`): Alpha Beta Gamma Delta (major periods, also level names), Nuclide ε, Helion η, Preon ι,
  * Flavon λ, Blink ν (with a plural s) are read wherever a unit letter is: offsets, boundaries, a lone unit. Only the four
  * major periods have fracton names.
@@ -38,7 +41,7 @@
  */
 import { LEVEL_NAMES, ORDINAL_NAMES, QUARTER_WORDS, UNITS, ordinalName } from '../../core/pure.js';
 import { LETTERS, POINTS, clip, ordinal, r3, syncRange, pointOfCycle } from './convert.js';
-import { MAX_INPUT, eventsAround, levelOfToken, mentionsZone, parseGregorian, phaseOfPoint, pointId, tokenizePath } from './parse.js';
+import { MAX_INPUT, PENTAD_ALONE, eventsAround, levelOfToken, mentionsZone, parseGregorian, phaseOfPoint, pointId, stripPentad, tokenizePath } from './parse.js';
 import { LADDER, LEVEL_OF, MAJOR_IDS, betweenUnit, entriesText, firstMs, isMajorId, landCycleAt, landPoint, ladderRanges, madeOf, resolveParts, spanText, unitById } from './pure-conv.js';
 
 export { MAX_INPUT };
@@ -644,8 +647,11 @@ export function parsePure(text, opts = {}) {
   if (s.length > MAX_INPUT && s.trim().length > MAX_INPUT) {
     return [err(`That is ${s.trim().length} characters: the jump box reads up to ${MAX_INPUT}`, 'Paste a date, a stamp, counts or an offset')];
   }
-  const raw = normalizePure(s);
-  if (!raw) return [];
+  const typed = normalizePure(s);
+  if (!typed) return [];
+  // a leading Pentad is implied by the rest of the date (SPEC §15.3)
+  const { pentad, rest: raw } = stripPentad(typed);
+  if (pentad && !raw) return [err(PENTAD_ALONE[0], `${PENTAD_ALONE[1]}: ${pentad} · δ#3 ε#2 5η 5ι`)];
   const lower = raw.toLowerCase();
   // old forms: one pointer each, whatever else the text says (and the pointer never repeats them)
   if (HALF_RE.test(lower)) return [err(HALF_ANSWER[0], HALF_ANSWER[1])];
