@@ -83,7 +83,8 @@ struct ClockRectangularView: View {
                     .minimumScaleFactor(0.7)
                 Group {
                     if let pentad = s.pentad {
-                        Text("\(Text.pentadMark(pentad).foregroundStyle(.primary)) \(Text(verbatim: PentadWords.name(pentad))) · \(Text(verbatim: s.nuclide))")
+                        // the name in full here (the circular and inline accessories draw the shape)
+                        Text(verbatim: "\(PentadWords.name(pentad)) · \(s.nuclide)")
                     } else {
                         Text(s.nuclide)
                     }

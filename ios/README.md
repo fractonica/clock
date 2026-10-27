@@ -17,11 +17,18 @@ holds your streak, the next moment, the collection by rarity and your captures. 
 next cycle, play a time-lapse at any speed) rides on Now; while the clock shows another moment, every other screen
 says so with a small chip (the moment, Back to live).
 
+**Pentads.** The Helion is the clock's link to the Sun: a solar day is 4¾ Helions, so a solar sync's 19 Helions run as
+Pentad I, II, III and the Hypopentad (one Helion short), each about a day and each starting a quarter Helion later in
+the day until the Hypopentad brings the Sun back (SPEC §7.5). Every date and reading in the app, its widgets and its
+notifications leads with its Pentad as a civil date leads with its weekday ("⬠II 34η 29ι", "Pentad II · δ#3 ε#2 5η
+5ι"); the Pentad card on Now shows the sync's Helions as four rows in the time of day, and a tap on it explains the
+link to the Sun.
+
 | | |
 |---|---|
 | **iPhone** | Tabs Now · Cycles · Journal · Moments · Clock; Jump opens from the Cycles tab's magnifying glass. The transport rides above the tab bar on Now; Sound, Focus and Settings sit in Now's toolbar |
 | **iPad** | Every screen in a sidebar (or a top tab bar), the transport at the bottom of Now; full keyboard shortcuts and pointer support |
-| **Mac** | The same sidebar in a window, the transport in the toolbar, menu commands with the web app's keys (Space, N, [ ], P, M, ⌘K, ⌘1…9, ⌘0), a Settings window, Focus in a full-screen window of its own, and the live clock in the menu bar ("34η 29ι") with quick actions |
+| **Mac** | The same sidebar in a window, the transport in the toolbar, menu commands with the web app's keys (Space, N, [ ], P, M, ⌘K, ⌘1…9, ⌘0), a Settings window, Focus in a full-screen window of its own, and the live clock in the menu bar ("⬠II 34η 29ι") with quick actions |
 | **Widgets** | Home Screen, desktop and StandBy: the journal face, the clock, Up next, the rings, an extra-large overview on iPad and Mac; the Helion Arc (the Helion's double arc with the running Preon riding it as a wave) there and on the Lock Screen; Lock Screen accessories on iPhone and iPad; Focus and Timer controls in Control Center |
 | **Live Activities** | A running timer or stopwatch on the Lock Screen and in the Dynamic Island (iPhone) |
 | **Notifications** | Alerts: choose the moments you want to hear about — turnovers and quarters of any level, the solar sync, eclipses — with lead times, sounds and quiet hours. Moments: 11 Flavons before every moment a spoken call to capture it — both cameras three times, a Flavon apart around the moment (or once, or five times), and your voice; a streak, and entries framed by how rare their moment is. Timers ring through Focus modes (time-sensitive) |

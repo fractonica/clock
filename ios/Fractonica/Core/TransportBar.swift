@@ -214,6 +214,8 @@ struct MomentLabel: View {
                     Text.ledByPentad(at: t, words.time(t))
                         .font(.reading(showsDetail ? 16 : 15, weight: .semibold))
                         .foregroundStyle(store.isLive ? Theme.ink : Theme.cursor)
+                        // a pure reading with its Pentad beside Back to live and the steps shrinks a little, never cut
+                        .minimumScaleFactor(0.7)
                     if showsDetail {
                         Text(detail(t, words))
                             .font(.caption2.monospacedDigit())

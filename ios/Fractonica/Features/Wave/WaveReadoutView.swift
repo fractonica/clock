@@ -208,7 +208,7 @@ struct WaveReadoutCard: View {
                         .lineLimit(2)
                         .minimumScaleFactor(0.85)
                         .fixedSize(horizontal: false, vertical: true)
-                    Text([readout.loop, readout.cycle].compactMap { $0 }.joined(separator: " · "))
+                    Text.ledByPentad(readout.pentad, Text([readout.loop, readout.cycle].compactMap { $0 }.joined(separator: " · ")))
                         .font(.caption)
                         .foregroundStyle(Theme.ink3)
                         .lineLimit(2)
@@ -247,7 +247,7 @@ struct WaveReadoutCard: View {
                 titleRow
                 fastLine
                 Text(WaveReadoutCard.glue(readout.span)).font(.subheadline.monospaced()).foregroundStyle(Theme.ink2).lineLimit(1).minimumScaleFactor(0.8)
-                Text([readout.loop, readout.cycle].compactMap { $0 }.joined(separator: " · "))
+                Text.ledByPentad(readout.pentad, Text([readout.loop, readout.cycle].compactMap { $0 }.joined(separator: " · ")))
                     .font(.subheadline).foregroundStyle(Theme.ink3).lineLimit(2).fixedSize(horizontal: false, vertical: true)
             }
             .frame(maxWidth: 480, alignment: .leading)
@@ -307,7 +307,7 @@ struct WaveReadoutCard: View {
             }
             nextLines
             HStack(alignment: .center, spacing: 8) {
-                Text([readout.loop, readout.cycle].compactMap { $0 }.joined(separator: " · "))
+                Text.ledByPentad(readout.pentad, Text([readout.loop, readout.cycle].compactMap { $0 }.joined(separator: " · ")))
                     .font(.caption).foregroundStyle(Theme.ink3).fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: 0)
                 glyph
@@ -343,7 +343,7 @@ struct WaveReadoutCard: View {
             }
             VStack(alignment: .leading, spacing: 2) {
                 if let loop = readout.loop { Text(loop).font(.subheadline).foregroundStyle(Theme.ink2).help(readout.loopHint) }
-                Text(readout.cycle).font(.subheadline).foregroundStyle(Theme.ink3).fixedSize(horizontal: false, vertical: true)
+                Text.ledByPentad(readout.pentad, Text(readout.cycle)).font(.subheadline).foregroundStyle(Theme.ink3).fixedSize(horizontal: false, vertical: true)
             }
             VStack(alignment: .leading, spacing: 6) {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
