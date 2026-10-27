@@ -14,6 +14,7 @@
  */
 import { SIZE, n2, wrap, dodge, measure } from './common.js';
 import { drawTable, paragraph } from './table.js';
+import { markedRuns } from './pentad.js';
 import { sectionBoxes, drawSectionHeader, drawRuled, drawMajors, drawMargin, marginBounds } from './helion.js';
 import { eclipseMapSvg } from '../geo/eclipse-map.js';
 
@@ -71,7 +72,9 @@ export function renderEclipse(svg, cx, fr, page) {
     { text: '●', size: 4, fill: pal.eclipse },
     { text: ev.label ?? 'Eclipse', size: 5, weight: 600, fill: pal.ink, gap: 1.4 },
   ], { maxW: fr.cw });
-  svg.text(fr.x0, fr.y0 + 9.4, [cx.fStamp(ev.t, 'lambda'), cx.greg ? cx.gLong(ev.t) : null].filter(Boolean).join(' · '), { size: 1.9, fill: pal.ink2, maxW: fr.cw });
+  // the moment, led by its Pentad (SPEC §7.5) like a date by its weekday
+  const pe = cx.pentadAt(ev.t);
+  markedRuns(svg, fr.x0, fr.y0 + 9.4, [{ text: [cx.fStamp(ev.t, 'lambda'), cx.greg ? cx.gLong(ev.t) : null].filter(Boolean).join(' · '), size: 1.9, fill: pal.ink2 }], { maxW: fr.cw }, pe ? { index: pe.index, fs: 1.9, color: cx.solar, text: 'name' } : null);
   const line3 = [sar ? `Saros ${sar.saros} · ${sar.member} of ${sar.count}` : null, Number.isFinite(det.magnitude ?? ev.magnitude) ? `magnitude ${(det.magnitude ?? ev.magnitude).toFixed(4)}` : null, Number.isFinite(det.gamma ?? ev.gamma) ? `γ ${(det.gamma ?? ev.gamma).toFixed(4)}` : null].filter(Boolean).join(' · ');
   svg.text(fr.x0, fr.y0 + 13, line3, { size: 1.8, fill: pal.ink3, maxW: fr.cw });
 

@@ -7,6 +7,7 @@ import { drawTable, writingLines, lineGap, blockHead } from './table.js';
 import { QUARTER_GLYPH, QUARTER_WORD, majorWords } from './words.js';
 import { nuclidePages } from './front.js';
 import { helionPlace } from '../../ui/pentad.js';
+import { markedRuns } from './pentad.js';
 
 const NEXT = { peak: 'node', node: 'valley', valley: 'end' };
 
@@ -123,10 +124,13 @@ export function renderInsert(svg, cx, fr, page) {
     [cx.fStamp(m.t, 'lambda'), pal.ink2],
   ];
   if (cx.greg) when.push([cx.gLong(m.t), pal.ink2]);
-  for (const [t, c] of when) {
-    svg.text(fr.x0 + 2, y, t, { size: 2.1, fill: c, maxW: fr.cw - 2 });
+  // the moment in words, led by its Pentad (SPEC §7.5) like a date by its weekday
+  const pe = cx.pentadAt(m.t);
+  when.forEach(([t, c], i) => {
+    const mark = i === 0 && pe ? { index: pe.index, fs: 2.1, color: cx.solar, text: 'name' } : null;
+    markedRuns(svg, fr.x0 + 2, y, [{ text: t, size: 2.1, fill: c }], { maxW: fr.cw - 2 }, mark);
     y += 3.4;
-  }
+  });
   svg.line(fr.x0 + 0.3, fr.y0 + 23.3, fr.x0 + 0.3, y - 2.3, col, 0.45);
 
   // the four quarters of the Delta, the threshold marked

@@ -26,6 +26,9 @@ import { createPicker } from './diary/picker.js';
 import { createForm } from './diary/form.js';
 import { createPreview } from './diary/preview.js';
 import { printHtml, openHtml, inspectPrintDocument, currentFrame } from './diary/export.js';
+import { leadHTML } from './pentad.js';
+
+const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
 /**
  * The page renderers load with the first plan (not at app start), and a renderer that fails to load leaves the tab
@@ -271,9 +274,15 @@ export function mount(el, ctx) {
     setText(title, pure.periodName(3, path[3]));
     setText(stamp, `α#${path[0]} β#${path[1]} γ#${path[2]} δ#${path[3]}`);
     setText(words, [0, 1, 2].map((L) => pure.periodName(L, path[L])).join(' · ') + ' · 5 Nuclides, 385 Helions');
+    // each end of the Delta as a date, led by its Pentad (SPEC §7.5) like a weekday
     const start = pure.dateText(span.t0 + 1e-3);
     const endText = pure.dateText(span.t1 + 1e-3);
-    setText(fspan, `${start} → ${endText === '—' ? 'the end of the catalogue' : endText}`);
+    const lead = (t, text) => leadHTML(model, t, esc(text), { cls: 'is-gold', title: true });
+    const html = `${lead(span.t0 + 1e-3, start)} → ${endText === '—' ? 'the end of the catalogue' : lead(span.t1 + 1e-3, endText)}`;
+    if (fspan.dataset.html !== html) {
+      fspan.innerHTML = html;
+      fspan.dataset.html = html;
+    }
     gspan.hidden = pureMode;
     if (!pureMode) {
       const z = planZone();
