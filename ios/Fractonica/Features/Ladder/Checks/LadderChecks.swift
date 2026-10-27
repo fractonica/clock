@@ -16,6 +16,7 @@ struct LadderChecks {
         memoChecks()
         cadenceChecks()
         pureLeakChecks()
+        upNextPentadChecks()
         Checks.finish()
     }
 }

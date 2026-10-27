@@ -11,6 +11,8 @@ struct RingsCentre: View {
 
     @Environment(ClockStore.self) private var store
     @Environment(AppSettings.self) private var settings
+    /// The Pentads of the cycle on show, read once a cycle.
+    @State private var pentads = RingsPentads()
 
     private let clock = FractonicaClock.shared
 
@@ -77,7 +79,7 @@ struct RingsCentre: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.5)
             if tier == .full {
-                Text(endLine(r, pure: pure))
+                endLine(r, pure: pure)
                     .font(.system(size: radius * 0.065).monospacedDigit())
                     .foregroundStyle(Theme.ink2)
                     .lineLimit(2)
@@ -103,11 +105,18 @@ struct RingsCentre: View {
         .accessibilityLabel(Text("\(name), \(word.lowercased()), \(r.clipped ? "the catalogue ends" : "ends") in \(countdown)"))
     }
 
-    private func endLine(_ r: LevelReading, pure: Bool) -> String {
-        if pure { return RingsPureText().endLine(r) }
+    /// When the cycle ends, led by that moment's Pentad (SPEC §15.3): "⬠II Thu 8 Oct 2026, 17:03 · UTC" · pure what
+    /// begins, "→ ⬠II 35η begins".
+    private func endLine(_ r: LevelReading, pure: Bool) -> Text {
+        let pentad = pentads.end(of: r)
+        if pure {
+            let words = RingsPureText()
+            guard let next = words.follower(r) else { return Text(words.endLine(r)) }
+            return Text("→ \(Text.ledByPentad(pentad, Text(next))) begins")
+        }
         let earth = settings.wording.earth
         let when = RingsText.whenText(earth, r.end, span: r.duration)
-        return r.duration < RingsText.year * 0.9 ? "\(when) · \(earth.tag(r.end))" : when
+        return Text.ledByPentad(pentad, Text(r.duration < RingsText.year * 0.9 ? "\(when) · \(earth.tag(r.end))" : when))
     }
 
     /// Nothing exists here: say what the catalogue covers and offer its two ends.

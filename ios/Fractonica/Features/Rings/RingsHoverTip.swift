@@ -68,7 +68,8 @@ struct RingsHoverTip: View {
             let c = words.child(child, parent: r, now: t)
             let running = t >= child.start && t < child.end
             title(c.title, note: c.subtitle, color: Theme.levelColor(child.level, lightness: 0.74))
-            line(c.span, dim: false)
+            // Earth: the child's span of dates, led by its start's Pentad (pure says what begins instead)
+            line(c.span, dim: false, pentad: settings.pure ? nil : Pentads.index(at: child.start + 0.001))
             line(c.lasts, dim: true)
             hint(!selected ? "Click to select this ring" : running ? "Click to jump back to its start" : "Click to jump to its start")
         } else {
@@ -91,8 +92,8 @@ struct RingsHoverTip: View {
         .minimumScaleFactor(0.8)
     }
 
-    private func line(_ text: String, dim: Bool) -> some View {
-        Text(text)
+    private func line(_ text: String, dim: Bool, pentad: Int? = nil) -> some View {
+        Text.ledByPentad(pentad, Text(text))
             .font(.caption.monospacedDigit())
             .foregroundStyle(dim ? Theme.ink2 : Theme.ink)
             .fixedSize(horizontal: false, vertical: true)

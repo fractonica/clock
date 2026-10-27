@@ -32,7 +32,9 @@ struct JumpOrigin: View {
                 StatusDot(live: store.isLive)
                     .padding(.leading, -6)
                     .alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + 4 }
-                Text("\(status)  \(Text(moment).foregroundStyle(Theme.ink2))")
+                // a moment leads with its Pentad, as a date with its weekday (SPEC §15.3)
+                let led = store.clock.inRange(t) ? Text.ledByPentad(at: t, moment) : Text(moment)
+                Text("\(status)  \(led.foregroundStyle(Theme.ink2))")
                     .font(.footnote.monospacedDigit())
                     .lineLimit(typeSize.isAccessibilitySize ? 4 : 1)
                     .minimumScaleFactor(typeSize.isAccessibilitySize ? 1 : 0.7)
@@ -173,7 +175,7 @@ struct JumpResultCard: View {
             VStack(alignment: .leading, spacing: 8) {
                 earthReading(t, tint: tint, withPair: true)
                 JumpAddressStrip(t: t)
-                Text(Notation.standard.majorText(at: t, level: 3))
+                Text.ledByPentad(at: t, Notation.standard.majorText(at: t, level: 3))
                     .font(.subheadline)
                     .foregroundStyle(Theme.ink2)
             }
@@ -230,7 +232,7 @@ struct JumpResultCard: View {
     private func fractonica(_ t: Double, tint: Color, large: Bool) -> some View {
         let notation = Notation.standard
         return VStack(alignment: .leading, spacing: 8) {
-            Text(notation.dateText(at: t, upTo: "epsilon"))
+            Text.ledByPentad(at: t, notation.dateText(at: t, upTo: "epsilon"))
                 .font(.title3.weight(.semibold))
                 .foregroundStyle(Theme.ink)
                 .fixedSize(horizontal: false, vertical: true)
@@ -274,7 +276,7 @@ struct JumpResultCard: View {
     /// The moment as text: the full stamp (the jump box reads it back), after the Earth date outside pure mode.
     private func copyText(_ t: Double) -> String {
         let stamp = Notation.standard.stamp(at: t, upTo: "nu")
-        return pure ? stamp : "\(earth.long(t)) \(earth.tag(t)) · \(stamp)"
+        return PentadWords.lead(pure ? stamp : "\(earth.long(t)) \(earth.tag(t)) · \(stamp)", at: t)
     }
 }
 
@@ -350,12 +352,13 @@ struct JumpCandidateRow: View {
                     .foregroundStyle(candidate.kind.tint)
                     .frame(width: iconWidth)
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(title)
+                    // the line that says the moment leads with its Pentad: a date's title, else the subtitle
+                    led(title, lead: candidate.kind == .date)
                         .font(.subheadline.weight(.medium))
                         .foregroundStyle(Theme.ink)
                         .multilineTextAlignment(.leading)
                     if let subtitle {
-                        Text(subtitle)
+                        led(subtitle, lead: candidate.kind != .date)
                             .font(.caption.monospacedDigit())
                             .foregroundStyle(Theme.ink3)
                             .lineLimit(typeSize.isAccessibilitySize ? 3 : 1)
@@ -373,6 +376,12 @@ struct JumpCandidateRow: View {
         }
         .buttonStyle(JumpRowStyle())
         .accessibilityHint("Travels to this moment")
+    }
+
+    /// A line of the row, led by the candidate's Pentad when it is the line that says the moment.
+    private func led(_ text: String, lead: Bool) -> Text {
+        guard lead, let t = candidate.time, FractonicaClock.shared.inRange(t) else { return Text(text) }
+        return Text.ledByPentad(at: t, text)
     }
 
     /// The moment in words, with what the text was read as under it; a date is its own long form, so its title is

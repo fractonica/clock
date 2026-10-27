@@ -177,7 +177,8 @@ struct RingsPreviewCard: View {
                         .font(.caption)
                         .foregroundStyle(Theme.ink3)
                 }
-                Text(c.span)
+                // Earth: the child's span of dates, led by its start's Pentad (pure says what begins instead)
+                Text.ledByPentad(settings.pure ? nil : Pentads.index(at: child.start + 0.001), Text(c.span))
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(Theme.ink)
                 Text(c.lasts)

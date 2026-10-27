@@ -288,7 +288,7 @@ private struct LadderDetailContent: View {
                     Text(LadderPureText.endsText(next.name))
                         .font(.title3.weight(.semibold))
                         .foregroundStyle(Theme.ink)
-                    Text(next.address)
+                    Text.ledByPentad(Turnovers.pentad(at: lv.end)?.index, Text(next.address))
                         .font(.code(12))
                         .foregroundStyle(Theme.ink3)
                         .textSelection(.enabled)
@@ -306,7 +306,7 @@ private struct LadderDetailContent: View {
                     ? AnyLayout(VStackLayout(alignment: .leading, spacing: 2))
                     : AnyLayout(HStackLayout(alignment: .firstTextBaseline, spacing: 6))
                 line {
-                    Text(LadderText.whenFull(words.earth, lv.end, precise: lv.duration < 10))
+                    Text.ledByPentad(Turnovers.pentad(at: lv.end)?.index, Text(LadderText.whenFull(words.earth, lv.end, precise: lv.duration < 10)))
                         .font(.title3.weight(.semibold).monospacedDigit())
                         .foregroundStyle(Theme.ink)
                         .minimumScaleFactor(0.7)
@@ -433,7 +433,8 @@ private struct LadderDetailContent: View {
                 fact("Cycle", LadderText.place(level: level, local: lv.local, siblings: lv.siblings, cycle: lv.cycle))
                 fact("Through", still ? "too fast to follow" : "\(LadderText.pctTenths(lv.phase)) of this cycle")
                 fact("Sector", still ? "—" : LadderText.sector(level: level, index: seg.index, frac: seg.frac, factor: lv.factor))
-                fact("Started", LadderText.whenFull(words.earth, lv.start, precise: lv.duration < 10))
+                fact("Started", LadderText.whenFull(words.earth, lv.start, precise: lv.duration < 10),
+                     pentad: Turnovers.pentad(at: lv.start)?.index)
                 fact("Length", EarthTime.duration(lv.duration) + (lv.clipped ? " · clipped" : ""))
             }
             fact(pure ? "Position" : "Saros span", "\(span.from) → \(span.to)", code: true)
@@ -510,24 +511,25 @@ private struct LadderDetailContent: View {
         }
     }
 
-    private func fact(_ key: String, _ value: String, code: Bool = false) -> some View {
+    /// `pentad`: the value is a moment, led by its Pentad.
+    private func fact(_ key: String, _ value: String, code: Bool = false, pentad: Int? = nil) -> some View {
         GridRow {
             if stacked {
                 // accessibility sizes: the key above its value, both across the whole row
                 VStack(alignment: .leading, spacing: 2) {
                     label(key)
-                    factValue(value, code: code)
+                    factValue(value, code: code, pentad: pentad)
                 }
                 .gridCellColumns(2)
             } else {
                 label(key)
-                factValue(value, code: code)
+                factValue(value, code: code, pentad: pentad)
             }
         }
     }
 
-    private func factValue(_ value: String, code: Bool) -> some View {
-        Text(value)
+    private func factValue(_ value: String, code: Bool, pentad: Int? = nil) -> some View {
+        Text.ledByPentad(pentad, Text(value))
             .font(code ? .code(12) : nil)
             .monospacedDigit()
             .foregroundStyle(Theme.ink)
