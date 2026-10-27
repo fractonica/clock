@@ -107,9 +107,12 @@ extension JournalWavePainter {
             guard y > -24, y < h + 4 else { continue }
             let name = cache.full(level: level, cycle: tick.cycle, notation: words.notation)
             let earth = words.pure ? "" : JournalArcs.earthTick(tick.time, level: level, earth: words.earth)
-            let label = cache.labels.label("f|\(level)|\(name)|\(earth)", scale: scale) {
+            // a start that names its day (Delta and finer) leads with its Pentad, as a date with its weekday
+            let pentad = level >= 3 ? cache.pentad(level: level, cycle: tick.cycle, time: tick.time) : nil
+            let label = cache.labels.label("f|\(level)|\(name)|\(earth)|\(pentad ?? -1)", scale: scale) {
                 HStack(spacing: 6) {
-                    Text(verbatim: name).font(.system(size: 11, weight: .semibold)).foregroundStyle(Theme.levelColor(level, lightness: 0.76))
+                    Text.ledByPentad(pentad, Text(verbatim: name))
+                        .font(.system(size: 11, weight: .semibold)).foregroundStyle(Theme.levelColor(level, lightness: 0.76))
                     if !earth.isEmpty { Text(verbatim: earth).font(.system(size: 10)).foregroundStyle(Theme.ink2) }
                 }
                 .padding(.horizontal, 6)
@@ -212,8 +215,10 @@ extension JournalWavePainter {
         context.fill(Path(ellipseIn: CGRect(x: end.x - 5, y: end.y - 5, width: 10, height: 10)), with: .color(Theme.background))
         context.fill(Path(ellipseIn: CGRect(x: end.x - 4, y: end.y - 4, width: 8, height: 8)), with: .color(colour))
         let text = live ? "Now" : words.time(now, seconds: false)
-        let label = cache.labels.label("n|\(live)|\(text)", scale: scale) {
-            Text(verbatim: text).font(.system(size: 10, weight: .semibold)).foregroundStyle(colour)
+        // the moment leads with its Pentad (kept for the running Helion: no engine work per frame)
+        let pentad = Pentads.index(at: now)
+        let label = cache.labels.label("n|\(live)|\(text)|\(pentad ?? -1)", scale: scale) {
+            Text.ledByPentad(pentad, Text(verbatim: text)).font(.system(size: 10, weight: .semibold)).foregroundStyle(colour)
         }
         context.draw(label.image, in: CGRect(x: w - 8 - label.size.width, y: end.y - 3 - label.size.height, width: label.size.width, height: label.size.height))
     }

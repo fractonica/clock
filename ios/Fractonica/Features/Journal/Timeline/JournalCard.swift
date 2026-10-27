@@ -110,8 +110,8 @@ struct JournalText {
     }
 }
 
-/// "34η 29ι · 14:23": the moment on the ladder, the Earth time beside it (pure mode: the ladder only). Full: "δ#3 ε#2
-/// 34η 29ι · Oct 8 14:23".
+/// "⬠II 34η 29ι · 14:23": the moment on the ladder led by its Pentad (SPEC §15.3, as a date by its weekday), the Earth
+/// time beside it (pure mode: the ladder only). Full: "⬠II δ#3 ε#2 34η 29ι · Oct 8 14:23".
 struct JournalStampText: View {
     let time: Double
     let words: Wording
@@ -119,8 +119,7 @@ struct JournalStampText: View {
 
     var body: some View {
         HStack(spacing: 6) {
-            Text(verbatim: fractonica)
-                .font(.code(12, weight: .medium))
+            Text.journalCode(fractonica, at: time, size: 12)
                 .foregroundStyle(Theme.teal)
             if !words.pure {
                 Text(verbatim: "·").foregroundStyle(Theme.ink3)

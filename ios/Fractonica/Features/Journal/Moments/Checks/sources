@@ -6,3 +6,4 @@ Fractonica/Features/Journal/Store/JournalRecords.swift
 Fractonica/Features/Journal/Store/JournalDisk.swift
 Fractonica/Features/Journal/Store/JournalStore.swift
 Shared/Notation+Standard.swift
+Shared/Pentads.swift
