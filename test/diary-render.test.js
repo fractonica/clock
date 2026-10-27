@@ -402,12 +402,67 @@ test('pageTitle: short labels in Fractonica terms', () => {
   const { plan } = base;
   const titles = plan.pages.map((p) => pageTitle(plan, p));
   const lined = plan.pages.find((p) => p.kind === 'lined');
-  assert.equal(pageTitle(plan, lined), `${lined.no} · ε#1 lock 1 pentad 1 · 1η–3η`);
-  assert.equal(pageTitle(plan, plan.pages[lined.no]), `${lined.no + 1} · ε#1 lock 1 pentad 1 · 4η–5η · canvas`);
-  assert.ok(titles.includes(`${lined.no + 6} · ε#1 lock 1 semi-pentad · 16η–17η · canvas`), 'the Semi-pentad: all canvases');
+  assert.equal(pageTitle(plan, lined), `${lined.no} · ε#1 lock 1 sheet 1 · 1η–3η`);
+  assert.equal(pageTitle(plan, plan.pages[lined.no]), `${lined.no + 1} · ε#1 lock 1 sheet 1 · 4η–5η · canvas`);
+  assert.ok(titles.includes(`${lined.no + 6} · ε#1 lock 1 sheet 4 · 16η–17η · canvas`), 'the 4-Helion sheet: all canvases');
+  // a sheet is never called a Pentad: Pentads follow the solar sync (SPEC §7.5), the diary's sheets the Nuclide
+  assert.ok(titles.every((t) => !/pentad/i.test(t)));
   assert.ok(titles.includes(`${plan.nuclides[0].retroPage} · ε#1 retrospection · 77η`));
   assert.equal(pageTitle(plan, plan.pages[0]), '1 · Index 1/2');
   assert.ok(titles.every((t) => t.length < 70));
+});
+
+test('Pentads (SPEC §7.5): every Helion header leads with its true Pentad, the head, the grid, the tables and the days carry them', () => {
+  const { plan, env } = base;
+  const names = ['Pentad I', 'Pentad II', 'Pentad III', 'Hypopentad'];
+  const shapes = (svg) => [...svg.matchAll(/<path d="M([\d. L]+)Z" fill="none" stroke="([^"]+)"/g)].map((m) => m[1].split('L').length);
+  // a lined page: each section header names the Pentad the model gives its Helion, drawn first, with its shape
+  const page = plan.pages.find((p) => p.kind === 'lined' && !p.retro && p.sections.length === 3);
+  const svg = renderPage(plan, page, env);
+  const ts = texts(svg);
+  for (const s of page.sections) {
+    const h = plan.helions[s.d];
+    const want = names[model.pentadAt((h.t0 + h.t1) / 2).index];
+    const head = ts.find((x) => x.s.startsWith(`${h.label} ${h.stamp}`));
+    const name = ts.find((x) => x.s === want && Math.abs(x.y1 - head.y1) < 1.5);
+    assert.ok(name, `${h.label}: ${want}`);
+    assert.ok(name.x1 <= head.x0 + 0.01, 'the Pentad leads the header (left of it)');
+  }
+  const sides = shapes(svg);
+  assert.ok(sides.length >= page.sections.length + 1, 'a shape per header and in the running head');
+  assert.ok(sides.every((n) => n === 5 || n === 4), 'pentagons and squares only');
+  // a verso (canvas) page: the mark still leads, to the left of the runs anchored at the inner edge
+  const verso = plan.pages.find((p) => p.kind === 'canvas' && p.side === 'verso' && !p.retro);
+  const vt = texts(renderPage(plan, verso, env));
+  const vh = plan.helions[verso.sections[0].d];
+  const vhead = vt.find((x) => x.s.startsWith(`${vh.label} ${vh.stamp}`));
+  const vname = vt.find((x) => names.includes(x.s) && Math.abs(x.y1 - vhead.y1) < 1.5);
+  assert.ok(vname && vname.x1 <= vhead.x0 + 0.01 && vhead.x0 - vname.x1 < 3, 'verso: the name sits just before the header');
+  // the 77th Helion's grid: every Helion's Pentad in its corner, a rule on each cell that begins one
+  const retro = plan.pages.find((p) => p.retro && p.kind === 'canvas' && p.sections[0].canvas.type === 'nuclide-grid');
+  const gsvg = renderPage(plan, retro, env);
+  const nu = retro.nuclide;
+  const starts = plan.helions.filter((h) => h.n === nu && model.pentadAt((h.t0 + h.t1) / 2).helion === 1).length;
+  assert.ok(starts >= 15 && starts <= 17, `${starts} Pentads begin in a Nuclide of 77 Helions`);
+  assert.ok(shapes(gsvg).length >= 77, 'a mark per cell');
+  const solar = /stroke="([^"]+)" stroke-width="0\.55"/.exec(gsvg);
+  assert.ok(solar, 'a heavier rule where a sync (Pentad I) begins');
+  // the Gregorian index: the Pentads beginning on each day, with their time; the ephemeris leads each date with one
+  const greg = plan.pages.find((p) => p.kind === 'gregorian');
+  const gt = textOf(renderPage(plan, greg, env));
+  assert.ok(gt.filter((x) => /^(I|II|III)$/.test(x)).length > 20, 'numerals of the Pentads that begin on the days');
+  const eph = plan.pages.find((p) => p.kind === 'ephemeris');
+  const esvg = renderPage(plan, eph, env);
+  assert.ok(shapes(esvg).length >= eph.rows.length, 'every event date leads with its Pentad');
+  // the Nuclide header: where each lock begins in the Sun's rhythm
+  const nh = plan.pages.find((p) => p.kind === 'nuclide');
+  assert.ok(textOf(renderPage(plan, nh, env)).some((x) => /^\d(st|nd|rd|th) Helion$/.test(x)));
+  // no page calls a sheet a Pentad or a Semi-pentad
+  for (const p of plan.pages) for (const x of textOf(renderPage(plan, p, env))) assert.ok(!/semi-?pentad|pentad \d/i.test(x), `p${p.no}: ${x}`);
+  // pure mode: the same marks, no Gregorian words (the leak rules run in the pure-mode test)
+  const pm = build({}, { pureMode: true });
+  const pp = pm.plan.pages.find((p) => p.kind === 'lined' && !p.retro);
+  assert.ok(textOf(renderPage(pm.plan, pp, pm.env)).some((x) => names.includes(x)));
 });
 
 test('printDocument two-up: two A5 pages side by side on A4 landscape, as spreads or in sequence', () => {

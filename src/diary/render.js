@@ -7,7 +7,7 @@
  *                                page.pdf()) gives the PDF. One page per sheet (@page {size: Wmm Hmm; margin: 0}), or
  *                                with opts.print.twoUp two pages per sheet of paperSize(opts) (A5 pages on A4 landscape),
  *                                paired as spreads or in sequence (sheetsOf)
- * pageTitle(plan, page) -> a short label for navigation ("11 · ε#1 lock 1 · 1η–3η"), Fractonica terms only
+ * pageTitle(plan, page) -> a short label for navigation ("11 · ε#1 lock 1 sheet 1 · 1η–3η"), Fractonica terms only
  *   env = { model, pure, F, fmt, pureMode }   fmt = createFormatter(() => plan.zone) (src/core/format.js)
  *
  * The page kinds live in ./render/: helion.js (lined and canvas pages: sections, ruled lines, canvases, the time margin),
@@ -76,8 +76,10 @@ export function pageTitle(plan, page) {
       const what = page.kind === 'canvas' ? ' · canvas' : '';
       if (page.eclipse !== undefined) return `${no}${nu(page.nuclide)} eclipse · ${range(ds)}${what}`;
       if (page.retro) return `${no}${nu(page.nuclide)} retrospection · ${range(ds)}${what}`;
-      const unit = page.unit === 'pentad' ? ` pentad ${page.unitNo}` : page.unit === 'semi' ? ' semi-pentad' : '';
-      return `${no}${nu(page.nuclide)} lock ${page.lock + 1}${unit} · ${range(ds)}${what}`;
+      // the sheet's place in its lock (the 4-Helion sheet is the default lock's 4th); never "pentad": Pentads follow the
+      // solar sync (SPEC §7.5), the diary's sheets the Nuclide
+      const sheet = Number.isInteger(page.sheet) ? ` sheet ${page.sheet + 1}` : '';
+      return `${no}${nu(page.nuclide)} lock ${page.lock + 1}${sheet} · ${range(ds)}${what}`;
     }
     case 'nuclide':
       return `${no}Nuclide ${nu(page.n)}`;

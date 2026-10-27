@@ -3,11 +3,13 @@
  *
  * Head: the outer side says where the page is ("Delta Trifracton Node · ε#2"); on the pages that map Helions it ends in
  * the GLOBAL SAROS PHASE, the number of the page's first Helion in its Alpha ("62 508", of 125 125), in the outer top
- * corner, and its middle holds the Delta's phase at that Helion as two big 2-stroke glyphs. The inner side gives the
- * Gregorian span of the page in small type (normal mode only).
+ * corner, and its middle holds the Delta's phase at that Helion as two big 2-stroke glyphs. The inner side leads with the
+ * Pentads of the page (SPEC §7.5, like the weekday at the top of a planner's page: one, or two where the page crosses
+ * from one into the next) and gives the Gregorian span of the page in small type (normal mode only).
  */
 import { SIZE, measure } from './common.js';
 import { majorWords } from './words.js';
+import { drawMark, markWidth, pentadsOf } from './pentad.js';
 
 const SECTION = {
   index: 'Index',
@@ -53,14 +55,17 @@ export function headOf(cx, page) {
         if (page.kind === 'canvas' && (page.canvases ?? 1) > 1) what += ` · canvas ${(page.canvasIndex ?? 0) + 1}/${page.canvases}`;
         runs.push(sep, { text: what, fill: pal.ink2 });
       }
-      return { outer: runs, inner: cx.greg ? cx.gRange(page.t0, page.t1) : null, helion: plan.helions[page.sections[0].d] };
+      const pentads = pentadsOf(cx, page.sections.map((x) => plan.helions[x.d]));
+      return { outer: runs, inner: cx.greg ? cx.gRange(page.t0, page.t1) : null, helion: plan.helions[page.sections[0].d], pentads };
     }
     case 'nuclide': {
       const nu = plan.nuclides[page.n];
       return { outer: [deltaRun(D.name), sep, { text: `Nuclide ${nu.name}`, fill: pal.level(4), weight: 600 }], inner: cx.greg ? cx.gDays(nu.t0, nu.t1) : null, helion: plan.helions[nu.n * 77] };
     }
-    case 'insert':
-      return { outer: [{ text: 'Delta sheet', fill: pal.ink2 }, sep, deltaRun(majorWords(page.major))], inner: cx.greg ? cx.gLong(page.major.t) : null, helion: plan.helions[page.helion] ?? null };
+    case 'insert': {
+      const p = cx.pentadAt(page.major.t);
+      return { outer: [{ text: 'Delta sheet', fill: pal.ink2 }, sep, deltaRun(majorWords(page.major))], inner: cx.greg ? cx.gLong(page.major.t) : null, helion: plan.helions[page.helion] ?? null, pentads: p ? [p] : [] };
+    }
     case 'notes': {
       const runs = [{ text: 'Notes', fill: pal.ink2 }];
       if (page.sheetBack || page.insertBack) runs.unshift(deltaRun(D.name), sep);
@@ -78,7 +83,7 @@ export function headOf(cx, page) {
 
 export function drawHead(svg, cx, fr, page) {
   if (fr.m.top < 6) return;
-  const { outer, inner, helion } = headOf(cx, page);
+  const { outer, inner, helion, pentads = [] } = headOf(cx, page);
   const y = fr.y0 - Math.min(4.6, fr.m.top * 0.4);
   const size = SIZE.head;
   let runs = outer.map((r) => ({ size, gap: 1, ...r }));
@@ -106,9 +111,33 @@ export function drawHead(svg, cx, fr, page) {
   }
   // each side keeps to its half of the head; the outer side (where the page is) has priority within it
   let innerW = 0;
-  if (inner) {
-    const outerW = runs.reduce((s, r, i) => s + measure(r.text, r.size, { weight: r.weight, font: cx.font }) + (i ? r.gap : 0), 0);
-    const room = Math.min(half ?? fr.cw, fr.cw - Math.min(outerW, fr.cw * 0.75) - 4);
+  // the inner side leads with the page's Pentads (shape and numeral, in the Sun's colour), then the Gregorian span
+  const fsP = SIZE.head * 0.92;
+  // a page that crosses into the next Pentad shows both, with an arrow
+  const arrowW = measure('→', fsP * 0.9, { font: cx.font }) + fsP * 0.42;
+  const marksW = pentads.reduce((s, p) => s + markWidth(p.index, fsP, { font: cx.font }), 0) + Math.max(0, pentads.length - 1) * arrowW;
+  const outerW = runs.reduce((s, r, i) => s + measure(r.text, r.size, { weight: r.weight, font: cx.font }) + (i ? r.gap : 0), 0);
+  const room = Math.min(half ?? fr.cw, fr.cw - Math.min(outerW, fr.cw * 0.75) - 4);
+  const drawMarks = (x) => {
+    pentads.forEach((p, i) => {
+      if (i) x += svg.text(x, y, '→', { size: fsP * 0.9, fill: cx.pal.ink3 }).width + fsP * 0.42;
+      x += drawMark(svg, p.index, x, y, fsP, cx.solar, { font: cx.font });
+    });
+  };
+  if (pentads.length && room >= marksW) {
+    let textW = 0;
+    if (inner) {
+      const want = measure(inner, SIZE.tiny, { font: cx.font });
+      const left = room - marksW;
+      if (left >= Math.min(want, 22)) {
+        textW = svg.text(fr.recto ? fr.inner + marksW : fr.inner, y, inner, { size: SIZE.tiny, fill: cx.pal.ink3, anchor: fr.innerAnchor, maxW: left }).width;
+      }
+    }
+    // the marks come first in reading order on both sides of the spread
+    const trailing = textW ? 0 : fsP * 0.42; // without text, the last mark's own trailing gap does not count
+    drawMarks(fr.recto ? fr.inner : fr.inner - textW - marksW + trailing);
+    innerW = marksW + textW;
+  } else if (inner) {
     const want = measure(inner, SIZE.tiny, { font: cx.font });
     if (room >= Math.min(want, 22)) innerW = svg.text(fr.inner, y, inner, { size: SIZE.tiny, fill: cx.pal.ink3, anchor: fr.innerAnchor, maxW: room }).width;
   }

@@ -4,8 +4,9 @@
  * The planner splits the index and the ephemeris by `rowsPerPage(opts)` (a 22 mm header and 5.4 mm rows): every page
  * keeps its title block inside those 22 mm, and the rows take at most 5.4 mm each (less when a page carries more).
  */
-import { SIZE, wrap, n2 } from './common.js';
+import { SIZE, wrap, n2, measure } from './common.js';
 import { drawTable, writingLines, lineGap, blockHead, paragraph } from './table.js';
+import { drawMark, markWidth } from './pentad.js';
 import { QUARTER_GLYPH, QUARTER_WORD, majorWords, eventSymbolOf } from './words.js';
 import { monthsPerPage } from '../options.js';
 import { daysInMonth } from '../../core/format.js';
@@ -227,7 +228,7 @@ export function renderIndex(svg, cx, fr, page) {
       rule: strong ? 'strong' : undefined,
       cells: {
         label: indexLabel(cx, r),
-        frac: timed ? { text: cx.fShort(r.t), fill: pal.ink2 } : '',
+        frac: timed ? { text: cx.fShort(r.t), fill: pal.ink2, pentad: cx.pentadAt(r.t)?.index } : '',
         greg: timed && cx.greg ? { text: cx.gDayTime(r.t), fill: pal.ink2 } : '',
         page: { text: r.page ? String(r.page) : '—', weight: 600, fill: r.page ? pal.ink : pal.ink4 },
       },
@@ -261,7 +262,14 @@ export function renderGregorian(svg, cx, fr, page) {
     { text: 'Gregorian index', size: 4.4, weight: 600, fill: pal.ink },
     { text: page.of > 1 ? `${page.part}/${page.of}` : '', size: SIZE.small, fill: pal.ink3, gap: 2 },
   ], { maxW: fr.cw });
-  svg.text(fr.x0, fr.y0 + 9, `Each day of ${D.name} and the page of the Helion holding its start`, { size: 1.8, fill: pal.ink3, maxW: fr.cw });
+  // the longest wording that fits the page
+  const subs = [
+    `Each day of ${D.name}: the Pentads that begin on it, and the page of the Helion holding its start`,
+    `Each day of ${D.name}: the Pentads beginning on it, the page of its first Helion`,
+    `Each day: the Pentads beginning on it, the page of its first Helion`,
+  ];
+  const sub = subs.find((x) => measure(x, 1.8, { font: cx.font }) <= fr.cw) ?? subs.at(-1);
+  svg.text(fr.x0, fr.y0 + 9, sub, { size: 1.8, fill: pal.ink3, maxW: fr.cw });
   const byDay = new Map(plan.days.map((d) => [`${d.y}-${d.m}-${d.d}`, d]));
   const per = monthsPerPage(opts);
   const top = fr.y0 + 12;
@@ -317,7 +325,26 @@ function monthGrid(svg, cx, fr, { y: year, m }, top, height, byDay) {
     if (plan.majors.some((mj) => mj.level === 3 && ['peak', 'node', 'valley'].includes(mj.event) && mj.t >= day.t0 && mj.t < day.t1)) marks.push({ text: '◆', fill: pal.level(3) });
     if (nu && nu.n !== prevNu) marks.push({ text: nu.name, fill: pal.level(4), weight: 600 });
     if (nu) prevNu = nu.n;
-    if (marks.length) svg.runs(x + cw - 0.8, y + smallFs + 0.7, marks.map((mk) => ({ size: smallFs, gap: 0.6, ...mk })), { anchor: 'end', maxW: cw - dayFs * 1.6 - 1.5 });
+    const marksW = marks.length ? svg.runs(x + cw - 0.8, y + smallFs + 0.7, marks.map((mk) => ({ size: smallFs, gap: 0.6, ...mk })), { anchor: 'end', maxW: cw - dayFs * 1.6 - 1.5 }) : 0;
+    // the Pentads that begin on this day, with their time (SPEC §7.5): about one a day, each a quarter Helion later
+    // than the day before, until the Hypopentad brings Pentad I back; a day may hold two, or none. They go between the
+    // day number and the bottom line; a cell too small for that keeps the first one's mark beside the day number.
+    const starts = cx.pentadStarts(Math.max(day.t0, D.t0), Math.min(day.t1, D.t1));
+    const pageFs = Math.min(2.4, ch * 0.3);
+    const midTop = y + dayFs * 1.2 + 0.65;
+    const midBottom = Math.min(y + ch - 1 - pageFs * 0.74, y + ch - 1.1 - smallFs * 0.74) - 0.15;
+    const lineH = smallFs * 1.25;
+    const lines = Math.max(0, Math.floor((midBottom - midTop - smallFs * 0.94) / lineH) + 1);
+    if (lines > 0) {
+      starts.slice(0, lines).forEach((p, i) => {
+        const yb = midTop + smallFs * 0.74 + i * lineH;
+        const w = drawMark(svg, p.index, x + 0.9, yb, smallFs, cx.solar, { font: cx.font });
+        svg.text(x + 0.9 + w, yb, cx.gTime(p.start), { size: smallFs, fill: pal.ink2, maxW: cw - 1.8 - w });
+      });
+    } else if (starts.length) {
+      const x0 = x + 0.9 + measure(String(d), dayFs, { weight: 600, font: cx.font }) + 0.8;
+      if (x0 + markWidth(starts[0].index, smallFs, { font: cx.font, after: false }) <= x + cw - 0.8 - (marksW ? marksW + 0.6 : 0)) drawMark(svg, starts[0].index, x0, y + dayFs + 0.5, smallFs, cx.solar, { font: cx.font });
+    }
   }
   const dd = [];
   for (let r = 0; r <= weeks; r++) dd.push(`M${n2(fr.x0)} ${n2(y0 + r * ch)}H${n2(fr.x1)}`);
@@ -439,7 +466,7 @@ export function renderEphemeris(svg, cx, fr, page) {
       cells: {
         sym: { text: cx.eventSymbol(e), fill: cx.familyColor(e) },
         label: { text: cx.eventLabel(e), fill: pal.ink },
-        frac: { text: cx.fShort(e.t, 'lambda'), fill: pal.ink2 },
+        frac: { text: cx.fShort(e.t, 'lambda'), fill: pal.ink2, pentad: cx.pentadAt(e.t)?.index },
         greg: cx.greg ? { text: cx.gDayTime(e.t), fill: pal.ink2 } : '',
         page: { text: e.page ? String(e.page) : '—', weight: 600 },
       },

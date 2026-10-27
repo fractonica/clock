@@ -5,8 +5,11 @@
  * (down to `minScale`) and the flexible column (the label) is elided. Nothing leaves the box.
  */
 import { measure, n2, SIZE } from './common.js';
+import { drawMark, markWidth } from './pentad.js';
 
 const cellText = (c) => (c === null || c === undefined ? '' : typeof c === 'object' ? c.text ?? '' : String(c));
+/** A cell's Pentad (0..3) when it leads with one: `{text, pentad}` draws the Pentad's mark before the text. */
+const cellPentad = (c) => (c && typeof c === 'object' && c.pentad >= 0 && c.pentad <= 3 ? c.pentad : null);
 
 /**
  * @param {object} t
@@ -14,7 +17,8 @@ const cellText = (c) => (c === null || c === undefined ? '' : typeof c === 'obje
  *   y             top of the table (the column header, when given, sits in its first `headH` mm)
  *   rowH          row height (mm); size: the type size (mm)
  *   cols          [{key, align:'start'|'end', flex, weight, fill, size (relative), min}]
- *   rows          [{cells:{key: string | {text, fill, weight}}, fill, weight, rule:'strong'|'none'}]
+ *   rows          [{cells:{key: string | {text, fill, weight, pentad}}, fill, weight, rule:'strong'|'none'}]; a cell with
+ *                 `pentad` (0..3) leads with that Pentad's mark (SPEC §7.5) in the Sun's colour
  *   header        {key: title} (small caps above the rows) or null
  *   onLayout      ({xs, ws, top, rowH}) => void: called before the rows are drawn (tints and glyphs go under the text)
  * @returns {number} the y below the table
@@ -27,7 +31,9 @@ export function drawTable(svg, cx, { x0, x1, y, rowH, size = 2.1, cols, rows, he
     for (const r of rows) {
       const cell = r.cells[c.key];
       const t = cellText(cell);
-      if (t) w = Math.max(w, measure(t, size * (c.size ?? 1), { weight: cell?.weight ?? r.weight ?? c.weight, font }));
+      const pe = cellPentad(cell);
+      const mw = pe === null ? 0 : markWidth(pe, size * (c.size ?? 1), { font, after: !!t });
+      if (t || mw) w = Math.max(w, mw + (t ? measure(t, size * (c.size ?? 1), { weight: cell?.weight ?? r.weight ?? c.weight, font }) : 0));
     }
     if (header?.[c.key]) w = Math.max(w, measure(header[c.key], SIZE.tiny * 0.95, { font }) + 0.4);
     return Math.max(c.min ?? 0, w);
@@ -64,10 +70,15 @@ export function drawTable(svg, cx, { x0, x1, y, rowH, size = 2.1, cols, rows, he
     cols.forEach((c, i) => {
       const cell = r.cells[c.key];
       const t = cellText(cell);
-      if (!t) return;
+      const pe = cellPentad(cell);
+      if (!t && pe === null) return;
       const fs = fsRow * (c.size ?? 1);
-      const o = { size: fs, fill: cell?.fill ?? r.fill ?? c.fill ?? pal.ink, weight: cell?.weight ?? r.weight ?? c.weight, anchor: c.align === 'end' ? 'end' : 'start', maxW: ws[i] + 0.2, min: fs * 0.85 };
-      svg.text(c.align === 'end' ? xs[i] + ws[i] : xs[i], base, t, o);
+      const mw = pe === null ? 0 : markWidth(pe, fs, { font, after: !!t });
+      const o = { size: fs, fill: cell?.fill ?? r.fill ?? c.fill ?? pal.ink, weight: cell?.weight ?? r.weight ?? c.weight, anchor: c.align === 'end' ? 'end' : 'start', maxW: ws[i] + 0.2 - mw, min: fs * 0.85 };
+      const end = c.align === 'end';
+      const tw = t ? svg.text(end ? xs[i] + ws[i] : xs[i] + mw, base, t, o).width : 0;
+      // the mark leads the text in reading order, whichever edge the column keeps
+      if (pe !== null) drawMark(svg, pe, end ? xs[i] + ws[i] - tw - mw : xs[i], base, fs, cx.solar ?? pal.ink2, { font });
     });
     yy += rowH;
     if (rules && r.rule !== 'none') svg.line(x0, yy, x1, yy, pal.ruleSoft, 0.12);

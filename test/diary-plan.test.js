@@ -92,8 +92,8 @@ test('sheets: fronts are rectos, headers versos, the diary ends on a verso', () 
     assert.equal(back.sections[0].d, p.sections.at(-1).d + 1, 'the back continues where the front ends');
   }
   const counts = plan.pages.reduce((a, p) => ((a[p.kind] = (a[p.kind] ?? 0) + 1), a), {});
-  assert.equal(counts.lined, 5 * (4 * 3 + 1), 'three Pentad fronts per lock and one retro page per Nuclide');
-  // a lock: Pentads 1–3 (3 lined + 2 canvases), then the Semi-pentad: 4 Helions on canvases, 2 a side, the front a recto
+  assert.equal(counts.lined, 5 * (4 * 3 + 1), 'three 5-Helion sheet fronts per lock and one retro page per Nuclide');
+  // a lock: sheets 1–3 of 5 Helions (3 lined + 2 canvases, unit 'pentad'), then the 4-Helion sheet (unit 'semi'): on canvases, 2 a side, the front a recto
   const lock = plan.nuclides[1].locks[2];
   const sheetsOfLock = plan.pages.filter((p) => p.sections && !p.retro && p.nuclide === 1 && p.lock === 2);
   assert.deepEqual(sheetsOfLock.map((p) => `${p.kind}:${p.unit}${p.unitNo ?? ''}:${p.sections.length}`), ['lined:pentad1:3', 'canvas:pentad1:2', 'lined:pentad2:3', 'canvas:pentad2:2', 'lined:pentad3:3', 'canvas:pentad3:2', 'canvas:semi:2', 'canvas:semi:2']);
@@ -101,7 +101,7 @@ test('sheets: fronts are rectos, headers versos, the diary ends on a verso', () 
   const semiFront = sheetsOfLock[6];
   assert.equal(semiFront.side, 'recto');
   assert.deepEqual(semiFront.sections.map((x) => x.canvas.type), ['blank', 'blank']);
-  // the classic layout keeps the Semi-pentad's front lined
+  // the classic layout keeps the 4-Helion sheet's front lined
   const classic = planDiary({ model, pure, opts: sanitizeDiaryOptions({ semi: { allCanvas: false } }), delta, zone: 'UTC' });
   assert.equal(classic.pages.filter((p) => p.kind === 'lined').length, 5 * (4 * 4 + 1));
   assert.equal(counts.nuclide, 5);
@@ -133,7 +133,7 @@ test('the reference sheet: one leaf, the period ladder on its front and the mile
   assert.equal(pp.pages[l2.no].kind, 'milestones');
 });
 
-test('edge references: the same Helion one Nuclide away; Semi-pentads, locks, Nuclides, the 77th Helion, Delta sheets', () => {
+test('edge references: the same Helion one Nuclide away; 4-Helion sheets, locks, Nuclides, the 77th Helion, Delta sheets', () => {
   const navOf = (p, kind) => p.nav?.find((r) => r.kind === kind);
   for (const p of plan.pages.filter((x) => x.sections && !x.retro)) {
     const r = navOf(p, 'helion');

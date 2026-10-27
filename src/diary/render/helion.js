@@ -1,8 +1,9 @@
 /**
  * Helion sections: the body pages of the diary map Helions top to bottom, one section per Helion.
  *
- *   header   the number "34η" large (Helions are numbered 1..77 in their Nuclide), the stamp "δ#3 ε#2 34η", the
- *            Gregorian start–end (outer side)
+ *   header   led by the Helion's Pentad (SPEC §7.5: its shape and name, "⬠ Pentad II", like a weekday), the number
+ *            "34η" large (Helions are numbered 1..77 in their Nuclide), the stamp "δ#3 ε#2 34η", the Gregorian start–end
+ *            (outer side)
  *   body     ruled lines (lined pages) or a canvas (grid, dots, dot-grid, lined, blank)
  *   margin   in the OUTER margin, along the body's time axis (frac 0 at the header rule, 1 at the section's last
  *            rule): the Helion's wave as two arcs of true circles (crest = positive, to the right; trough to the left,
@@ -14,6 +15,7 @@
  */
 import { SIZE, dodge, packedHeight, rng, seedOf, n2, measure } from './common.js';
 import { QUARTER_GLYPH } from './words.js';
+import { markedRuns, drawMark } from './pentad.js';
 
 const HELION_LEVEL = 6;
 const PREON_LEVEL = 8;
@@ -49,6 +51,8 @@ export function drawSectionHeader(svg, cx, fr, box, h, { badge } = {}) {
   const { pal } = cx;
   const yb = box.top + box.hh * 0.7;
   const big = Math.min(4.2, box.hh * 0.64);
+  const pe = cx.pentadOfHelion(h);
+  // the date leads with its Pentad, as a civil date with its weekday: the shape, then its name
   const runs = [
     { text: h.label, size: big, weight: 600, fill: pal.level(HELION_LEVEL) },
     { text: h.stamp, size: SIZE.small, fill: pal.ink3, gap: 1.8 },
@@ -56,7 +60,8 @@ export function drawSectionHeader(svg, cx, fr, box, h, { badge } = {}) {
   if (badge) runs.push({ text: badge, size: SIZE.small, fill: pal.ink2, weight: 600, gap: 1.6 });
   const right = cx.greg ? cx.gRange(h.t0, h.t1) : null;
   const rightW = right ? Math.min(measure(right, SIZE.small, { font: cx.font }), fr.cw * 0.5) : 0;
-  svg.runs(fr.inner + fr.dir * 0, yb, runs, { anchor: fr.innerAnchor, maxW: fr.cw - rightW - 3, minScale: 0.8 });
+  const mark = pe ? { index: pe.index, fs: SIZE.small, color: cx.solar, text: 'name' } : null;
+  markedRuns(svg, fr.inner, yb, runs, { anchor: fr.innerAnchor, maxW: fr.cw - rightW - 3, minScale: 0.8 }, mark);
   if (right) svg.text(fr.outer, yb, right, { size: SIZE.small, fill: pal.ink2, anchor: fr.outerAnchor, maxW: fr.cw * 0.5 });
   svg.line(fr.x0, box.bodyTop, fr.x1, box.bodyTop, pal.ruleStrong, 0.22);
 }
@@ -450,8 +455,11 @@ const ASTRO_FAMILIES = new Set(['synodic', 'anomalistic', 'draconic', 'sidereal'
 
 /**
  * The Nuclide's 77 Helions as a 7 × 11 grid to mark each one: a column per ζ (11 Helions), numbered 1…77 down the
- * columns in the top-left corner of each cell. Cells of Semi-pentads are tinted, the 77th Helion (this page) outlined;
- * the bottom-right corner carries the symbols of the Helion's ephemeris events in their family colours.
+ * columns in the top-left corner of each cell. The top-right corner carries the Helion's Pentad (SPEC §7.5: a pentagon
+ * with its numeral, the Hypopentad's square), in the Sun's colour on the Helion that begins a Pentad – whose top edge is
+ * a rule, heavier where a solar sync (Pentad I) begins – and quietly on the others. Cells of the locks' 4-Helion sheets
+ * are tinted, the 77th Helion (this page) outlined; the bottom-right corner carries the symbols of the Helion's
+ * ephemeris events in their family colours.
  */
 export function drawNuclideGrid(svg, cx, fr, box, h) {
   const { pal, plan } = cx;
@@ -469,6 +477,7 @@ export function drawNuclideGrid(svg, cx, fr, box, h) {
   const base = h.n * 77;
   const numSize = Math.min(1.7, cell * 0.16);
   const markSize = Math.min(2, cell * 0.2);
+  const starts = []; // the cells that begin a Pentad: a rule on their top edge
   for (let c = 0; c < cols; c++) {
     for (let r = 0; r < rows; r++) {
       const k = c * rows + r;
@@ -480,6 +489,12 @@ export function drawNuclideGrid(svg, cx, fr, box, h) {
       if (page?.unit === 'semi') svg.rect(x, y, cell, cell, { fill: pal.levelSoft(2) });
       if (hx.d === h.d) svg.rect(x + 0.3, y + 0.3, cell - 0.6, cell - 0.6, { stroke: pal.level(4), sw: 0.35 });
       svg.text(x + 0.7, y + numSize + 0.5, hx.label, { size: numSize, fill: page?.unit === 'semi' ? pal.level(2) : pal.ink3 });
+      const pe = cx.pentadOfHelion(hx);
+      if (pe) {
+        const first = pe.helion === 1;
+        drawMark(svg, pe.index, x + cell - 0.6, y + numSize + 0.5, numSize, first ? cx.solar : pal.ink4, { anchor: 'end', font: cx.font, weight: first ? 600 : 400 });
+        if (first) starts.push({ x, y, sync: pe.index === 0 });
+      }
       const marks = hx.events.filter((e) => ASTRO_FAMILIES.has(e.family));
       if (marks.length) {
         svg.runs(
@@ -496,6 +511,7 @@ export function drawNuclideGrid(svg, cx, fr, box, h) {
   for (let r = 1; r < rows; r++) d.push(`M${n2(ox)} ${n2(oy + r * cell)}H${n2(ox + gw)}`);
   svg.path(d.join(''), { stroke: pal.rule, sw: 0.15 });
   svg.rect(ox, oy, gw, gh, { stroke: pal.ruleStrong, sw: 0.22 });
+  for (const st of starts) svg.line(st.x, st.y, st.x + cell, st.y, cx.solar, st.sync ? 0.55 : 0.3);
 }
 
 /** A filled dot as a path segment (two arcs): many dots stay one element. */
@@ -552,7 +568,8 @@ export function scatter(count, x, y, w, h, seed) {
 
 // ---- whole pages -----------------------------------------------------------------------------------------
 
-const badgeOf = (page) => (page.retro ? 'retrospection' : page.unit === 'semi' ? 'semi-pentad' : null);
+/** The badge of a section: the 77th Helion's pages, and the lock's 4-Helion sheet (internally `unit: 'semi'`). */
+const badgeOf = (page) => (page.retro ? 'retrospection' : page.unit === 'semi' ? '4-Helion sheet' : null);
 
 /** A lined page (a sheet front, or the retro Helion): sections of ruled lines. */
 export function renderLinedBody(svg, cx, fr, page) {

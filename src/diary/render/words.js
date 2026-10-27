@@ -7,6 +7,7 @@
  * (no month or weekday names, no clock times, no Earth units, no "Sun" – the scanner reads it as a weekday).
  */
 import { MONTHS_SHORT, MONTHS_LONG, WEEKDAYS_SHORT } from '../../core/format.js';
+import { pentadLookup, pentadsIn } from '../../ui/pentad.js';
 import { palette } from './common.js';
 
 const pad = (n) => String(n).padStart(2, '0');
@@ -181,7 +182,23 @@ function makeContext(plan, env) {
   };
 
   const pal = palette(opts);
+  /** The Pentads' colour: the Sun's (they are the clock's link to it). */
+  const solar = pal.family('solar');
   const familyColor = (e) => (e.family === 'major' ? pal.level(e.major.level) : pal.family(e.family));
+
+  // ---- Pentads (SPEC §7.5): the solar sync's 19 Helions as Pentad I, II, III and the Hypopentad ------------------
+  const lookup = env.model ? pentadLookup(env.model) : () => null;
+  /** The Pentad running at t ({sync, index, helion, helions, start, end}), a hair after it like the clock readings. */
+  const pentadAt = (t) => lookup(t + EPS);
+  const helionPentads = new Map();
+  /** The Pentad of a Helion of the plan (read at its middle: a Helion lies wholly inside one Pentad). */
+  const pentadOfHelion = (h) => {
+    let p = helionPentads.get(h.d);
+    if (p === undefined) helionPentads.set(h.d, (p = lookup((h.t0 + h.t1) / 2)));
+    return p;
+  };
+  /** The Pentads that begin in [t0, t1). */
+  const pentadStarts = (t0, t1) => (env.model ? pentadsIn(env.model, t0, t1).filter((p) => p.start >= t0) : []);
 
   // ---- page furniture data ------------------------------------------------------------------------------------
   const helion = (d) => plan.helions[d];
@@ -223,6 +240,10 @@ function makeContext(plan, env) {
     eventLabel,
     driftText,
     familyColor,
+    solar,
+    pentadAt,
+    pentadOfHelion,
+    pentadStarts,
     helion,
     lockOrdinal,
     helionRange,

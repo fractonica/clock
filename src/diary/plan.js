@@ -323,7 +323,8 @@ export function planDiary({ model, pure, opts, delta, events = [], zone = 'UTC',
       let at = 0;
       let pentad = 0;
       opts.lock.sheets.forEach(([f, b], s) => {
-        // a sheet of 5 Helions is a Pentad, of 4 a Semi-pentad (by default the lock's last sheet: 2 + 2 canvases)
+        // internal ids: a sheet of 5 Helions is unit 'pentad', of 4 unit 'semi' (by default the lock's last sheet: 2 + 2
+        // canvases). Pages never call them Pentads: those follow the solar sync (SPEC §7.5), the lock the Nuclide.
         const unit = f + b === 5 ? 'pentad' : f + b === 4 ? 'semi' : 'sheet';
         const meta = { nuclide: nu.n, lock: lock.k, sheet: s, sheets: opts.lock.sheets.length, unit, unitNo: unit === 'pentad' ? ++pentad : null };
         const ds = lock.helions.slice(at, at + f + b);
@@ -400,7 +401,7 @@ export function planDiary({ model, pure, opts, delta, events = [], zone = 'UTC',
  * The thumb index (docs/design/90-diary.md, "Edge references"): page.nav = [{kind, prev, next, label}] with page numbers
  * (null at either end). Kinds, each at its own height on the outer edge:
  *   nuclide  Nuclide header ↔ header       insert  Delta sheet ↔ Delta sheet      lock  first page of a solar lock ↔ next
- *   semi     Semi-pentad front ↔ front, back ↔ back                              retro the 77th Helion's pages, page by page
+ *   semi     4-Helion sheet front ↔ front, back ↔ back                           retro the 77th Helion's pages, page by page
  *   helion   a Helion page ↔ the page of the same Helion number in the previous / next Nuclide (77 Helions away)
  */
 export function navigate({ pages, helions, nuclides, inserts }) {
@@ -410,7 +411,7 @@ export function navigate({ pages, helions, nuclides, inserts }) {
   link(pages.filter((p) => p.kind === 'eclipse'), 'eclipse', 'eclipse');
   link(inserts.map((x) => pages[x.page - 1]).filter(Boolean), 'insert', 'Delta sheet');
   link(nuclides.flatMap((nu) => nu.locks.map((l) => pages[l.firstPage - 1])).filter(Boolean), 'lock', 'solar lock');
-  for (const side of ['front', 'back']) link(pages.filter((p) => p.semiSide === side), 'semi', 'Semi-pentad');
+  for (const side of ['front', 'back']) link(pages.filter((p) => p.semiSide === side), 'semi', '4-Helion sheet');
   // the 77th Helion: its lined page and each of its canvas pages link to the same page of the other Nuclides
   const roles = new Map();
   for (const p of pages.filter((x) => x.retro)) {

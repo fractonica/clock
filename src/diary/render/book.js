@@ -6,6 +6,7 @@ import { SIZE } from './common.js';
 import { drawTable, writingLines, lineGap, blockHead } from './table.js';
 import { QUARTER_GLYPH, QUARTER_WORD, majorWords } from './words.js';
 import { nuclidePages } from './front.js';
+import { helionPlace } from '../../ui/pentad.js';
 
 const NEXT = { peak: 'node', node: 'valley', valley: 'end' };
 
@@ -33,10 +34,15 @@ export function renderNuclide(svg, cx, fr, page) {
 
   let y = Math.max(fr.y0 + 19, yb + 4);
   // locks, the retro Helions and the Delta sheets of this Nuclide
+  // where each lock begins in the Sun's rhythm: the Pentad of its first Helion and that Helion's place in it (the locks
+  // count from the Nuclide, the Pentads from the solar sync)
+  const placeCell = (p) => (p ? { text: helionPlace(p.helion), fill: pal.ink2, pentad: p.index } : '');
+  const startsIn = (d) => placeCell(cx.pentadOfHelion(plan.helions[d]));
   const rows = nu.locks.map((l) => ({
     cells: {
       label: { text: `Lock ${l.k + 1}`, weight: 600 },
       hel: cx.helionRange(l.helions),
+      pentad: startsIn(l.helions[0]),
       greg: cx.greg ? cx.gRange(l.t0, l.t1) : '',
       page: { text: String(l.firstPage), weight: 600 },
     },
@@ -44,10 +50,10 @@ export function renderNuclide(svg, cx, fr, page) {
   if (nu.retro.length) {
     const h0 = plan.helions[nu.retro[0]];
     const h1 = plan.helions[nu.retro.at(-1)];
-    rows.push({ cells: { label: { text: 'Retrospection', weight: 600, fill: pal.ink2 }, hel: cx.helionRange(nu.retro), greg: cx.greg ? cx.gRange(h0.t0, h1.t1) : '', page: { text: String(nu.retroPage), weight: 600 } } });
+    rows.push({ cells: { label: { text: 'Retrospection', weight: 600, fill: pal.ink2 }, hel: cx.helionRange(nu.retro), pentad: startsIn(nu.retro[0]), greg: cx.greg ? cx.gRange(h0.t0, h1.t1) : '', page: { text: String(nu.retroPage), weight: 600 } } });
   }
   for (const ins of plan.inserts.filter((i) => i.nuclide === nu.n)) {
-    rows.push({ cells: { label: { text: `Delta sheet · ${majorWords(ins.major)}`, fill: pal.level(3) }, hel: cx.fClock(ins.major.t, 'iota'), greg: cx.greg ? cx.gDayTime(ins.major.t) : '', page: { text: String(ins.page), weight: 600 } } });
+    rows.push({ cells: { label: { text: `Delta sheet · ${majorWords(ins.major)}`, fill: pal.level(3) }, hel: cx.fClock(ins.major.t, 'iota'), pentad: placeCell(cx.pentadAt(ins.major.t)), greg: cx.greg ? cx.gDayTime(ins.major.t) : '', page: { text: String(ins.page), weight: 600 } } });
   }
   rows.sort((a, b) => Number(a.cells.page.text) - Number(b.cells.page.text));
   y = drawTable(svg, cx, {
@@ -56,9 +62,9 @@ export function renderNuclide(svg, cx, fr, page) {
     y,
     rowH: 4.6,
     size: 2,
-    cols: [{ key: 'label', flex: true }, { key: 'hel' }, ...(cx.greg ? [{ key: 'greg' }] : []), { key: 'page', align: 'end', min: 5 }],
+    cols: [{ key: 'label', flex: true }, { key: 'hel' }, { key: 'pentad' }, ...(cx.greg ? [{ key: 'greg' }] : []), { key: 'page', align: 'end', min: 5 }],
     rows,
-    header: { label: 'Locks', hel: 'Helions', greg: 'Gregorian', page: 'Page' },
+    header: { label: 'Locks', hel: 'Helions', pentad: 'Begins in', greg: 'Gregorian', page: 'Page' },
   });
 
   // the events of the Nuclide, as many as leave room for at least four intention lines
@@ -74,7 +80,7 @@ export function renderNuclide(svg, cx, fr, page) {
       cells: {
         sym: { text: cx.eventSymbol(e), fill: cx.familyColor(e) },
         label: { text: cx.eventName(e) + (e.family === 'sync' && cx.driftText(e) ? ` · drift ${cx.driftText(e)}` : ''), fill: e.family === 'major' ? cx.familyColor(e) : pal.ink },
-        clock: { text: cx.fClock(e.t), fill: pal.ink2 },
+        clock: { text: cx.fClock(e.t), fill: pal.ink2, pentad: cx.pentadAt(e.t)?.index },
         greg: cx.greg ? { text: cx.gDayTime(e.t), fill: pal.ink2 } : '',
         page: { text: e.page ? String(e.page) : '—', weight: 600 },
       },

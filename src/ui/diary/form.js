@@ -192,7 +192,7 @@ export function createForm({ onChange, onReset, onCopy, onToggleGroup, open = []
   const gLock = group(
     'lock',
     'Lock pattern',
-    h('p.dy-note', { text: 'A sheet is one leaf: lined Helions on the front, canvas Helions on the back. A sheet of 5 Helions is a Pentad, of 4 a Semi-pentad. A solar lock is these sheets (3 Pentads and a Semi-pentad: 19 Helions); the Helions of a Nuclide (77) that no whole lock takes are its retrospection.' }),
+    h('p.dy-note', { text: 'A sheet is one leaf: lined Helions on the front, canvas Helions on the back. A solar lock is these sheets (by default three sheets of 5 Helions and a 4-Helion sheet: 19 Helions), counted from the start of the Nuclide; the Helions of a Nuclide (77) that no whole lock takes are its retrospection. Every Helion is also printed with its Pentad, which follows the solar sync instead.' }),
     sheetList,
     h('div.dy-btns', null, addSheet, lockDefault),
     lockRead,
@@ -250,11 +250,11 @@ export function createForm({ onChange, onReset, onCopy, onToggleGroup, open = []
   const gCanvas = group('canvases', 'Canvases', h('p.dy-note', { text: 'Used in turn for the canvas Helions of every lock.' }), canvasList, h('div.dy-btns', null, addCanvas));
   summaries.canvases = () => opts.canvases.map(canvasText).join(' · ');
 
-  // Semi-pentad --------------------------------------------------------------------------------------------
-  const semiList = h('ol.dy-list.dy-canvases', { 'aria-label': 'Canvases of the Semi-pentad' });
+  // the lock's 4-Helion sheet (the options keep their old key, `semi`) ---------------------------------------
+  const semiList = h('ol.dy-list.dy-canvases', { 'aria-label': 'Canvases of the 4-Helion sheet' });
   const gSemi = group(
     'semi',
-    'Semi-pentad',
+    '4-Helion sheet',
     checkbox('semi.allCanvas', 'All canvases', { hint: 'Its 4 Helions as canvases, 2 on each side, instead of lined front and canvas back' }),
     semiList,
   );
@@ -395,7 +395,7 @@ export function createForm({ onChange, onReset, onCopy, onToggleGroup, open = []
   const gNav = group(
     'nav',
     'Edge references',
-    checkbox('nav.on', 'Thumb index on the outer edge', { hint: 'Each page points to the previous and next page of its kind: the same Helion one Nuclide away, Semi-pentads, solar locks, Nuclides, the 77th Helion, Delta sheets' }),
+    checkbox('nav.on', 'Thumb index on the outer edge', { hint: 'Each page points to the previous and next page of its kind: the same Helion one Nuclide away, 4-Helion sheets, solar locks, Nuclides, the 77th Helion, Delta sheets' }),
   );
   summaries.nav = () => (opts.nav.on ? 'on' : 'off');
 
