@@ -674,3 +674,70 @@
   .jump-input.is-bad { animation: none; }
   .cal-root *, .jump-root * { transition: none !important; }
 }
+
+/* ---- Pentads (SPEC §7.5): about a day each, they act as the weekdays of the calendar ----
+   Gregorian month: the Pentad that begins on a day sits at the time of day it begins (a tick on the band's edge), so a
+   week shows each Pentad a quarter Helion later than the day before and the Hypopentad bringing Pentad I back.
+   Pure page: the Helions of a cell group into Pentads (5, 5, 5 and the Hypopentad's 4) in a strip above the band. */
+.cal-root { --cal-pent: color-mix(in srgb, var(--gold) 80%, var(--ink-2)); }
+.cal-grid { container: mgrid / inline-size; }
+.cal-plabs { position: absolute; top: 5px; right: 6px; height: 20px; display: flex; align-items: center; gap: 6px; pointer-events: none; z-index: 3; color: var(--cal-pent); }
+.cal-plabs.has-ecl { right: 24px; }
+.cal-pst { display: inline-flex; align-items: baseline; gap: 4px; font-size: 11px; line-height: 1; white-space: nowrap; }
+.cal-pst-t { display: none; font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 10px; color: var(--ink-3); letter-spacing: -0.02em; }
+/* the caret on the band's edge: where in the day the Pentad begins */
+.cal-pticks { position: absolute; left: 0; right: 0; bottom: 24px; height: 0; pointer-events: none; z-index: 3; color: var(--cal-pent); }
+.cal-ptick { position: absolute; bottom: 0; width: 0; height: 0; margin-left: -4px; border: 4px solid transparent; border-bottom: 0; border-top: 5px solid currentColor; }
+.cal-month[data-ov="pentad"] .cal-plabs, .cal-month[data-ov="pentad"] .cal-pticks { display: none; } /* (the band names them) */
+.cal-cell.is-out .cal-plabs, .cal-cell.is-skipped .cal-plabs, .cal-cell.is-out .cal-pticks { display: none; }
+/* wide cells give each mark its time of day; narrow ones keep the first of the month's name out of the mark's way */
+@container mgrid (min-width: 680px) { .cal-pst-t { display: inline; } }
+@container mgrid (max-width: 560px) { .cal-cell:has(.cal-plabs) .cal-mon { display: none; } .cal-plabs { right: 4px; gap: 4px; } .cal-plabs.has-ecl { right: 19px; } }
+@container mgrid (max-width: 330px) { .cal-pst .pentad-num { display: none; } }
+.cal-seg .pentad-mark { font-size: 11px; }
+.cal-tt-pent { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 6px; font-size: 12px; margin-top: 3px; color: color-mix(in srgb, var(--gold) 80%, var(--ink-2)); }
+.cal-tt-h.cal-tt-pent { font-size: 13px; margin-top: 0; }
+.cal-tt-pent .dim { color: var(--ink-3); }
+.cal-tt-prun { display: inline-flex; align-items: baseline; gap: 4px; margin-right: 6px; }
+.cal-tt-prun .mono { color: var(--ink-2); font-size: 11.5px; }
+.cal-dd-h b .pentad-mark { color: var(--cal-pent); }
+.cal-tt-addr .pentad-mark, .cal-tt-dl .pentad-mark, .cal-tip div > .pentad-lead .pentad-mark { color: color-mix(in srgb, var(--gold) 80%, var(--ink-2)); }
+.cal-dd-list.is-pentads .cal-ddr { grid-template-columns: 112px minmax(0, 1fr) auto var(--cal-btn); }
+.cal-ddr.is-pentad .cal-ddl { display: inline-flex; align-items: baseline; gap: 6px; color: var(--cal-pent); }
+.cal-ddl-w { font-weight: 500; color: var(--ink-2); }
+.cal-dd-list + .cal-dd-list.is-pentads { margin-top: 6px; }
+@container cal (max-width: 560px) {
+  .cal-plabs { top: 3px; height: 18px; }
+  .cal-pst { font-size: 10px; }
+  .cal-pticks { bottom: 21px; }
+  .cal-dd-list.is-pentads .cal-ddr { grid-template-columns: 54px minmax(0, 1fr) var(--cal-btn); }
+  .cal-ddl-w { display: none; }
+}
+/* pure page: the Pentads as a bar along the foot of the band, a notch where each begins, the Hypopentad hatched */
+.cal-pm-prow { position: absolute; left: 0; right: 0; bottom: 0; height: 4px; pointer-events: none; z-index: 1; }
+.cal-pm-pr { position: absolute; top: 0; bottom: 0; display: block; background: color-mix(in srgb, var(--gold) 52%, transparent); }
+.cal-pm-pr.is-odd { background: color-mix(in srgb, var(--gold) 30%, transparent); }
+.cal-pm-pr.is-hypo { background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--gold) 62%, transparent) 0 2px, transparent 2px 4px); }
+.cal-pm-pr.is-start { border-left: 2px solid var(--bg-2); }
+.cal-pm-pr.is-cur { background: var(--gold); }
+.cal-pm-pr.is-hypo.is-cur { background: repeating-linear-gradient(135deg, var(--gold) 0 2px, color-mix(in srgb, var(--gold) 35%, transparent) 2px 4px); }
+.cal-pm-lgp { display: inline-block; width: 22px; height: 4px; vertical-align: middle; background: linear-gradient(90deg, color-mix(in srgb, var(--gold) 52%, transparent) 0 45%, var(--bg-2) 45% 52%, color-mix(in srgb, var(--gold) 30%, transparent) 52%); }
+.cal-dd-list.is-grid.is-pentads { grid-template-columns: repeat(4, minmax(0, 1fr)); margin-top: 4px; }
+.cal-dd-list.is-grid.is-pentads .cal-ddr { grid-template-columns: auto minmax(0, 1fr) var(--cal-btn); }
+.cal-dd-list.is-grid.is-pentads .cal-ddx { display: none; }
+@container cal (max-width: 560px) {
+  .cal-pm-prow { height: 3px; }
+  .cal-dd-list.is-grid.is-pentads { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (pointer: coarse) {
+  .cal-pticks { bottom: 20px; }
+}
+/* converter: the Pentad chip beside the weekday, the readout led by its Pentad, the sync's four Pentads */
+.cal-pchip { display: inline-flex; align-items: baseline; gap: 5px; color: var(--cal-pent); border-color: rgb(255 214 10 / 0.32); background: rgb(255 214 10 / 0.06); }
+.cal-pchip > span:not(.pentad-mark) { color: var(--ink-2); }
+.cal-tt .pentad-mark, .cal-tk .pentad-mark, .cal-pc-clock .pentad-mark, .cal-rtime .pentad-mark { color: var(--cal-pent); }
+.cal-tk .pentad-mark { font-size: 12.5px; letter-spacing: 0.02em; text-transform: none; }
+.cal-pc-clock .pentad-lead > .pentad-mark { font-size: 0.82em; margin-right: 0.5em; vertical-align: 0.06em; }
+.cal-prow-w > .cal-trow { border-top: 1px solid var(--line); }
+.cal-prow-w.is-now > .cal-trow { background: linear-gradient(90deg, rgb(255 214 10 / 0.1), transparent 75%); }
+.cal-pnote { margin: 0 0 4px; font-size: 11.5px; }

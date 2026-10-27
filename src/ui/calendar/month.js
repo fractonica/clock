@@ -6,6 +6,8 @@
  */
 import { daysFromCivil, daysInMonth } from '../../core/format.js';
 import { addDays, cycleLabel, dayStart, eclipseInWindow, safeSolarAt, syncRange } from './convert.js';
+import { pentadsIn, PENTAD_NAMES, PENTAD_NUMERALS } from '../pentad.js';
+import { pentadStartsIn } from './pentads.js';
 
 /** Overlay choices of the month band: cycle levels γ..η and the solar sync quarters. */
 export const OVERLAYS = [
@@ -14,6 +16,7 @@ export const OVERLAYS = [
   { id: 4, level: 4, label: 'ε', title: 'Epsilon · 16 days' },
   { id: 5, level: 5, label: 'ζ', title: 'Zeta · 2.3 days' },
   { id: 6, level: 6, label: 'η', title: 'Eta · 5 hours' },
+  { id: 'pentad', level: null, label: 'Pentad', title: 'Pentads · the solar sync as Pentad I, II, III (5 η each) and the Hypopentad (4 η), each about a day' },
   { id: 'sync', level: null, label: 'Solar sync', title: 'Solar sync · 19 η cycles ≈ 4 days' },
 ];
 export const overlayById = (id) => OVERLAYS.find((o) => String(o.id) === String(id)) ?? OVERLAYS[2];
@@ -165,20 +168,42 @@ export function monthGrid(f, year, month, weekStart = 1) {
 export function buildMonth(model, f, { year, month, weekStart = 1, overlay = 4 }) {
   const grid = monthGrid(f, year, month, weekStart);
   const ov = overlayById(overlay);
+  // the Pentads of the month (about one a day): each day names the ones that begin in it, like a weekday
+  const pentads = pentadsIn(model, grid.start, grid.end);
   const items =
-    ov.id === 'sync' ? syncQuartersInWindow(model, grid.start, grid.end) : cyclesInWindow(model, ov.level, grid.start, grid.end);
+    ov.id === 'sync'
+      ? syncQuartersInWindow(model, grid.start, grid.end)
+      : ov.id === 'pentad'
+        ? pentads
+        : cyclesInWindow(model, ov.level, grid.start, grid.end);
   let j = 0;
+  let pj = 0;
   for (const cell of grid.cells) {
     cell.inRange = !cell.skipped && cell.end > model.tMin && cell.start <= model.tMax;
     cell.eclipse = cell.inRange ? eclipseInWindow(model, cell.start, cell.end) : -1;
+    cell.pentads = [];
     if (!cell.inRange) continue;
+    const ps = pentadStartsIn(pentads, cell.start, cell.end, pj);
+    pj = ps.next;
+    cell.pentads = ps.starts;
     while (j < items.length && items[j].end <= cell.start) j++;
     for (let k = j; k < items.length && items[k].start < cell.end; k++) {
       const it = items[k];
       const x0 = Math.max(0, (it.start - cell.start) / cell.length);
       const x1 = Math.min(1, (it.end - cell.start) / cell.length);
       const seg =
-        ov.id === 'sync'
+        ov.id === 'pentad'
+          ? {
+              kind: 'pentad',
+              key: `P${it.sync}:${it.index}`,
+              sync: it.sync,
+              index: it.index,
+              helions: it.helions,
+              label: PENTAD_NAMES[it.index],
+              short: PENTAD_NUMERALS[it.index],
+              parity: it.index % 2,
+            }
+          : ov.id === 'sync'
           ? {
               kind: 'sync',
               key: `S${it.sync}:${it.q}`,
@@ -216,7 +241,7 @@ export function buildMonth(model, f, { year, month, weekStart = 1, overlay = 4 }
       cell.segments.push(seg);
     }
   }
-  return { ...grid, overlay: ov, items };
+  return { ...grid, overlay: ov, items, pentads };
 }
 
 // ---------------------------------------------------------------------------------------------

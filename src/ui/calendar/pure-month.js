@@ -24,6 +24,8 @@ import { GOLD, levelColor } from '../../core/theme.js';
 import { ORDINAL_NAMES, QUARTER_WORDS } from '../../core/pure.js';
 import { h, ICONS, esc, setText, setHtml, setStyle, setAttr, toggleClass, hasSound, hearMoment, loadPrefs, savePrefs } from './dom.js';
 import { LETTERS, pointOfCycle } from './convert.js';
+import { pentadMarkHTML, leadHTML, pentadLookup, PENTAD_NAMES } from '../pentad.js';
+import { pagePentadRuns } from './pentads.js';
 import { COLUMN_ETA, ETA_PER_CELL, GRID, PAGES_PER, buildPureGrid, buildRibbon, cellFraction, cellOfTime, cellTime, clampView, cycleStart, landPoint, madeOf, overlayCycle, spanText, viewCount, viewFromPath, viewInfo, viewOfTime } from './pure-conv.js';
 
 const PREFS_KEY = 'fractonica-clock/calendar/pure/v1';
@@ -68,6 +70,9 @@ export function createPureMonth(ctx, { tip }) {
     qbarKey: '',
   };
   const total = () => viewCount(model);
+  /** The Pentad of an instant, from cached spans; a reading led by its Pentad (SPEC §15.3) as HTML. */
+  const pentadAt = pentadLookup(model);
+  const lead = (t, text) => leadHTML(model, t, esc(text), { p: pentadAt(t) });
   let step = STEPS.find((x) => x.id === prefs.step) ?? STEPS[0];
   const deltaName = (hv) => pure.cycleName(3, hv);
 
@@ -155,7 +160,7 @@ export function createPureMonth(ctx, { tip }) {
     const lv = V.overlay;
     const swatch = `<span class="cal-lg-sw" style="--c:${levelColor(lv)}"></span>`;
     const head = 'Rows: the 5 Nuclides <b>ε#1–5</b> of the Delta; columns: 11 Helions each, from <b>1η</b>, <b>12η</b> … <b>67η</b>. ';
-    const tail = ` <span class="cal-pm-lgs"></span> a solar sync quarter · <b class="cal-pm-lgt">#22</b> an eclipse, marked where it falls · <b class="cal-pm-lgt">S4821</b> a sync that begins here. # numbers and Helions count from 1, counts from 0. Press ? for the glossary.`;
+    const tail = ` <span class="cal-pm-lgs"></span> a solar sync quarter · <span class="cal-pm-lgp"></span> the Pentads under the band, ${pentadMarkHTML(0)} ${pentadMarkHTML(1)} ${pentadMarkHTML(2)} of 5η and the hatched Hypopentad ${pentadMarkHTML(3)} of 4η (a solar day is 4¾η: each Pentad begins ¼η later in the day, the Hypopentad brings Pentad I back) · <b class="cal-pm-lgt">#22</b> an eclipse, marked where it falls · <b class="cal-pm-lgt">S4821</b> a sync that begins here. # numbers and Helions count from 1, counts from 0. Press ? for the glossary.`;
     if (lv === 6) return `${swatch}<span>${head}The band is the Helions of each cell, numbered in the Nuclide (every fifth labelled where there is room), a tick at each node (<b>18ι</b> of 36); the Delta's quarters begin at the lines in its colour;${tail}</span>`;
     if (lv === 4) return `${swatch}<span>${head}The band is the Nuclides, one per row (a Nuclide is 77 Helions); the Delta's quarters begin at the lines in its colour;${tail}</span>`;
     return `${swatch}<span>${head}The band is the Delta's quarters <b>Peak</b>, <b>Node</b>, <b>Valley</b>, <b>End</b> (each named by the threshold that ends it, 1¼ Nuclides long);${tail}</span>`;
@@ -247,7 +252,8 @@ export function createPureMonth(ctx, { tip }) {
     const sync = c.syncs?.find((s) => s.q === 0);
     const syn = sync ? `, solar sync S${sync.sync} begins here` : '';
     const starts = c.dq.filter((q) => q.startsHere && q.q > 0).map((q) => `, the ${QUARTER_WORDS[q.q]} quarter of the Delta begins here`).join('');
-    return `ε#${c.epsilon}, ${c.eta0}η to ${c.eta0 + 10}η, in ${cellQuarterText(c)}${starts}${ecl}${syn}`;
+    const pents = (c.pentads ?? []).filter((r) => r.startsHere).map((r) => `, ${PENTAD_NAMES[r.index]} begins at ${runFrom(c, r)}η`).join('');
+    return `ε#${c.epsilon}, ${c.eta0}η to ${c.eta0 + 10}η, in ${cellQuarterText(c)}${pents}${starts}${ecl}${syn}`;
   }
   /** The corner of a cell: the eclipse inside it and the solar sync that begins in it (aria-hidden: the cell's label says it). */
   function tagsHtml(c) {
@@ -287,6 +293,34 @@ export function createPureMonth(ctx, { tip }) {
     for (const sy of c.syncs) s += `<s class="cal-pm-s${sy.q === 0 ? ' is-start' : ''}" data-sync="${sy.sync}" data-q="${sy.q}" style="left:${pct(sy.x)}"></s>`;
     return s;
   }
+  /** The Helion numbers (in the Nuclide) of a Pentad run inside a cell: from and to. */
+  const runFrom = (c, r) => c.eta0 + Math.round(r.x0 * ETA_PER_CELL);
+  const runTo = (c, r) => c.eta0 + Math.round(r.x1 * ETA_PER_CELL) - 1;
+  /**
+   * The Pentads of a cell as a bar along the foot of its band: the Helions group into Pentads the way days group into
+   * weeks (five, five, five and the hatched Hypopentad's four), with a notch where each begins. The tooltip and the
+   * inspector name them; the one holding the shown moment is brighter.
+   */
+  function pentadStripHtml(c) {
+    if (!c.pentads?.length) return '';
+    let s = '';
+    for (const r of c.pentads) {
+      const x1 = Math.min(r.x1, c.partial ? c.cut : 1);
+      if (x1 <= r.x0) continue;
+      const cls = `cal-pm-pr${r.index % 2 ? ' is-odd' : ''}${r.index === 3 ? ' is-hypo' : ''}${r.startsHere ? ' is-start' : ''}`;
+      s += `<i class="${cls}" data-p="${r.sync * 4 + r.index}" style="left:${pct(r.x0)};width:${pct(x1 - r.x0)}"></i>`;
+    }
+    return `<div class="cal-pm-prow" aria-hidden="true">${s}</div>`;
+  }
+  /** Brighten the Pentad of the shown moment (its bar may run over two cells). */
+  function markPentad(T) {
+    const p = model.inRange(T) ? pentadAt(T) : null;
+    const key = p ? String(p.sync * 4 + p.index) : '';
+    if (key === V.pentKey) return;
+    for (const b of gridEl.querySelectorAll('.cal-pm-pr.is-cur')) b.classList.remove('is-cur');
+    V.pentKey = key;
+    if (key) for (const b of gridEl.querySelectorAll(`.cal-pm-pr[data-p="${key}"]`)) b.classList.add('is-cur');
+  }
   /** The eclipse of a cell: a gold hairline through the band and the icon above it, both at the fraction where it falls. */
   function eclipseHtml(c) {
     if (c.eclipse < 0) return '';
@@ -299,6 +333,9 @@ export function createPureMonth(ctx, { tip }) {
     const t0 = performance.now();
     const grid = buildPureGrid(model, V.hv);
     V.grid = grid;
+    // the Pentads of the page's Helions (pure arithmetic on the Helion index, as model.pentadAt counts them)
+    const runs = pagePentadRuns(model, grid.cells.map((c) => ({ etaFirst: c.z * ETA_PER_CELL, n: ETA_PER_CELL, inRange: c.inRange })));
+    grid.cells.forEach((c, i) => (c.pentads = runs[i]));
     V.info = viewInfo(model, V.hv);
     gridEl.textContent = '';
     let html = '<div class="cal-pm-corner" aria-hidden="true"></div>';
@@ -312,7 +349,7 @@ export function createPureMonth(ctx, { tip }) {
           `<button type="button" class="cal-pm-day" tabindex="-1"><span class="cal-pm-num">${cell.eta0}<i>η</i></span></button>` +
           (cell.inRange ? tagsHtml(cell) + quarterMarkHtml(cell) : '') +
           eclipseHtml(cell) +
-          (cell.inRange ? `<div class="cal-pm-band">${bandHtml(cell)}</div>` : '') +
+          (cell.inRange ? `<div class="cal-pm-band">${bandHtml(cell)}</div>` + pentadStripHtml(cell) : '') +
           (cell.partial ? `<span class="cal-pm-cut" aria-hidden="true" style="left:${pct(cell.cut)}"></span>` : '') +
           `</div>`;
       }
@@ -567,7 +604,11 @@ export function createPureMonth(ctx, { tip }) {
     let html = `<div class="cal-tt-h">${esc(cellStampText(c))}</div>`;
     if (!c.inRange) return html + `<div class="dim">Outside the catalogue<br>${esc(pure.catalogueText())}</div>`;
     html += `<div class="dim">11 Helions · ${esc(cellQuarterText(c))}</div>`;
-    html += `<div class="mono cal-tt-addr">${esc(pure.stamp(c.start, 'eta'))}</div>`;
+    html += `<div class="mono cal-tt-addr">${lead(c.start, pure.stamp(c.start, 'eta'))}</div>`;
+    if (c.pentads?.length) {
+      const parts = c.pentads.map((r) => `<span class="cal-tt-prun">${pentadMarkHTML(r.index)}<span class="mono">${runFrom(c, r)}η–${runTo(c, r)}η</span></span>`);
+      html += `<div class="cal-tt-pent is-runs">${parts.join('')}</div>`;
+    }
     html += `<div class="cal-tt-pair">${pure.pairHTML(c.epsPhase, { label: 'Nuclide phase' })}<span class="dim">Nuclide phase at the start · <span class="mono">${esc(pure.pairText(c.epsPhase))}</span></span></div>`;
     html += `<div class="dim">starts ${esc(rel(c.start))} · pos ${c.pos0.toFixed(6)}</div>`;
     for (const q of c.dq.filter((x) => x.startsHere && x.q > 0)) html += `<div class="cal-tt-q">${esc(deltaName(V.hv))}: the ${QUARTER_WORDS[q.q]} quarter begins here</div>`;
@@ -695,6 +736,8 @@ export function createPureMonth(ctx, { tip }) {
       markInspectorCurrent();
     }
     updateQbar();
+    if (force) V.pentKey = null;
+    markPentad(T);
     // the live clock's cell
     const nowMs = performance.now();
     if (force || nowMs - V.lastLive > 1000) {
@@ -731,7 +774,7 @@ export function createPureMonth(ctx, { tip }) {
       if (idx < 0) {
         const inRange = model.inRange(store.t());
         const msg = !inRange ? `<span class="dim">The shown moment is outside the catalogue ${esc(pure.catalogueText())}.</span>` : '<span class="dim">is on another page</span>';
-        inspector.innerHTML = `<div class="cal-dd-h"><b>${inRange ? esc(pure.dateText(store.t(), { upTo: 'eta' })) : 'Outside the catalogue'}</b>${msg}${inRange ? `<button type="button" class="btn btn-sm" data-act="shown">${ICONS.target}<span>Show the shown cell</span></button>` : ''}</div>`;
+        inspector.innerHTML = `<div class="cal-dd-h"><b>${inRange ? lead(store.t(), pure.dateText(store.t(), { upTo: 'eta' })) : 'Outside the catalogue'}</b>${msg}${inRange ? `<button type="button" class="btn btn-sm" data-act="shown">${ICONS.target}<span>Show the shown cell</span></button>` : ''}</div>`;
         V.elapsedEl = null;
         return;
       }
@@ -768,6 +811,20 @@ export function createPureMonth(ctx, { tip }) {
           `<button type="button" class="cal-go" data-sync="${s.sync}" data-sq="${s.q}" title="Go to the ${names[s.q]} of sync ${s.sync}" aria-label="Go to the ${names[s.q]} of sync ${s.sync}">${ICONS.go}</button></li>`;
       }
       html += '</ul>';
+      // the Pentads of the cell, like the weeks of a month: where each runs in the cell, and a go to where it begins
+      V.cellPentads = c.pentads ?? [];
+      if (V.cellPentads.length) {
+        html += '<ul class="cal-dd-list is-grid is-pentads" aria-label="Pentads of this cell">';
+        V.cellPentads.forEach((r, i) => {
+          const name = PENTAD_NAMES[r.index];
+          html +=
+            `<li class="cal-ddr is-pentad" style="--c:${GOLD}"><span class="cal-ddl">${pentadMarkHTML(r.index)}</span>` +
+            `<span class="cal-ddt mono">${runFrom(c, r)}η–${runTo(c, r)}η</span><span class="cal-ddx dim">${r.startsHere ? '' : 'began before · '}${r.endsHere ? `${r.index === 3 ? 4 : 5}η` : 'goes on'}</span>` +
+            `<button type="button" class="cal-go" data-pent="${i}" title="Go to where ${name} begins" aria-label="Go to where ${name} of sync ${r.sync} begins">${ICONS.go}</button>` +
+            '</li>';
+        });
+        html += '</ul>';
+      }
       inspector.innerHTML = html;
       V.elapsedEl = inspector.querySelector('.cal-pm-el');
       V.elapsedKey = '';
@@ -793,6 +850,14 @@ export function createPureMonth(ctx, { tip }) {
       V.follow = true;
       V.pendingFollow = true;
       ctx.requestRender();
+      return;
+    }
+    const pb = e.target.closest('button[data-pent]');
+    if (pb) {
+      const r = V.cellPentads?.[Number(pb.dataset.pent)];
+      // a Pentad begins with its first Helion: land on that Helion's first millisecond
+      const t = r ? cycleStart(model, 6, r.from - r.place + 1) : null;
+      if (t !== null) ctx.goto(model.clamp(t));
       return;
     }
     const b = e.target.closest('button[data-lv]');

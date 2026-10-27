@@ -11,6 +11,8 @@
 import { createFormatter } from '../../core/format.js';
 import { h, ICONS, esc, setText, setHtml, setStyle, setAttr, toggleClass, copyText, prefersReducedMotion, hasSound, hearMoment } from './dom.js';
 import { levelColor } from '../../core/theme.js';
+import { pentadMarkHTML, leadHTML, leadText, pentadLookup, PENTAD_NAMES } from '../pentad.js';
+import { syncPentads } from './pentads.js';
 import {
   LETTERS,
   LEVEL_NAMES,
@@ -880,9 +882,20 @@ export function createConverter(ctx, { tip }) {
   // painting
   // ------------------------------------------------------------------------------------------
   const longStamp = (t) => `${cf.long(r3(t))}`;
+  const pentadAt = pentadLookup(model);
+  /** A stamp led by its Pentad, as HTML (SPEC §15.3: a date leads with its Pentad like a weekday). */
+  const leadStamp = (t, text) => leadHTML(model, r3(t), esc(text), { p: pentadAt(r3(t)) });
   /** deep cycles last less than a second: their start needs the milliseconds to be told apart */
   const stampFor = (t, dur) => (dur !== null && dur < 2 ? `${cf.long(r3(t))}.${String(cf.parts(r3(t)).ms).padStart(3, '0')}` : longStamp(t));
   const msStamp = (t) => `${cf.date(r3(t))} ${cf.time(r3(t), { seconds: true, ms: true })} ${cf.tag(r3(t))}`;
+
+  /** "[⬠II] Pentad II · 2nd Helion": the Pentad of the instant, the way the weekday chip names its day. */
+  function pentadChip(T) {
+    const p = model.inRange(T) ? pentadAt(r3(T)) : null;
+    if (!p) return '';
+    const tip = `${PENTAD_NAMES[p.index]} of solar sync ${p.sync}, its Helion ${p.helion} of ${p.helions}: a solar day is 4¾ Helions, so the sync's 19 Helions run as Pentads I, II, III (5 each) and the Hypopentad (4), each about a day`;
+    return `<span class="chip cal-chip cal-pchip" title="${esc(tip)}">${pentadMarkHTML(p.index)}<span>${PENTAD_NAMES[p.index]} · Helion ${p.helion} of ${p.helions}</span></span>`;
+  }
 
   function paint() {
     const T = S.T;
@@ -915,7 +928,8 @@ export function createConverter(ctx, { tip }) {
     const dst = Math.abs(dayLen - 24) > 0.01 ? `<span class="chip cal-chip is-warn" title="This local day is not 24 hours long because of a daylight-saving change">${dayLen} h day</span>` : '';
     setHtml(
       gregMeta,
-      `<span class="chip cal-chip">${esc(g.weekdayName)}</span><span class="chip cal-chip">day ${g.dayOfYear} of ${g.daysInYear}</span>` +
+      pentadChip(T) +
+        `<span class="chip cal-chip">${esc(g.weekdayName)}</span><span class="chip cal-chip">day ${g.dayOfYear} of ${g.daysInYear}</span>` +
         `<span class="chip cal-chip" title="UTC offset in force at this instant">${esc(g.tag)}</span>${dst}` +
         (zoneName() !== ctx.fmt.zone() ? `<span class="chip cal-chip is-info" title="This converter uses its own zone">${esc(zoneName().replace(/_/g, ' '))}</span>` : ''),
     );
@@ -1059,11 +1073,11 @@ export function createConverter(ctx, { tip }) {
       setHtml(
         addrResult,
         `<div class="cal-rline"><span class="cal-rlab">${esc(label)} <b style="color:${levelColor(level)}">${esc(chainText(path))}</b></span></div>` +
-          `<div class="cal-rtime mono">${esc(stampFor(t0, cyc?.duration ?? 1e9))} <span class="dim">${esc(cf.tag(t0))}</span></div>` +
+          `<div class="cal-rtime mono">${leadStamp(t0, stampFor(t0, cyc?.duration ?? 1e9))} <span class="dim">${esc(cf.tag(t0))}</span></div>` +
           `<div class="cal-rmeta"><span class="chip cal-chip" style="--lv:${levelColor(level)}">${LETTERS[level]} lasts ${esc(dur)}${cyc?.clipped ? ' (clipped)' : ''}</span>` +
           `<span class="chip cal-chip" title="0-based index among all ${LETTERS[level]} cycles of the catalogue (the jump box reads it as d${level + 1}#${cyc ? cyc.idx : ''})">global index ${cyc ? cyc.idx : '–'}</span></div>`,
       );
-      addrTextNow = `${pathText(path)} ${pt.label.toLowerCase()} · ${msStamp(t0)}`;
+      addrTextNow = `${pathText(path)} ${pt.label.toLowerCase()} · ${leadText(model, r3(t0), msStamp(t0), { p: pentadAt(r3(t0)) })}`;
     }
     addrGo.disabled = addrTimeNow === null;
     addrCopy.disabled = addrTextNow === '';
@@ -1106,8 +1120,10 @@ export function createConverter(ctx, { tip }) {
   function tickCountdowns(root) {
     for (const sp of root.querySelectorAll('[data-cd]')) setText(sp, cf.countdown(Number(sp.dataset.cd) - S.T) + (sp.dataset.sfx ?? ''));
   }
-  const timeRow = (kind, t, dur, { copyIso, goT, what }) =>
-    `<div class="cal-trow"><span class="cal-tk">${kind}</span><span class="cal-tt mono">${esc(stampFor(t, dur))}</span>` +
+  // the reading leads with the Pentad of the instant the row goes to (a boundary belongs to what begins there); a row
+  // that is itself a Pentad (`lead: false`) has its mark in the kind column already
+  const timeRow = (kind, t, dur, { copyIso, goT, what, lead = true }) =>
+    `<div class="cal-trow"><span class="cal-tk">${kind}</span><span class="cal-tt mono">${lead ? leadStamp(goT ?? t, stampFor(t, dur)) : esc(stampFor(t, dur))}</span>` +
     `<span class="cal-tx dim" data-cd="${t}"${dur !== null ? ` data-sfx="${esc(' · lasts ' + cf.duration(dur))}"` : ''}></span>` +
     `<button type="button" class="cal-copy" data-c="${esc(copyIso)}" title="Copy as ISO 8601" aria-label="Copy ${esc(what)}">${ICONS.copy}</button>` +
     `<button type="button" class="cal-go" data-t="${goT}" title="Go there" aria-label="Go to ${esc(what)}">${ICONS.go}</button></div>`;
@@ -1199,9 +1215,17 @@ export function createConverter(ctx, { tip }) {
     html += `<div class="cal-kv"><span class="cal-k">Length</span><span class="mono">${esc(cf.duration(info.length, { parts: 3 }))}</span><span class="dim">19 η cycles</span></div>`;
     html += '<div class="cal-qh">Quarter thresholds</div>';
     for (const q of info.quarters) html += row(q.name, q.time, q.name === 'end' ? 6 : undefined);
+    // the Pentads: the sync's 19 Helions as I, II, III (5η) and the Hypopentad (4η), each about a day (SPEC §7.5)
+    const pents = syncPentads(model, n);
+    const helion = model.levelInfo(6).meanSeconds;
+    html += `<div class="cal-qh">Pentads</div><p class="cal-help cal-pnote">A solar day is 4¾η (≈ 24 h), so each Pentad begins ¼η (≈ ${esc(cf.duration(helion / 4))}) later in the day than the one before; the Hypopentad, one Helion short, brings Pentad I back.</p>`;
+    for (const p of pents) {
+      html += `<div class="cal-prow-w" data-pq="${p.index}">` + timeRow(pentadMarkHTML(p.index), p.start, p.end - p.start, { copyIso: isoWithMs(cf, p.start), goT: landOn(model, p.start, 6), what: `${PENTAD_NAMES[p.index]} of sync ${n}`, lead: false }) + '</div>';
+    }
+    const pentCopy = pents.map((p) => `${PENTAD_NAMES[p.index]} ${cf.time(r3(p.start), { seconds: false })}`).join(', ');
     return {
       html,
-      copy: `Solar sync ${n}: ${msStamp(info.start)} → ${msStamp(info.end)}; time of day ${info.startClock}; drift ${driftTxt} vs the civil grid`,
+      copy: `Solar sync ${n}: ${msStamp(info.start)} → ${msStamp(info.end)}; time of day ${info.startClock}; drift ${driftTxt} vs the civil grid; Pentads ${pentCopy}`,
     };
   }
 
@@ -1263,7 +1287,14 @@ export function createConverter(ctx, { tip }) {
         setText(syncRefs.txt, pctFloor(phase, 6) + ' %');
       }
     }
+    markSyncPentad(syncBody, n, T);
     tickCountdowns(syncBody);
+  }
+  /** The Pentad holding the instant, among the sync's four rows. */
+  function markSyncPentad(body, n, T) {
+    const p = pentadAt(r3(T));
+    const q = p && p.sync === n ? String(p.index) : '';
+    for (const r of body.querySelectorAll('.cal-prow-w')) toggleClass(r, 'is-now', r.dataset.pq === q);
   }
   syncBody.addEventListener('click', (e) => {
     if (e.target.closest('button[data-c]')) {

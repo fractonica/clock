@@ -8,7 +8,9 @@
  */
 import { MONTHS_SHORT, WEEKDAYS_SHORT } from '../../core/format.js';
 import { GOLD, levelColor } from '../../core/theme.js';
-import { h, ICONS, esc, setText, setStyle, setAttr, toggleClass, hasSound, hearMoment } from './dom.js';
+import { h, ICONS, esc, setText, setHtml, setStyle, setAttr, toggleClass, hasSound, hearMoment } from './dom.js';
+import { pentadMarkHTML, leadHTML, pentadLookup, PENTAD_NAMES, PENTAD_NUMERALS } from '../pentad.js';
+import { pentadsOfSpan } from './pentads.js';
 import { FIRST_YEAR, LAST_YEAR, OVERLAYS, buildMonth, clampMonth, overlayById, yearRibbon, yearSummary } from './month.js';
 import {
   LETTERS,
@@ -33,6 +35,12 @@ const MONTHS_LONG_UI = MONTHS_FULL;
 export function createMonthView(ctx, { prefs, setPref, tip }) {
   const { model, store } = ctx;
   const fmt = ctx.fmt; // app zone formatter: the calendar always shows the app zone
+  /** The Pentad of an instant, from cached spans (cells, rows and tooltips ask for many nearby instants). */
+  const pentadAt = pentadLookup(model);
+  /** "[⬠II] Thu 8 Oct 2026, 12:00:00": a reading led by its Pentad (SPEC §15.3), as HTML; `text` is plain text. */
+  const lead = (t, text) => leadHTML(model, t, esc(text), { p: pentadAt(t) });
+  /** "16:17": the local time a Pentad begins (minutes are enough to place it in its day). */
+  const hm = (t) => fmt.time(r3(t), { seconds: false });
   const V = {
     year: 0,
     month: 0,
@@ -209,10 +217,12 @@ export function createMonthView(ctx, { prefs, setPref, tip }) {
     if (c.skipped) return ', this date does not exist: the clocks of this zone skipped it';
     if (!c.inRange) return ', outside the catalogue';
     let a = '';
+    // the Pentad(s) beginning on this day, like its weekday
+    for (const p of c.pentads) a += `, ${PENTAD_NAMES[p.index]} begins at ${hm(p.start)}`;
     if (c.eclipse >= 0) a += `, Saros 141 eclipse number ${c.eclipse} at ${fmt.time(r3(model.catalogue[c.eclipse]))}`;
     if (c.segments.length) {
       const ov = V.grid.overlay;
-      a += `, ${ov.level === null ? 'solar sync quarters' : LEVEL_NAMES[ov.level] + ' cycles'}: `;
+      a += `, ${ov.id === 'pentad' ? 'Pentads' : ov.level === null ? 'solar sync quarters' : LEVEL_NAMES[ov.level] + ' cycles'}: `;
       a += c.segments.map((s) => (s.startsHere ? `${s.label} from ${fmt.time(r3(s.start), { seconds: false })}` : `${s.label} continuing`)).join(', ');
     }
     return a;
@@ -232,6 +242,7 @@ export function createMonthView(ctx, { prefs, setPref, tip }) {
     const ov = g.overlay;
     const color = ov.level === null ? GOLD : levelColor(ov.level);
     el.style.setProperty('--cal-c', color);
+    el.dataset.ov = String(ov.id);
     gridEl.textContent = '';
     wdRow.textContent = '';
     for (const d of weekdayOrder()) wdRow.append(h('div.cal-wd' + (d === 0 || d === 6 ? '.is-we' : ''), { text: WEEKDAYS_SHORT[d] }));
@@ -251,6 +262,8 @@ export function createMonthView(ctx, { prefs, setPref, tip }) {
         { 'data-i': String(c.index) },
         day,
         c.eclipse >= 0 ? h('span.cal-ecl', { html: ICONS.eclipse, 'aria-hidden': 'true', 'data-k': String(c.eclipse) }) : null,
+        c.pentads.length ? h('div.cal-plabs' + (c.eclipse >= 0 ? '.has-ecl' : ''), { 'aria-hidden': 'true', html: pentadLabelsHtml(c) }) : null,
+        c.pentads.length ? h('div.cal-pticks', { 'aria-hidden': 'true', html: pentadTicksHtml(c) }) : null,
         band,
       );
       if (c.day === 1 && c.inMonth) cellEl.append(h('span.cal-mon', { text: MONTHS_SHORT[c.month - 1] }));
@@ -274,12 +287,14 @@ export function createMonthView(ctx, { prefs, setPref, tip }) {
         list.push(b);
         V.segByKey.set(s.key, list);
         const variants =
-          s.kind === 'sync'
+          s.kind === 'pentad'
+            ? null
+            : s.kind === 'sync'
             ? s.q === 0
               ? [`S${s.sync} · start`, `S${s.sync}`]
               : [`S${s.sync} · ${s.name}`, s.name]
             : [s.label, s.short, String(s.local + 1)];
-        V.segInfo.push({ span, key: s.key, variants, w, cont: !s.startsHere, first: i === 0, rowStart: c.index % 7 === 0 || c.day === 1 });
+        V.segInfo.push({ span, key: s.key, variants, pentad: s.kind === 'pentad' ? s.index : null, w, cont: !s.startsHere, first: i === 0, rowStart: c.index % 7 === 0 || c.day === 1 });
       });
       gridEl.append(cellEl);
       V.cells.push({ el: cellEl, day, band, segs, data: c, lead: dayLabel(c), rest: dayRest(c) });
@@ -310,7 +325,26 @@ export function createMonthView(ctx, { prefs, setPref, tip }) {
     fitLabels();
   }
 
+  /**
+   * The Pentads that begin on a day, like its weekday: their marks in the cell's corner (with the time where the cell is
+   * wide enough) and a caret on the band's edge at the time of day each begins, so down a column of days the carets step
+   * a quarter Helion later each day and the Hypopentad brings Pentad I back.
+   */
+  function pentadLabelsHtml(c) {
+    return c.pentads.map((p) => `<span class="cal-pst">${pentadMarkHTML(p.index)}<span class="cal-pst-t">${esc(hm(p.start))}</span></span>`).join('');
+  }
+  function pentadTicksHtml(c) {
+    return c.pentads.map((p) => `<i class="cal-ptick${p.index === 3 ? ' is-hypo' : ''}" style="left:${(Math.min(1, Math.max(0, p.x)) * 100).toFixed(2)}%"></i>`).join('');
+  }
+
   function legendHtml(ov) {
+    if (ov.id === 'pentad') {
+      const helion = model.levelInfo(6).meanSeconds;
+      return (
+        `<span class="cal-lg-sw" style="--c:${GOLD}"></span><span><b>Pentads</b>: the solar sync's 19 Helions as ${pentadMarkHTML(0)} ${pentadMarkHTML(1)} ${pentadMarkHTML(2)} (5η ≈ ${esc(fmt.duration(5 * helion))}) and the Hypopentad ${pentadMarkHTML(3)} (4η ≈ ${esc(fmt.duration(4 * helion))}). ` +
+        `A solar day is 4¾η, so each Pentad begins ¼η (≈ ${esc(fmt.duration(helion / 4))}) later in the day than the one before; the Hypopentad, one Helion short, brings the next ${pentadMarkHTML(0)} back.</span>`
+      );
+    }
     if (ov.id === 'sync') {
       return `<span class="cal-lg-sw" style="--c:${GOLD}"></span><span>Solar sync: four quarters of ≈ 1 day (<b>start · peak · node · valley</b>), labelled by the threshold that begins them.</span>`;
     }
@@ -356,9 +390,18 @@ export function createMonthView(ctx, { prefs, setPref, tip }) {
       return v;
     };
     const seen = new Set();
+    const em = parseFloat(cs.fontSize) || 10.5;
     for (const s of V.segInfo) {
       const avail = s.w * cellW - 9;
       const want = !seen.has(s.key) || (s.cont && s.first && s.rowStart);
+      if (s.pentad !== null) {
+        // a Pentad is named by its mark: the shape and numeral, the shape alone, or nothing where it does not fit
+        const withNum = em * 1.08 + measure(PENTAD_NUMERALS[s.pentad]) * 0.88;
+        const html = !want ? '' : avail >= withNum ? pentadMarkHTML(s.pentad) : avail >= em ? pentadMarkHTML(s.pentad, { numeral: false }) : '';
+        if (html) seen.add(s.key);
+        setHtml(s.span, html);
+        continue;
+      }
       let text = '';
       if (want) text = s.variants.find((v) => measure(v) <= avail) ?? '';
       if (text) seen.add(s.key);
@@ -432,7 +475,7 @@ export function createMonthView(ctx, { prefs, setPref, tip }) {
         return;
       }
       const level = s.seg.kind === 'cycle' ? s.seg.level : 6;
-      ctx.goto(landOn(model, s.seg.start, s.seg.q === 0 || s.seg.kind === 'cycle' ? level : undefined));
+      ctx.goto(landOn(model, s.seg.start, s.seg.q === 0 || s.seg.kind !== 'sync' ? level : undefined));
       return;
     }
     const c = cellOf(e.target);
@@ -535,6 +578,10 @@ export function createMonthView(ctx, { prefs, setPref, tip }) {
   // tooltips
   // ------------------------------------------------------------------------------------------
   const stamp = (t) => `${fmt.long(r3(t))}`;
+  /** A stamp led by its Pentad (HTML). */
+  const stampHtml = (t) => lead(r3(t), stamp(t));
+  /** "5η · 25 h 16 min": a Pentad's length. */
+  const pentadLen = (p) => `${p.helions}η · ${fmt.duration(p.end - p.start)}`;
   function dayTipHtml(c) {
     const g = gregorianInfo(fmt, c.start + 1);
     let html = `<div class="cal-tt-h">${esc(WEEKDAYS_LONG[c.dow])} ${c.day} ${esc(MONTHS_LONG_UI[c.month - 1])} ${c.year}</div>`;
@@ -545,7 +592,13 @@ export function createMonthView(ctx, { prefs, setPref, tip }) {
     html += `<div class="dim">day ${g.dayOfYear} of ${g.daysInYear} · ${esc(c.length === 86400 ? '24 h' : c.length / 3600 + ' h (clock change)')} · ${esc(g.tag)}</div>`;
     const t = Math.max(c.start, model.tMin);
     const addr = addressText(model, t);
-    if (addr) html += `<div class="mono cal-tt-addr">${esc(addr)}<span class="dim"> at ${esc(fmt.time(r3(t), { seconds: false }))}</span></div>`;
+    if (addr) html += `<div class="mono cal-tt-addr">${lead(t, addr)}<span class="dim"> at ${esc(fmt.time(r3(t), { seconds: false }))}</span></div>`;
+    if (c.pentads.length) {
+      for (const p of c.pentads) html += `<div class="cal-tt-pent">${pentadMarkHTML(p.index)}<span>${PENTAD_NAMES[p.index]} begins at ${esc(hm(p.start))}<span class="dim"> · ${esc(pentadLen(p))}</span></span></div>`;
+    } else {
+      const p = pentadAt(t);
+      if (p) html += `<div class="cal-tt-pent">${pentadMarkHTML(p.index)}<span class="dim">No Pentad begins on this day: ${PENTAD_NAMES[p.index]} runs through it</span></div>`;
+    }
     if (c.eclipse >= 0) html += `<div class="cal-tt-ecl">${ICONS.eclipse}<span>Saros 141 eclipse #${c.eclipse} · greatest at ${esc(fmt.time(r3(model.catalogue[c.eclipse])))}</span></div>`;
     html += '<div class="dim cal-tt-hint">Click: show this day at the displayed time of day.<br>Double-click: noon.</div>';
     return html;
@@ -553,6 +606,22 @@ export function createMonthView(ctx, { prefs, setPref, tip }) {
 
   function segTipHtml(s, cell) {
     const T = store.t();
+    if (s.kind === 'pentad') {
+      const helion = model.levelInfo(6).meanSeconds;
+      const cur = T >= s.start && T < s.end;
+      const why =
+        s.index === 0
+          ? 'It begins the solar sync: the Hypopentad before it, one Helion short, brought it back to the time of day the sync began.'
+          : s.index === 3
+            ? 'One Helion short: it brings the next Pentad I back to the time of day the sync began.'
+            : `A solar day is 4¾η, so it begins ¼η (≈ ${fmt.duration(helion / 4)}) later in the day than the Pentad before it.`;
+      return (
+        `<div class="cal-tt-h cal-tt-pent" style="color:${GOLD}">${pentadMarkHTML(s.index)}<span>${PENTAD_NAMES[s.index]}<span class="dim"> · sync ${s.sync}</span></span>${cur ? ' <span class="chip cal-chip is-info">displayed</span>' : ''}</div>` +
+        `<div class="dim">${esc(why)}</div>` +
+        `<dl class="cal-tt-dl"><dt>from</dt><dd>${esc(stamp(s.start))}</dd><dt>to</dt><dd>${esc(stamp(s.end))}</dd><dt>length</dt><dd>${esc(pentadLen(s))}</dd></dl>` +
+        `<div class="dim cal-tt-hint">Click to go to where it begins.</div>`
+      );
+    }
     if (s.kind === 'sync') {
       const col = GOLD;
       const q = s.q + 1;
@@ -560,8 +629,8 @@ export function createMonthView(ctx, { prefs, setPref, tip }) {
       return (
         `<div class="cal-tt-h" style="color:${col}">Solar sync ${s.sync} · quarter ${q} of 4</div>` +
         `<div class="dim">${esc(s.name)} → ${esc(s.endName)}</div>` +
-        `<dl class="cal-tt-dl"><dt>from</dt><dd>${esc(stamp(s.start))}</dd><dt>to</dt><dd>${esc(stamp(s.end))}</dd>` +
-        `<dt>sync starts</dt><dd>${esc(stamp(s.syncStart))}</dd><dt>sync ends</dt><dd>${esc(stamp(s.syncEnd))}</dd>` +
+        `<dl class="cal-tt-dl"><dt>from</dt><dd>${stampHtml(s.start)}</dd><dt>to</dt><dd>${stampHtml(s.end)}</dd>` +
+        `<dt>sync starts</dt><dd>${stampHtml(s.syncStart)}</dd><dt>sync ends</dt><dd>${stampHtml(s.syncEnd)}</dd>` +
         `<dt>drift</dt><dd>${drift < 0 ? '−' : '+'}${esc(fmt.duration(Math.abs(drift), { parts: 3 }))} vs the civil grid <span class="dim">(grid ${esc(fmt.date(r3(s.nominalStart)))} ${esc(fmt.time(r3(s.nominalStart), { seconds: false }))})</span></dd></dl>` +
         `<div class="dim cal-tt-hint">Click to go to this quarter's start.</div>`
       );
@@ -581,12 +650,12 @@ export function createMonthView(ctx, { prefs, setPref, tip }) {
     }
     const names = ['peak', 'node', 'valley', 'end'];
     const rows = times
-      .map((t, i) => (t === null ? '' : `<dt>${i === next ? '▸ ' : ''}${names[i]}</dt><dd${i === next ? ' class="is-next"' : ''}>${esc(stamp(t))}</dd>`))
+      .map((t, i) => (t === null ? '' : `<dt>${i === next ? '▸ ' : ''}${names[i]}</dt><dd${i === next ? ' class="is-next"' : ''}>${stampHtml(t)}</dd>`))
       .join('');
     return (
       `<div class="cal-tt-h" style="color:${col}">${cycleLabel(s.level, s.local + 1)}<span class="dim"> · ${s.local + 1} / ${s.siblings ?? Number(model.clock.count(0))}${s.level ? ' in ' + cycleLabel(s.level - 1, path[s.level - 1]) : ''}</span>${cur ? ' <span class="chip cal-chip is-info">displayed</span>' : ''}</div>` +
       `<div class="mono cal-tt-addr">${esc(pathText(path))}</div>` +
-      `<dl class="cal-tt-dl"><dt>starts</dt><dd>${esc(stamp(s.start))}</dd><dt>ends</dt><dd>${esc(s.clipped ? 'catalogue end ' + stamp(model.tMax) : stamp(s.end))}</dd><dt>length</dt><dd>${esc(fmt.duration(s.end - s.start))}${s.clipped ? ' (clipped)' : ''}</dd>${rows}</dl>` +
+      `<dl class="cal-tt-dl"><dt>starts</dt><dd>${stampHtml(s.start)}</dd><dt>ends</dt><dd>${s.clipped ? esc('catalogue end ') + stampHtml(model.tMax) : stampHtml(s.end)}</dd><dt>length</dt><dd>${esc(fmt.duration(s.end - s.start))}${s.clipped ? ' (clipped)' : ''}</dd>${rows}</dl>` +
       `<div class="dim cal-tt-hint">global index ${s.idx} at depth ${s.level + 1} (jump box: d${s.level + 1}#${s.idx}) · click to go to its start</div>`
     );
   }
@@ -667,20 +736,22 @@ export function createMonthView(ctx, { prefs, setPref, tip }) {
     // announced politely, but not while a time-lapse flips through days every second
     setAttr(inspector, 'aria-live', store.mode === 'live' || store.rate === 0 ? 'polite' : 'off');
     const idx = V.shownIdx;
-    const key = `${idx}|${V.overlay}|${V.zone}|${V.grid?.start}`;
+    const T = store.t();
+    const pNow = pentadAt(T);
+    const key = `${idx}|${V.overlay}|${V.zone}|${V.grid?.start}|${pNow ? pNow.sync * 4 + pNow.index : ''}`;
     if (key === V.inspectKey) return;
     V.inspectKey = key;
     if (idx < 0) {
-      const T = store.t();
       let why = `<span class="dim">is not in this month</span>`;
       if (V.grid && V.grid.end <= model.tMin) why = `<span class="dim">This month is before the catalogue starts (${esc(catalogueRangeText(model).split(' … ')[0])} UTC), so it has no cycles.</span>`;
       else if (V.grid && V.grid.start > model.tMax) why = `<span class="dim">This month is after the catalogue ends (${esc(catalogueRangeText(model).split(' … ')[1])} UTC), so it has no cycles.</span>`;
-      inspector.innerHTML = `<div class="cal-dd-h"><b>${esc(fmt.long(r3(T)).split(',')[0])}</b>${why}<button type="button" class="btn btn-sm" data-act="shown">${ICONS.target}<span>Show displayed day</span></button></div>`;
+      inspector.innerHTML = `<div class="cal-dd-h"><b>${lead(T, fmt.long(r3(T)).split(',')[0])}</b>${why}<button type="button" class="btn btn-sm" data-act="shown">${ICONS.target}<span>Show displayed day</span></button></div>`;
       return;
     }
     const d = V.cells[idx].data;
     const g = gregorianInfo(fmt, d.start + 1);
-    let html = `<div class="cal-dd-h"><b>${esc(WEEKDAYS_LONG[d.dow])} ${d.day} ${esc(MONTHS_LONG_UI[d.month - 1])} ${d.year}</b>` +
+    // the day leads with the Pentad of the displayed moment, as the header does; the list below names all of its Pentads
+    let html = `<div class="cal-dd-h"><b>${lead(T, `${WEEKDAYS_LONG[d.dow]} ${d.day} ${MONTHS_LONG_UI[d.month - 1]} ${d.year}`)}</b>` +
       `<span class="dim">day ${g.dayOfYear} of ${g.daysInYear} · ${esc(d.length === 86400 ? '24 h' : d.length / 3600 + ' h')} · ${esc(g.tag)}</span>` +
       (d.eclipse >= 0 ? `<span class="chip cal-chip is-gold" title="Greatest eclipse of Saros 141 on this day">${ICONS.eclipse}eclipse #${d.eclipse} · ${esc(fmt.time(r3(model.catalogue[d.eclipse])))}</span>` : '') +
       '</div>';
@@ -694,18 +765,33 @@ export function createMonthView(ctx, { prefs, setPref, tip }) {
             : 'No cycles on this day.';
       html += `<div class="dim cal-dd-none">${why}</div>`;
     } else {
-      html += `<ul class="cal-dd-list${V.overlay === 'sync' ? ' is-sync' : ''}">`;
+      html += `<ul class="cal-dd-list${V.overlay === 'sync' ? ' is-sync' : V.overlay === 'pentad' ? ' is-pentads' : ''}">`;
       d.segments.forEach((s, i) => {
-        const col = s.kind === 'sync' ? GOLD : levelColor(s.level);
-        const lab = s.kind === 'sync' ? s.label : cycleLabel(s.level, s.local + 1);
+        const col = s.kind === 'cycle' ? levelColor(s.level) : GOLD;
+        const lab = s.kind === 'cycle' ? cycleLabel(s.level, s.local + 1) : s.label;
         // cycles longer than a year (γ) carry their years: "Feb 16 → Mar 28" would be ambiguous
         const a = spanLabel(fmt, s.start, d.start + 1, s.start, s.end);
         const b = spanLabel(fmt, s.end, d.start + 1, s.start, s.end);
         const len = fmt.duration(s.end - s.start);
         html +=
-          `<li class="cal-ddr" data-key="${esc(s.key)}" style="--c:${col}"><span class="cal-ddl">${esc(lab)}</span>` +
-          `<span class="cal-ddt mono">${esc(a)} → ${esc(b)}</span><span class="cal-ddx dim">${esc(len)}</span>` +
+          `<li class="cal-ddr${s.kind === 'pentad' ? ' is-pentad' : ''}" data-key="${esc(s.key)}" style="--c:${col}"><span class="cal-ddl">${s.kind === 'pentad' ? `${pentadMarkHTML(s.index)}<span class="cal-ddl-w">${esc(lab)}</span>` : esc(lab)}</span>` +
+          `<span class="cal-ddt mono">${esc(a)} → ${esc(b)}</span><span class="cal-ddx dim">${esc(s.kind === 'pentad' ? pentadLen(s) : len)}</span>` +
           `<button type="button" class="cal-go" data-i="${i}" title="Go to the start of ${esc(lab)}" aria-label="Go to the start of ${esc(lab)}">${ICONS.go}</button></li>`;
+      });
+      html += '</ul>';
+    }
+    // the Pentads of the day (the band names them already when it shows Pentads)
+    V.dayPentads = d.inRange && V.overlay !== 'pentad' ? pentadsOfSpan(model, d.start, d.end) : [];
+    if (V.dayPentads.length) {
+      html += '<ul class="cal-dd-list is-pentads" aria-label="Pentads of this day">';
+      V.dayPentads.forEach((p, i) => {
+        const a = spanLabel(fmt, p.start, d.start + 1, p.start, p.end);
+        const b = spanLabel(fmt, p.end, d.start + 1, p.start, p.end);
+        const cur = T >= p.start && T < p.end;
+        html +=
+          `<li class="cal-ddr is-pentad${cur ? ' is-current' : ''}" style="--c:${GOLD}"><span class="cal-ddl">${pentadMarkHTML(p.index)}<span class="cal-ddl-w">${PENTAD_NAMES[p.index]}</span></span>` +
+          `<span class="cal-ddt mono">${esc(a)} → ${esc(b)}</span><span class="cal-ddx dim">${esc(pentadLen(p))}</span>` +
+          `<button type="button" class="cal-go" data-p="${i}" title="Go to the start of ${PENTAD_NAMES[p.index]}" aria-label="Go to the start of ${PENTAD_NAMES[p.index]} of sync ${p.sync}">${ICONS.go}</button></li>`;
       });
       html += '</ul>';
     }
@@ -719,11 +805,17 @@ export function createMonthView(ctx, { prefs, setPref, tip }) {
       ctx.requestRender();
       return;
     }
+    const pb = e.target.closest('button[data-p]');
+    if (pb) {
+      const p = V.dayPentads?.[Number(pb.dataset.p)];
+      if (p) ctx.goto(landOn(model, p.start, 6)); // a Pentad begins with its first Helion
+      return;
+    }
     const b = e.target.closest('button[data-i]');
     if (!b || V.shownIdx < 0) return;
     const s = V.cells[V.shownIdx].data.segments[Number(b.dataset.i)];
     if (!s) return;
-    ctx.goto(landOn(model, s.start, s.kind === 'cycle' ? s.level : s.q === 0 ? 6 : undefined));
+    ctx.goto(landOn(model, s.start, s.kind === 'cycle' ? s.level : s.kind === 'pentad' || s.q === 0 ? 6 : undefined));
   });
 
   // ------------------------------------------------------------------------------------------
@@ -793,7 +885,7 @@ export function createMonthView(ctx, { prefs, setPref, tip }) {
       const st = model.cycleStartTime(lv, idx);
       const path = model.cycleToPath(lv, BigInt(idx));
       tip.show(
-        `<div class="cal-tt-h" style="color:${levelColor(lv)}">${cycleLabel(lv, path[lv])}<span class="dim"> starts</span></div><div class="mono cal-tt-addr">${esc(pathText(path))}</div><div>${esc(stamp(st))}</div><div class="dim cal-tt-hint">Click to go there.</div>`,
+        `<div class="cal-tt-h" style="color:${levelColor(lv)}">${cycleLabel(lv, path[lv])}<span class="dim"> starts</span></div><div class="mono cal-tt-addr">${esc(pathText(path))}</div><div>${stampHtml(st)}</div><div class="dim cal-tt-hint">Click to go there.</div>`,
         e.clientX,
         e.clientY,
       );

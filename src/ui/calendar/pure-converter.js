@@ -23,6 +23,8 @@
  * Eclipses are named like positions, #22 for the one at position 22; the drift of a sync is pure.driftText.
  */
 import { h, ICONS, esc, setText, setHtml, setStyle, setAttr, toggleClass, copyText, prefersReducedMotion, hasSound, hearMoment } from './dom.js';
+import { pentadMarkHTML, leadHTML, leadText, pentadLookup, PENTAD_NAMES, DAY_TEXT, QUARTER_TEXT, OFFSET_TEXT } from '../pentad.js';
+import { syncPentads } from './pentads.js';
 import { levelColor, GOLD } from '../../core/theme.js';
 import { LEVEL_NAMES, ORDINAL_NAMES, QUARTER_WORDS } from '../../core/pure.js';
 import {
@@ -88,6 +90,8 @@ export function createPureConverter(ctx, { tip }) {
     return t > S.T ? `in ${text}` : `${text} ago`;
   };
   const stampOf = (t) => pure.stamp(t, 'nu');
+  /** The Pentad of a moment, from cached spans (rows and readouts ask for many nearby moments). */
+  const pentadAt = pentadLookup(model);
 
   function flash(btn) {
     btn.__orig ??= btn.innerHTML;
@@ -606,7 +610,7 @@ export function createPureConverter(ctx, { tip }) {
       `<div class="cal-tt-pair">${pure.pairHTML(r.phase, { label: `${LETTERS[L]} phase` })}<span class="mono">${esc(pure.pairText(r.phase))}</span></div>` +
       `<div>Coarse glyph: state <b>${r.index}</b> of ${r.states} · ${esc(m.text)} ${m.arrow}${r.dotted ? ' <span class="dim">(dot = falling branch)</span>' : ''}</div>` +
       `<div class="dim">${esc(pure.cycleName(L, r.cycle))} · ${esc(unitTip(L))}</div>` +
-      `<dl class="cal-tt-dl"><dt>cycle</dt><dd>${esc(pure.stamp(r.start, pure.resolutionOf(L)))} → ${esc(pure.stamp(r.end, pure.resolutionOf(L)))}</dd>`;
+      `<dl class="cal-tt-dl"><dt>cycle</dt><dd>${leadHTML(model, r.start, esc(pure.stamp(r.start, pure.resolutionOf(L))))} → ${leadHTML(model, r.end, esc(pure.stamp(r.end, pure.resolutionOf(L))))}</dd>`;
     html += `<dt>trits</dt><dd class="mono">${esc(trits)} <span class="dim">(msb first)</span></dd>`;
     if (od) html += `<dt>odometer</dt><dd class="mono">[${od.digits.join(', ')}] <span class="dim">coarse · fine</span></dd>`;
     if (next) html += `<dt>pair changes</dt><dd>${esc(relTo(next))}</dd>`;
@@ -850,7 +854,9 @@ export function createPureConverter(ctx, { tip }) {
   /** The Helion reading: its number (from 1) and its phase pair, then the Preons, Flavons and Blinks (the basic reading, SPEC §15.3). */
   const clockHtml = (c, T) => {
     const helion = model.levelAt(T, 6);
-    return `<span class="pure-clock"><b>${c.eta}</b><i>η</i>${helion ? pure.pairHTML(helion.phase, { label: 'Helion phase' }) : ''}<b>${c.iota}</b><i>ι</i><b>${c.lambda}</b><i>λ</i><b>${c.nu}</b><i>ν</i></span>`;
+    // the reading leads with its Pentad, like a weekday (SPEC §15.3): "⬠II 34η ‹pair› 29ι 21λ 3ν"
+    const clock = `<span class="pure-clock"><b>${c.eta}</b><i>η</i>${helion ? pure.pairHTML(helion.phase, { label: 'Helion phase' }) : ''}<b>${c.iota}</b><i>ι</i><b>${c.lambda}</b><i>λ</i><b>${c.nu}</b><i>ν</i></span>`;
+    return leadHTML(model, T, clock, { p: pentadAt(T), title: true });
   };
 
   function paint() {
@@ -867,7 +873,7 @@ export function createPureConverter(ctx, { tip }) {
     const cs = inRange ? countersAt(pure, T) : null;
     // the readout
     setHtml(readClock, cs ? clockHtml(cs, T) : '<span class="dim">—</span>');
-    setText(readDate, cs ? pure.dateText(T, { form: 'full', upTo: 'nu' }) : '—');
+    setText(readDate, cs ? leadText(model, T, pure.dateText(T, { form: 'full', upTo: 'nu' }), { p: pentadAt(T) }) : '—');
     const ff = S.forceFields;
     S.forceFields = false;
     fStamp.set(cs ? stampOf(T) : '', ff);
@@ -1038,12 +1044,12 @@ export function createPureConverter(ctx, { tip }) {
         addrResult,
         `<div class="cal-rline"><span class="cal-rlab">${label} <b style="color:${levelColor(level)}">${esc(chain)}</b></span></div>` +
           `<div class="cal-rnames">${esc(names)}</div>` +
-          `<div class="cal-rtime mono">${esc(stampOf(addrTimeNow))}</div>` +
-          `<div class="cal-rnames">${esc(words)}</div>` +
+          `<div class="cal-rtime mono">${leadHTML(model, addrTimeNow, esc(stampOf(addrTimeNow)), { p: pentadAt(addrTimeNow) })}</div>` +
+          `<div class="cal-rnames">${esc(leadText(model, addrTimeNow, words, { p: pentadAt(addrTimeNow) }))}</div>` +
           `<div class="cal-rpos mono dim">pos ${pos === null ? '–' : pos.toFixed(12)}</div>` +
           `<div class="cal-rmeta">${lasts}<span class="chip cal-chip" title="0-based index among all cycles of depth ${level + 1} in the catalogue (the jump box reads it as d${level + 1}#${cyc ? cyc.idx : ''})">global index ${cyc ? cyc.idx : '–'}</span></div>`,
       );
-      addrTextNow = `${chain} ${pt.label.toLowerCase()} · ${stampOf(addrTimeNow)} · pos ${pos === null ? '–' : pos.toFixed(12)}`;
+      addrTextNow = `${chain} ${pt.label.toLowerCase()} · ${leadText(model, addrTimeNow, stampOf(addrTimeNow), { p: pentadAt(addrTimeNow) })} · pos ${pos === null ? '–' : pos.toFixed(12)}`;
     }
     addrGo.disabled = addrTimeNow === null;
     addrCopy.disabled = addrTextNow === '';
@@ -1091,10 +1097,11 @@ export function createPureConverter(ctx, { tip }) {
   }
   // (a boundary's float time can sit a hair either side of it: the stamp is read at the first millisecond that shows it)
   const landedT = (t, level) => (level === undefined ? Math.ceil(t * 1000) / 1000 : landCycleAt(model, t, level));
-  const timeRow = (kind, t, dur, { copyText: ct, goT, what, upTo = 'lambda', level }) =>
-    `<div class="cal-trow"><span class="cal-tk">${kind}</span><span class="cal-tt mono">${esc(pure.stamp(landedT(t, level), upTo))}</span>` +
+  /** A row of a moment: its date led by its Pentad (the copy carries the Pentad's name, which the jump box reads past). */
+  const timeRow = (kind, t, dur, { copyText: ct, goT, what, upTo = 'lambda', level, lead = true }) =>
+    `<div class="cal-trow"><span class="cal-tk">${kind}</span><span class="cal-tt mono">${lead ? leadHTML(model, landedT(t, level), esc(pure.stamp(landedT(t, level), upTo)), { p: pentadAt(landedT(t, level)) }) : esc(pure.stamp(landedT(t, level), upTo))}</span>` +
     `<span class="cal-tx dim" data-cd="${t}"${dur ? ` data-sfx="${esc(' · lasts ' + dur)}"` : ''}></span>` +
-    `<button type="button" class="cal-copy" data-c="${esc(ct)}" title="Copy the stamp" aria-label="Copy ${esc(what)}">${ICONS.copy}</button>` +
+    `<button type="button" class="cal-copy" data-c="${esc(leadText(model, goT, ct, { p: pentadAt(goT) }))}" title="Copy the date" aria-label="Copy ${esc(what)}">${ICONS.copy}</button>` +
     `<button type="button" class="cal-go" data-t="${goT}" title="Go there" aria-label="Go to ${esc(what)}">${ICONS.go}</button></div>`;
 
   function pickerResultsHtml(L, digits, cur) {
@@ -1198,7 +1205,14 @@ export function createPureConverter(ctx, { tip }) {
     html += `<div class="cal-kv"><span class="cal-k">Drift</span><span class="mono" style="color:var(--gold)">${esc(driftTxt)}</span><span class="dim">start against the solar rhythm</span></div>`;
     html += '<div class="cal-qh">Quarter thresholds</div>';
     for (const q of info.quarters) html += row(q.name, q.time, q.name === 'end' ? 6 : undefined);
-    return { html, copy: `Solar sync ${n}: ${pure.stamp(landedT(info.start, 6), 'iota')} → ${pure.stamp(landedT(info.end, 6), 'iota')}; drift ${driftTxt}; length 19η` };
+    // the Pentads: the sync's 19 Helions as I, II, III (5η) and the Hypopentad (4η), each about a solar day (SPEC §7.5)
+    const pents = syncPentads(model, n);
+    html += `<div class="cal-qh">Pentads</div><p class="cal-help cal-pnote">${DAY_TEXT} is a solar day, so each Pentad begins ${QUARTER_TEXT} later in the day than the one before (${OFFSET_TEXT.join(', ')}); the Hypopentad, one Helion short, brings Pentad I back.</p>`;
+    for (const p of pents) {
+      const t = landedT(p.start, 6);
+      html += `<div class="cal-prow-w" data-pq="${p.index}">` + timeRow(pentadMarkHTML(p.index), p.start, `${p.helions}η`, { copyText: pure.stamp(t, 'iota'), goT: t, what: `${PENTAD_NAMES[p.index]} of sync ${n}`, upTo: 'iota', level: 6, lead: false }) + '</div>';
+    }
+    return { html, copy: `Solar sync ${n}: ${pure.stamp(landedT(info.start, 6), 'iota')} → ${pure.stamp(landedT(info.end, 6), 'iota')}; drift ${driftTxt}; length 19η; Pentads ${pents.map((p) => `${PENTAD_NAMES[p.index]} ${p.helions}η`).join(', ')}` };
   }
 
   function paintSolar(T) {
@@ -1258,6 +1272,9 @@ export function createPureConverter(ctx, { tip }) {
         setHtml(syncRefs.pair, pure.pairHTML(phase, { label: 'sync phase', color: GOLD }));
       }
     }
+    const pn = pentadAt(T);
+    const pq = pn && pn.sync === n ? String(pn.index) : '';
+    for (const r of syncBody.querySelectorAll('.cal-prow-w')) toggleClass(r, 'is-now', r.dataset.pq === pq);
     tickCountdowns(syncBody);
   }
   syncBody.addEventListener('click', (e) => {
