@@ -70,7 +70,7 @@ struct UpNextWidgetView: View {
             .padding(.top, 1)
             LiveBar(range: t.start...t.time, color: Theme.levelColor(t.level), thickness: size == .large ? 4 : 3)
                 .padding(.vertical, size == .large ? 8 : 6)
-            Text(t.when)
+            PentadLedText(pentad: t.pentad, text: t.when)
                 .font(.system(size: 12))
                 .ink(.tertiary)
                 .lineLimit(1)
@@ -114,7 +114,7 @@ struct UpNextWidgetView: View {
                     // a narrow column: the countdown under the name
                     countdown(t, size: 12, ink: .secondary, weight: .regular)
                 } else {
-                    Text(t.when)
+                    PentadLedText(pentad: t.pentad, text: t.when)
                         .font(.system(size: 11))
                         .ink(.tertiary)
                         .lineLimit(1)

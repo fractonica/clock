@@ -35,6 +35,9 @@ struct RingsWidgetView: View {
                 .frame(width: d * 0.36)
             }
             .frame(width: geo.size.width, height: geo.size.height)
+            .overlay(alignment: .topLeading) {
+                if let p = s.pentad { WidgetPentadMark(index: p.index, size: 11) }
+            }
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(s.accessibility)
@@ -97,6 +100,16 @@ struct RingsWidgetView: View {
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(Theme.levelColor(ring.level))
                     Text(verbatim: "\(ring.local + 1)/\(ring.siblings)")
+                        .font(.reading(10))
+                        .ink(.tertiary)
+                }
+                .frame(maxWidth: .infinity)
+            }
+            if let p = s.pentad {
+                // the Pentad as one more place: its mark over the Helion's place in it ("2/5")
+                VStack(spacing: 1) {
+                    WidgetPentadMark(index: p.index, size: 12)
+                    Text(verbatim: "\(p.helion)/\(p.helions)")
                         .font(.reading(10))
                         .ink(.tertiary)
                 }

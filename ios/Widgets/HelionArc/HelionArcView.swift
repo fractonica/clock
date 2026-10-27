@@ -18,8 +18,10 @@ struct HelionArcView: View {
                 let g = HelionArcGeometry(width: geo.size.width, height: geo.size.height, inset: inset)
                 ZStack(alignment: .topLeading) {
                     HelionArcDrawing(geometry: g, preon: s.preon, phase: s.phase)
-                    ArcLabel(token: s.helionToken, rect: g.labelRect(first: true, reach: g.cy), first: true)
-                    ArcLabel(token: s.preonToken, rect: g.labelRect(first: false, reach: g.cy), first: false)
+                    let first = g.labelRect(first: true, reach: g.cy)
+                    let lead = ArcLabel.Lead(pentad: s.pentad, rect: first)
+                    ArcLabel(token: s.helionToken, rect: first, first: true, size: lead.size, lead: lead)
+                    ArcLabel(token: s.preonToken, rect: g.labelRect(first: false, reach: g.cy), first: false, size: lead.size)
                 }
             }
             .accessibilityElement(children: .ignore)
@@ -37,24 +39,78 @@ struct HelionArcView: View {
 
 /// A count on the open side of its half-arc: the number in ink, the letter in its level's colour (in one ink, the
 /// letter a step quieter). The first sits low in its space, by the axis; the second high, the drawing turned half a
-/// turn.
+/// turn. The first is led by its Helion's Pentad (SPEC §7.5), "⬠II 34η" (`Lead`).
 private struct ArcLabel: View {
     var token: CountToken
     var rect: CGRect
     var first: Bool
+    var size: Double
+    var lead: Lead? = nil
     @Environment(\.widgetRenderingMode) private var mode
 
+    /// Where the Pentad's mark goes and how large the counts are: the mark half the count's size over the count where
+    /// the space above it is free (a square widget), else hung before it where the frame leaves room beside the
+    /// drawing (a wide one), else in the line, a little larger, with both counts a size smaller to make room (the
+    /// Lock Screen).
+    struct Lead {
+        enum Placement { case none, above, beside, inline }
+
+        let pentad: Int?
+        let placement: Placement
+        /// The counts' size, in points.
+        let size: Double
+        /// The mark's size against the count's.
+        var markScale: Double { placement == .beside ? 0.5 : 0.6 }
+
+        init(pentad: Int?, rect: CGRect) {
+            let natural = min(rect.height * 0.86, rect.width / 1.95)
+            self.pentad = pentad
+            if pentad == nil {
+                placement = .none
+            } else if rect.height * 0.86 >= natural * 1.7 {
+                placement = .above
+            } else if rect.minX >= natural * 1.0 {
+                placement = .beside
+            } else {
+                placement = .inline
+            }
+            // "⬠II " at 0.6 of the count is about 1.15 counts' sizes wide
+            size = placement == .inline ? min(natural, rect.width / (1.95 + 1.15)) : natural
+        }
+    }
+
     var body: some View {
-        let size = min(rect.height * 0.86, rect.width / 1.95)
         let full = mode == .fullColor
         let number = Text(verbatim: token.number).foregroundStyle(full ? Theme.ink : .white)
         let letter = Text(verbatim: token.suffix).foregroundStyle(full ? Theme.levelColor(token.level) : .white.opacity(0.62))
-        Text("\(number)\(letter)")
-            .font(.reading(size, weight: .semibold))
-            .lineLimit(1)
-            .minimumScaleFactor(0.5)
-            .frame(width: rect.width, height: rect.height, alignment: first ? .bottom : .top)
-            .offset(x: rect.minX, y: rect.minY)
+        let count = Text("\(number)\(letter)").font(.reading(size, weight: .semibold))
+        Group {
+            if let lead, let pentad = lead.pentad {
+                let mark = PentadInk.mark(pentad, in: mode).font(.system(size: size * lead.markScale, weight: .semibold))
+                switch lead.placement {
+                case .above:
+                    VStack(alignment: .leading, spacing: size * 0.04) {
+                        mark
+                        count
+                    }
+                case .beside:
+                    // hung to the left of the count, outside its box (the count keeps its place over the arc)
+                    count.overlay(alignment: .bottomLeading) {
+                        mark.fixedSize()
+                            .alignmentGuide(.leading) { $0[.trailing] + size * 0.22 }
+                            .padding(.bottom, size * 0.14)
+                    }
+                case .inline, .none:
+                    Text("\(mark) \(count)")
+                }
+            } else {
+                count
+            }
+        }
+        .lineLimit(1)
+        .minimumScaleFactor(0.5)
+        .frame(width: rect.width, height: rect.height, alignment: first ? .bottom : .top)
+        .offset(x: rect.minX, y: rect.minY)
     }
 }
 

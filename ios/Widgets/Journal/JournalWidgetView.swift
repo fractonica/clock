@@ -17,6 +17,13 @@ struct JournalWidgetView: View {
             Group {
                 if snapshot.isMajor { major(snapshot) } else { minor(snapshot) }
             }
+            .overlay(alignment: .topLeading) {
+                // the Pentad leads the face's date like a weekday: in the small Helion face's corner and the large
+                // major one's; the large Helion face's caption and the small major face's first line lead with it
+                if let pentad = snapshot.pentad, snapshot.isMajor == (size == .large) {
+                    WidgetPentadMark(index: pentad, size: size == .large ? 15 : 11)
+                }
+            }
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("Journal face: \(snapshot.accessibility)")
         } else {
@@ -51,7 +58,7 @@ struct JournalWidgetView: View {
                 Spacer(minLength: 0)
                 arc(s, height: arcHeight, letterSize: large ? 14 : 10)
                 if large {
-                    Text(s.caption)
+                    PentadLedText(pentad: s.pentad, text: s.caption)
                         .font(.system(size: 12))
                         .ink(.tertiary)
                         .lineLimit(1)
@@ -137,7 +144,7 @@ struct JournalWidgetView: View {
         VStack(alignment: alignment, spacing: size * 0.08) {
             ForEach(Array(s.lines.enumerated()), id: \.offset) { i, line in
                 let emphasis = i == 1 || i == 2
-                Text(line)
+                PentadLedText(pentad: i == 0 && self.size == .small ? s.pentad : nil, text: line, markSize: size * 0.62)
                     .font(.system(size: emphasis ? size : size * 0.78, weight: emphasis ? .semibold : .regular))
                     .foregroundStyle(emphasis ? leadColor(s) : Ink.secondary.color(in: mode))
                     .lineLimit(1)
