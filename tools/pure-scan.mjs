@@ -19,10 +19,12 @@ export const RULES = [
   ['iso-date', /\b\d{4}-\d{2}-\d{2}\b/, 'hard'],
   ['slash-date', /\b\d{1,2}[/.]\d{1,2}[/.]\d{2,4}\b/, 'hard'],
   ['month-name', /\b(January|February|March|April|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)\b|\bMay\s\d/, 'hard'],
-  ['weekday', /\b(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday|Mon|Tue|Tues|Wed|Thu|Thur|Thurs|Fri|Sat|Sun)\b/, 'hard'],
+  // the Sun itself is no weekday ("the Sun", "the Sun's place"): the Helion is the clock's link to it (SPEC §7.5)
+  ['weekday', /\b(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday|Mon|Tue|Tues|Wed|Thu|Thur|Thurs|Fri|Sat|(?<![Tt]he\s)Sun(?!['’]s))\b/, 'hard'],
   ['earth-unit', /\b\d+([.,]\d+)?\s?(ms|msec|s|sec|secs|min|mins|h|hr|hrs|d|day|days|wk|wks|week|weeks|mo|month|months|y|yr|yrs|year|years|Hz|kHz|bpm|BPM)\b/, 'hard'],
   ['per-unit', /\bper\s(s|sec|second|min|minute|hour|day|week|month|year)\b|\/(s|min|h|d|y)\b/, 'hard'],
-  ['unit-word', /\b(seconds?|minutes?|hours?|days?|weeks?|months?|years?|decades?|centur(y|ies)|today|tomorrow|yesterday|daily|weekly|monthly|yearly|annual|midnight|noon|o'clock)\b/i, 'hard'],
+  // "a solar day" is the Sun's own period, said in Helions ("4¾η is a solar day", SPEC §7.5), not an Earth unit
+  ['unit-word', /\b(seconds?|minutes?|hours?|(?<!solar\s)days?|weeks?|months?|years?|decades?|centur(y|ies)|today|tomorrow|yesterday|daily|weekly|monthly|yearly|annual|midnight|noon|o'clock)\b/i, 'hard'],
   ['zone-word', /\b(UTC|GMT|UT1|Unix|ISO\s?8601|time\s?zones?|timezones?|local time|Gregorian|Julian|Anno|DST|daylight)\b/i, 'hard'],
   ['am-pm', /\b\d{1,2}\s?(am|pm|AM|PM)\b|\bAD\b|\bBC\b/, 'hard'],
   ['percent', /%|\bper ?cent(age)?s?\b/i, 'hard'],
