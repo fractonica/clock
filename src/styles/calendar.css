@@ -692,7 +692,9 @@
 .cal-cell.is-out .cal-plabs, .cal-cell.is-skipped .cal-plabs, .cal-cell.is-out .cal-pticks { display: none; }
 /* wide cells give each mark its time of day; narrow ones keep the first of the month's name out of the mark's way */
 @container mgrid (min-width: 680px) { .cal-pst-t { display: inline; } }
-@container mgrid (max-width: 560px) { .cal-cell:has(.cal-plabs) .cal-mon { display: none; } .cal-plabs { right: 4px; gap: 4px; } .cal-plabs.has-ecl { right: 22px; } }
+/* (the month's name needs ~125 px cells beside a mark and its time; the header names the month anyway) */
+@container mgrid (max-width: 900px) { .cal-month:not([data-ov="pentad"]) .cal-cell:has(.cal-plabs) .cal-mon { display: none; } }
+@container mgrid (max-width: 560px) { .cal-plabs { right: 4px; gap: 4px; } .cal-plabs.has-ecl { right: 22px; } }
 @container mgrid (max-width: 380px) { .cal-plabs { right: 2px; } .cal-pst { font-size: 9.5px; } .cal-pst .pentad-num { margin-left: 0.06em; letter-spacing: -0.06em; } .cal-dnum { padding: 0 3px; } }
 @container mgrid (max-width: 290px) { .cal-pst .pentad-num { display: none; } }
 .cal-seg .pentad-mark { font-size: 11px; }
