@@ -643,8 +643,10 @@ struct ConverterSolarCard: View {
                 }
                 if pure {
                     // to the Preon, like the quarters below: a phone's width keeps both on one line with their label
-                    CalValueRow(label: "Begins", value: n.stamp(at: s.start, upTo: "iota"), mono: true)
-                    CalValueRow(label: "Ends", value: n.stamp(at: s.end, upTo: "iota"), mono: true)
+                    // landed on their first millisecond: the exact boundary can read as the Helion before it, a Preon
+                    // short of the Pentad I it begins (listed below)
+                    CalValueRow(label: "Begins", value: n.stamp(at: CalMath.landOn(clock, s.start, level: 6), upTo: "iota"), mono: true)
+                    CalValueRow(label: "Ends", value: n.stamp(at: CalMath.landOn(clock, s.end, level: 6), upTo: "iota"), mono: true)
                     CalValueRow(label: "Drift", value: n.driftText(start: s.start, nominalStart: s.nominalStart, drift: s.drift))
                 } else {
                     CalValueRow(label: "Begins", value: "\(earth.dateTime(s.start)) \(earth.tag(s.start))")
@@ -692,9 +694,10 @@ extension ConverterSolarCard {
                 .foregroundStyle(Theme.gold)
                 .padding(.top, 2)
             ForEach(0..<4, id: \.self) { i in
-                let span = clock.pentad(sync: p.sync, index: i)
+                // its first millisecond: the exact start can read as the Helion before it
+                let start = clock.pentad(sync: p.sync, index: i).map { CalMath.landOn(clock, $0.start, level: 6) }
                 Button {
-                    if let span { model.set((span.start * 1000).rounded(.up) / 1000, from: .sync) }
+                    if let start { model.set(start, from: .sync) }
                 } label: {
                     HStack(spacing: 10) {
                         CalPentadChip(index: i, named: true, filled: i == p.index)
@@ -703,8 +706,8 @@ extension ConverterSolarCard {
                             .font(.caption.monospacedDigit())
                             .foregroundStyle(Theme.ink3)
                         Spacer(minLength: 4)
-                        if let span {
-                            Text(verbatim: pure ? n.stamp(at: span.start, upTo: "iota") : earth.dateTime(span.start))
+                        if let start {
+                            Text(verbatim: pure ? n.stamp(at: start, upTo: "iota") : earth.dateTime(start))
                                 .font(pure ? .code(12) : .subheadline.monospacedDigit())
                                 .foregroundStyle(i == p.index ? Theme.ink : Theme.ink2)
                                 .lineLimit(1)
@@ -714,7 +717,7 @@ extension ConverterSolarCard {
                     .contentShape(.rect)
                 }
                 .buttonStyle(.plain)
-                .disabled(span == nil)
+                .disabled(start == nil)
                 .accessibilityLabel(Text(verbatim: "\(PentadWords.name(i))\(i == p.index ? ", the moment's" : ""): set the converter where it begins"))
             }
             Text(pure ? "4¾η is a solar day: each Pentad begins a quarter Helion later in it, and the Hypopentad, one Helion short, brings Pentad I back."
