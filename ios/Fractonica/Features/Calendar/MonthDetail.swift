@@ -41,7 +41,9 @@ struct CalDayDetailView: View {
                     Text(CalEarthNames.weekdays[CalMath.weekday(ref.year, ref.month, ref.day)])
                         .font(.title2.weight(.semibold))
                         .foregroundStyle(Theme.ink)
-                    Text("\(ref.day) \(EarthTime.monthsLong[ref.month - 1]) \(String(ref.year))")
+                    // the date led by the day's Pentad (the one that runs through most of it), as by its weekday
+                    Text.ledByPentad(inRange ? CalPentads.main(store.clock, from: start, to: end)?.index : nil,
+                                     Text(verbatim: "\(ref.day) \(EarthTime.monthsLong[ref.month - 1]) \(String(ref.year))"))
                         .font(.title3)
                         .foregroundStyle(Theme.ink2)
                     Text(verbatim: "day \(doy) · \(hours == hours.rounded() ? String(Int(hours)) : String(format: "%.1f", hours)) h · \(earth.tag(start))")
@@ -74,6 +76,7 @@ struct CalDayDetailView: View {
                     eclipseRow(k, earth)
                 }
                 boundaries(start, end, earth)
+                pentads(start, end, earth)
                 running(ref, earth)
             } else {
                 Label("This day lies outside the catalogue (19 May 1613 … 13 June 2857 UTC): no cycles are counted there.", systemImage: "moon.zzz")
@@ -105,15 +108,17 @@ struct CalDayDetailView: View {
         .accessibilityHint(Text("Travels there"))
     }
 
-    /// One line of the day: a cycle boundary or a sync quarter, in time order.
+    /// One line of the day: a cycle boundary, a sync quarter or a Pentad, in time order.
     private enum Row: Identifiable {
         case boundary(CalDayEvents.Boundary)
         case sync(CalSyncQuarter)
+        case pentad(CalPentads.Span)
 
         var time: Double {
             switch self {
             case .boundary(let b): b.time
             case .sync(let q): q.start
+            case .pentad(let p): p.start
             }
         }
 
@@ -121,6 +126,7 @@ struct CalDayDetailView: View {
             switch self {
             case .boundary(let b): b.id
             case .sync(let q): "S\(q.sync):\(q.quarter)"
+            case .pentad(let p): "P\(p.sync):\(p.index)"
             }
         }
     }
@@ -128,7 +134,8 @@ struct CalDayDetailView: View {
     @ViewBuilder
     private func boundaries(_ start: Double, _ end: Double, _ earth: EarthFormatter) -> some View {
         let events = CalDayEvents(clock: store.clock, from: start, to: end, syncRange: model.syncRange)
-        let rows = (events.boundaries.map(Row.boundary) + events.syncs.map(Row.sync)).sorted { $0.time < $1.time }
+        let pentads = CalPentads.spans(store.clock, from: start, to: end).filter { $0.start >= start && $0.start > store.clock.tMin }
+        let rows = (events.boundaries.map(Row.boundary) + events.syncs.map(Row.sync) + pentads.map(Row.pentad)).sorted { $0.time < $1.time }
         VStack(alignment: .leading, spacing: 8) {
             Text("Begins on this day").font(.footnote.weight(.semibold)).textCase(.uppercase).tracking(0.8).foregroundStyle(Theme.ink3)
             ForEach(rows) { row in
@@ -152,6 +159,16 @@ struct CalDayDetailView: View {
                     } content: {
                         CalTintChip(text: "S\(q.sync)", color: Theme.gold, filled: q.quarter == 0, compact: true)
                         Text(verbatim: q.quarter == 0 ? "solar sync begins" : CalMath.syncQuarterNames[q.quarter])
+                            .font(.caption)
+                            .foregroundStyle(Theme.gold.opacity(0.85))
+                    }
+                case .pentad(let p):
+                    rowButton(time: earth.time(p.start), tint: Theme.goldDim.opacity(0.18),
+                              label: "\(PentadWords.name(p.index)) begins at \(earth.time(p.start))") {
+                        travel(CalMath.landOn(store.clock, p.start, level: 6))
+                    } content: {
+                        CalPentadChip(index: p.index, named: true, filled: true)
+                        Text(verbatim: p.index == 3 ? "4 Helions" : "5 Helions")
                             .font(.caption)
                             .foregroundStyle(Theme.gold.opacity(0.85))
                     }
@@ -202,6 +219,8 @@ struct CalDayDetailView: View {
                             Group {
                                 if case .level(let l) = track.band {
                                     CalendarLevelChip(text: CalMath.cycleLabel(level: l, ordinal: s.ordinal), level: l, compact: true)
+                                } else if case .pentad = track.band {
+                                    CalPentadChip(index: s.ordinal)
                                 } else {
                                     CalTintChip(text: "S\(s.index) \(CalMath.syncQuarterNames[s.ordinal])", color: Theme.gold, compact: true)
                                 }
@@ -220,6 +239,28 @@ struct CalDayDetailView: View {
                         .accessibilityElement(children: .combine)
                     }
                 }
+            }
+        }
+    }
+
+    /// The day's Helions in Pentad rows, like days in weeks: a solar day is 4¾ Helions, so the day's Helions fill most
+    /// of a Pentad, a quarter Helion more or less each day.
+    @ViewBuilder
+    private func pentads(_ start: Double, _ end: Double, _ earth: EarthFormatter) -> some View {
+        let clock = store.clock
+        if let first = clock.level(at: max(start, clock.tMin), 6), let last = clock.level(at: min(end, clock.tMax) - 0.001, 6) {
+            let rows = CalPentads.rows(firstHelion: first.cycle, count: Int(last.cycle - first.cycle) + 1, anchor: CalPentads.anchor)
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Helions by Pentad").font(.footnote.weight(.semibold)).textCase(.uppercase).tracking(0.8).foregroundStyle(Theme.ink3)
+                CalPentadRowsView(rows: rows, current: clock.level(at: store.time(), 6)?.cycle, detail: { h in
+                    clock.cycleStartTime(level: 6, index: h).map { earth.time($0, seconds: false) }
+                }) { h in
+                    if let t = CalMath.landPoint(clock, level: 6, index: h) { travel(t) }
+                }
+                Text("A solar day is 4¾ Helions: each Pentad begins a quarter Helion later in the day than the one before, and the Hypopentad, a Helion short, brings Pentad I back.")
+                    .font(.caption)
+                    .foregroundStyle(Theme.ink3)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
     }

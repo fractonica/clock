@@ -277,6 +277,8 @@ private struct CalBandChooser: View {
                         HStack(spacing: 5) {
                             if case .sync = band {
                                 Image(systemName: "sun.max.fill").font(.caption)
+                            } else if case .pentad = band {
+                                Image(systemName: "pentagon").font(.caption.weight(.bold))
                             } else {
                                 Text(band.letter).font(.subheadline.weight(.bold))
                             }
@@ -306,13 +308,14 @@ extension CalendarBand {
     var color: Color {
         switch self {
         case .level(let l): Theme.levelColor(l)
-        case .sync: Theme.gold
+        case .pentad, .sync: Theme.gold
         }
     }
 
     var letter: String {
         switch self {
         case .level(let l): CalMath.letter(l)
+        case .pentad: "P"
         case .sync: "S"
         }
     }
@@ -326,6 +329,7 @@ extension CalendarBand {
             if s > 10 * 86_400 { return String(format: "%.0f d", s / 86_400) }
             if s > 86_400 { return String(format: "%.1f d", s / 86_400) }
             return String(format: "%.0f h", s / 3600)
+        case .pentad: return "1 d"
         case .sync: return "4 d"
         }
     }
@@ -333,6 +337,7 @@ extension CalendarBand {
     var accessibilityName: String {
         switch self {
         case .level(let l): "\(Notation.levelNames[l]) cycles, depth \(l + 1)"
+        case .pentad: "Pentads"
         case .sync: "Solar sync quarters"
         }
     }
@@ -386,6 +391,10 @@ private struct CalMonthPage: View {
         if let e = day.eclipse {
             out.append(CalCellEvent(label: "#\(e)", time: earth.time(store.clock.catalogue[e], seconds: false), level: nil))
         }
+        // the day's Pentad, as a date carries its weekday (also when the Pentad band is off)
+        for p in day.pentads {
+            out.append(CalCellEvent(label: PentadWords.name(p.index, .ascii), time: earth.time(p.start, seconds: false), level: nil, pentad: p.index))
+        }
         for track in day.tracks {
             for s in track.segments where s.startsHere {
                 switch track.band {
@@ -393,6 +402,8 @@ private struct CalMonthPage: View {
                     out.append(CalCellEvent(label: CalMath.cycleLabel(level: l, ordinal: s.ordinal), time: earth.time(s.start, seconds: false), level: l))
                 case .sync where s.ordinal == 0:
                     out.append(CalCellEvent(label: "S\(s.index)", time: earth.time(s.start, seconds: false), level: nil))
+                case .pentad:
+                    break // listed above, band or not
                 default:
                     break
                 }
@@ -418,6 +429,9 @@ private struct CalMonthPage: View {
         var parts = ["\(CalEarthNames.weekdays[day.weekday]) \(day.day) \(EarthTime.monthsLong[day.month - 1])"]
         if today { parts.append("today") }
         if !day.inRange { parts.append("outside the catalogue") }
+        for p in day.pentads {
+            parts.append("\(PentadWords.name(p.index)) begins at \(earth.time(p.start, seconds: false))")
+        }
         for track in day.tracks {
             let starts = track.segments.filter(\.startsHere)
             if case .level(let l) = track.band, !starts.isEmpty {
@@ -435,11 +449,12 @@ private struct CalMonthPage: View {
 }
 
 /// A day: its number, the eclipse if one falls on it, and the bands with every boundary at its time of day.
-/// A line of a roomy day cell: "ε#5 07:12" (level nil: the gold of an eclipse or a sync).
+/// A line of a roomy day cell: "ε#5 07:12" (level nil: the gold of an eclipse or a sync; a Pentad draws its shape).
 struct CalCellEvent: Hashable {
     let label: String
     let time: String
     let level: Int?
+    var pentad: Int?
 }
 
 private struct CalDayCell: View, Equatable {
@@ -459,6 +474,15 @@ private struct CalDayCell: View, Equatable {
                     .frame(minWidth: metrics.regular ? 24 : 20, minHeight: metrics.regular ? 24 : 20)
                     .background { if isToday { Circle().fill(Theme.now) } }
                 Spacer(minLength: 0)
+                if events.isEmpty, let p = day.pentads.first {
+                    // the Pentad that begins on the day, as its weekday (roomy cells list it with its time)
+                    PentadMark(index: p.index)
+                        .font(.system(size: metrics.cellWidth < 44 ? 9 : 10, weight: .semibold))
+                        .foregroundStyle(Theme.gold.opacity(day.inMonth ? 0.9 : 0.45))
+                        .lineLimit(1)
+                        .fixedSize()
+                        .padding(.top, 4)
+                }
                 if day.eclipse != nil {
                     CalendarEclipseMark(size: metrics.regular ? 13 : 10).padding(.top, 3)
                 }
@@ -466,7 +490,8 @@ private struct CalDayCell: View, Equatable {
             if !events.isEmpty {
                 VStack(alignment: .leading, spacing: 1) {
                     ForEach(events.prefix(3), id: \.self) { e in
-                        Text("\(Text(e.label).fontWeight(.semibold).foregroundStyle(e.level.map { Theme.levelColor($0) } ?? Theme.gold)) \(Text(e.time).foregroundStyle(Theme.ink3))")
+                        let label = e.pentad.map { Text.pentadMark($0) } ?? Text(e.label)
+                        Text("\(label.fontWeight(.semibold).foregroundStyle(e.level.map { Theme.levelColor($0) } ?? Theme.gold)) \(Text(e.time).foregroundStyle(Theme.ink3))")
                             .font(.caption2.monospacedDigit())
                             .lineLimit(1)
                     }
@@ -540,6 +565,7 @@ struct CalBandsCanvas: View {
             let odd = s.index % 2 == 1
             let opacity: Double = {
                 if case .sync = track.band { return [0.9, 0.55, 0.75, 0.4][s.ordinal] }
+                if case .pentad = track.band { return s.ordinal % 2 == 0 ? 0.82 : 0.55 }
                 return odd ? 0.42 : 0.82
             }()
             context.fill(shape.path(in: rect), with: .color(color.opacity(opacity)))
@@ -551,12 +577,13 @@ struct CalBandsCanvas: View {
                 context.stroke(tick, with: .color(Theme.ink.opacity(0.9)), lineWidth: fine ? 1 : 1.25)
             }
             if !fine, s.startsHere || labelsContinuing && s.x0 == 0 {
-                let label: String = {
-                    if case .sync = track.band { return s.ordinal == 0 ? "S\(s.index)" : "" }
-                    return "#\(s.ordinal)"
+                let label: Text = {
+                    if case .sync = track.band { return Text(verbatim: s.ordinal == 0 ? "S\(s.index)" : "") }
+                    if case .pentad = track.band { return Text.pentadMark(s.ordinal) }
+                    return Text(verbatim: "#\(s.ordinal)")
                 }()
-                guard !label.isEmpty else { continue }
-                let text = context.resolve(Text(label).font(.system(size: regular ? 10 : 8, weight: .bold).monospacedDigit())
+                if case .sync = track.band, s.ordinal != 0 { continue }
+                let text = context.resolve(label.font(.system(size: regular ? 10 : 8, weight: .bold).monospacedDigit())
                     .foregroundStyle(Theme.background.opacity(s.startsHere ? 0.95 : 0.6)))
                 let size = text.measure(in: CGSize(width: 200, height: h))
                 if size.width + 4 <= x1 - x0 {

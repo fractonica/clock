@@ -671,8 +671,58 @@ struct ConverterSolarCard: View {
                     .font(.subheadline)
                     .foregroundStyle(Theme.ink3)
             }
+            if let p = Pentads.at(snap.t) {
+                pentads(p, n)
+            }
         }
         .task { if range == nil { range = CalMath.syncRange(clock) } }
+    }
+}
+
+extension ConverterSolarCard {
+    /// The sync's four Pentads, its "weekdays": each about a solar day (4¾η), five Helions (the Hypopentad four), the
+    /// moment's lit with its Helion's place; tap one to set the converter where it begins.
+    @ViewBuilder
+    fileprivate func pentads(_ p: PentadReading, _ n: Notation) -> some View {
+        let clock = store.clock
+        VStack(alignment: .leading, spacing: 6) {
+            Divider().overlay(Theme.line)
+            Text.ledByPentad(p.index, Text(verbatim: PentadWords.place(p)))
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(Theme.gold)
+                .padding(.top, 2)
+            ForEach(0..<4, id: \.self) { i in
+                let span = clock.pentad(sync: p.sync, index: i)
+                Button {
+                    if let span { model.set((span.start * 1000).rounded(.up) / 1000, from: .sync) }
+                } label: {
+                    HStack(spacing: 10) {
+                        CalPentadChip(index: i, named: true, filled: i == p.index)
+                            .frame(minWidth: 110, alignment: .leading)
+                        Text(verbatim: i == 3 ? "4η" : "5η")
+                            .font(.caption.monospacedDigit())
+                            .foregroundStyle(Theme.ink3)
+                        Spacer(minLength: 4)
+                        if let span {
+                            Text(verbatim: pure ? n.stamp(at: span.start, upTo: "iota") : earth.dateTime(span.start))
+                                .font(pure ? .code(12) : .subheadline.monospacedDigit())
+                                .foregroundStyle(i == p.index ? Theme.ink : Theme.ink2)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.7)
+                        }
+                    }
+                    .contentShape(.rect)
+                }
+                .buttonStyle(.plain)
+                .disabled(span == nil)
+                .accessibilityLabel(Text(verbatim: "\(PentadWords.name(i))\(i == p.index ? ", the moment's" : ""): set the converter where it begins"))
+            }
+            Text(pure ? "4¾η is a solar day: each Pentad begins a quarter Helion later in it, and the Hypopentad, one Helion short, brings Pentad I back."
+                 : "A solar day is 4¾ Helions: each Pentad begins a quarter Helion (≈ 1.26 h) later in the day, and the Hypopentad, one Helion short, brings Pentad I back.")
+                .font(.caption)
+                .foregroundStyle(Theme.ink3)
+                .fixedSize(horizontal: false, vertical: true)
+        }
     }
 }
 

@@ -52,7 +52,7 @@ final class MonthModel {
     var pureBand: Int {
         didSet { if !launching { UserDefaults.standard.set(pureBand, forKey: Self.pureBandKey) } }
     }
-    static let pureBands = [3, 4, 6]
+    static let pureBands = [3, 4, 6, MonthModel.pentadBand]
 
     /// What ◀ ▶ step by on the Delta page.
     enum PageStep: Int, CaseIterable, Identifiable, Sendable {
@@ -100,7 +100,7 @@ final class MonthModel {
     init() {
         let d = UserDefaults.standard
         let stored = (d.stringArray(forKey: Self.bandsKey) ?? []).compactMap(CalendarBand.init(key:))
-        bands = stored.isEmpty ? [.level(4), .level(6)] : Array(stored.prefix(Self.maxBands))
+        bands = stored.isEmpty ? Self.defaultBands : Array(stored.prefix(Self.maxBands))
         let week = d.object(forKey: Self.weekKey) as? Int
         weekStart = week == 0 || week == 1 ? week! : (Calendar.current.firstWeekday == 1 ? 0 : 1)
         pageStep = PageStep(rawValue: d.integer(forKey: Self.stepKey)) ?? .delta
@@ -110,6 +110,8 @@ final class MonthModel {
 
     /// At most three bands share a cell.
     static let maxBands = 3
+    /// The Nuclides, the Pentads (a date's "weekday", SPEC §7.5) and the Helions they group.
+    static let defaultBands: [CalendarBand] = [.level(4), .pentad, .level(6)]
 
     private func save() {
         UserDefaults.standard.set(bands.map(\.key), forKey: Self.bandsKey)
@@ -129,12 +131,17 @@ final class MonthModel {
         bands = next.sorted { order($0) < order($1) }
     }
 
+    /// Coarse to fine: the levels, the Pentads just above the Helions they group, the sync last.
     private func order(_ band: CalendarBand) -> Int {
         switch band {
-        case .level(let l): l
-        case .sync: 100
+        case .level(let l): l * 10
+        case .pentad: 55
+        case .sync: 1000
         }
     }
+
+    /// The pure page's band for the Pentads (not a level, so never the app-wide selected level).
+    static let pentadBand = 100
 
     var syncRange: ClosedRange<Int> {
         if let syncs { return syncs }

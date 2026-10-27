@@ -417,9 +417,10 @@ struct CalSyncQuarter: Hashable, Sendable {
 
 // MARK: - The month grid
 
-/// What a day cell's band shows: the cycles of a level (γ … η) or the solar sync quarters.
+/// What a day cell's band shows: the cycles of a level (γ … η), the Pentads (SPEC §7.5) or the solar sync quarters.
 enum CalendarBand: Hashable, Sendable, Identifiable {
     case level(Int)
+    case pentad
     case sync
 
     var id: String { key }
@@ -428,6 +429,7 @@ enum CalendarBand: Hashable, Sendable, Identifiable {
     var key: String {
         switch self {
         case .level(let level): String(level)
+        case .pentad: "pentad"
         case .sync: "sync"
         }
     }
@@ -435,6 +437,8 @@ enum CalendarBand: Hashable, Sendable, Identifiable {
     init?(key: String) {
         if key == "sync" {
             self = .sync
+        } else if key == "pentad" {
+            self = .pentad
         } else if let level = Int(key), CalendarBand.levels.contains(level) {
             self = .level(level)
         } else {
@@ -444,7 +448,7 @@ enum CalendarBand: Hashable, Sendable, Identifiable {
 
     /// The levels a band can show: γ (1.1 years) … η (5 hours).
     static let levels = 2...6
-    static let all: [CalendarBand] = levels.map(CalendarBand.level) + [.sync]
+    static let all: [CalendarBand] = levels.map(CalendarBand.level) + [.pentad, .sync]
 }
 
 /// A Gregorian month of local days (always 6 weeks × 7 days) whose cells carry the cycles of the chosen bands, each
@@ -455,8 +459,8 @@ struct CalMonthGrid: Sendable {
         /// Where the piece lies inside the day, 0 … 1 by elapsed time.
         let x0: Double
         let x1: Double
-        /// Global cycle index (the sync number for the sync band) and the ordinal inside its parent, from 1 (the
-        /// quarter 0 … 3 for the sync band).
+        /// Global cycle index (the sync number for the sync and Pentad bands) and the ordinal inside its parent, from 1
+        /// (the quarter 0 … 3 for the sync band, the Pentad 0 … 3 for the Pentad band).
         let index: Int64
         let ordinal: Int
         /// The whole cycle (or sync quarter).
@@ -469,6 +473,13 @@ struct CalMonthGrid: Sendable {
     struct Track: Hashable, Sendable {
         let band: CalendarBand
         let segments: [Segment]
+    }
+
+    /// A Pentad beginning on a day: which (0 … 3, 3 the Hypopentad), of which sync, and when.
+    struct PentadStart: Hashable, Sendable {
+        let index: Int
+        let sync: Int
+        let start: Double
     }
 
     struct Day: Identifiable, Hashable, Sendable {
@@ -488,6 +499,9 @@ struct CalMonthGrid: Sendable {
         let rangeTo: Double
         let eclipse: Int?
         let tracks: [Track]
+        /// The Pentads that begin on the day, as a date carries its weekday (0, 1 or now and then 2: a Pentad is about a
+        /// day, the Hypopentad 20 hours).
+        let pentads: [PentadStart]
 
         var id: Int { index }
         var length: Double { end - start }
@@ -516,6 +530,9 @@ struct CalMonthGrid: Sendable {
         start = starts[0]
         end = starts[42]
         let pieces = bands.map { band in (band, CalMonthGrid.items(clock: clock, band: band, from: starts[0], to: starts[42], syncRange: syncRange)) }
+        // the Pentads of the six weeks, once: each day carries the ones that begin on it
+        let pentadSpans = CalPentads.spans(clock, from: starts[0], to: starts[42])
+        var pentadCursor = 0
         var cursor = [Int](repeating: 0, count: pieces.count)
         var out: [Day] = []
         for i in 0..<42 {
@@ -541,12 +558,19 @@ struct CalMonthGrid: Sendable {
                     tracks.append(Track(band: band, segments: segments))
                 }
             }
+            var pentads: [PentadStart] = []
+            while pentadCursor < pentadSpans.count, pentadSpans[pentadCursor].start < e {
+                let p = pentadSpans[pentadCursor]
+                // the catalogue's first Pentad is cut at its edge: it begins before it, not on that day
+                if p.start >= s, p.start > clock.tMin { pentads.append(PentadStart(index: p.index, sync: p.sync, start: p.start)) }
+                pentadCursor += 1
+            }
             out.append(Day(
                 index: i, year: d.year, month: d.month, day: d.day, inMonth: d.year == year && d.month == month,
                 weekday: CalMath.weekday(d.year, d.month, d.day), start: s, end: e, inRange: inRange,
                 rangeFrom: inRange ? max(0, (clock.tMin - s) / (e - s)) : 0,
                 rangeTo: inRange ? min(1, (clock.tMax - s) / (e - s)) : 0,
-                eclipse: inRange ? CalMath.eclipse(clock, in: s, e) : nil, tracks: tracks))
+                eclipse: inRange ? CalMath.eclipse(clock, in: s, e) : nil, tracks: tracks, pentads: pentads))
         }
         days = out
     }
@@ -577,6 +601,10 @@ struct CalMonthGrid: Sendable {
         case .sync:
             return CalMath.syncQuarters(clock, from: t0, to: t1, range: syncRange).map {
                 Item(index: Int64($0.sync), ordinal: $0.quarter, start: $0.start, end: $0.end)
+            }
+        case .pentad:
+            return CalPentads.spans(clock, from: t0, to: t1).map {
+                Item(index: Int64($0.sync), ordinal: $0.index, start: $0.start, end: $0.end)
             }
         case .level(let level):
             return cycles(clock: clock, level: level, from: t0, to: t1)
