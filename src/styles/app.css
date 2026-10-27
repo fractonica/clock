@@ -25,6 +25,7 @@
   --radius-sm: 10px;
   --gap: 14px;
   --font-ui: ui-sans-serif, system-ui, -apple-system, "SF Pro Text", "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  --font-numeral: ui-serif, "New York", Georgia, "Times New Roman", serif; /* Roman numerals of the Pentads */
   --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
   --topbar-h: 68px; /* minimum header height */
   --bar: var(--topbar-measured, var(--topbar-h)); /* real header height, set from main.js */
@@ -88,7 +89,9 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .brand-text b { font-size: 16px; letter-spacing: 0.02em; }
 .brand-text small { color: var(--ink-3); font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; }
 
-.readout { display: flex; flex-direction: column; min-width: 230px; flex: none; }
+/* the readout: [Pentad] time / date – the Pentad leads both lines like a weekday (styles/pentad.css) */
+.readout { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 8px; align-items: center; min-width: 230px; flex: none; }
+.readout > .readout-time, .readout > .readout-sub { grid-column: 2; }
 .readout-time { font-size: 26px; line-height: 1.05; letter-spacing: 0.01em; font-weight: 600; }
 .readout-sub { display: flex; gap: 10px; font-size: 12px; color: var(--ink-2); flex-wrap: nowrap; white-space: nowrap; overflow: hidden; }
 body[data-mode="travel"] .readout-time { color: var(--cursor); }
@@ -290,7 +293,8 @@ body[data-pure] #ro-pos { margin-left: auto; }
    A pentagon + numeral for Pentads I–III, a square alone for the Hypopentad; drawn in currentColor at the text's size. */
 .pentad-mark { display: inline-block; white-space: nowrap; font-family: var(--font-ui); font-weight: 600; font-style: normal; letter-spacing: 0.02em; line-height: 1; font-variant-numeric: normal; }
 .pentad-mark .pentad-shape { display: inline-block; width: 0.92em; height: 0.92em; vertical-align: -0.1em; overflow: visible; }
-.pentad-num { margin-left: 0.12em; font-size: 0.88em; }
+/* serif numerals read as Roman ("II"), never as bars or a pause sign */
+.pentad-num { margin-left: 0.12em; font-size: 0.92em; font-family: var(--font-numeral); font-weight: 700; letter-spacing: 0.03em; }
 .pentad-hel { margin-left: 0.08em; font-size: 0.78em; font-weight: 500; opacity: 0.72; }
 .pentad-lead { white-space: nowrap; }
 .pentad-lead > .pentad-mark { margin-right: 0.42em; }

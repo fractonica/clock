@@ -200,6 +200,7 @@ function applyUrl() {
 const MODULES = [
   { id: 'face', slot: '#slot-face', path: './ui/face.js' },
   { id: 'ladder', slot: '#slot-ladder', path: './ui/ladder.js' },
+  { id: 'pentad', slot: '#slot-pentad', path: './ui/pentad/card.js' },
   { id: 'upnext', slot: '#slot-upnext', path: './ui/upnext.js' },
   { id: 'jump', slot: '#slot-jump', path: './ui/jump.js' },
   { id: 'rings', slot: '#view-rings', path: './ui/rings.js', tab: 'Rings', icon: 'rings' },

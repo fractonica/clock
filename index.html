@@ -16,6 +16,7 @@
   <link rel="stylesheet" href="src/styles/calendar.css">
   <link rel="stylesheet" href="src/styles/sound.css">
   <link rel="stylesheet" href="src/styles/diary.css">
+  <link rel="stylesheet" href="src/styles/pentad.css">
   <script src="fractonica.js"></script>
   <script type="module" src="src/main.js"></script>
 </head>
@@ -28,6 +29,7 @@
       </div>
 
       <div class="readout" id="readout" aria-label="Displayed time">
+        <button class="ro-pentad" id="ro-pentad" type="button" aria-expanded="false" aria-controls="pentad-pop" aria-haspopup="dialog" hidden></button>
         <div class="readout-time mono" id="ro-time">—</div>
         <div class="readout-sub">
           <span id="ro-date">—</span>
@@ -73,12 +75,14 @@
       </section>
 
       <aside class="side" aria-label="Cycle overview">
+        <section class="card" id="slot-pentad"></section>
         <section class="card" id="slot-upnext"></section>
         <section class="card" id="slot-ladder"></section>
       </aside>
     </main>
 
     <div class="glossary card" id="glossary" role="dialog" aria-label="Pure mode glossary" hidden></div>
+    <div class="pentad-pop card" id="pentad-pop" role="dialog" aria-label="The Pentads against the solar day" hidden></div>
     <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
   </div>
 </body>
