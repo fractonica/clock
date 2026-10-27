@@ -5,3 +5,5 @@ Fractonica/Features/Rings/RingsText.swift
 Fractonica/Features/Rings/RingsPureText.swift
 Fractonica/Features/Rings/RingsHelp.swift
 Shared/Notation+Standard.swift
+Fractonica/Features/Rings/RingsPentads.swift
+Shared/Pentads.swift

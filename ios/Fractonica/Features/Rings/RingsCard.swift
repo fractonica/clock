@@ -11,6 +11,8 @@ struct RingsCard: View {
     @Environment(ToastCenter.self) private var toasts
     @Environment(\.dynamicTypeSize) private var typeSize
     @ScaledMetric(relativeTo: .title) private var readingSize: CGFloat = 30
+    /// The Pentads of the cycle on show, read once a cycle (its moments lead with them).
+    @State private var pentads = RingsPentads()
 
     private let clock = FractonicaClock.shared
     private let cycles = RingsCycles()
@@ -144,16 +146,20 @@ struct RingsCard: View {
         let clock: String
         let count: String
         let label: String
+        /// The threshold's Pentad, which leads its moment's first line.
+        var pentad: Int? = nil
     }
 
     private func chipItems(_ r: LevelReading, t: Double) -> [ChipItem] {
         let times = r.thresholds.map(\.time)
+        let events = pentads.events(of: r)
+        let led = { (k: Int) in events.indices.contains(k + 1) ? events[k + 1] : nil }
         if settings.pure {
             let words = RingsPureText()
             let labels = words.boundaryLabels(level: r.level, times: times)
             return (0..<4).map { k in
                 let c = words.chip(r, k: k, t: times[k + 1], now: t, label: labels[k + 1])
-                return ChipItem(k: k, time: times[k + 1], date: c.date, clock: c.time, count: c.count, label: c.label)
+                return ChipItem(k: k, time: times[k + 1], date: c.date, clock: c.time, count: c.count, label: c.label, pentad: led(k))
             }
         }
         let earth = settings.wording.earth
@@ -169,7 +175,8 @@ struct RingsCard: View {
             let isNext = r.quarter == k
             let count = isNext ? RingsText.countdownBody(x - t) : ""
             return ChipItem(k: k, time: x, date: sameDay ? "" : p.date, clock: p.time, count: count,
-                            label: "\(Fractonica.quarterNames[k]), \(RingsText.whenText(earth, x, span: r.duration))\(count.isEmpty ? "" : ", in \(count)")")
+                            label: "\(Fractonica.quarterNames[k]), \(RingsText.whenText(earth, x, span: r.duration))\(count.isEmpty ? "" : ", in \(count)")",
+                            pentad: led(k))
         }
     }
 
@@ -184,13 +191,14 @@ struct RingsCard: View {
                 Text(Fractonica.quarterNames[item.k])
                     .font(.caption.weight(isNext ? .bold : .semibold))
                     .foregroundStyle(isNext ? color : passed ? Theme.ink3 : Theme.ink2)
+                // the moment's first line leads with its Pentad
                 if !item.date.isEmpty {
-                    Text(item.date)
+                    Text.ledByPentad(item.pentad, Text(item.date))
                         .font(.caption2.monospacedDigit())
                         .foregroundStyle(Theme.ink3)
                 }
                 if !item.clock.isEmpty {
-                    Text(item.clock)
+                    Text.ledByPentad(item.date.isEmpty ? item.pentad : nil, Text(item.clock))
                         .font(.footnote.monospacedDigit())
                         .foregroundStyle(passed ? Theme.ink3 : Theme.ink)
                         .strikethrough(passed, color: Theme.ink3)
@@ -244,6 +252,8 @@ struct RingsCard: View {
         let label: String
         let lines: [String]
         var note: String?
+        /// The fact is a moment: its first line leads with this Pentad.
+        var pentad: Int?
     }
 
     @ViewBuilder
@@ -256,7 +266,7 @@ struct RingsCard: View {
                     ForEach(rows.indices, id: \.self) { i in
                         VStack(alignment: .leading, spacing: 2) {
                             factLabel(rows[i].label)
-                            factValue(rows[i].lines, note: rows[i].note)
+                            factValue(rows[i].lines, note: rows[i].note, pentad: rows[i].pentad)
                         }
                     }
                     VStack(alignment: .leading, spacing: 2) {
@@ -269,7 +279,7 @@ struct RingsCard: View {
                     ForEach(rows.indices, id: \.self) { i in
                         GridRow {
                             factLabel(rows[i].label)
-                            factValue(rows[i].lines, note: rows[i].note)
+                            factValue(rows[i].lines, note: rows[i].note, pentad: rows[i].pentad)
                         }
                     }
                     GridRow {
@@ -287,8 +297,10 @@ struct RingsCard: View {
         let end = RingsText.whenParts(earth, r.end, span: r.duration)
         return [
             Fact(label: "Started", lines: [start.date, start.time],
-                 note: t >= r.start ? "\(RingsText.countdownBody(t - r.start)) ago" : "in \(RingsText.countdownBody(r.start - t))"),
-            Fact(label: "Ends", lines: [end.date, end.time] + (r.clipped ? ["end of the catalogue"] : []), note: "in \(RingsText.countdownBody(r.end - t))"),
+                 note: t >= r.start ? "\(RingsText.countdownBody(t - r.start)) ago" : "in \(RingsText.countdownBody(r.start - t))",
+                 pentad: pentads.start(of: r)),
+            Fact(label: "Ends", lines: [end.date, end.time] + (r.clipped ? ["end of the catalogue"] : []), note: "in \(RingsText.countdownBody(r.end - t))",
+                 pentad: pentads.end(of: r)),
             Fact(label: "Length", lines: ["\(EarthTime.duration(r.duration))\(r.clipped ? " (clipped by the catalogue)" : "")"]),
             Fact(label: "Glyph", lines: ["state \(r.index) of 0–\(r.states - 1)", "value \(RingsText.value(r.value))\(r.dotted ? " · dotted" : "")"]),
         ]
@@ -300,8 +312,8 @@ struct RingsCard: View {
         let start = words.when(r.start, res: res, dateTokens: 3, timeTokens: 3)
         let end = words.when(r.end, res: res, dateTokens: 3, timeTokens: 3)
         return [
-            Fact(label: "Started", lines: [start.date, start.time], note: words.inText(now: t, r.start)),
-            Fact(label: "Ends", lines: [end.date, end.time, words.endLine(r)], note: words.inText(now: t, r.end)),
+            Fact(label: "Started", lines: [start.date, start.time], note: words.inText(now: t, r.start), pentad: pentads.start(of: r)),
+            Fact(label: "Ends", lines: [end.date, end.time, words.endLine(r)], note: words.inText(now: t, r.end), pentad: pentads.end(of: r)),
             Fact(label: "Length", lines: ["\(words.lengthWithName(level: r.level, start: r.start, end: r.end, clipped: r.clipped))\(r.clipped ? " (clipped by the catalogue)" : "")"]),
             Fact(label: "Glyph", lines: [RingsPureText.stateText(r.phase, level: r.level), "value \(RingsText.value(r.value))\(r.dotted ? " · dotted" : "")"]),
         ]
@@ -314,10 +326,10 @@ struct RingsCard: View {
             .gridColumnAlignment(.leading)
     }
 
-    private func factValue(_ lines: [String], note: String?) -> some View {
+    private func factValue(_ lines: [String], note: String?, pentad: Int? = nil) -> some View {
         VStack(alignment: .leading, spacing: 2) {
-            ForEach(Array(lines.filter { !$0.isEmpty }.enumerated()), id: \.offset) { _, line in
-                Text(line)
+            ForEach(Array(lines.filter { !$0.isEmpty }.enumerated()), id: \.offset) { i, line in
+                Text.ledByPentad(i == 0 ? pentad : nil, Text(line))
                     .font(.footnote.monospacedDigit())
                     .foregroundStyle(Theme.ink)
             }
