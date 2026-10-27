@@ -17,6 +17,7 @@ enum WidgetChecks {
         pureLeaks()
         edges()
         helionArc()
+        pentads()
         Checks.finish()
     }
 
@@ -150,7 +151,7 @@ enum WidgetChecks {
             for unit in JournalSnapshot.units {
                 expectHonest("journal \(unit)", from: start, changes: { _ in JournalSnapshot.changes(unit: unit) }) { t in
                     JournalSnapshot(at: t, unit: unit, words: pure).map { s in
-                        "\(s.top) \(s.tokens.map(\.text)) \(s.lines) \(s.preon.map { "\($0.lowerBound)" } ?? "") \(Notation.pair(s.leadPhase).index)"
+                        "\(s.top) \(s.tokens.map(\.text)) \(s.lines) \(s.preon.map { "\($0.lowerBound)" } ?? "") \(Notation.pair(s.leadPhase).index) P\(s.pentad ?? -1)"
                     }
                 }
             }
@@ -158,30 +159,30 @@ enum WidgetChecks {
                 let mode = words.pure ? "pure" : "earth"
                 expectHonest("clock \(mode)", from: start, changes: { _ in ClockSnapshot.changes(words: words) }) { t in
                     ClockSnapshot(at: t, words: words).map {
-                        "\($0.tokens.map(\.text)) \($0.helionPair) \($0.solarDigits ?? []) \($0.solarText) \($0.nextHelionWhen) \($0.major) \($0.nuclide) \($0.earthDay ?? "")"
+                        "\($0.tokens.map(\.text)) \($0.helionPair) \($0.solarDigits ?? []) \($0.solarText) \($0.nextHelionWhen) \($0.major) \($0.nuclide) \($0.earthDay ?? "") P\($0.pentad ?? -1)"
                     }
                 }
                 // Earth turnovers counting down live change nothing at a Preon start
                 expectHonest("up next \(mode)", from: start, exactChanges: words.pure, changes: { UpNextSnapshot.changes(at: $0, words: words) }) { t in
-                    UpNextSnapshot(at: t, words: words).map { $0.turnovers.map { "\($0.level) \($0.begins ?? "") \($0.when) \($0.countdown ?? "")" }.joined(separator: "|") }
+                    UpNextSnapshot(at: t, words: words).map { $0.turnovers.map { "\($0.level) \($0.begins ?? "") \($0.when) \($0.countdown ?? "") P\($0.pentad ?? -1)" }.joined(separator: "|") }
                 }
                 for finest in [4, 3] {
                     expectHonest("up next from \(finest) \(mode)", from: start, exactChanges: false,
                                  changes: { UpNextSnapshot.changes(at: $0, words: words, finest: finest) }) { t in
                         UpNextSnapshot(at: t, words: words, finest: finest).map {
-                            $0.turnovers.map { "\($0.level) \($0.begins ?? "") \($0.when) \($0.countdown ?? "")" }.joined(separator: "|")
+                            $0.turnovers.map { "\($0.level) \($0.begins ?? "") \($0.when) \($0.countdown ?? "") P\($0.pentad ?? -1)" }.joined(separator: "|")
                         }
                     }
                 }
                 expectHonest("rings \(mode)", from: start, exactChanges: words.pure, changes: { _ in RingsSnapshot.changes(words: words) }) { t in
-                    RingsSnapshot(at: t, words: words).map { "\($0.tokens.map(\.text)) \($0.helionPair) \($0.next?.countdown ?? "") \($0.next?.when ?? "")" }
+                    RingsSnapshot(at: t, words: words).map { "\($0.tokens.map(\.text)) \($0.helionPair) \($0.next?.countdown ?? "") \($0.next?.when ?? "") \(String(describing: $0.pentad))" }
                 }
             }
             expectHonest("accessory", from: start, changes: { _ in AccessorySnapshot.changes }) { t in
-                AccessorySnapshot(at: t).map { "\($0.helion) \($0.helionPair) \($0.inline) \($0.major) \($0.nuclide)" }
+                AccessorySnapshot(at: t).map { "\($0.helion) \($0.helionPair) \($0.inline) \($0.major) \($0.nuclide) P\($0.pentad ?? -1)" }
             }
             expectHonest("helion arc", from: start, changes: { _ in HelionArcSnapshot.changes }) { t in
-                HelionArcSnapshot(at: t).map { "\($0.helionToken.text) \($0.preonToken.text) \($0.preon) \($0.step)" }
+                HelionArcSnapshot(at: t).map { "\($0.helionToken.text) \($0.preonToken.text) \($0.preon) \($0.step) P\($0.pentad ?? -1)" }
             }
         }
 
@@ -517,5 +518,61 @@ enum WidgetChecks {
             check(gaps.allSatisfy { abs($0 - preonLength / 16) < 0.5 }, "entries a sixteenth of a Preon apart: \(gaps.min() ?? 0) … \(gaps.max() ?? 0)")
             check(boundaries.count >= 9 && last - a < 86_400, "150 entries last about 9ι: \(boundaries.count) Preon starts, \(Int(last - a)) s")
         }
+    }
+
+    // MARK: - Pentads
+
+    /// Every widget that shows a date carries the Pentad (SPEC §7.5) and has an entry where it changes.
+    static func pentads() {
+        let pure = WidgetWords(pure: true)
+        let earth = WidgetWords(pure: false, zone: "UTC")
+        // vector A: Pentad II, its 2nd Helion
+        check(JournalSnapshot(at: a, unit: 5, words: pure)?.pentad == 1, "journal: Pentad II at A")
+        check(JournalSnapshot(at: a, unit: 0, words: pure)?.pentad == 1, "a major journal face too")
+        check(ClockSnapshot(at: a, words: earth)?.pentad == 1, "clock: Pentad II at A")
+        check(AccessorySnapshot(at: a)?.pentad == 1, "accessories: Pentad II at A")
+        check(HelionArcSnapshot(at: a)?.pentad == 1, "Helion Arc: Pentad II at A")
+        let place = RingsSnapshot(at: a, words: pure)?.pentad
+        check(place?.index == 1 && place?.helion == 2 && place?.helions == 5, "rings: the 2nd Helion of Pentad II's 5: \(String(describing: place))")
+        if let up = UpNextSnapshot(at: a, words: pure) {
+            check(up.turnovers.allSatisfy { $0.pentad == Pentads.at($0.time + WidgetChange.settle)?.index && $0.pentad != nil },
+                  "each turnover carries the Pentad it opens into")
+        }
+        check(AccessorySnapshot(at: a)?.spoken.hasPrefix("Pentad II · 34η 29ι") == true, "the accessory is read with its Pentad first")
+        check(ClockSnapshot(at: a, words: pure)?.accessibility.hasPrefix("Pentad II · ") == true, "the clock is read with its Pentad first")
+        check(HelionArcSnapshot(at: a)?.accessibility.hasPrefix("Pentad II · Helion 34") == true, "the arc is read with its Pentad first")
+
+        // the change: the running Pentad's end, nothing past the catalogue
+        check(WidgetChange.pentad.next(after: a) == Pentads.at(a)?.end, "a Pentad changes at its end")
+        check(WidgetChange.pentad.next(after: clock.tMax - 1) == nil, "no Pentad change past the catalogue")
+
+        // every timeline holds an entry at each Pentad boundary inside its span (merged entries may come ≤ 1 s late)
+        let schedules: [(String, (Double) -> Set<WidgetChange>)] = [
+            ("journal α", { _ in JournalSnapshot.changes(unit: 0) }),
+            ("journal δ", { _ in JournalSnapshot.changes(unit: 3) }),
+            ("journal η", { _ in JournalSnapshot.changes(unit: 5) }),
+            ("clock", { _ in ClockSnapshot.changes(words: earth) }),
+            ("rings", { _ in RingsSnapshot.changes(words: pure) }),
+            ("accessory", { _ in AccessorySnapshot.changes }),
+            ("helion arc", { _ in HelionArcSnapshot.changes }),
+            ("up next", { UpNextSnapshot.changes(at: $0, words: earth) }),
+        ]
+        for start in [a, 946_684_800, 2_886_085_800] {
+            for (name, changes) in schedules {
+                let times = EntrySchedule.times(from: start, horizon: 3 * 86_400, changes: changes)
+                guard let last = times.last else { continue }
+                var boundary = Pentads.at(start)?.end
+                var missing = 0, seen = 0
+                while let b = boundary, b <= last {
+                    seen += 1
+                    if !times.contains(where: { $0 >= b && $0 < b + 1.001 }) { missing += 1 }
+                    boundary = Pentads.at(b + WidgetChange.settle)?.end
+                }
+                check(missing == 0, "\(name) from \(start): \(missing) of \(seen) Pentad boundaries without an entry")
+            }
+        }
+        // the slow faces still change only a few times a day: once more at each Pentad
+        let slow = EntrySchedule.times(from: a, changes: JournalSnapshot.changes(unit: 0), horizon: 86_400)
+        check(slow.count < 12, "an Alpha face changes a few times a day, its Pentad included: \(slow.count)")
     }
 }

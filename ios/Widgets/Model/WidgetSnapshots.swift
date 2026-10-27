@@ -33,8 +33,10 @@ struct JournalSnapshot: Hashable, Sendable {
     let lines: [String]
     /// Minor faces: the running Preon (start, end), drawn as a live bar.
     let preon: ClosedRange<Double>?
-    /// The short pure date, for the large face's foot: "Delta Trifracton End · ε#5".
+    /// The short pure date, for the large face's foot: "Delta Trifracton End · ε#5" (drawn led by its Pentad).
     let caption: String
+    /// The Pentad (SPEC §7.5, 0 … 3) the moment is in: its mark leads the face's date like a weekday.
+    let pentad: Int?
     /// What VoiceOver reads.
     let accessibility: String
 
@@ -63,8 +65,9 @@ struct JournalSnapshot: Hashable, Sendable {
         }
         let date = words.notation.date(at: t)
         caption = date.map { "\(Notation.periodName(level: 3, ordinal: $0.delta)) \($0.quarter.delta) · ε#\($0.epsilon)" } ?? ""
+        pentad = Pentads.at(t, clock: clock)?.index
         let middle = lines.isEmpty ? tokens.map(\.text).joined(separator: " ") : lines.joined(separator: " ")
-        accessibility = "\(middle); the \(reading.leadLetter) phase above and its cycle below"
+        accessibility = PentadWords.lead("\(middle); the \(reading.leadLetter) phase above and its cycle below", index: pentad)
     }
 
     /// The changes the face follows for a unit.
@@ -73,9 +76,9 @@ struct JournalSnapshot: Hashable, Sendable {
         let lead = Journal.units[unit].level
         if lead <= 3 {
             // the glyph, the tick (in 256 steps), the child's ordinal and the quarter
-            return [.glyph3(level: lead), .pair(level: lead), .cycle(level: lead + 1), .quarter(level: lead)]
+            return [.glyph3(level: lead), .pair(level: lead), .cycle(level: lead + 1), .quarter(level: lead), .pentad]
         }
-        return [.pair(level: lead), .cycle(level: 8)]
+        return [.pair(level: lead), .cycle(level: 8), .pentad]
     }
 }
 
@@ -105,12 +108,14 @@ struct ClockSnapshot: Hashable, Sendable {
     let helionEnd: Double
     /// Pure "6ι" (counted from the running Preon's start); Earth "17:14" (when).
     let nextHelionWhen: String
+    /// The Pentad (0 … 3) the moment is in: its mark leads the date line.
+    let pentad: Int?
     let accessibility: String
 
     /// The pair, the Preon count and the solar odometer; with Earth words also midnight (the Earth day, and the
     /// "Thu 15:01" labels of moments on other days).
     static func changes(words: WidgetWords) -> Set<WidgetChange> {
-        let base: Set<WidgetChange> = [.pair(level: 6), .cycle(level: 8), .solarDigits]
+        let base: Set<WidgetChange> = [.pair(level: 6), .cycle(level: 8), .solarDigits, .pentad]
         return words.pure ? base : base.union([.midnight(zone: words.earth.zone)])
     }
 
@@ -140,7 +145,8 @@ struct ClockSnapshot: Hashable, Sendable {
         nextHelion = helion.clipped ? nil : words.nextCycleName(level: 6, cycle: helion.cycle)
         helionEnd = helion.end
         nextHelionWhen = words.pure ? words.span(from: preon.start, to: helion.end) : words.earthWhen(helion.end, from: t)
-        accessibility = "\(tokens.map(\.text).joined(separator: " ")), \(major), \(nuclide)"
+        pentad = Pentads.at(t, clock: clock)?.index
+        accessibility = PentadWords.lead("\(tokens.map(\.text).joined(separator: " ")), \(major), \(nuclide)", index: pentad)
     }
 }
 
@@ -160,6 +166,8 @@ struct Turnover: Hashable, Sendable, Identifiable {
     /// Pure: the span still to come, "5η 12ι"; Earth: a static span for far events ("3 d 04 h"), nil when the view
     /// counts down live.
     let countdown: String?
+    /// The Pentad (0 … 3) the turnover falls in (just after it): its mark leads `when`.
+    var pentad: Int? = nil
 
     var id: Double { time }
 
@@ -228,7 +236,8 @@ struct UpNextSnapshot: Hashable, Sendable {
                 ? words.span(from: preon.start, to: reading.end)
                 : (reading.end - t < Self.liveLimit ? nil : words.earthSpan(reading.end - t))
             byTime[reading.end] = Turnover(level: level, time: reading.end, start: reading.start, begins: begins,
-                                           when: when, countdown: countdown)
+                                           when: when, countdown: countdown,
+                                           pentad: Pentads.at(reading.end + WidgetChange.settle, clock: clock)?.index)
         }
         turnovers = byTime.values.sorted { $0.time < $1.time }
         pure = words.pure
@@ -265,10 +274,12 @@ struct RingsSnapshot: Hashable, Sendable {
     let tokens: [CountToken]
     let helionPair: [Int]
     let next: Turnover?
+    /// The running Pentad: its index (0 … 3), the Helion's place in it (1 … 5) and its Helions (5, or 4).
+    let pentad: PentadPlace?
     let accessibility: String
 
     static func changes(words: WidgetWords) -> Set<WidgetChange> {
-        let base: Set<WidgetChange> = [.pair(level: 6), .cycle(level: 8)]
+        let base: Set<WidgetChange> = [.pair(level: 6), .cycle(level: 8), .pentad]
         return words.pure ? base : base.union([.midnight(zone: words.earth.zone)])
     }
 
@@ -282,7 +293,8 @@ struct RingsSnapshot: Hashable, Sendable {
         self.tokens = tokens
         helionPair = pair
         next = upNext.turnovers.first
-        accessibility = "Rings α to η; \(tokens.map(\.text).joined(separator: " "))"
+        pentad = Pentads.at(t, clock: clock).map(PentadPlace.init)
+        accessibility = PentadWords.lead("Rings α to η; \(tokens.map(\.text).joined(separator: " "))", index: pentad?.index)
     }
 }
 
@@ -300,11 +312,15 @@ struct AccessorySnapshot: Hashable, Sendable {
     let major: String
     /// "ε#5".
     let nuclide: String
+    /// The Pentad (0 … 3) the moment is in.
+    let pentad: Int?
     /// "34η 29ι".
     var inline: String { tokens.map(\.text).joined(separator: " ") }
+    /// What VoiceOver reads for the rectangular accessory: "Pentad II · 34η 29ι, Delta Trifracton End, ε#5".
+    var spoken: String { PentadWords.lead("\(inline), \(major), \(nuclide)", index: pentad) }
 
-    /// The gauge moves in 256 steps per Helion; the counts change with every Preon.
-    static let changes: Set<WidgetChange> = [.pair(level: 6), .cycle(level: 8)]
+    /// The gauge moves in 256 steps per Helion; the counts change with every Preon (and the Pentad with a Helion).
+    static let changes: Set<WidgetChange> = [.pair(level: 6), .cycle(level: 8), .pentad]
 
     init?(at t: Double, words: WidgetWords = WidgetWords(pure: true)) {
         let n = words.notation
@@ -316,6 +332,25 @@ struct AccessorySnapshot: Hashable, Sendable {
         self.tokens = tokens
         major = "\(Notation.periodName(level: 3, ordinal: date.delta)) \(date.quarter.delta)"
         nuclide = "ε#\(date.epsilon)"
+        pentad = Pentads.at(t, clock: n.model)?.index
+    }
+}
+
+// MARK: - Pentad
+
+/// Where the moment stands in its Pentad (SPEC §7.5): which one, and the Helion's place in it ("2/5").
+struct PentadPlace: Hashable, Sendable {
+    /// 0 … 3; 3 is the Hypopentad.
+    let index: Int
+    /// 1 … 5 (1 … 4 in the Hypopentad).
+    let helion: Int
+    /// 5, or 4 for the Hypopentad.
+    let helions: Int
+
+    init(_ reading: PentadReading) {
+        index = reading.index
+        helion = reading.helion
+        helions = reading.helions
     }
 }
 

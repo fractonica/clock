@@ -2,3 +2,4 @@
 Widgets/Model/*.swift
 Widgets/HelionArc/HelionArcModel.swift
 Shared/Notation+Standard.swift
+Shared/Pentads.swift
