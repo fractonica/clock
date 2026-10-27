@@ -160,7 +160,7 @@ export function createPureMonth(ctx, { tip }) {
     const lv = V.overlay;
     const swatch = `<span class="cal-lg-sw" style="--c:${levelColor(lv)}"></span>`;
     const head = 'Rows: the 5 Nuclides <b>ε#1–5</b> of the Delta; columns: 11 Helions each, from <b>1η</b>, <b>12η</b> … <b>67η</b>. ';
-    const tail = ` <span class="cal-pm-lgs"></span> a solar sync quarter · <span class="cal-pm-lgp"></span> the Pentads under the band, ${pentadMarkHTML(0)} ${pentadMarkHTML(1)} ${pentadMarkHTML(2)} of 5η and the hatched Hypopentad ${pentadMarkHTML(3)} of 4η (a solar day is 4¾η: each Pentad begins ¼η later in the day, the Hypopentad brings Pentad I back) · <b class="cal-pm-lgt">#22</b> an eclipse, marked where it falls · <b class="cal-pm-lgt">S4821</b> a sync that begins here. # numbers and Helions count from 1, counts from 0. Press ? for the glossary.`;
+    const tail = ` <span class="cal-pm-lgs"></span> a solar sync quarter · <span class="cal-pm-lgp"></span> the Pentads under the band, ${pentadMarkHTML(0)} ${pentadMarkHTML(1)} ${pentadMarkHTML(2)} of 5η and the hatched Hypopentad ${pentadMarkHTML(3)} of 4η (the sun comes back every 4¾η, so each Pentad begins ¼η later against it and the Hypopentad brings Pentad I back) · <b class="cal-pm-lgt">#22</b> an eclipse, marked where it falls · <b class="cal-pm-lgt">S4821</b> a sync that begins here. # numbers and Helions count from 1, counts from 0. Press ? for the glossary.`;
     if (lv === 6) return `${swatch}<span>${head}The band is the Helions of each cell, numbered in the Nuclide (every fifth labelled where there is room), a tick at each node (<b>18ι</b> of 36); the Delta's quarters begin at the lines in its colour;${tail}</span>`;
     if (lv === 4) return `${swatch}<span>${head}The band is the Nuclides, one per row (a Nuclide is 77 Helions); the Delta's quarters begin at the lines in its colour;${tail}</span>`;
     return `${swatch}<span>${head}The band is the Delta's quarters <b>Peak</b>, <b>Node</b>, <b>Valley</b>, <b>End</b> (each named by the threshold that ends it, 1¼ Nuclides long);${tail}</span>`;
@@ -295,7 +295,12 @@ export function createPureMonth(ctx, { tip }) {
   }
   /** The Helion numbers (in the Nuclide) of a Pentad run inside a cell: from and to. */
   const runFrom = (c, r) => c.eta0 + Math.round(r.x0 * ETA_PER_CELL);
-  const runTo = (c, r) => c.eta0 + Math.round(r.x1 * ETA_PER_CELL) - 1;
+  /** A Pentad's whole range in its Nuclide's numbers, also where a cell holds only part of it: "33η–37η" (or "76η–3η"). */
+  const etaNo = (n) => ((((n - 1) % 77) + 77) % 77) + 1;
+  const pentadRange = (c, r) => {
+    const first = etaNo(runFrom(c, r) - r.place + 1);
+    return `${first}η–${etaNo(first + (r.index === 3 ? 4 : 5) - 1)}η`;
+  };
   /**
    * The Pentads of a cell as a bar along the foot of its band: the Helions group into Pentads the way days group into
    * weeks (five, five, five and the hatched Hypopentad's four), with a notch where each begins. The tooltip and the
@@ -606,7 +611,7 @@ export function createPureMonth(ctx, { tip }) {
     html += `<div class="dim">11 Helions · ${esc(cellQuarterText(c))}</div>`;
     html += `<div class="mono cal-tt-addr">${lead(c.start, pure.stamp(c.start, 'eta'))}</div>`;
     if (c.pentads?.length) {
-      const parts = c.pentads.map((r) => `<span class="cal-tt-prun">${pentadMarkHTML(r.index)}<span class="mono">${runFrom(c, r)}η–${runTo(c, r)}η</span></span>`);
+      const parts = c.pentads.map((r) => `<span class="cal-tt-prun">${pentadMarkHTML(r.index)}<span class="mono">${pentadRange(c, r)}</span></span>`);
       html += `<div class="cal-tt-pent is-runs">${parts.join('')}</div>`;
     }
     html += `<div class="cal-tt-pair">${pure.pairHTML(c.epsPhase, { label: 'Nuclide phase' })}<span class="dim">Nuclide phase at the start · <span class="mono">${esc(pure.pairText(c.epsPhase))}</span></span></div>`;
@@ -819,7 +824,7 @@ export function createPureMonth(ctx, { tip }) {
           const name = PENTAD_NAMES[r.index];
           html +=
             `<li class="cal-ddr is-pentad" style="--c:${GOLD}"><span class="cal-ddl">${pentadMarkHTML(r.index)}</span>` +
-            `<span class="cal-ddt mono">${runFrom(c, r)}η–${runTo(c, r)}η</span><span class="cal-ddx dim">${r.startsHere ? '' : 'began before · '}${r.endsHere ? `${r.index === 3 ? 4 : 5}η` : 'goes on'}</span>` +
+            `<span class="cal-ddt mono">${pentadRange(c, r)}</span><span class="cal-ddx dim">${r.index === 3 ? 4 : 5}η</span>` +
             `<button type="button" class="cal-go" data-pent="${i}" title="Go to where ${name} begins" aria-label="Go to where ${name} of sync ${r.sync} begins">${ICONS.go}</button>` +
             '</li>';
         });

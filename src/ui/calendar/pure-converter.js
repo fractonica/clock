@@ -1207,7 +1207,7 @@ export function createPureConverter(ctx, { tip }) {
     for (const q of info.quarters) html += row(q.name, q.time, q.name === 'end' ? 6 : undefined);
     // the Pentads: the sync's 19 Helions as I, II, III (5η) and the Hypopentad (4η), each about a solar day (SPEC §7.5)
     const pents = syncPentads(model, n);
-    html += `<div class="cal-qh">Pentads</div><p class="cal-help cal-pnote">${DAY_TEXT} is a solar day, so each Pentad begins ${QUARTER_TEXT} later in the day than the one before (${OFFSET_TEXT.join(', ')}); the Hypopentad, one Helion short, brings Pentad I back.</p>`;
+    html += `<div class="cal-qh">Pentads</div><p class="cal-help cal-pnote">The sun comes back to the same place in the sky every ${DAY_TEXT}, so each Pentad begins ${QUARTER_TEXT} later against the sun than the one before (${OFFSET_TEXT.join(', ')}); the Hypopentad, one Helion short, brings Pentad I back.</p>`;
     for (const p of pents) {
       const t = landedT(p.start, 6);
       html += `<div class="cal-prow-w" data-pq="${p.index}">` + timeRow(pentadMarkHTML(p.index), p.start, `${p.helions}η`, { copyText: pure.stamp(t, 'iota'), goT: t, what: `${PENTAD_NAMES[p.index]} of sync ${n}`, upTo: 'iota', level: 6, lead: false }) + '</div>';

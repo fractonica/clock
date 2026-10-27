@@ -87,6 +87,33 @@ Layout: desktop two columns (converter left, calendar right); under ~1000 px sta
 - Out-of-range days (before 1613-05-19 / after 2857-06-13) are shown greyed with no band; the converter shows a clear message.
 - Pure logic (`parseJump`, month grid builder, converter maths, round trips, DST days) goes to `src/ui/calendar/*.js` with tests.
 
+## Pentads (SPEC §7.5)
+
+The solar sync's 19 Helions run as Pentad I, II, III (5η ≈ 25.3 h) and the Hypopentad (4η ≈ 20.2 h). A solar day is 4¾η,
+so each Pentad begins ¼η (≈ 1 h 16 min) later in the day than the one before and the Hypopentad, one Helion short, brings
+Pentad I back. A Pentad is about a day, so the calendar treats it like a weekday. The mark is the shared short form of
+`src/ui/pentad.js` (a pentagon with its numeral, the Hypopentad's square alone); pure maths in `calendar/pentads.js`.
+
+- **Month grid:** each day names the Pentad(s) that *begin* in it: the mark in the cell's top-right corner (with its
+  time of day where the cell is wide) and a gold caret on the band's top edge at the time of day it begins. Down a column
+  the carets step a quarter Helion later each day; after the Hypopentad they jump back. A day that begins none (the start
+  times cross midnight) shows none; its tooltip says which Pentad runs through it. The band has a **Pentad** option
+  (gold, after η): one segment per Pentad at its exact times, labelled by its mark, the Hypopentad visibly shorter.
+- **Day inspector and tooltips:** the day leads with the Pentad of the displayed time; a list names every Pentad of the
+  day (from → to, length, go). Every stamp in a tooltip (cycle starts and thresholds, sync quarters, ribbon ticks) leads
+  with its mark.
+- **Delta page (pure):** a gold bar along the foot of each cell's band groups its 11 Helions into Pentads (alternating
+  tints, a notch where one begins, the Hypopentad hatched, the one holding the shown moment bright). `helionPentad` counts
+  them from the Helion index exactly as `model.pentadAt` does. The cell tooltip and the inspector name them with their
+  whole range in the Nuclide (`⬠II 33η–37η`, also when the cell holds only part of it).
+- **Converters:** the Gregorian side has a Pentad chip before the weekday ("Pentad II · Helion 2 of 5"); the pure moment
+  reads `⬠II 34η ‹pair› 29ι 21λ 3ν` and `Pentad II · Alpha …`. Every time row (state occurrences, sync rows, the cycle
+  address result) leads with the Pentad of the instant it goes to (a boundary belongs to what begins there). The solar
+  sync lists its four Pentads (the one holding the instant highlighted) under a one-line explanation. Copies: ISO stays ISO;
+  a pure row copies `Pentad II · α#6 …` (the jump box reads past a leading Pentad); the stamp field copies the stamp.
+- **Pure wording:** no Earth units, and the leak scanner reads "day(s)" as one and "Sun" as a weekday, so the pure
+  texts say "the sun comes back to the same place in the sky every 4¾η".
+
 ## Notation (final)
 
 Ordinals carry a hash everywhere this module prints one (`ε#5`, `α#6 › β#4 › γ#9`); a bare `ε 5` is the depth chip used by
