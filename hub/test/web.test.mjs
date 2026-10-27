@@ -7,10 +7,15 @@ test('web: the UI, the clock modules and the diary astronomy for sky tags are se
   t.after(h.close);
   const get = (path) => fetch(h.url + path);
 
-  for (const path of ['/', '/app.js', '/fx/model.js', '/fx/astro/index.js', '/fx/astro/moon.js']) {
+  for (const path of ['/', '/app.js', '/fx/model.js', '/fx/core/pure.js', '/fx/ui/pentad.js', '/fx/astro/index.js', '/fx/astro/moon.js']) {
     const r = await get(path);
     assert.equal(r.status, 200, path);
   }
+  // the Pentad marks come from the web app's own renderer, whose import of the core resolves on the hub
+  const pentad = await (await get('/fx/ui/pentad.js')).text();
+  assert.match(pentad, /export function pentadMarkHTML/);
+  assert.match(pentad, /from '\.\.\/core\/pure\.js'/);
+  for (const path of ['/fx/ui/face.js', '/fx/core/model.js', '/fx/ui/../core/store.js']) assert.equal((await get(path)).status, 404, path);
   const astro = await get('/fx/astro/index.js');
   assert.match(astro.headers.get('content-type'), /javascript/);
   assert.match(await astro.text(), /export const EVENT_INFO/);

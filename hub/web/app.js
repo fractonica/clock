@@ -5,12 +5,21 @@ import { qrSVG } from './qr.js';
 // ---- the clock (the web app's own modules, served by the hub under /fx/) -------------------------------------------
 let model = null;
 let pure = null;
+let PENTAD_NAMES = null;
 try {
-  const [{ createModel }, { createPure }] = await Promise.all([import('/fx/model.js'), import('/fx/pure.js')]);
+  const [{ createModel }, core] = await Promise.all([import('/fx/model.js'), import('/fx/core/pure.js')]);
   model = createModel();
-  pure = createPure(model, { now: () => Date.now() / 1000 });
+  pure = core.createPure(model, { now: () => Date.now() / 1000 });
+  PENTAD_NAMES = core.PENTAD_NAMES;
 } catch (e) {
   console.warn('Fractonica clock unavailable; grouping by Earth days', e);
+}
+// The Pentad marks (SPEC §7.5): the web app's own renderer, so the shapes are the app's.
+let pentadUI = null;
+try {
+  pentadUI = await import('/fx/ui/pentad.js');
+} catch (e) {
+  console.warn('Pentad marks unavailable; Pentads show as words', e);
 }
 // The printable diary's sky events (names, families, labels, symbols): `sky:<event>` tags show as their symbols.
 let SKY = null;
@@ -150,6 +159,37 @@ function bytes(n) {
   return `${(n / 1024 ** 3).toFixed(2)} GB`;
 }
 const dur = (s) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`;
+// ---- Pentads (SPEC §7.5): a date leads with its Pentad, as a civil date leads with its weekday ------------------------
+/** The Pentad at t, as the hub's fx.pentad: { index, name, helion }, or null (outside the catalogue, no clock). */
+function pentadAt(t) {
+  const p = model && PENTAD_NAMES ? model.pentadAt(t) : null;
+  return p ? { index: p.index, name: PENTAD_NAMES[p.index], helion: p.helion, sync: p.sync, start: p.start, end: p.end } : null;
+}
+/** A record's Pentad: the hub's fx.pentad, or computed here for a record the hub read before it knew Pentads. */
+const pentadOfRecord = (r) => r.fx?.pentad ?? pentadAt(r.time);
+/**
+ * The Pentad's mark: its shape (a pentagon with the numeral, the Hypopentad's square alone) in currentColor, named for
+ * screen readers ("Pentad II"). Options as the web app's pentadMarkHTML (numeral, helion, title, cls).
+ */
+function pentadMark(p, opts = {}) {
+  if (!p) return null;
+  if (!pentadUI) return h('span', { class: 'pentad-mark', ...(opts.title ? { title: p.name } : {}) }, p.name);
+  const tpl = document.createElement('template');
+  tpl.innerHTML = pentadUI.pentadMarkHTML(p.index, opts);
+  return tpl.content.firstElementChild;
+}
+/** "Pentad II, 2nd Helion": the Pentad with the Helion's place in it. */
+const pentadPlace = (p) => `${p.name}, ${pentadUI?.helionPlace(p.helion) ?? `Helion ${p.helion}`}`;
+/** "Pentad II · α#6 β#4 …": plain text led by the Pentad's full name (tooltips, the clipboard). */
+const ledText = (p, text) => (p ? (text ? `${p.name} · ${text}` : p.name) : text);
+/** A stamp led by its Pentad's mark: [⬠II] α#6 β#4 γ#9 δ#3 ε#5 34η 29ι. */
+function ledStamp(r, cls = 'stamp') {
+  const p = pentadOfRecord(r);
+  const stamp = r.fx?.stamp ?? '';
+  if (!stamp) return h('span', { class: cls }, '');
+  return h('span', { class: `${cls} led`, title: ledText(p, stamp) }, pentadMark(p), stamp);
+}
+
 /** "4ι 23λ": the record's minor clock inside its Helion (the Helion is the group). */
 const clockInHelion = (r) => (r.fx?.clock ? r.fx.clock.split(' ').slice(1).join(' ') : '');
 const clientName = (id) => S.clients.get(id)?.name ?? S.kinds.flatMap((k) => k.sources).find((s) => s.id === id)?.name ?? id;
@@ -198,14 +238,22 @@ function logout() {
 }
 
 // ---- header: live clock, worker, theme -----------------------------------------------------------------------------
+let nowPentad = null;
 function tickClock() {
   const t = Date.now() / 1000;
   if (pure) {
-    $('now-clock').textContent = pure.clockText(t, 'lambda');
+    // the reading leads with its Pentad: [⬠II] 48η 33ι 2λ
+    const p = pentadAt(t);
+    const key = p ? p.index : -1;
+    if (key !== nowPentad) {
+      nowPentad = key;
+      $('now-pentad').replaceChildren(p ? pentadMark(p) : '');
+    }
+    $('now-text').textContent = pure.clockText(t, 'lambda');
     $('now-sub').textContent = `${pure.dateText(t, { letters: true, upTo: 'epsilon' })} · ${earthDay(t)} ${earthTime(t)}`;
-    $('now').title = pure.stamp(t, 'nu');
+    $('now').title = ledText(p && { name: pentadPlace(p) }, pure.stamp(t, 'nu'));
   } else {
-    $('now-clock').textContent = earthTime(t);
+    $('now-text').textContent = earthTime(t);
     $('now-sub').textContent = earthDay(t);
   }
 }
@@ -451,17 +499,23 @@ function renderFilters() {
   return el;
 }
 
-/** Helion and Nuclide of a moment (or Earth day/month when the clock is unavailable). */
+/**
+ * Nuclide, Pentad and Helion of a moment (or Earth month and day when the clock is unavailable). The Pentad is the
+ * day-like unit between them (SPEC §7.5): about a day long, each a quarter Helion later in the day than the one before.
+ */
 function placeOf(t) {
   const eta = model?.levelAt(t, 6);
   const eps = model?.levelAt(t, 4);
   if (eta && eps && pure) {
+    const pentad = pentadAt(t);
     return {
       nKey: `n${eps.cycle}`,
       nAddr: pure.dateText(t, { letters: true, upTo: 'epsilon' }),
       nWords: pure.majorText(t, 3),
       nStamp: pure.stamp(t, 'epsilon'),
       nSpan: [eps.start, eps.end],
+      pKey: pentad ? `p${pentad.sync}:${pentad.index}` : 'p',
+      pentad,
       hKey: `h${eta.cycle}`,
       eta: pure.clock(t)?.eta,
       hSpan: [eta.start, eta.end],
@@ -473,10 +527,25 @@ function placeOf(t) {
     nAddr: '',
     nWords: new Intl.DateTimeFormat(undefined, { month: 'long', year: 'numeric' }).format(day),
     nSpan: null,
+    pKey: 'p',
+    pentad: null,
     hKey: `d${day.toDateString()}`,
     eta: null,
     hSpan: [t, t],
   };
+}
+/** The header of a Pentad in the timeline: its mark and name, its Helions in the Nuclide and its Earth span. */
+function pentadHeader(p) {
+  // the clock reads to the millisecond: a Pentad holds from just after its start until just before its end
+  const first = pure.clock(p.start + 0.001)?.eta;
+  const last = pure.clock(p.end - 0.001)?.eta;
+  const helions = first && last ? `${first}η – ${last}η` : '';
+  return h('div', { class: `pentad${p.index === 3 ? ' hypo' : ''}`, title: `${p.name}: ${p.index === 3 ? '4 Helions, one short, bring the Sun back to the time of day Pentad I began' : '5 Helions, about a day; the next begins a quarter Helion later in the day'}` },
+    pentadMark(p),
+    h('h3', null, p.name),
+    helions ? h('span', { class: 'hel' }, helions) : null,
+    h('span', { class: 'earth' }, spanText([p.start, p.end])),
+  );
 }
 function spanText([a, b]) {
   const da = earthDay(a);
@@ -504,16 +573,19 @@ function renderTimeline() {
       ),
     );
   }
+  // Nuclide → Pentad → Helion, like month → day → hour (a Pentad that straddles two Nuclides shows under both)
   const groups = [];
   for (const r of recs) {
     const p = placeOf(r.time);
     let n = groups.at(-1);
-    if (!n || n.key !== p.nKey) groups.push((n = { key: p.nKey, p, helions: [] }));
-    let hh = n.helions.at(-1);
-    if (!hh || hh.key !== p.hKey) n.helions.push((hh = { key: p.hKey, p, recs: [] }));
+    if (!n || n.key !== p.nKey) groups.push((n = { key: p.nKey, p, pentads: [] }));
+    let pp = n.pentads.at(-1);
+    if (!pp || pp.key !== p.pKey) n.pentads.push((pp = { key: p.pKey, p, helions: [] }));
+    let hh = pp.helions.at(-1);
+    if (!hh || hh.key !== p.hKey) pp.helions.push((hh = { key: p.hKey, p, recs: [] }));
     hh.recs.push(r);
   }
-  for (const { p, helions } of groups) {
+  for (const { p, pentads } of groups) {
     listEl.append(
       h('div', { class: 'nuclide', title: p.nStamp ?? '' },
         p.nAddr ? h('span', { class: 'addr' }, p.nAddr) : null,
@@ -521,16 +593,20 @@ function renderTimeline() {
         p.nSpan ? h('span', { class: 'earth' }, `${fmt.dayYear.format(d(p.nSpan[0]))} – ${fmt.dayYear.format(d(p.nSpan[1]))}`) : null,
       ),
     );
-    for (const hh of helions) {
-      listEl.append(
-        h('section', { class: 'helion' },
-          h('div', { class: 'rail', title: hh.p.eta ? `Helion ${hh.p.eta} of the Nuclide` : '' },
-            hh.p.eta ? h('div', { class: 'eta' }, String(hh.p.eta), h('small', null, 'η')) : h('div', { class: 'eta' }, earthDay(hh.recs[0].time)),
-            h('span', { class: 'day' }, hh.p.eta ? spanText(hh.p.hSpan) : ''),
+    for (const { p: pp, helions } of pentads) {
+      if (pp.pentad) listEl.append(pentadHeader(pp.pentad));
+      for (const hh of helions) {
+        const where = hh.p.eta ? `Helion ${hh.p.eta} of the Nuclide${hh.p.pentad ? ` · ${pentadPlace(hh.p.pentad)}` : ''}` : '';
+        listEl.append(
+          h('section', { class: 'helion' },
+            h('div', { class: 'rail', title: where },
+              hh.p.eta ? h('div', { class: 'eta' }, String(hh.p.eta), h('small', null, 'η')) : h('div', { class: 'eta' }, earthDay(hh.recs[0].time)),
+              h('span', { class: 'day' }, hh.p.eta ? spanText(hh.p.hSpan) : ''),
+            ),
+            itemsOf(hh),
           ),
-          itemsOf(hh),
-        ),
-      );
+        );
+      }
     }
   }
   sentinel = h('div', { class: 'sentinel' });
@@ -604,7 +680,7 @@ function journalCard(r, { score, detail } = {}) {
       h('div', { class: 'ttl' },
         title ? h('h3', null, title) : null,
         h('div', { class: 'meta' },
-          detail ? h('span', { class: 'stamp' }, r.fx?.stamp ?? '') : h('span', { class: 'fx' }, clockInHelion(r)),
+          detail ? ledStamp(r) : h('span', { class: 'fx' }, clockInHelion(r)),
           detail ? null : h('span', null, earthTime(r.time)),
           h('span', { class: 'sep' }, '·'),
           h('span', null, clientName(r.source)),
@@ -804,7 +880,10 @@ function renderSearch() {
     s.note ? h('div', { class: 'sub' }, s.note) : null,
     strong.map((x) =>
       h('div', null,
-        h('div', { class: 'result-when' }, [x.record.fx?.stamp, fmt.full.format(d(x.record.time)), x.part && x.part !== 'record' ? 'matched an attachment' : null].filter(Boolean).join(' · ')),
+        h('div', { class: 'result-when' },
+          x.record.fx?.stamp ? [ledStamp(x.record, 'st'), h('span', { class: 'sep' }, '·')] : null,
+          [fmt.full.format(d(x.record.time)), x.part && x.part !== 'record' ? 'matched an attachment' : null].filter(Boolean).join(' · '),
+        ),
         cardOf(x.record, { score: x.score }),
       ),
     ),
@@ -816,6 +895,17 @@ function renderSearch() {
 }
 
 // ---- detail --------------------------------------------------------------------------------------------------------
+/** The detail's Fractonica line: [⬠II] Pentad II · stamp · clock, and a copy of it as plain text led by the name. */
+function fractonicaFact(r) {
+  const p = pentadOfRecord(r);
+  const text = pure ? pure.stamp(r.time, 'lambda') : `${r.fx.stamp} · ${r.fx.clock}`;
+  const plainText = ledText(p, text);
+  return h('span', { class: 'fxline' },
+    p ? h('span', { class: 'led' }, pentadMark(p), h('span', null, pentadPlace(p))) : null,
+    h('span', null, `${r.fx.stamp} · ${r.fx.clock}`),
+    h('button', { class: 'btn icon sm ghost', type: 'button', title: `Copy “${plainText}”`, 'aria-label': 'Copy the Fractonica date', onclick: () => copy(plainText) }, icon('copy')),
+  );
+}
 dlg.addEventListener('close', () => {
   if (/^#\/r\//.test(location.hash)) history.replaceState(null, '', S.view === 'search' ? `#/search/${encodeURIComponent(S.search.q)}` : '#/');
   dlg.replaceChildren();
@@ -836,7 +926,7 @@ async function openDetail(id) {
     : h('div', { class: 'card', style: { cursor: 'default' } },
         h('div', { class: 'card-h' },
           h('div', { class: 'emoji' }, x.emoji || h('div', { class: 'kd', style: { width: '12px', height: '12px', borderRadius: '4px', background: `hsl(${kindHue(r.kind)} 60% 58%)` } })),
-          h('div', { class: 'ttl' }, h('h3', null, x.title || r.kind), h('div', { class: 'meta' }, h('span', { class: 'stamp' }, r.fx?.stamp ?? ''), h('span', { class: 'sep' }, '·'), clientName(r.source))),
+          h('div', { class: 'ttl' }, h('h3', null, x.title || r.kind), h('div', { class: 'meta' }, ledStamp(r), h('span', { class: 'sep' }, '·'), clientName(r.source))),
         ),
         bodyText(r) ? h('div', { class: 'prose', html: markdown(bodyText(r)) }) : null,
         keyValues(r).length ? h('dl', { class: 'facts' }, keyValues(r).flatMap(([k, v]) => [h('dt', null, k), h('dd', { class: 'mono' }, String(v))])) : null,
@@ -849,7 +939,7 @@ async function openDetail(id) {
     [
       ['When', zoned(r.time, r.zone)],
       r.end ? ['Until', fmt.full.format(d(r.end))] : null,
-      ['Fractonica', r.fx?.stamp ? `${r.fx.stamp} · ${r.fx.clock}` : '—', true],
+      ['Fractonica', r.fx?.stamp ? fractonicaFact(r) : '—', true],
       ['Kind', r.kind, true],
       ['From', clientName(r.source)],
       r.editor !== r.source ? ['Edited on', clientName(r.editor)] : null,

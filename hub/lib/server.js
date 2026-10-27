@@ -12,11 +12,16 @@ import { lanAddress } from './lan.js';
 const HERE = dirname(fileURLToPath(import.meta.url));
 const WEB = join(HERE, '..', 'web');
 const REPO = join(HERE, '..', '..');
-/** Files of the web app the hub UI imports for its live clock (served read-only). */
+/**
+ * Files of the web app the hub UI imports for its live clock and the Pentad marks (served read-only). The Pentad
+ * renderer keeps the web app's layout (`/fx/ui/pentad.js` imports `../core/pure.js`), so pure.js is served there too.
+ */
 const CORE = {
   '/fx/fractonica.js': join(REPO, 'fractonica.js'),
   '/fx/model.js': join(REPO, 'src/core/model.js'),
   '/fx/pure.js': join(REPO, 'src/core/pure.js'),
+  '/fx/core/pure.js': join(REPO, 'src/core/pure.js'),
+  '/fx/ui/pentad.js': join(REPO, 'src/ui/pentad.js'),
 };
 /** The printable diary's astronomy (`/fx/astro/<module>.js`): the UI reads its EVENT_INFO for the sky tags. */
 const ASTRO = join(REPO, 'src/diary/astro');
