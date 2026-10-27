@@ -23,7 +23,7 @@ struct FractonicaTimeIntent: AppIntent {
         return .result(
             value: reply.stamp,
             dialog: IntentDialog(full: LocalizedStringResource(stringLiteral: reply.spoken),
-                                 supporting: LocalizedStringResource(stringLiteral: "\(reply.clockText) · \(reply.date)")),
+                                 supporting: LocalizedStringResource(stringLiteral: reply.supporting)),
             view: FractonicaTimeSnippet(reply: reply)
         )
     }
@@ -43,7 +43,8 @@ struct FractonicaTimeSnippet: View {
                             .frame(height: 46)
                         VStack(alignment: .leading, spacing: 2) {
                             clockText(reply)
-                            Text(reply.date)
+                            // the date led by its Pentad, as a civil date by its weekday
+                            Text("\(Text.pentadMark(reply.pentad).foregroundStyle(Theme.gold)) \(Text(verbatim: reply.date))")
                                 .font(.subheadline.weight(.medium))
                                 .foregroundStyle(Theme.ink2)
                         }

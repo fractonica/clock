@@ -350,7 +350,7 @@ struct UpcomingRow: View {
                     }
                 }
                 HStack(spacing: 6) {
-                    Text(text.words.time(alert.fire + 0.002))
+                    Text.ledByPentad(at: alert.fire + 0.002, text.words.time(alert.fire + 0.002))
                         .font(.reading(13))
                         .foregroundStyle(o.subject.color.opacity(held ? 0.95 : 0.5))
                     if let ruleName {

@@ -30,7 +30,7 @@ struct OverviewWidgetView: View {
 
     private func clock(_ c: ClockSnapshot, height h: CGFloat) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text("\(c.major) · \(c.nuclide)")
+            PentadLedText(pentad: c.pentad, text: "\(c.major) · \(c.nuclide)")
                 .font(.system(size: 13, weight: .semibold))
                 .ink(.secondary)
                 .lineLimit(1)
@@ -108,7 +108,7 @@ struct OverviewWidgetView: View {
                             Text(t.begins ?? "The catalogue ends")
                                 .font(.system(size: 13, weight: .semibold))
                                 .ink(.primary)
-                            Text(t.when)
+                            PentadLedText(pentad: t.pentad, text: t.when)
                                 .font(.system(size: 11))
                                 .ink(.tertiary)
                         }

@@ -19,6 +19,8 @@ enum WidgetChange: Hashable, Sendable {
     case quarter(level: Int)
     /// The solar odometer: three 2-stroke glyphs of the sync phase (SPEC §7.3), one state every ~84 s.
     case solarDigits
+    /// A new Pentad (SPEC §7.5): the mark that leads a date, about once a day (on a Helion boundary).
+    case pentad
     /// Midnight in an Earth zone (IANA id; nil is the device's): "today" turns into a weekday.
     case midnight(zone: String?)
     /// A countdown to `end` shown in whole `step`s ("3 d 04 h" for an hour): it changes each time a whole step is
@@ -51,6 +53,9 @@ enum WidgetChange: Hashable, Sendable {
                 let step = (s.digits3[0] * 16 + s.digits3[1]) * 16 + s.digits3[2]
                 return s.start + Double(step + 1) / 4096 * (s.end - s.start)
             }
+        case .pentad:
+            // the catalogue's last Pentad is cut at its end: nothing follows it
+            next = Pentads.at(at, clock: clock).flatMap { $0.end < clock.tMax ? $0.end : nil }
         case .midnight(let zone):
             let earth = EarthFormatter(zone: zone)
             let p = earth.parts(at)

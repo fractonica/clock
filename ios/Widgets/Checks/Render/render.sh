@@ -30,6 +30,6 @@ xcrun swiftc -swift-version 6 -parse-as-library -D WIDGET_RENDER -I "$KIT" -L "$
   "$ROOT/Widgets/Checks/Render/render.swift" \
   "$ROOT"/Widgets/Model/*.swift "$ROOT"/Widgets/Parts/*.swift \
   $(find "$ROOT/Widgets" -path '*/Checks' -prune -o \( -name '*View.swift' -o -name '*Views.swift' -o -name '*Model.swift' \) -print) \
-  "$ROOT"/Shared/{Theme,Backdrop,GlyphViews,Notation+Standard,AppLink,Screen}.swift \
+  "$ROOT"/Shared/{Theme,Backdrop,GlyphViews,Notation+Standard,AppLink,Screen,Pentads,PentadMark}.swift \
   -o "$BIN/render"
 "$BIN/render" "$OUT_DIR" "$@"

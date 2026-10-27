@@ -55,6 +55,14 @@ struct TimerWords {
         return fractonica == "—" ? earth : "\(earth) · \(fractonica)"
     }
 
+    /// A moment's words led by its Pentad (SPEC §7.5), as a date by its weekday: "Pentad II · 34η 30ι 12λ".
+    func led(_ text: String, at date: Date, form: PentadWords.Form = .full) -> String {
+        PentadWords.lead(text, at: clock.t(date), form: form)
+    }
+
+    /// The Pentad at a moment, for a view that draws its mark; nil outside the catalogue.
+    func pentad(_ date: Date) -> Int? { Pentads.index(at: clock.t(date)) }
+
     /// A ladder span of whole Blinks as a countdown readout: "02ι 13λ 07ν".
     func readout(blinks: Int, lead: LadderUnit) -> String {
         LadderSpan(blinks: blinks).readout(from: lead)
@@ -62,7 +70,7 @@ struct TimerWords {
 
     // MARK: Notifications
 
-    /// The notification of a run: "Timer done" / "4ι · 34η 30ι 12λ".
+    /// The notification of a run: "Timer done" / "4ι · rang at Pentad II · 34η 30ι 12λ".
     func notificationBody(_ run: TimerRun) -> String {
         switch run.spec {
         case .aligned(let target):
@@ -70,7 +78,7 @@ struct TimerWords {
         default:
             let title = title(run.spec)
             guard let end = run.end else { return title }
-            return "\(title) · rang at \(pure ? clockReading(end) : moment(end))"
+            return "\(title) · rang at \(led(pure ? clockReading(end) : moment(end), at: end))"
         }
     }
 }

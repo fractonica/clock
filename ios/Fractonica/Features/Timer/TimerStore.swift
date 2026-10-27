@@ -214,7 +214,7 @@ final class TimerStore {
             // came back to the app right after it rang (the notification has played the chime)
             ringing = Ringing(id: finished.id, spec: finished.spec, at: end)
         } else {
-            ToastCenter.shared.show("\(title) rang at \(words.moment(end))", for: 4)
+            ToastCenter.shared.show("\(title) rang at \(words.led(words.moment(end), at: end))", for: 4)
         }
     }
 

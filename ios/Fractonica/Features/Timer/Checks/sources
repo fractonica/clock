@@ -4,3 +4,11 @@ Fractonica/Features/Timer/TimerModel.swift
 Fractonica/Features/Timer/TickSchedule.swift
 Shared/Notation+Standard.swift
 Fractonica/Features/Timer/TimerDialGeometry.swift
+Fractonica/Features/Timer/TimerWords.swift
+Fractonica/Core/Formatting.swift
+Fractonica/Core/AppSettings.swift
+Fractonica/Core/ClockStore.swift
+Fractonica/Core/ClockTimeline.swift
+Shared/AppLink.swift
+Shared/Screen.swift
+Shared/Pentads.swift

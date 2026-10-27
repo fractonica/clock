@@ -17,6 +17,7 @@ struct TimerChecks {
         scheduleChecks()
         earthChecks()
         dialChecks()
+        timerWordsChecks()
         Checks.finish()
     }
 }
