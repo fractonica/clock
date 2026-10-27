@@ -1073,7 +1073,8 @@ await withApp(
         overlay: document.querySelector('.face-svg').dataset.overlay,
         names: [...document.querySelectorAll('.face-letter-name')].map((e) => e.textContent),
         letters: [...document.querySelectorAll('.face-letter')].map((e) => e.textContent),
-        caption: document.querySelector('.face-caption').textContent,
+        caption: (document.querySelector('.face-caption .pentad-rest') ?? document.querySelector('.face-caption')).textContent,
+        captionPentad: document.querySelector('.face-caption .pentad-mark')?.getAttribute('aria-label') ?? '',
         captionTitle: document.querySelector('.face-caption').title,
         depths: document.querySelector('.face-depths').textContent,
         svgLabel: document.querySelector('.face-svg').getAttribute('aria-label'),
@@ -1083,6 +1084,7 @@ await withApp(
       check('pure: ?pure=1 mounts the face in pure mode (card and body flagged, no reload)', base.root === '1' && base.body === '1');
       check('pure: the letters overlay carries the name of each running cycle under its letter', base.overlay === 'letters' && base.names.join('|') === pe.names.join('|') && base.names.join('|') === 'ε#5 34η|ε#5 34η 28ι' && base.letters.join('') === 'ηθ', `${base.overlay} ${base.names} ${base.letters}`);
       check('pure: the caption (time is not live) is the short date in words, not a clock time or a zone (SPEC §15.6)', base.caption === pe.caption && base.caption === 'Delta Trifracton End ε#5 34η 29ι 21λ' && !/UTC|\+09|:/.test(base.caption), base.caption);
+      check('pure: ... led by its Pentad like a weekday (SPEC §7.5, §15.3)', base.captionPentad === 'Pentad II', base.captionPentad);
       check('pure: ... its hover text says which numbers count from 0 and which from 1, and points to the glossary', /the Helion \(η\) count from 1.*ι λ ν from 0.*Press \? for the glossary\.$/.test(base.captionTitle), base.captionTitle);
       check('pure: the screen label names the depths and the sync; the rows are named by cycle', /^Clock face: depth 7 η over depth 8 θ, solar sync 4820$/.test(base.svgLabel) && /^η depth 7 · 34η of 77 in ε#5: state 13 of 16, value −3, rising\./.test(base.rows.top) && /^θ depth 8 · 28ι to 31ι in 34η: state 5 of 16/.test(base.rows.bottom), base.svgLabel + ' | ' + base.rows.top);
       check('pure: the solar row says "phase a and b of 256" (two numbers, not "a·b") and never "percent"', new RegExp(`^Solar sync 4820, ${pe.phaseSpeech}, glyphs 5, 11, 13\\.`).test(base.rows.solar) && !/percent|%|\d·\d/.test(base.rows.solar), base.rows.solar);
@@ -1107,7 +1109,7 @@ await withApp(
       await page.waitForTimeout(250);
       await page.click('.face-btn[data-act="info"]');
       await page.waitForTimeout(300);
-      check('pure: the time zone has no influence on the caption or the info labels', (await page.textContent('.face-caption')) === tokyo.caption && JSON.stringify(await infoTexts()) === JSON.stringify(tokyo.info));
+      check('pure: the time zone has no influence on the caption or the info labels', (await page.evaluate(() => (document.querySelector('.face-caption .pentad-rest') ?? document.querySelector('.face-caption')).textContent)) === tokyo.caption && JSON.stringify(await infoTexts()) === JSON.stringify(tokyo.info));
 
       // ---- 10b. tooltips: every row, the counter arcs, the gesture hints
       await page.waitForTimeout(4200);
@@ -1271,7 +1273,7 @@ await withApp(
         await page.click('.face-btn[data-act="info"]');
         await page.waitForTimeout(200);
         lapse.push(...(await faceLeaks(`time-lapse frame ${i}`)));
-        const cap = await page.textContent('.face-caption');
+        const cap = await page.evaluate(() => (document.querySelector('.face-caption .pentad-rest') ?? document.querySelector('.face-caption')).textContent);
         if (!/^(Delta [A-Z][a-z]+fracton (Peak|Node|Valley|End)|δ#\d) ε#\d [1-9]\d?η \d+ι \d+λ$/.test(cap)) lapse.push({ rule: 'caption', match: cap, kind: 'text', where: 'caption', text: cap });
       }
       check('pure: time-lapse (about one η per Blink): every frame is clean and the caption follows', lapse.length === 0, fmtLeaks(lapse));

@@ -336,7 +336,7 @@ await withApp(
     await page.evaluate(() => localStorage.clear()); // back to the default depth range 1..10
     await page.goto(url(`?t=946684800&zone=UTC&view=rings&sel=7`));
     await page.waitForTimeout(450);
-    const cells = await page.evaluate(() => [...document.querySelectorAll('#slot-ladder .ladder-q-time')].map((e) => [e.textContent, e.scrollWidth > e.clientWidth]));
+    const cells = await page.evaluate(() => [...document.querySelectorAll('#slot-ladder .ladder-q-time')].map((e) => [e.querySelector('.ladder-q-tv').textContent, e.scrollWidth > e.clientWidth]));
     ok(cells.every(([, over]) => !over) && /^Jan 1 /.test(cells[1][0]), 'quarter times of a cycle that spans New Year fit their column', JSON.stringify(cells));
     // ladder rows and the hero read the same countdown in the last seconds
     await page.goto(url(`?t=${A}&zone=UTC&view=rings&sel=6`));

@@ -329,7 +329,7 @@ await withApp(
     ok(/^\d+·\d+$/.test(await page.locator('#slot-ladder .ladder-through-t').innerText()) && (await page.locator('#slot-ladder .ladder-through-p svg').count()) === 2, 'pure: the phase is a glyph pair with its two digits');
     ok(/^phase \d+ and \d+ of 256$/.test((await page.locator('#slot-ladder .ladder-through-p .pure-pair').getAttribute('aria-label')) ?? '') && (await page.locator('#slot-ladder .ladder-through-t').getAttribute('aria-hidden')) === 'true', 'pure: the detail pair is named by pure.pairHTML ("phase 13 and 0 of 256") and its digits are not read twice');
     ok((await page.locator('#slot-ladder .ladder-q').getAttribute('title')) === 'Where each quarter ends: Nuclides (ε#2) and Helions (20η) are numbered from 1, finer units (9ι) are counts from 0. Press ? for the glossary.', 'pure: the quarter list says how its readings count');
-    const qTimes = await page.locator('#slot-ladder .ladder-q-time').allInnerTexts();
+    const qTimes = await page.locator('#slot-ladder .ladder-q-tv').allInnerTexts();
     ok(JSON.stringify(qTimes) === JSON.stringify(['34η 9ι', '34η 18ι', '34η 27ι', '35η 0ι']), 'pure: the quarters of an η are placed by its number and a count (34η 9ι … 35η 0ι)', JSON.stringify(qTimes));
     // a major selected: the quarter word stands for the phase, the sector is a major in words with its quarter, no pair anywhere
     await page.locator('#ladder-opt-3').click();
@@ -345,7 +345,7 @@ await withApp(
         sectorPairs: d.querySelectorAll('.ladder-sector-p svg').length,
         cyc: d.querySelector('.ladder-cyc-n').textContent,
         end: d.querySelector('.ladder-end-v').textContent,
-        q: [...d.querySelectorAll('.ladder-q-time')].map((e) => e.textContent),
+        q: [...d.querySelectorAll('.ladder-q-tv')].map((e) => e.textContent),
         len: d.querySelector('.ladder-length').getAttribute('title'),
       };
     });
