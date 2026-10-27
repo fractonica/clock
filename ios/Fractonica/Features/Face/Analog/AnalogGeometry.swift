@@ -4,10 +4,11 @@ import Foundation
 /// Where everything sits on the analog dial (no SwiftUI: checked by Analog/Checks). Lengths are in units of the case
 /// radius, from the dial's centre, y down; turns are fractions of a full turn, 0 at the top, clockwise.
 ///
-///     1.00  case edge          polished bezel down to 0.94
+///     1.00  case edge          polished bezel down to 0.94, the Nuclide's rider on its inner edge
 ///     0.94  chapter ring       the Nuclide: 77 Helion ticks, the ζ numbers, its Pentads (an inner track at 0.82)
-///     0.80  dial               sunray; the Preon railway (0.745 … 0.785), the θ numbers (0.70), applied indices
-///                              (0.565 … 0.66); the registers, the balance's aperture and the Helion window inside
+///     0.80  dial               sunray; the Flavon railway (0.745 … 0.785), the θ numbers (0.70), applied indices
+///                              (0.565 … 0.66) with the Preon dots between; the registers, the balance's aperture and
+///                              the Helion window inside
 struct AnalogGeometry: Equatable, Sendable {
     let size: CGSize
     let center: CGPoint
@@ -58,7 +59,7 @@ struct AnalogGeometry: Equatable, Sendable {
     /// The ring's Pentad track and its start marks.
     static let ringPentads: CGFloat = 0.819
 
-    /// The Preon railway: two circles and 36 ticks between.
+    /// The Flavon railway, the Preon hand's track: two circles and 65 ticks between.
     static let railOuter: CGFloat = 0.785
     static let railInner: CGFloat = 0.745
     /// The θ numbers (4, 8 … 32).
@@ -69,6 +70,9 @@ struct AnalogGeometry: Equatable, Sendable {
     static let indexWidth: CGFloat = 0.036
     /// The top index is double and shorter (the Pentad register stands under it).
     static let topIndexInner: CGFloat = 0.58
+    /// The Preons between the indices, as dots (the Helion hand's 36 places with the indices).
+    static let preonDots: CGFloat = 0.622
+    static let preonDotRadius: CGFloat = 0.0085
     /// The Helion's quarters (peak, node, valley) on the dial, outside the indices.
     static let quarterMarks: CGFloat = 0.712
 
@@ -86,8 +90,8 @@ struct AnalogGeometry: Equatable, Sendable {
 
     /// The Pentad register at 12 o'clock: the solar sync's 19 Helions.
     static let pentadRegister = Disc(center: CGPoint(x: 0, y: -0.365), radius: 0.178)
-    /// The Preon register at 6 o'clock: 65 Flavons.
-    static let preonRegister = Disc(center: CGPoint(x: 0, y: 0.372), radius: 0.215)
+    /// The Flavon register at 6 o'clock: 25 Blinks.
+    static let flavonRegister = Disc(center: CGPoint(x: 0, y: 0.372), radius: 0.215)
     /// The balance's aperture at 9 o'clock.
     static let aperture = Disc(center: CGPoint(x: -0.41, y: 0.03), radius: 0.14)
     /// The Helion window at 3 o'clock (its opening).
@@ -101,10 +105,15 @@ struct AnalogGeometry: Equatable, Sendable {
 
     // MARK: Hands (lengths in units of the case radius, or of their register's radius)
 
-    static let helionHand: CGFloat = 0.77
+    /// The Helion hand reaches the indices and the Preon dots; the Preon hand, long and thin, the railway.
+    static let helionHand: CGFloat = 0.645
     static let helionTail: CGFloat = 0.17
-    static let nuclideHand: CGFloat = 0.925
-    static let nuclideTail: CGFloat = 0.21
+    static let preonHand: CGFloat = 0.775
+    static let preonTail: CGFloat = 0.21
+    /// The Nuclide's rider on the bezel: its point at the Helion ticks, its back on the polished steel.
+    static let riderTip: CGFloat = 0.936
+    static let riderBack: CGFloat = 0.99
+    static let riderWidth: CGFloat = 0.05
     /// Register hands, in units of their register's radius.
     static let registerHand: CGFloat = 0.9
     static let registerTail: CGFloat = 0.28

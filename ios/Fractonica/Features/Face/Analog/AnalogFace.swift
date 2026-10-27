@@ -1,14 +1,19 @@
 import FractonicaKit
 import SwiftUI
 
-/// A mechanical dial (Features/Face/Analog): the Helion's 36 Preons, a Preon's 65 Flavons in a sub-dial, the Nuclide's 77 Helions on the outer ring.
+/// A mechanical dial (Features/Face/Analog) geared like a watch: each hand turns once while the one before it moves a
+/// tick — the Nuclide's 77 Helions round the outer ring, the Helion's 36 Preons, the Preon's 65 Flavons, the Flavon's
+/// 25 Blinks.
 ///
-/// - The **main hand** (a polished dauphine, its inlay in the Helion's colour) turns once a Helion over the Preon
-///   railway: 36 ticks, the 9 θ as applied indices numbered in Preons, the Helion's peak, node and valley marked.
-/// - The **Preon register** at 6 o'clock turns once a Preon over 65 Flavon ticks (5 κ of 13), stepping once a Blink.
-/// - The **Nuclide pointer** (its arrow in the Nuclide's colour) runs round the chapter ring of 77 Helions, the 7 ζ
-///   numbered by their first Helion; the ring's gold track shows the Pentads across the Nuclide, each start marked by
-///   its shape, the Hypopentads broad.
+/// - The **Nuclide's rider** (a pointer in the Nuclide's colour on the bezel) runs round the chapter ring of 77
+///   Helions, the 7 ζ numbered by their first Helion; the ring's gold track shows the Pentads across the Nuclide, each
+///   start marked by its shape, the Hypopentads broad.
+/// - The **Helion hand** (a polished dauphine, its inlay in the Helion's colour) turns once a Helion over 36 Preons:
+///   the 9 θ as applied indices numbered in Preons, the Preons between as dots, the Helion's peak, node and valley
+///   marked.
+/// - The **Preon hand** (long and thin, tipped in the Preon's colour) turns once a Preon over the railway's 65 Flavon
+///   ticks (5 κ of 13), a step a Blink.
+/// - The **Flavon register** at 6 o'clock turns once a Flavon over 25 Blinks (5 μ of 5), stepping once a Blink.
 /// - The **Pentad register** at 12 o'clock turns once a solar sync over its 19 Helions as Pentad I, II, III and the
 ///   Hypopentad: the running Pentad's badge filled, its Helions' pips lit. A tap opens the Pentad explainer.
 /// - The **Helion window** at 3 o'clock shows the Helion's number in its Nuclide.
@@ -71,10 +76,11 @@ struct AnalogFace: View {
         let clock = FractonicaClock.shared
         let helion = clock.levelInfo(6).meanSeconds
         let periods: [(AnalogHandKind, Double)] = [
-            (.helion, helion),
             (.nuclide, helion * Double(AnalogDial.helionsPerNuclide)),
+            (.helion, helion),
             (.pentad, helion * Double(AnalogDial.helionsPerSync)),
             (.preon, clock.levelInfo(8).meanSeconds),
+            (.flavon, clock.levelInfo(10).meanSeconds),
         ]
         return Set(periods.filter { AnalogDial.blurred(period: $0.1, rate: rate, shortest: 1) }.map(\.0))
     }

@@ -40,11 +40,14 @@ func readingChecks() {
 
     // the main hand stands on the Preon tick it has passed: 36 ticks, ι completed
     check(Int((r.helionAngle * 36).rounded(.down)) == r.iota, "the main hand is past tick \(r.iota)ι")
-    // the Nuclide pointer is in its Helion's slot, the register hand in its Helion's pip
-    check(Int((r.nuclideAngle * 77).rounded(.down)) == r.eta - 1, "the pointer is in slot \(r.eta - 1)")
+    // the Nuclide's rider is in its Helion's slot, the register hand in its Helion's pip
+    check(Int((r.nuclideAngle * 77).rounded(.down)) == r.eta - 1, "the rider is in slot \(r.eta - 1)")
     check(Int((r.syncAngle * 19).rounded(.down)) == r.syncHelion, "the Pentad hand is in pip \(r.syncHelion)")
     check(r.blinks == r.lambda * 25 + r.nu && close(r.preonAngle, Double(r.blinks) / 1625), "the Preon hand steps in Blinks")
     check(Int((r.preonAngle * 65).rounded(.down)) == r.lambda, "the Preon hand is past Flavon tick \(r.lambda)")
+    check(close(r.flavonAngle, Double(r.nu) / 25) && Int((r.flavonAngle * 25).rounded()) == r.nu, "the Flavon hand stands on Blink \(r.nu)")
+    // a watch's gearing: each hand turns once while the one before it moves a tick
+    check(close(r.preonAngle, r.helionAngle * 36 - Double(r.iota), 1.0 / 1625 + 1e-9), "the Preon hand turns once a Helion tick")
 
     // across a Helion, readings agree with the engine at every Preon and the hands only move forward
     guard let helion = clock.level(at: vectorA, 6) else { return check(false, "the Helion at vector A") }
@@ -173,7 +176,7 @@ func layoutChecks() {
 
     let parts: [(String, AnalogGeometry.Disc)] = [
         ("Pentad register", AnalogGeometry.pentadRegister),
-        ("Preon register", AnalogGeometry.preonRegister),
+        ("Flavon register", AnalogGeometry.flavonRegister),
         ("aperture", AnalogGeometry.aperture),
     ]
     // the applied indices (their width included) clear every round part by a margin
@@ -212,8 +215,16 @@ func layoutChecks() {
         check(parts.allSatisfy { !$0.1.contains(p, margin: 0.03) }, "the quarter mark at \(q) clears the round parts")
     }
     // the hands reach their tracks
-    check(AnalogGeometry.helionHand > AnalogGeometry.railInner && AnalogGeometry.helionHand < AnalogGeometry.railOuter,
-          "the Helion hand's tip lies on the Preon railway")
-    check(AnalogGeometry.nuclideHand > AnalogGeometry.ringTickInner && AnalogGeometry.nuclideHand <= AnalogGeometry.ringTickOuter,
-          "the Nuclide pointer's tip reaches the Helion ticks")
+    check(AnalogGeometry.helionHand > AnalogGeometry.preonDots && AnalogGeometry.helionHand < AnalogGeometry.indexOuter,
+          "the Helion hand's tip reaches the Preon dots, within the indices")
+    check(AnalogGeometry.preonHand > AnalogGeometry.railInner && AnalogGeometry.preonHand < AnalogGeometry.railOuter,
+          "the Preon hand's tip lies on the Flavon railway")
+    check(AnalogGeometry.riderTip > AnalogGeometry.ringTickOuter && AnalogGeometry.riderTip - AnalogGeometry.ringTickOuter < 0.01
+          && AnalogGeometry.riderBack < 1, "the Nuclide's rider points at the Helion ticks from the bezel")
+    // the Preon dots clear the round parts and the window
+    for k in 0..<36 where k % 4 != 0 {
+        let p = AnalogGeometry.polar(Double(k) / 36, AnalogGeometry.preonDots)
+        check(parts.allSatisfy { !$0.1.contains(p, margin: AnalogGeometry.preonDotRadius + 0.02) }
+              && !AnalogGeometry.window.insetBy(dx: -0.03, dy: -0.03).contains(p), "Preon dot \(k) clears the dial's parts")
+    }
 }

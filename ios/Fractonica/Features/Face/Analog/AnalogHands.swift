@@ -4,30 +4,34 @@ import SwiftUI
 /// angle passes into another 64th of a turn, which is when the light on its facets and the direction of its shadow
 /// have visibly moved.
 enum AnalogHandKind: Equatable, Sendable {
+    /// The Nuclide's rider: a pointer in the Nuclide's colour on the bezel's inner edge, at the 77-Helion ring.
+    case nuclide
     /// The Helion: a polished dauphine with a luminous inlay in the Helion's colour.
     case helion
-    /// The Nuclide pointer: a needle to the 77-Helion ring, an arrow in the Nuclide's colour, a ring counterweight.
-    case nuclide
-    /// The Preon register's needle, tipped in the Preon's colour.
+    /// The Preon: a long, thin needle to the Flavon railway, tipped in the Preon's colour, a ring counterweight.
     case preon
+    /// The Flavon register's needle, tipped in the Flavon's colour.
+    case flavon
     /// The Pentad register's needle, in gold.
     case pentad
 
-    /// Tip and tail, in units of the case radius.
+    /// Tip and tail, in units of the case radius (the rider: its back, and nothing behind the pivot).
     var length: CGFloat {
         switch self {
+        case .nuclide: AnalogGeometry.riderBack
         case .helion: AnalogGeometry.helionHand
-        case .nuclide: AnalogGeometry.nuclideHand
-        case .preon: AnalogGeometry.preonRegister.radius * AnalogGeometry.registerHand
+        case .preon: AnalogGeometry.preonHand
+        case .flavon: AnalogGeometry.flavonRegister.radius * AnalogGeometry.registerHand
         case .pentad: AnalogGeometry.pentadRegister.radius * (AnalogGeometry.registerHand - 0.04)
         }
     }
 
     var tail: CGFloat {
         switch self {
+        case .nuclide: 0
         case .helion: AnalogGeometry.helionTail
-        case .nuclide: AnalogGeometry.nuclideTail
-        case .preon: AnalogGeometry.preonRegister.radius * AnalogGeometry.registerTail
+        case .preon: AnalogGeometry.preonTail
+        case .flavon: AnalogGeometry.flavonRegister.radius * AnalogGeometry.registerTail
         case .pentad: AnalogGeometry.pentadRegister.radius * AnalogGeometry.registerTail
         }
     }
@@ -35,9 +39,10 @@ enum AnalogHandKind: Equatable, Sendable {
     /// How high above the dial it rides (its shadow's offset), in units.
     var height: CGFloat {
         switch self {
+        case .nuclide: 0.006
         case .helion: 0.024
-        case .nuclide: 0.016
-        case .preon, .pentad: 0.009
+        case .preon: 0.03
+        case .flavon, .pentad: 0.009
         }
     }
 }
@@ -85,13 +90,14 @@ struct AnalogHand: View, Equatable {
             layer.fill(outline, with: .color(A.steelDark))
         }
         switch kind {
+        case .nuclide: drawRider(&ctx, pt, lb, rb)
         case .helion: drawHelion(&ctx, pt, lb, rb)
-        case .nuclide: drawNuclide(&ctx, pt, lb, rb)
-        case .preon: drawNeedle(&ctx, pt, lb, rb, metal: { A.steel($0) }, tip: Theme.levelColor(8))
+        case .preon: drawPreon(&ctx, pt, lb, rb)
+        case .flavon: drawNeedle(&ctx, pt, lb, rb, metal: { A.steel($0) }, tip: Theme.levelColor(10))
         case .pentad: drawNeedle(&ctx, pt, lb, rb, metal: { A.gold($0) }, tip: nil)
         }
         // the cap of a register hand, its highlight towards the light
-        if kind == .preon || kind == .pentad {
+        if kind == .flavon || kind == .pentad {
             let r = u * 0.017
             let pentad = kind == .pentad
             let metal = { (b: Double) -> Color in pentad ? A.gold(b) : A.steel(b) }
@@ -112,11 +118,12 @@ struct AnalogHand: View, Equatable {
             p.addPath(P.polygon([pt(-0.011, 0), pt(-0.011, 0.13), pt(0.011, 0.13), pt(0.011, 0)]))
             return p
         case .nuclide:
-            var p = P.polygon([pt(-0.005, kind.tail - 0.03), pt(-0.0035, -0.88), pt(0.0035, -0.88), pt(0.005, kind.tail - 0.03)])
-            p.addPath(arrow(pt))
+            return rider(pt)
+        case .preon:
+            var p = preonStem(pt, side: 0)
             p.addPath(P.circle(pt(0, kind.tail - 0.02), unit * 0.03))
             return p
-        case .preon, .pentad:
+        case .flavon, .pentad:
             var p = needle(pt, side: 0)
             p.addPath(P.circle(pt(0, kind.tail * 0.72), unit * 0.014))
             return p
@@ -152,44 +159,65 @@ struct AnalogHand: View, Equatable {
         ctx.fill(right, with: .linearGradient(Gradient(colors: [A.steel(min(1, rb * 1.1 + 0.05)), A.steel(rb * 0.8)]),
                                               startPoint: pt(0, 0), endPoint: pt(0, tip)))
         // the luminous inlay along the ridge, in the Helion's colour
-        let lume = P.polygon([pt(0, -0.62), pt(-0.011, -0.2), pt(-0.008, -0.13), pt(0.008, -0.13), pt(0.011, -0.2)])
+        let lume = P.polygon([pt(0, tip + 0.13), pt(-0.011, -0.2), pt(-0.008, -0.13), pt(0.008, -0.13), pt(0.011, -0.2)])
         ctx.fill(lume, with: .color(Theme.levelColor(6, lightness: 0.6)))
         ctx.stroke(lume, with: .color(.black.opacity(0.45)), lineWidth: max(0.4, unit * 0.002))
         // the ridge catches the light
         var ridge = Path()
-        ridge.move(to: pt(0, -0.62))
+        ridge.move(to: pt(0, tip + 0.13))
         ridge.addLine(to: pt(0, tip))
         ctx.stroke(ridge, with: .color(.white.opacity(0.55)), lineWidth: max(0.4, unit * 0.0025))
         ctx.stroke(helionBlade(pt, side: 0), with: .color(.black.opacity(0.35)), lineWidth: max(0.3, unit * 0.002))
     }
 
-    // MARK: The Nuclide pointer
+    // MARK: The Nuclide's rider
 
-    private func arrow(_ pt: (CGFloat, CGFloat) -> CGPoint) -> Path {
-        let tip = -kind.length
-        return P.polygon([pt(0, tip), pt(-0.02, tip + 0.05), pt(0, tip + 0.038), pt(0.02, tip + 0.05)])
+    /// A pointed shoe on the bezel's inner edge, its point at the ring's ticks.
+    private func rider(_ pt: (CGFloat, CGFloat) -> CGPoint) -> Path {
+        let w = AnalogGeometry.riderWidth / 2
+        return P.polygon([pt(0, -AnalogGeometry.riderTip), pt(-w, -AnalogGeometry.riderBack), pt(w, -AnalogGeometry.riderBack)])
     }
 
-    private func drawNuclide(_ ctx: inout GraphicsContext, _ pt: (CGFloat, CGFloat) -> CGPoint, _ lb: Double, _ rb: Double) {
-        let tip = -kind.length
+    private func drawRider(_ ctx: inout GraphicsContext, _ pt: (CGFloat, CGFloat) -> CGPoint, _ lb: Double, _ rb: Double) {
+        let tip = -AnalogGeometry.riderTip, back = -AnalogGeometry.riderBack
+        let w = AnalogGeometry.riderWidth / 2
+        let epsilon = Theme.levelColor(4)
+        // two facets in the Nuclide's colour either side of a ridge, polished edges
+        let halfL = P.polygon([pt(0, tip), pt(-w, back), pt(0, back)])
+        let halfR = P.polygon([pt(0, tip), pt(0, back), pt(w, back)])
+        ctx.fill(halfL, with: .color(epsilon.mix(with: .white, by: 0.25 * lb).mix(with: .black, by: 0.25 * (1 - lb))))
+        ctx.fill(halfR, with: .color(epsilon.mix(with: .white, by: 0.25 * rb).mix(with: .black, by: 0.25 * (1 - rb))))
+        ctx.stroke(rider(pt), with: .color(A.steel(0.8)), style: StrokeStyle(lineWidth: max(0.5, unit * 0.003), lineJoin: .round))
+    }
+
+    // MARK: The Preon hand
+
+    /// The long needle from its counterweight to its point: `side` −1 its left facet, +1 its right, 0 both.
+    private func preonStem(_ pt: (CGFloat, CGFloat) -> CGPoint, side: Int) -> Path {
+        let tip = -kind.length, tailEnd = kind.tail - 0.02
+        let w: CGFloat = 0.0062, w1: CGFloat = 0.0016
+        switch side {
+        case -1: return P.polygon([pt(0, tip), pt(-w1, tip + 0.012), pt(-w, tailEnd), pt(0, tailEnd)])
+        case 1: return P.polygon([pt(0, tip), pt(0, tailEnd), pt(w, tailEnd), pt(w1, tip + 0.012)])
+        default: return P.polygon([pt(0, tip), pt(-w1, tip + 0.012), pt(-w, tailEnd), pt(w, tailEnd), pt(w1, tip + 0.012)])
+        }
+    }
+
+    private func drawPreon(_ ctx: inout GraphicsContext, _ pt: (CGFloat, CGFloat) -> CGPoint, _ lb: Double, _ rb: Double) {
         let tailEnd = kind.tail - 0.02
-        // the stem, two facets
-        let left = P.polygon([pt(-0.0062, tailEnd), pt(-0.0036, tip + 0.04), pt(0, tip + 0.04), pt(0, tailEnd)])
-        let right = P.polygon([pt(0, tailEnd), pt(0, tip + 0.04), pt(0.0036, tip + 0.04), pt(0.0062, tailEnd)])
-        ctx.fill(left, with: .color(A.steel(0.25 + lb * 0.75)))
-        ctx.fill(right, with: .color(A.steel(0.25 + rb * 0.75)))
+        ctx.fill(preonStem(pt, side: -1), with: .color(A.steel(0.25 + lb * 0.75)))
+        ctx.fill(preonStem(pt, side: 1), with: .color(A.steel(0.25 + rb * 0.75)))
+        // the point's last stretch in the Preon's colour, where it meets the railway
+        ctx.drawLayer { layer in
+            layer.clip(to: preonStem(pt, side: 0))
+            let from = -kind.length + 0.11
+            layer.fill(Path(CGRect(x: pt(-0.02, 0).x, y: pt(0, -kind.length - 0.01).y, width: unit * 0.04,
+                                   height: (from + kind.length + 0.01) * unit)), with: .color(Theme.levelColor(8)))
+        }
         // the ring counterweight
         let ring = P.ring(pt(0, tailEnd), unit * 0.019, unit * 0.03)
         ctx.fill(ring, with: .linearGradient(Gradient(colors: [A.steel(0.15 + lb * 0.85), A.steel(rb * 0.7)]),
                                              startPoint: pt(-0.03, tailEnd), endPoint: pt(0.03, tailEnd)), style: P.eo)
-        // the arrow, in the Nuclide's colour with polished edges
-        let head = arrow(pt)
-        let epsilon = Theme.levelColor(4)
-        let halfL = P.polygon([pt(0, tip), pt(-0.02, tip + 0.05), pt(0, tip + 0.038)])
-        let halfR = P.polygon([pt(0, tip), pt(0, tip + 0.038), pt(0.02, tip + 0.05)])
-        ctx.fill(halfL, with: .color(epsilon.mix(with: .white, by: 0.25 * lb).mix(with: .black, by: 0.25 * (1 - lb))))
-        ctx.fill(halfR, with: .color(epsilon.mix(with: .white, by: 0.25 * rb).mix(with: .black, by: 0.25 * (1 - rb))))
-        ctx.stroke(head, with: .color(A.steel(0.8)), style: StrokeStyle(lineWidth: max(0.5, unit * 0.003), lineJoin: .round))
     }
 
     // MARK: Register needles
@@ -232,9 +260,10 @@ struct AnalogHandBlur: View, Equatable {
     /// The colour its tip leaves: the cycle's, or the Pentads' gold.
     private var tip: Color {
         switch kind {
-        case .helion: Theme.levelColor(6)
         case .nuclide: Theme.levelColor(4)
+        case .helion: Theme.levelColor(6)
         case .preon: Theme.levelColor(8)
+        case .flavon: Theme.levelColor(10)
         case .pentad: Theme.gold
         }
     }
@@ -243,12 +272,19 @@ struct AnalogHandBlur: View, Equatable {
         let r = unit * kind.length
         let metal = kind == .pentad ? Theme.gold : Theme.Analog.steelLight
         ZStack {
-            Circle()
-                .fill(RadialGradient(colors: [metal.opacity(0.26), metal.opacity(0.12), metal.opacity(0.04)],
-                                     center: .center, startRadius: 0, endRadius: r))
-            Circle()
-                .strokeBorder(tip.opacity(0.24), lineWidth: max(1, r * 0.24))
-                .blur(radius: r * 0.04)
+            if kind == .nuclide {
+                // the rider runs round the bezel: only its band blurs
+                Circle()
+                    .strokeBorder(tip.opacity(0.3), lineWidth: unit * (AnalogGeometry.riderBack - AnalogGeometry.riderTip))
+                    .blur(radius: unit * 0.006)
+            } else {
+                Circle()
+                    .fill(RadialGradient(colors: [metal.opacity(0.26), metal.opacity(0.12), metal.opacity(0.04)],
+                                         center: .center, startRadius: 0, endRadius: r))
+                Circle()
+                    .strokeBorder(tip.opacity(0.24), lineWidth: max(1, r * 0.24))
+                    .blur(radius: r * 0.04)
+            }
         }
         .frame(width: 2 * r, height: 2 * r)
     }
@@ -282,8 +318,8 @@ struct AnalogPinion: View, Equatable {
     }
 }
 
-/// The four hands at a reading, each on its pivot, and the main hands' cap; a hand turning faster than the eye can
-/// follow is its blur.
+/// The hands at a reading, each on its pivot, and the main hands' cap; a hand turning faster than the eye can follow is
+/// its blur.
 struct AnalogHands: View {
     let size: CGSize
     let reading: AnalogReading
@@ -293,9 +329,10 @@ struct AnalogHands: View {
         let g = AnalogGeometry(size: size)
         ZStack {
             hand(.pentad, turn: reading.syncAngle, at: g.point(AnalogGeometry.pentadRegister.center), g)
-            hand(.preon, turn: reading.preonAngle, at: g.point(AnalogGeometry.preonRegister.center), g)
+            hand(.flavon, turn: reading.flavonAngle, at: g.point(AnalogGeometry.flavonRegister.center), g)
             hand(.nuclide, turn: reading.nuclideAngle, at: g.center, g)
             hand(.helion, turn: reading.helionAngle, at: g.center, g)
+            hand(.preon, turn: reading.preonAngle, at: g.center, g)
             AnalogPinion(size: size).equatable()
         }
         .frame(width: size.width, height: size.height)

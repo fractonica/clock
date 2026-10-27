@@ -18,7 +18,7 @@ struct AnalogDialUnder: View, Equatable {
             AnalogDialUnder.drawDial(&ctx, g)
             AnalogDialUnder.drawRailway(&ctx, g)
             AnalogDialUnder.drawPentadRegister(&ctx, g)
-            AnalogDialUnder.drawPreonRegister(&ctx, g)
+            AnalogDialUnder.drawFlavonRegister(&ctx, g)
             AnalogDialUnder.drawAperture(&ctx, g)
             AnalogDialUnder.drawWindow(&ctx, g)
             AnalogDialUnder.drawIndices(&ctx, g)
@@ -178,24 +178,31 @@ struct AnalogDialUnder: View, Equatable {
         P.rimLight(&ctx, center: c, radius: rd, width: g.line(0.006), opacity: 0.25)
     }
 
-    // MARK: Railway (the Preons)
+    // MARK: Railway (the Flavons) and the Preon dots
 
+    /// The Preon hand's railway: 65 Flavon ticks, the 5 κ long; the Helion hand's Preons as dots between the indices.
     static func drawRailway(_ ctx: inout GraphicsContext, _ g: G) {
         let R = g.radius, c = g.center
         let ink = A.print
         ctx.stroke(P.circle(c, R * G.railOuter), with: .color(ink.opacity(0.7)), lineWidth: g.line(0.004))
         ctx.stroke(P.circle(c, R * G.railInner), with: .color(ink.opacity(0.7)), lineWidth: g.line(0.004))
         var minor = Path(), major = Path()
-        for k in 0..<AnalogDial.preonsPerHelion {
-            let turn = Double(k) / Double(AnalogDial.preonsPerHelion)
-            if k % AnalogDial.preonsPerTheta == 0 {
+        for k in 0..<AnalogDial.flavonsPerPreon {
+            let turn = Double(k) / Double(AnalogDial.flavonsPerPreon)
+            if k % AnalogDial.flavonsPerKappa == 0 {
                 major.addPath(P.radial(c, turn, R * (G.railInner - 0.01), R * (G.railOuter + 0.004)))
             } else {
                 minor.addPath(P.radial(c, turn, R * G.railInner, R * G.railOuter))
             }
         }
-        ctx.stroke(minor, with: .color(ink.opacity(0.8)), lineWidth: g.line(0.0055, minimum: 0.6))
+        ctx.stroke(minor, with: .color(ink.opacity(0.8)), lineWidth: g.line(0.0045, minimum: 0.5))
         ctx.stroke(major, with: .color(ink), lineWidth: g.line(0.012, minimum: 1))
+        // the Preons between the θ indices
+        var dots = Path()
+        for k in 0..<AnalogDial.preonsPerHelion where k % AnalogDial.preonsPerTheta != 0 {
+            dots.addPath(P.circle(g.polar(Double(k) / Double(AnalogDial.preonsPerHelion), G.preonDots), R * G.preonDotRadius))
+        }
+        ctx.fill(dots, with: .color(ink.opacity(0.85)))
         // the θ numbers: Preons at each index
         for n in AnalogDial.thetaNumbers {
             let turn = Double(n) / Double(AnalogDial.preonsPerHelion)
@@ -347,32 +354,32 @@ struct AnalogDialUnder: View, Equatable {
         }
     }
 
-    /// The Preon register: 65 Flavon ticks, the 5 κ long, numbered in Flavons.
-    static func drawPreonRegister(_ ctx: inout GraphicsContext, _ g: G) {
+    /// The Flavon register: 25 Blink ticks, the 5 μ long, numbered in Blinks.
+    static func drawFlavonRegister(_ ctx: inout GraphicsContext, _ g: G) {
         let R = g.radius
-        let disc = G.preonRegister
+        let disc = G.flavonRegister
         recess(&ctx, g, disc)
         let c = g.point(disc.center)
         let r = disc.radius * R
         var minor = Path(), major = Path()
-        for k in 0..<AnalogDial.flavonsPerPreon {
-            let turn = Double(k) / Double(AnalogDial.flavonsPerPreon)
-            if k % AnalogDial.flavonsPerKappa == 0 {
+        for k in 0..<AnalogDial.blinksPerFlavon {
+            let turn = Double(k) / Double(AnalogDial.blinksPerFlavon)
+            if k % AnalogDial.blinksPerMu == 0 {
                 major.addPath(P.radial(c, turn, r * 0.72, r * 0.95))
             } else {
-                minor.addPath(P.radial(c, turn, r * 0.84, r * 0.95))
+                minor.addPath(P.radial(c, turn, r * 0.82, r * 0.95))
             }
         }
-        ctx.stroke(minor, with: .color(A.print.opacity(0.75)), lineWidth: g.line(0.0045, minimum: 0.5))
+        ctx.stroke(minor, with: .color(A.print.opacity(0.8)), lineWidth: g.line(0.006, minimum: 0.6))
         ctx.stroke(major, with: .color(A.print), lineWidth: g.line(0.011, minimum: 1))
-        for n in AnalogDial.kappaNumbers {
-            let turn = Double(n) / Double(AnalogDial.flavonsPerPreon)
+        for n in AnalogDial.muNumbers {
+            let turn = Double(n) / Double(AnalogDial.blinksPerFlavon)
             let p = G.polar(turn, disc.radius * 0.54, around: disc.center)
             P.text(&ctx, String(n), at: g.point(p), size: R * 0.042, weight: .semibold, color: A.print)
         }
-        // the unit it counts, in the Preon's colour
-        P.text(&ctx, "ι", at: g.point(CGPoint(x: disc.center.x, y: disc.center.y + disc.radius * 0.3)), size: R * 0.05,
-               weight: .medium, color: Theme.levelColor(8), condensed: false)
+        // the unit it turns through, in the Flavon's colour
+        P.text(&ctx, "λ", at: g.point(CGPoint(x: disc.center.x, y: disc.center.y + disc.radius * 0.3)), size: R * 0.05,
+               weight: .medium, color: Theme.levelColor(10), condensed: false)
     }
 
     // MARK: Aperture (the movement under the dial)
@@ -440,8 +447,8 @@ struct AnalogDialUnder: View, Equatable {
         // the name, under the Pentad register
         P.text(&ctx, "FRACTONICA", at: g.point(CGPoint(x: 0, y: -0.135)), size: R * 0.04, weight: .semibold,
                color: A.print, condensed: false, tracking: R * 0.012)
-        // what the hand reads, above the Preon register
-        P.text(&ctx, "HELION", at: g.point(CGPoint(x: 0, y: 0.115)), size: R * 0.028, weight: .medium,
+        // what the main hands read, above the Flavon register
+        P.text(&ctx, "HELION · PREON", at: g.point(CGPoint(x: 0, y: 0.115)), size: R * 0.028, weight: .medium,
                color: A.printDim, condensed: false, tracking: R * 0.01)
         // the window's unit
         let w = G.window

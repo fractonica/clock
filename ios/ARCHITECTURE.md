@@ -262,9 +262,11 @@ The Now screen pages through five faces (`FacePager`; `FaceCatalog.swift` gives 
 whether it steps through levels). The three drawn faces carry the Pentads themselves, so the Pentad card is left out
 under them; each keeps its geometry and reading pure (checked in its own Checks folder) and redraws in layers, each as
 often as it changes:
-- **Analog** (Face/Analog): a mechanical dial of one Helion (36 Preon ticks, the 9 θ as indices), a Preon register
-  of 65 Flavons, the Nuclide's 77 Helions on the outer ring with each Pentad's stretch in gold, a Pentad register of
-  the sync's 19 Helions (a tap opens the explainer), and a balance swinging with the μ. The balance is a Core
+- **Analog** (Face/Analog): a mechanical dial geared like a watch, each hand turning once while the one before it
+  moves a tick: a rider on the bezel round the Nuclide's 77 Helions (each Pentad's stretch in gold on the ring), the
+  Helion hand over 36 Preons (the 9 θ as indices, the Preons between as dots), a long Preon hand over the railway's
+  65 Flavons, a Flavon register of 25 Blinks at 6 o'clock, a Pentad register of the sync's 19 Helions (a tap opens
+  the explainer), and a balance swinging with the μ. The balance is a Core
   Animation layer kept in step with the displayed time (`AnalogBalance`): a 60 Hz SwiftUI timeline cost ~21 % of a
   core on the Mac, the layer next to nothing — the pattern for anything that swings continuously.
 - **Epicycles** (Face/Epicycles): arms turning with their periods' phases, each riding the tip of the one before

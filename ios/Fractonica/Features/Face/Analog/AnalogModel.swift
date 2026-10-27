@@ -3,9 +3,12 @@ import Foundation
 
 // What the analog dial reads (Features/Face/Analog), with no SwiftUI: checked by Analog/Checks.
 //
-//   main hand        the Helion: one turn per Helion, over 36 Preon ticks (9 θ indices of 4ι)
-//   Preon register   (6 o'clock) one turn per Preon over 65 Flavon ticks (5 κ of 13λ), stepping once a Blink
-//   Nuclide pointer  the outer chapter ring: 77 Helions (7 ζ of 11η), its Pentads marked where they start
+// Each hand turns once while the one before it moves a tick, as on a watch:
+//   Nuclide rider    on the bezel, once round the chapter ring per Nuclide: 77 Helions (7 ζ of 11η), its Pentads
+//                    marked where they start
+//   Helion hand      the dauphine, once per Helion, over 36 Preons (9 θ indices of 4ι, the Preons between as dots)
+//   Preon hand       long and thin, once per Preon over the railway's 65 Flavons (5 κ of 13λ)
+//   Flavon register  (6 o'clock) once per Flavon over 25 Blinks (5 μ of 5ν), stepping once a Blink
 //   Pentad register  (12 o'clock) one turn per solar sync: 19 Helions as Pentad I, II, III and the Hypopentad
 //   Helion window    (3 o'clock) the Helion's number in its Nuclide, 1 … 77
 //   balance          (9 o'clock) swings with the μ cycle (depth 12): twice a period, right at the peak, left at the valley
@@ -31,14 +34,16 @@ struct AnalogReading: Equatable, Sendable {
 
     /// The running Helion's place in its sync, 0 … 18.
     var syncHelion: Int { 5 * pentad + pentadHelion - 1 }
-    /// Blinks completed in the Preon, 0 … 1624: where the Preon register's hand stands.
+    /// Blinks completed in the Preon, 0 … 1624: where the Preon hand stands.
     var blinks: Int { lambda * 25 + nu }
 
     /// The main hand: the Helion's phase.
     var helionAngle: Double { min(max(helion, 0), 1) }
-    /// The Preon register's hand, a step a Blink: 1625 steps a turn.
+    /// The Preon hand, a step a Blink: 1625 steps a turn.
     var preonAngle: Double { Double(blinks) / Double(AnalogDial.blinksPerPreon) }
-    /// The Nuclide pointer: the Helion's place on the 77-Helion ring, gliding through its slot with the Helion.
+    /// The Flavon register's hand, a step a Blink: 25 steps a turn.
+    var flavonAngle: Double { Double(nu) / Double(AnalogDial.blinksPerFlavon) }
+    /// The Nuclide's rider: the Helion's place on the 77-Helion ring, gliding through its slot with the Helion.
     var nuclideAngle: Double { (Double(eta - 1) + helionAngle) / Double(AnalogDial.helionsPerNuclide) }
     /// The Pentad register's hand: the Helion's place in its sync, gliding through its pip with the Helion.
     var syncAngle: Double { (Double(syncHelion) + helionAngle) / Double(AnalogDial.helionsPerSync) }
@@ -78,6 +83,8 @@ enum AnalogDial {
     /// κ: a major tick every 13 Flavons, 5 a Preon.
     static let flavonsPerKappa = 13
     static let blinksPerFlavon = 25
+    /// μ: a major tick every 5 Blinks, 5 a Flavon.
+    static let blinksPerMu = 5
     static let blinksPerPreon = 1625
     static let helionsPerNuclide = 77
     /// ζ: a major mark every 11 Helions, 7 a Nuclide.
@@ -90,8 +97,8 @@ enum AnalogDial {
     /// The Preon counts printed on the main track at the θ indices (4, 8 … 32; the top has the double index).
     static let thetaNumbers = (1..<9).map { $0 * preonsPerTheta }
 
-    /// The Flavon counts printed in the Preon register at the κ ticks (0, 13, 26, 39, 52).
-    static let kappaNumbers = (0..<5).map { $0 * flavonsPerKappa }
+    /// The Blink counts printed in the Flavon register at the μ ticks (0, 5 … 20).
+    static let muNumbers = (0..<5).map { $0 * blinksPerMu }
 
     /// The Helion's quarters on the main dial (peak ¼, node ½, valley ¾), as fractions of a turn.
     static let quarters = [0.25, 0.5, 0.75]
@@ -148,7 +155,7 @@ enum AnalogDial {
 
     // MARK: Cadences (displayed time of the next change, for `NowTimeline`)
 
-    /// The hands: the Preon register steps once a Blink, and the other hands glide with it.
+    /// The hands: the Preon hand and the Flavon register step once a Blink, and the other hands glide with them.
     static func handsChange(after t: Double, clock: FractonicaClock = .shared) -> Double? {
         clock.level(at: t, 12)?.end
     }
