@@ -24,7 +24,7 @@ extension AppSettings.FaceMode {
     var systemImage: String {
         switch self {
         case .analog: "clock"
-        case .epicycles: "circle.circle"
+        case .epicycles: "circle.dotted.and.circle" // a circle riding another (iOS 17)
         case .star: "star.circle"
         case .journal: "text.line.first.and.arrowtriangle.forward"
         case .watch: "applewatch.watchface"

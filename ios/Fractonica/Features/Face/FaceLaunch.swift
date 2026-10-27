@@ -14,6 +14,10 @@ import Foundation
 ///     -FXFaceTip top|solar|bottom  show that watch row's press-and-hold card under the face (to look at it)
 ///     -FXFaceCanvas <W>x<H>      the screen lays itself out in a W × H point box, outlined (to check landscape and Mac
 ///                                window layouts on a portrait simulator)
+///     -FXEpicycles <base>-<top>  the epicycle face's arms (6-10: η … λ); with -FXEpicycleRadii r,r,…,
+///                                -FXEpicycleOff l,…, -FXEpicycleReverse l,…, -FXEpicycleFrame dial|carrier,
+///                                -FXEpicycleTips 0|1 and -FXEpicycleEdit 1 (its editor open): `EpicycleLaunch`
+///                                (Epicycles/EpicycleConfig.swift), shown for the launch, never saved
 ///
 ///     ios/scripts/shoot.sh … -FXTab now -FXFace watch -FXFaceDepth 9 -FXFaceOverlay info
 struct FaceLaunch: Equatable, Sendable {
