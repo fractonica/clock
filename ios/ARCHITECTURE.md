@@ -269,8 +269,16 @@ often as it changes:
   the explainer), and a balance swinging with the μ. The balance is a Core
   Animation layer kept in step with the displayed time (`AnalogBalance`): a 60 Hz SwiftUI timeline cost ~21 % of a
   core on the Mac, the layer next to nothing — the pattern for anything that swings continuously.
-- **Epicycles** (Face/Epicycles): arms turning with their periods' phases, each riding the tip of the one before
-  (in progress).
+- **Epicycles** (Face/Epicycles): a ladder of arms from a base period down to a top one (η θ ι κ by default, at most
+  six), each turning with its own period's phase at the tip of the one before — a hand of its period, up at its
+  start, right at its peak (or measured from its carrier) — so the pen at the last tip draws a closed figure once a
+  base cycle: drawn so far, the rest a ghost, the other tips' paths faint in their colours, over the base's scale.
+  Every arm is frac(N · the base's phase), N its cycles in a base cycle (checked against the engine). Loops too close
+  for the display run into a haze, arms a time-lapse spins too fast blur. The hub carries the Pentad inside the sync's
+  19 Helions; a base of a ζ or longer marks its Pentads on the scale and glows gold through the running one. The
+  person sets the ladder, each arm's length, on/off and direction in `EpicycleEditor` (the face menu's Edit
+  Epicycles…, a long press; an inspector: a sheet on iPhone, a column on iPad and the Mac), stored per device by
+  `EpicycleSettings` (`epicycles.v1`).
 - **Star** (Face/Star): one solar day round the rim, the sync's 19 Helions as the chords of the star polygon {19/4}
   (Helion k from point 4k mod 19 to the next, so each chord spans the Sun's arc in it), the running Pentad's chords
   in gold, the rim's points marked by Pentad, and the running Helion as a 9 × 4 rose of η, θ and ι arms.
@@ -467,7 +475,10 @@ n entries to sync, `-FXHubScheme light|dark` sets the hub sheets' appearance (Hu
 away (it captures and saves; `-FXMomentsCaptures 1|3|5` sets the count for the launch), `-FXMomentsSettings 1` the
 Moments screen on its settings, `-FXMomentsDemo 1` fills the journal with captures of every rarity (with
 `-FXJournalStore <dir>`), `-FXMomentsAuto 0` keeps the instant view from opening by itself and the moments' banners
-away (MomentStore.swift lists them all). How the argument domain reads values:
+away (MomentStore.swift lists them all). `-FXEpicycles 6-10` sets the epicycle face's arms (base–top levels), with
+`-FXEpicycleRadii 1,0.4,0.15,0.05,0.02`, `-FXEpicycleOff`, `-FXEpicycleReverse`, `-FXEpicycleFrame dial|carrier`,
+`-FXEpicycleTips 0|1` and `-FXEpicycleEdit 1` (the editor open); shown for the launch, never saved (FaceLaunch.swift
+lists the Now screen's hooks). How the argument domain reads values:
 
 - A value that starts with `-` is read as the next flag, not as the value: `-FXTime -11253795000` needs the raw-argument
   fallback LaunchOptions has; prefer values that start otherwise.

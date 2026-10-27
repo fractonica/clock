@@ -1,0 +1,8 @@
+# The app files EpicycleChecks.swift compiles against (relative to ios/).
+Fractonica/Features/Face/Epicycles/EpicycleConfig.swift
+Fractonica/Features/Face/Epicycles/EpicycleSettings.swift
+Fractonica/Features/Face/Epicycles/EpicycleGeometry.swift
+Fractonica/Features/Face/Epicycles/EpicycleReading.swift
+Fractonica/Features/Face/PentadCardModel.swift
+Shared/Pentads.swift
+Shared/Notation+Standard.swift

@@ -41,8 +41,14 @@ struct NowScreen: View {
         switch face {
         case .journal: Journal.units[FaceStepper.clampUnit(unit)].level
         case .watch: depth - 1
-        case .analog, .epicycles, .star: 6 // the Helion
+        case .analog, .star: 6 // the Helion
+        case .epicycles: EpicycleSettings.shared.config.base // where the figure starts again
         }
+    }
+
+    /// The epicycle face's editor, while that face shows (`editing` read in the body, so the screen follows it).
+    private func epicycleEditor(_ editing: Bool) -> Binding<Bool> {
+        Binding(get: { face == .epicycles && editing }, set: { EpicycleSettings.shared.editing = $0 })
     }
 
     var body: some View {
@@ -100,6 +106,7 @@ struct NowScreen: View {
                 .frame(minWidth: 480, minHeight: 560)
                 #endif
         }
+        .inspector(isPresented: epicycleEditor(EpicycleSettings.shared.editing)) { EpicycleEditor() }
         .sensoryFeedback(.selection, trigger: steps) { _, _ in settings.haptics }
         .sensoryFeedback(.impact(weight: .light, intensity: 0.7), trigger: refusals) { _, _ in settings.haptics }
     }
@@ -281,6 +288,11 @@ struct NowScreen: View {
                         Button(face == .journal ? "Shorter Unit" : "Shorter Period", systemImage: "chevron.down") { step(1) }
                             .disabled(!canStep(1))
                             .keepsMenuOpen()
+                    }
+                }
+                if face == .epicycles {
+                    Section {
+                        Button("Edit Epicycles…", systemImage: "slider.horizontal.3") { EpicycleSettings.shared.editing = true }
                     }
                 }
                 if face == .watch {
