@@ -13,7 +13,8 @@ import Foundation
 ///     {ordinal}  the place in its parent: "Trifracton" (α β γ δ), "3rd" (finer); the sync's number; "#23"
 ///     {unit}     "Delta", "Helion", "ζ", "solar sync", "eclipse"
 ///     {when}     "now", or the lead: "in 15 min", "in 3ι"
-///     {time}     the moment: "14:23:07" (another day: "Oct 9 14:23") · pure "34η 29ι 21λ" (another Nuclide: the
+///     {time}     the moment led by its Pentad (SPEC §7.5), as a date by its weekday: "Pentad II · 14:23:07"
+///                (another day: "Pentad III · Oct 9 14:23") · pure "Pentad II · 34η 29ι 21λ" (another Nuclide: the
 ///                short letter date)
 struct AlertText: Sendable {
     let words: Wording
@@ -118,9 +119,10 @@ struct AlertText: Sendable {
         return "in " + Self.earthLead(lead)
     }
 
-    /// The moment, read a hair after it so a beginning cycle reads as begun.
+    /// The moment led by its Pentad, read a hair after it so a beginning cycle reads as begun (and a Pentad beginning
+    /// with it as begun).
     func time(_ o: AlertOccurrence) -> String {
-        moment(o.time + 0.002, from: o.fire)
+        PentadWords.lead(moment(o.time + 0.002, from: o.fire), at: o.time + 0.002)
     }
 
     /// A moment seen from `ref`, as precise as it needs to be: the time of day on the same day, "Jan 26 15:07" in the

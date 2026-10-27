@@ -59,7 +59,7 @@ struct TimerScreen: View {
     private func alertMessage(_ ringing: TimerStore.Ringing) -> String {
         let words = store.words
         let title = words.title(ringing.spec)
-        let at = words.pure ? words.clockReading(ringing.at) : words.moment(ringing.at)
+        let at = words.led(words.pure ? words.clockReading(ringing.at) : words.moment(ringing.at), at: ringing.at)
         if case .aligned = ringing.spec { return "Rang at \(at)." }
         return "\(title) · rang at \(at)."
     }

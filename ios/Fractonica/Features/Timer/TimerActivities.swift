@@ -60,7 +60,9 @@ enum TimerActivities {
                 pausedAt: nil,
                 reading: reading == "—" ? title : reading,
                 compact: compactTitle(run, words: words),
-                detail: words.pure ? "Ends at \(words.clockReading(end))" : "Ends \(words.ringTime(end, short: true))",
+                // the end led by its Pentad, in words: the Live Activity's strings stay plain text
+                detail: words.pure ? "Ends at \(words.led(words.clockReading(end), at: end))"
+                    : "Ends \(words.led(words.ringTime(end, short: true), at: end))",
                 pure: words.pure
             )
         }
