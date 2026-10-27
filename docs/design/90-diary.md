@@ -51,6 +51,19 @@ A*, λ 266.84° J2000): galactic centre, post-centre, galactic anticentre, post-
 Delta's phase at the page's first Helion as two big 2-stroke glyphs in its middle (the "/125 125" is gone, each side
 keeps to its half); no text on an A5 page is smaller than about 1.45 mm (4.1 pt).
 
+Sixth round (applied): **Pentads** (SPEC §7.5) – the solar sync's 19 Helions as Pentad I, II, III (5 Helions each) and
+the Hypopentad (4), said like weekdays: *"a date leads with its Pentad, like a weekday"*. Every Helion section header
+leads with its Pentad (the shape and its name, "⬠ Pentad II 34η", in the Sun's colour), the running head's inner side
+with the page's Pentads ("⬠II", or "◻ → ⬠I" where the page crosses into the next), the 77th Helion's grid carries each
+Helion's Pentad, the tables lead their dates with it and the Gregorian index shows the Pentads that begin on each day
+with their time. The shape is drawn as a path – a pentagon with its numeral, the Hypopentad's square alone (the side
+count is the Helion count) – never the ⬠ character, which only one Apple font has (src/diary/render/pentad.js, on the
+geometry of src/ui/pentad.js). **Naming:** the third round called the diary's 5-Helion sheets "Pentads" and the
+4-Helion one a "Semi-pentad". A diary lock counts its 19 Helions from the Nuclide, a sync from the sync anchor, so the
+two drift by one Helion per Nuclide (77 = 4 · 19 + 1) and the words would contradict the spec: the pages now say
+"sheet 1–4" and "4-Helion sheet" (page titles, the section badge, the thumb index, the Diary tab's form). The internal
+ids (`unit: 'pentad' | 'semi'`, `semiSide`, the `semi.*` options, `NAV_SLOTS.semi`) are unchanged.
+
 ## Eclipses
 
 `inserts.eclipses` (needs `events.eclipses`): each eclipse of the Delta gets two sheets right before the sheet that
@@ -117,12 +130,13 @@ sections, index, helionAt(t), pageOf(t)}`:
     `ladder` · `milestones` · `planning {part, of}` · `predictions {part, of}`
   - `nuclide {n}` – the Nuclide header (a verso, facing the first Helion page)
   - `lined {sections:[{d, lines}], nuclide, lock, sheet, sheets, unit, unitNo, retro?, t0, t1}` – a sheet front, or the
-    retro Helion. `unit` 'pentad' (a sheet of 5 Helions, `unitNo` 1–3 in its lock) | 'semi' (4 Helions) | 'sheet'.
-    A Semi-pentad with `semi.allCanvas` is two canvas pages (front a recto, `semiSide` 'front' / 'back'), 2 Helions each,
-    canvases from `semi.canvases`.
+    retro Helion. `unit` 'pentad' (a sheet of 5 Helions, `unitNo` 1–3 in its lock) | 'semi' (4 Helions) | 'sheet' –
+    internal ids only: pages say "sheet n" (`sheet` + 1) and "4-Helion sheet", never Pentad (SPEC §7.5 Pentads follow the
+    solar sync, not the Nuclide). A 4-Helion sheet with `semi.allCanvas` is two canvas pages (front a recto, `semiSide`
+    'front' / 'back'), 2 Helions each, canvases from `semi.canvases`.
   - every Helion page, Nuclide header and Delta sheet carries `nav` `[{kind, label, prev, next}]` (`navigate()`): the
     thumb index. Kinds: `helion` (the page of the same Helion number one Nuclide earlier / later, same page kind),
-    `semi` (Semi-pentad fronts with fronts, backs with backs), `lock` (first pages of the solar locks), `retro` (each
+    `semi` (4-Helion sheet fronts with fronts, backs with backs), `lock` (first pages of the solar locks), `retro` (each
     page of the 77th Helion with the same page of the other Nuclides), `nuclide`, `insert`.
   - `canvas {sections:[{d, canvas:{type, cols, rows | count | lines}}], nuclide, lock, sheet, retro?, t0, t1}`
   - `insert {major, nuclide, lock, helion}` – a Delta sheet before the lock that holds a Delta quarter threshold
@@ -138,17 +152,24 @@ sections, index, helionAt(t), pageOf(t)}`:
 
 One SVG per page, `viewBox="0 0 W H"` in millimetres. Margins from `opts.page.margins`; the INNER margin is on the
 left of a recto and on the right of a verso; the OUTER margin carries the time ticks. Running head (top): the Delta in
-words with its quarter ("Delta Trifracton Node") · `ε#2` and the global Saros phase; the Gregorian date range of the page
-in small type when Gregorian is on. Folio: the page number in the outer bottom corner. Ink: `style.ink` 'color' (level
+words with its quarter ("Delta Trifracton Node") · `ε#2` and the global Saros phase; on the inner side the page's
+Pentads, then the Gregorian date range of the page in small type when Gregorian is on. Folio: the page number in the outer bottom corner. Ink: `style.ink` 'color' (level
 colours from `src/core/theme.js`, toned for paper) or 'mono'; ruled lines light grey ~0.15 mm; text sizes in mm (body
 ~2.6 mm, small ~1.9 mm). Fonts: `style.font` sans (system-ui, Helvetica, Arial) or serif. Glyphs are the library's
 2-stroke glyph paths (`F.CBT.geometry(F.CBT.fromIndex(i, {depth: 2}))`), never images.
+
+**Pentads** (SPEC §7.5) wherever a Helion or a moment is dated, read from `model.pentadAt` (the context's
+`pentadAt(t)` / `pentadOfHelion(h)` / `pentadStarts(t0, t1)`, src/diary/render/words.js) and drawn by
+src/diary/render/pentad.js (`drawMark`, `markedRuns`: the mark always comes first in reading order, also on a verso
+where the line is anchored at the right; `markWidth`; table cells take `{text, pentad}`), in the Sun's colour
+(`pal.family('solar')`).
 
 - **Running head**: the Delta in words with its quarter and the Nuclide, and in the outer top corner the **global Saros
   phase** – the first Helion's number in its Alpha (`helion.alpha`, 1–125 125: `91 246/125 125`; the owner dropped the
   dial that drew it, it barely moves). No time-zone labels anywhere: Gregorian times are local times of the chosen zone.
 - **lined** – the content height is split into the page's sections (Helions, top to bottom). Each section: a header
-  line (the number `34η` large, the stamp `δ#3 ε#2 33η`, the Gregorian start–end), then `lines` ruled lines (12 → one per
+  line (led by the Helion's Pentad – its shape and name –, the number `34η` large, the stamp `δ#3 ε#2 33η`, the
+  Gregorian start–end), then `lines` ruled lines (12 → one per
   3 Preons; the retro Helion 36 → one per Preon). Inner-edge line labels per `lined.labels`: the Preon count at the line's
   start (`0ι 3ι 6ι …`) and, with 'both', the Gregorian time. Outer margin (`lined.marginGlyphs`, `lined.marginCurve`): a
   subtle curve of the Helion's wave over the section, each half-cycle an arc of a perfect circle (crest outward, trough
@@ -158,7 +179,7 @@ colours from `src/core/theme.js`, toned for paper) or 'mono'; ruled lines light 
 - **Thumb index** (`opts.nav.on`): a 6 mm strip along the outer paper edge (`frameOf().navW`; the margin labels keep
   the rest of the outer margin, which is 20 mm by default, the inner 16 mm). One tab per reference, turned to read down
   the edge – `‹ 37 · 5η · 191 ›` – at the fixed height of its kind (`NAV_SLOTS`: Nuclide 6 %, Delta sheet 21 %, lock
-  37 %, Semi-pentad 53 %, 77th Helion 69 %, Helion 86 % of the content height), tinted in its level's colour to the
+  37 %, 4-Helion sheet 53 %, 77th Helion 69 %, Helion 86 % of the content height), tinted in its level's colour to the
   paper edge; the text stays ≥ 4.4 mm from the edge (the unprintable rim).
 - **The local sky** (`opts.sky`, `plan.sky` = src/diary/astro/sky.js `skyOf` over `places.js placeOf(opts, zone)`: the
   options' coordinates, else the zone's main city). Lined sections: every rule breaks for 1.8 mm at the middle of the
@@ -171,14 +192,18 @@ colours from `src/core/theme.js`, toned for paper) or 'mono'; ruled lines light 
   (cols × rows square cells, 19 × 13 by default, as large as fits), `blank` (the default second canvas), `dots` (`count` dots scattered pseudo-randomly with a
   seed from the Helion's cycle index, so a diary always prints the same), `dot-grid`, `lined`, `blank`, and
   `nuclide-grid` (the 77th Helion's second canvas by default): the Nuclide's 77 Helions as 7 columns (one per ζ of 11
-  Helions) × 11 rows, numbered 1–77 down the columns in the cells' top-left corners, Semi-pentad cells tinted, the
-  77th outlined, each cell's bottom-right corner carrying the symbols of that Helion's ephemeris events.
+  Helions) × 11 rows, numbered 1–77 down the columns in the cells' top-left corners, each Helion's Pentad in the
+  top-right corner (in the Sun's colour with a rule on the cell's top edge where a Pentad begins, heavier for a sync's
+  Pentad I; quietly elsewhere), the 4-Helion sheets' cells tinted, the 77th outlined, each cell's bottom-right corner
+  carrying the symbols of that Helion's ephemeris events.
 - **index** – title block: the Delta in words (Alpha … Delta), its letters, when it begins and **ends** (Fractonica +
   Gregorian); then the rows: thresholds of the major periods ("Delta Trifracton · Peak ends → Node", "Gamma Nonafracton ·
   Node …"), the Nuclides, the locks (`ε#2 lock 3 · 38η–56η`), the retro Helions, the inserts and the sections, each with
-  Fractonica time, Gregorian time and page.
-- **gregorian** – month grids (weeks from Monday), each day of the Delta with its page number; days outside greyed.
-- **ephemeris** – a table: symbol · event · Fractonica (short date down to Flavons) · Gregorian (weekday, date, time,
+  Fractonica time (led by its Pentad), Gregorian time and page.
+- **gregorian** – month grids (weeks from Monday), each day of the Delta with the Pentads that begin on it and their
+  time (about one a day, each a quarter Helion later than the day before until the Hypopentad brings Pentad I back; a
+  cell too small for a line keeps the first one's mark beside the day number) and its page number; days outside greyed.
+- **ephemeris** – a table: symbol · event · Fractonica (short date down to Flavons, led by its Pentad) · Gregorian (weekday, date, time,
   zone) · page; a legend of the event families with their definitions. Rows may pack up to 30 % tighter than
   `rowsPerPage` when that saves a page (the default Delta's 63 events fill two pages).
 - **ladder** (the reference sheet's front) – how the hierarchy is derived (Alpha = 4 Saros; S = 5, 13, 5, 5, 7, 11, 9, 4
@@ -195,8 +220,10 @@ colours from `src/core/theme.js`, toned for paper) or 'mono'; ruled lines light 
   they fall on), this diary's Beta row and Gamma cell are marked. Pure mode prints positions (`pos 21`, `20.985`).
 - **planning / predictions** – the Delta's frame (5 Nuclides with their dates; the Delta quarters with their thresholds)
   with writing lines.
-- **nuclide** – `ε#2` large, "Nuclide 2 of Delta Trifracton", begins/ends, the locks with Helion ranges, Gregorian ranges
-  and pages, the retro Helion's page, the events of the Nuclide with pages, intention lines.
+- **nuclide** – `ε#2` large, "Nuclide 2 of Delta Trifracton", begins/ends, the locks with Helion ranges, where each
+  begins in the Sun's rhythm (the Pentad of its first Helion and that Helion's place: "⬠II 3rd Helion"), Gregorian ranges
+  and pages, the retro Helion's page, the events of the Nuclide (their clock led by the Pentad) with pages, intention
+  lines.
 - **insert** – the Delta quarter threshold: what ends and what begins, when (Fractonica + Gregorian), a four-segment bar of
   the Delta's quarters with the current one marked, the remaining thresholds with times and pages, review lines.
 - **summary** – retrospection of the Delta: a block per Nuclide and per quarter, then writing space. **notes** – lines.

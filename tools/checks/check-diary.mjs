@@ -46,13 +46,17 @@ await withApp(
     ok((await page.getAttribute('.dy-follow', 'aria-pressed')) === 'true', '"Delta of the shown moment" is on');
     const pickers = await page.$$eval('.dy-pick', (els) => els.map((e) => e.selectedOptions[0]?.textContent));
     ok(pickers.join('|') === 'Alpha Hexafracton|Beta Tetrafracton|Gamma Nonafracton|Delta Trifracton', 'fracton-name pickers', pickers.join('|'));
-    const spanText = await page.textContent('.dy-span');
+    // each end of the Delta is a date led by its Pentad (SPEC §7.5): the mark (named for screen readers), then the date
+    const spanParts = await page.$$eval('.dy-span .pentad-lead', (els) => els.map((e) => `${e.querySelector('.pentad-mark')?.getAttribute('aria-label')} · ${e.querySelector('.pentad-rest')?.textContent}`));
+    const spanText = spanParts.join(' → ');
     const wantSpan = await page.evaluate(() => {
       const { model, ctx } = __fractonica;
       const c = model.cycleByIndex(3, 1862);
-      return `${ctx.pure.dateText(c.start + 1e-3)} → ${ctx.pure.dateText(c.end + 1e-3)}`;
+      const at = (t) => `${ctx.pure.PENTAD_NAMES[model.pentadAt(t).index]} · ${ctx.pure.dateText(t)}`;
+      return `${at(c.start + 1e-3)} → ${at(c.end + 1e-3)}`;
     });
-    ok(spanText === wantSpan && /^Delta Trifracton Peak ε#1 \d+η 0ι → Delta Tetrafracton Peak/.test(spanText), 'the span in Fractonica terms', spanText);
+    ok(spanText === wantSpan && /^(Pentad I+|Hypopentad) · Delta Trifracton Peak ε#1 \d+η 0ι → (Pentad I+|Hypopentad) · Delta Tetrafracton Peak/.test(spanText), 'the span in Fractonica terms, each end led by its Pentad', spanText);
+    ok((await page.$$('.dy-span .pentad-mark svg path')).length === 2, 'the Pentads drawn as shapes, not characters');
     ok(/2026.*→.*2026.*Europe\/Berlin/.test(await page.textContent('.dy-gspan')), 'the Gregorian range in the app zone');
     const pages0 = await P('(d, p) => p.pages.length');
     ok(pages0 >= 198 && pages0 % 2 === 0, `the default A5 diary: ${pages0} pages`);
