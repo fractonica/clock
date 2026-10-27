@@ -263,7 +263,7 @@ struct JumpScreen: View {
         } else if let t = candidate.time {
             store.travel(to: t)
             let moment = settings.pure ? Notation.standard.stamp(at: t, upTo: "eta") : EarthFormatter(zone: settings.zone).long(t)
-            toasts.show("Jumped to \(moment)")
+            toasts.show("Jumped to \(PentadWords.lead(moment, at: t))")
         } else {
             return
         }
