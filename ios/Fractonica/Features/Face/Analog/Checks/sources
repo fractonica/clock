@@ -1,0 +1,5 @@
+# The app files AnalogChecks.swift compiles against (relative to ios/).
+Fractonica/Features/Face/Analog/AnalogModel.swift
+Fractonica/Features/Face/Analog/AnalogGeometry.swift
+Shared/Pentads.swift
+Shared/Notation+Standard.swift
