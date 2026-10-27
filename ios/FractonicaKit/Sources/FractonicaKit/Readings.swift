@@ -100,6 +100,24 @@ public struct SolarReading: Hashable, Sendable {
     public let beforeAnchor: Bool
 }
 
+/// The Pentad running at an instant (SPEC §7.5, model.js `pentadAt`): the solar sync's 19 Helions as Pentad I, II, III
+/// (5 Helions each) and the Hypopentad (4).
+public struct PentadReading: Hashable, Sendable {
+    /// The solar sync it belongs to.
+    public let sync: Int
+    /// 0 … 3; 3 is the Hypopentad.
+    public let index: Int
+    /// The Helion's place in it, 1 … 5 (1 … 4 in the Hypopentad).
+    public let helion: Int
+    /// 5, or 4 for the Hypopentad.
+    public let helions: Int
+    /// Its exact start and end (cut at the catalogue's edges).
+    public let start: Double
+    public let end: Double
+
+    public var isHypopentad: Bool { index == 3 }
+}
+
 /// One sync by number (model.js `solarSyncByNumber`).
 public struct SolarSyncInfo: Hashable, Sendable {
     public let sync: Int

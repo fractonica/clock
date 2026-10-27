@@ -94,6 +94,7 @@ struct ClockFixtureTests {
                 }
             }
             compareSolar(clock.solar(at: t), sample["solar"], at, &check)
+            comparePentad(clock.pentad(at: t), sample["pentad"], at, &check)
             check.equal(clock.address(at: t), sample["address"].isNull ? nil : sample["address"].ints, "\(at) address")
         }
         check.report()
@@ -131,6 +132,14 @@ struct ClockFixtureTests {
                     "\(what) static fields")
         check.equal(r.name, info.text, "\(what) name")
         check.equal(r.siblings, info.siblings ?? 18, "\(what) siblings")
+    }
+
+    private func comparePentad(_ p: PentadReading?, _ expected: JSON, _ what: String, _ check: inout Checker) {
+        guard check.presence(p != nil, !expected.isNull, "\(what) pentad"), let p else { return }
+        check.equal([p.sync, p.index, p.helion, p.helions],
+                     [expected["sync"].int, expected["index"].int, expected["helion"].int, expected["helions"].int], "\(what) pentad")
+        check.time(p.start, expected["start"].double, "\(what) pentad start")
+        check.time(p.end, expected["end"].double, "\(what) pentad end")
     }
 
     private func compareSolar(_ s: SolarReading?, _ expected: JSON, _ what: String, _ check: inout Checker) {

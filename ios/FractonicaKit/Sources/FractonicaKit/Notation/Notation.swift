@@ -43,6 +43,15 @@ public struct Notation: Sendable {
     /// The quarter of a major period, named by the threshold that ends it (SPEC §6.2).
     public static let quarterWords = ["Peak", "Node", "Valley", "End"]
 
+    /// The Pentads of a solar sync (SPEC §7.5), said like weekdays: index 0 … 3. The short form draws the Helion count
+    /// as a shape (a pentagon for five, a square for the Hypopentad's four); views draw the shapes themselves
+    /// (`pentadNumerals` beside them), text that must stay plain uses the ASCII form.
+    public static let pentadNames = ["Pentad I", "Pentad II", "Pentad III", "Hypopentad"]
+    public static let pentadShort = ["\u{2B20}I", "\u{2B20}II", "\u{2B20}III", "\u{25FB}"]
+    public static let pentadASCII = ["P1", "P2", "P3", "H"]
+    /// The numeral beside a Pentad's shape ("II"); empty for the Hypopentad, whose square alone says it.
+    public static let pentadNumerals = ["I", "II", "III", ""]
+
     /// The word for one tick of real time, and the compact "cycles per Blink" that replaces Hz.
     public static let blink = "Blink"
     public static let perBlinkUnit = "pB"

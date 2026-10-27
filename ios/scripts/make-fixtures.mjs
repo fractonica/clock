@@ -162,6 +162,7 @@ function samplesFixture() {
       s3d2: i % 2 ? null : LEVELS.map((L) => odometerRecord(model.odometerAt(t, L, { strokes: 3 }))),
     },
     solar: model.solarAt(t),
+    pentad: model.pentadAt(t),
     address: model.addressAt(t),
   }));
   return { levelFields: LEVEL_FIELDS, odometerFields: ODOMETER_FIELDS, strokes3Levels, samples };
@@ -266,7 +267,16 @@ function cyclesFixture() {
     const n = int(first, last);
     syncs.push({ n, out: model.solarSyncByNumber(n) });
   }
-  return { byIndex, at, paths, badPaths, startTimes, timeOfPosition, timestamps, boundaries, upcoming, occurrences, syncs };
+  // Pentads by number, at the edges and inside, every index
+  const pentads = [];
+  for (const n of [-32929, -32928, -32927, -1, 0, 1, 4820, 80671, 80672, 80673]) {
+    for (const i of [0, 1, 2, 3]) pentads.push({ n, index: i, out: model.pentadByNumber(n, i) });
+  }
+  for (let k = 0; k < 20; k++) {
+    const n = int(-32928, 80672);
+    pentads.push({ n, index: k % 4, out: model.pentadByNumber(n, k % 4) });
+  }
+  return { byIndex, at, paths, badPaths, startTimes, timeOfPosition, timestamps, boundaries, upcoming, occurrences, syncs, pentads };
 }
 
 // ---- glyphs -----------------------------------------------------------------------------------------------------
@@ -404,6 +414,7 @@ function pureFixture() {
     dateTextDefault: pure.dateText(t),
     stamp: UPTO.map((u) => pure.stamp(t, u)),
     stampDefault: pure.stamp(t),
+    pentadText: ['full', 'short', 'ascii'].flatMap((form) => [false, true].map((helion) => pure.pentadText(t, { form, helion }))),
     nameAt: LEVELS.map((L) => [pure.nameAt(t, L), pure.nameAt(t, L, { short: true })]),
     addressAt: LEVELS.map((L) => pure.addressAt(t, L)),
   }));

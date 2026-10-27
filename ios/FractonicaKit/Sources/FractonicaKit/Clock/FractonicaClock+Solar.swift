@@ -46,6 +46,34 @@ extension FractonicaClock {
                              drift: startSeconds - nominal)
     }
 
+    /// The Pentad running at t (SPEC §7.5, model.js `pentadAt`): counted on whole Helions from the sync anchor's, so it
+    /// is defined in the catalogue's partial first and last syncs too. Nil outside the catalogue.
+    public func pentad(at t: Double) -> PentadReading? {
+        guard let helion = level(at: t, SolarSyncConstants.level) else { return nil }
+        let k = Int128(helion.cycle) - solarSync.anchorCycle
+        let sync = floorDiv(k, SolarSyncConstants.cycles)
+        let within = Int(k - sync * SolarSyncConstants.cycles)
+        let index = min(3, within / 5)
+        guard let span = pentad(sync: Int(sync), index: index) else { return nil }
+        return PentadReading(sync: Int(sync), index: index, helion: within - 5 * index + 1, helions: index == 3 ? 4 : 5,
+                             start: span.start, end: span.end)
+    }
+
+    /// Start and end of Pentad `index` (0 … 3) of sync `n` (model.js `pentadByNumber`); nil where it lies outside the
+    /// catalogue. The catalogue's first and last Pentads are cut at its edges.
+    public func pentad(sync n: Int, index: Int) -> (start: Double, end: Double)? {
+        let prefix = infos[SolarSyncConstants.level].prefix
+        let first = solarSync.anchorCycle + SolarSyncConstants.cycles * Int128(n) + 5 * Int128(index)
+        let last = first + (index == 3 ? 4 : 5)
+        let lo = Ratio(first * 4, prefix), hi = Ratio(last * 4, prefix)
+        let ext = Ratio(Int128(extent))
+        guard hi > Ratio(0), lo < ext else { return nil }
+        let start = lo < Ratio(0) ? tMin : timestamp(at: lo)?.libraryDouble
+        let end = hi > ext ? tMax : timestamp(at: hi)?.libraryDouble
+        guard let start, let end else { return nil }
+        return (start, end)
+    }
+
     /// The odometer digits of a phase 0 ..< 1 (SPEC §7.3): floor(phase · base^count) in base `base`, coarsest first.
     private static func digits(of phase: Ratio, base: Int128, count: Int) -> [Int] {
         var step = (phase * Ratio(power(base, count)!)).floor

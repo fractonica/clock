@@ -102,6 +102,19 @@ extension Notation {
 
     /// The full letter address of t down to a resolution (default "iota"): "α#5 β#4 γ#2 δ#3 ε#2 5η 5ι". It identifies
     /// a moment unambiguously and reads back.
+    /// The Pentad at t in words (pure.js `pentadText`): form "full" "Pentad II" (default), "short" "⬠II", "ascii" "P2";
+    /// with `helion`, its Helion too ("Pentad II, 3rd Helion" / "⬠II·3" / "P2.3"). "—" outside the catalogue.
+    public func pentadText(at t: Double, form: String = "full", helion: Bool = false) -> String {
+        guard let p = model.pentad(at: t) else { return "—" }
+        let name = (form == "short" ? Self.pentadShort : form == "ascii" ? Self.pentadASCII : Self.pentadNames)[p.index]
+        guard helion else { return name }
+        switch form {
+        case "short": return "\(name)\u{00B7}\(p.helion)"
+        case "ascii": return "\(name).\(p.helion)"
+        default: return "\(name), \(["1st", "2nd", "3rd", "4th", "5th"][p.helion - 1]) Helion"
+        }
+    }
+
     public func stamp(at t: Double, upTo: String = "iota") -> String {
         dateText(at: t, form: "full", letters: true, upTo: Self.stampLevels.contains(upTo) ? upTo : "iota")
     }

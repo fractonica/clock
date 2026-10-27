@@ -126,6 +126,19 @@ struct CycleFixtureTests {
         check.report()
     }
 
+    @Test("pentadByNumber")
+    func pentads() {
+        var check = Checker("pentadByNumber")
+        for row in fixture["pentads"].array {
+            let n = row["n"].int, index = row["index"].int
+            let p = clock.pentad(sync: n, index: index), e = row["out"]
+            guard check.presence(p != nil, !e.isNull, "pentad \(n).\(index)"), let p else { continue }
+            check.time(p.start, e["start"].double, "pentad \(n).\(index) start")
+            check.time(p.end, e["end"].double, "pentad \(n).\(index) end")
+        }
+        check.report()
+    }
+
     private func compare(_ facts: CycleFacts?, _ expected: JSON, _ what: String, _ check: inout Checker) {
         guard check.presence(facts != nil, !expected.isNull, what), let facts else { return }
         check.time(facts.start, expected["start"].double, "\(what) start")

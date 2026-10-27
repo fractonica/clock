@@ -135,6 +135,8 @@ struct NotationFixtureTests {
             check.equal(notation.dateText(at: t), row["dateTextDefault"].string, "\(what) dateText default")
             check.equal(upTo.map { notation.stamp(at: t, upTo: $0) }, row["stamp"].strings, "\(what) stamp")
             check.equal(notation.stamp(at: t), row["stampDefault"].string, "\(what) stamp default")
+            let pentads = ["full", "short", "ascii"].flatMap { form in [false, true].map { notation.pentadText(at: t, form: form, helion: $0) } }
+            check.equal(pentads, row["pentadText"].strings, "\(what) pentadText")
             for (level, names) in row["nameAt"].array.enumerated() {
                 check.equal(notation.nameAt(t, level: level), names[0].optionalString, "\(what) nameAt L\(level)")
                 check.equal(notation.nameAt(t, level: level, short: true), names[1].optionalString, "\(what) short nameAt L\(level)")
