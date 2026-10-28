@@ -112,6 +112,15 @@ milestones of the diary's Alpha, its Betas and Gammas, with the eclipses on them
 In the Wave view, the **Solar** button adds a yellow wave for the solar sync (19 Helions ≈ 4 days): a marker at the current sync
 phase with its four quarter ticks, and a ripple of one sync wavelength along the focused arc where it fits (`?solar=1`).
 
+### The epicycles lab
+
+[`lab/epicycles.html`](lab/epicycles.html) (http://localhost:5199/lab/epicycles.html with `npm start`) composes the iOS
+epicycle face: a ladder of period arms from a base down to a top level, each turning with its own phase on the tip of the
+one before, with every arm's length, direction and on/off set by hand. It draws the closed figure the pen traces in one base
+cycle, follows the clock live or plays a cycle in seconds, keeps the figure in the URL's hash, and gives the iOS launch
+arguments that show the same figure in the simulator (or an SVG/PNG). The figure's rules (`lab/epicycles-figure.js`) are
+checked against the engine in `test/epicycles-lab.test.js`.
+
 ### Reading the labels
 
 `ε 5` is a **depth chip** (ε is always depth 5, an ≈16-day cycle). `ε#5` is the **5th ε inside its parent δ**, and
