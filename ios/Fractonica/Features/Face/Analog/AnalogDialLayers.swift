@@ -1,3 +1,4 @@
+import FractonicaKit
 import SwiftUI
 
 // The still parts of the dial, each drawn once for a size (Equatable views around a Canvas, so a tick of the clock
@@ -5,7 +6,7 @@ import SwiftUI
 // registers' recesses and the aperture's movement plate; over them the aperture's rim and balance bridge and the
 // Helion window's frame; on top of everything the crystal's glare.
 
-/// Case, crown, chapter ring, dial, railway, indices, registers, the aperture's plate and the window's disc.
+/// Case, engraved bezel, chapter ring, dial, railway, indices, registers, the aperture's plate and the window's disc.
 struct AnalogDialUnder: View, Equatable {
     let size: CGSize
 
@@ -35,13 +36,13 @@ struct AnalogDialUnder: View, Equatable {
 
     static func drawCase(_ ctx: inout GraphicsContext, _ g: G) {
         let R = g.radius, c = g.center
-        drawCrown(&ctx, g)
         // the case's shadow on the backdrop
         ctx.drawLayer { layer in
             let off = AnalogLight.shadow(R * 0.035)
             layer.addFilter(.shadow(color: .black.opacity(0.8), radius: R * 0.05, x: off.width, y: off.height))
-            layer.fill(P.circle(c, R), with: .color(A.caseDark))
+            layer.fill(P.circle(c, R * G.caseOuter), with: .color(A.caseDark))
         }
+        drawGlyphBezel(&ctx, g)
         // the polished bezel, domed: conic reflections, darker towards both edges
         P.polishedRing(&ctx, center: c, r0: R * G.bezelInner, r1: R)
         let dome = Gradient(stops: [
@@ -53,44 +54,65 @@ struct AnalogDialUnder: View, Equatable {
         ])
         ctx.fill(P.ring(c, R * G.bezelInner, R), with: .radialGradient(dome, center: c, startRadius: R * G.bezelInner, endRadius: R),
                  style: P.eo)
-        ctx.stroke(P.circle(c, R - g.line(0.003) / 2), with: .color(.black.opacity(0.6)), lineWidth: g.line(0.004))
+        // the gap between the two bezels
+        ctx.stroke(P.circle(c, R), with: .color(.black.opacity(0.75)), lineWidth: g.line(0.006))
     }
 
-    /// The crown at 3 o'clock: a knurled cylinder on its tube, lit from above.
-    static func drawCrown(_ ctx: inout GraphicsContext, _ g: G) {
+    /// The engraved bezel: brushed steel with the Helion's 16 glyph states cut in, each at the turn where it begins.
+    /// A cut's wall nearer the light falls in shadow and its far wall catches the light: dark ink, a bright edge below
+    /// and right of it.
+    static func drawGlyphBezel(_ ctx: inout GraphicsContext, _ g: G) {
         let R = g.radius, c = g.center
-        let half = (g.size.width / 2) - R // room beside the case
-        guard half > R * 0.03 else { return }
-        let length = min(half * 0.92, R * 0.075)
-        let tube = CGRect(x: c.x + R * 0.97, y: c.y - R * 0.045, width: R * 0.05 + length * 0.2, height: R * 0.09)
-        let crown = CGRect(x: c.x + R * 1.0 + length * 0.15, y: c.y - R * 0.085, width: length * 0.85, height: R * 0.17)
-        let shaded = { (rect: CGRect) -> GraphicsContext.Shading in
-            .linearGradient(Gradient(stops: [
-                .init(color: A.steel(0.55), location: 0),
-                .init(color: A.steel(0.95), location: 0.22),
-                .init(color: A.steel(0.5), location: 0.5),
-                .init(color: A.steel(0.12), location: 0.85),
-                .init(color: A.steel(0.25), location: 1),
-            ]), startPoint: CGPoint(x: rect.midX, y: rect.minY), endPoint: CGPoint(x: rect.midX, y: rect.maxY))
+        let r1 = R * G.caseOuter
+        let band = P.ring(c, R, r1)
+        // flat and brushed round: a softer sheen than the polished bezel's (conic 0 at 3 o'clock, clockwise)
+        let sheen: [(Double, Double)] = [(0, 0.36), (0.125, 0.5), (0.25, 0.34), (0.375, 0.16), (0.5, 0.34),
+                                         (0.625, 0.66), (0.75, 0.46), (0.875, 0.2), (1, 0.36)]
+        ctx.fill(band, with: .conicGradient(Gradient(stops: sheen.map { .init(color: A.steel($0.1), location: $0.0) }),
+                                            center: c, angle: .zero), style: P.eo)
+        ctx.drawLayer { grain in
+            grain.clip(to: band, style: P.eo)
+            let pitch = max(0.6, R * 0.0035)
+            var light = Path(), dark = Path()
+            var k = 0
+            var r = R + pitch / 2
+            while r < r1 {
+                // an irregular rhythm, like real graining
+                let v = (k * 7919) % 7
+                if v < 2 { light.addPath(P.circle(c, r)) } else if v > 4 { dark.addPath(P.circle(c, r)) }
+                r += pitch
+                k += 1
+            }
+            grain.stroke(light, with: .color(.white.opacity(0.06)), lineWidth: pitch * 0.5)
+            grain.stroke(dark, with: .color(.black.opacity(0.1)), lineWidth: pitch * 0.5)
         }
-        ctx.drawLayer { layer in
-            let off = AnalogLight.shadow(R * 0.02)
-            layer.addFilter(.shadow(color: .black.opacity(0.7), radius: R * 0.02, x: off.width, y: off.height))
-            layer.fill(Path(roundedRect: tube, cornerRadius: R * 0.01), with: shaded(tube))
-            layer.fill(Path(roundedRect: crown, cornerRadius: R * 0.02), with: shaded(crown))
+        // the cuts
+        let toPoints = CGAffineTransform(a: R, b: 0, c: 0, d: R, tx: c.x, ty: c.y)
+        let dot = G.glyphDot
+        var cuts = Path()
+        for k in 0..<AnalogDial.glyphStates {
+            let t = G.glyph(k).concatenating(toPoints)
+            let ink = GlyphGeometry.cgPath(index: k, strokes: AnalogDial.glyphStrokes)
+                .copy(strokingWithWidth: G.glyphInk, lineCap: .round, lineJoin: .round, miterLimit: 4)
+            cuts.addPath(Path(ink), transform: t)
+            if GlyphState.of(index: k, strokes: AnalogDial.glyphStrokes).dotted {
+                cuts.addEllipse(in: CGRect(x: -dot.radius, y: dot.y - dot.radius, width: 2 * dot.radius, height: 2 * dot.radius),
+                                transform: t)
+            }
         }
-        // knurling along the crown's axis
-        var knurl = Path()
-        let n = 9
-        for k in 1..<n {
-            let y = crown.minY + crown.height * CGFloat(k) / CGFloat(n)
-            knurl.move(to: CGPoint(x: crown.minX + R * 0.01, y: y))
-            knurl.addLine(to: CGPoint(x: crown.maxX - R * 0.004, y: y))
+        let wall = AnalogLight.shadow(g.line(0.0035, minimum: 0.5)) // down and right, away from the light
+        ctx.fill(cuts.offsetBy(dx: wall.width, dy: wall.height), with: .color(.white.opacity(0.42)))
+        ctx.fill(cuts, with: .color(A.steelDeep))
+        ctx.drawLayer { floor in
+            // the floor's far side, under the lit wall, a little lighter
+            floor.clip(to: cuts)
+            floor.fill(cuts.offsetBy(dx: wall.width * 1.6, dy: wall.height * 1.6), with: .color(A.steelDark.opacity(0.7)))
         }
-        ctx.stroke(knurl, with: .color(.black.opacity(0.45)), lineWidth: g.line(0.004))
-        // the crown's end cap catches the light
-        let cap = CGRect(x: crown.maxX - R * 0.012, y: crown.minY + R * 0.01, width: R * 0.01, height: crown.height - R * 0.02)
-        ctx.fill(Path(roundedRect: cap, cornerRadius: R * 0.005), with: .color(.white.opacity(0.12)))
+        // the case's edge: a chamfer bright towards the light, dark away from it
+        ctx.stroke(P.circle(c, r1 - g.line(0.004) / 2),
+                   with: .linearGradient(Gradient(colors: [.white.opacity(0.5), .black.opacity(0.6)]),
+                                         startPoint: g.point(CGPoint(x: -0.6, y: -0.9)), endPoint: g.point(CGPoint(x: 0.6, y: 0.9))),
+                   lineWidth: g.line(0.008))
     }
 
     // MARK: Chapter ring (the Nuclide)

@@ -5,6 +5,8 @@ import SwiftUI
 /// tick — the Nuclide's 77 Helions round the outer ring, the Helion's 36 Preons, the Preon's 65 Flavons, the Flavon's
 /// 25 Blinks.
 ///
+/// - The **engraved bezel** carries the Helion's 16 glyph states (SPEC §4), each cut at the turn where it begins, the
+///   falling half dotted at the bottom: the Helion hand points into the glyph pure mode shows first.
 /// - The **Nuclide's rider** (a pointer in the Nuclide's colour on the bezel) runs round the chapter ring of 77
 ///   Helions, the 7 ζ numbered by their first Helion; the ring's gold track shows the Pentads across the Nuclide, each
 ///   start marked by its shape, the Hypopentads broad.

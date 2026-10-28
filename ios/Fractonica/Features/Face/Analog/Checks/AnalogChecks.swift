@@ -171,7 +171,8 @@ func scheduleChecks() {
 
 func layoutChecks() {
     let g = AnalogGeometry(size: CGSize(width: 400, height: 400))
-    check(abs(g.radius - 200 * AnalogGeometry.caseFraction) < 1e-9 && g.center == CGPoint(x: 200, y: 200), "the case fits the frame")
+    check(abs(g.radius * AnalogGeometry.caseOuter - 200 * AnalogGeometry.caseFraction) < 1e-9 && g.center == CGPoint(x: 200, y: 200),
+          "the case fits the frame")
     check(g.polar(0, 1).y < g.center.y && abs(g.polar(0.25, 1).x - (g.center.x + g.radius)) < 1e-9, "turns start at the top, clockwise")
 
     let parts: [(String, AnalogGeometry.Disc)] = [
@@ -221,6 +222,28 @@ func layoutChecks() {
           "the Preon hand's tip lies on the Flavon railway")
     check(AnalogGeometry.riderTip > AnalogGeometry.ringTickOuter && AnalogGeometry.riderTip - AnalogGeometry.ringTickOuter < 0.01
           && AnalogGeometry.riderBack < 1, "the Nuclide's rider points at the Helion ticks from the bezel")
+    // the engraved glyphs: each on the bezel, its stem along the radius at the turn its state begins, the dotted
+    // (falling) ones the lower half
+    let span = AnalogGeometry.glyphSpan
+    let reach = 2 + AnalogGeometry.glyphInk / 2
+    for k in 0..<AnalogDial.glyphStates {
+        let t = AnalogGeometry.glyph(k)
+        let corners = [CGPoint(x: -reach, y: span.top), CGPoint(x: reach, y: span.top),
+                       CGPoint(x: -reach, y: span.foot), CGPoint(x: reach, y: span.foot)].map { $0.applying(t) }
+        check(corners.allSatisfy { hypot($0.x, $0.y) > 1.012 && hypot($0.x, $0.y) < AnalogGeometry.caseOuter - 0.01 },
+              "glyph \(k) lies on the engraved bezel")
+        let top = CGPoint.zero.applying(t), foot = CGPoint(x: 0, y: 6).applying(t)
+        let turn = Double(k) / Double(AnalogDial.glyphStates)
+        let along = AnalogGeometry.polar(turn, 1)
+        check(abs(top.x * along.y - top.y * along.x) < 1e-9 && abs(foot.x * along.y - foot.y * along.x) < 1e-9
+              && hypot(top.x, top.y) > hypot(foot.x, foot.y), "glyph \(k)'s stem points at its turn, its top outward")
+        let dotted = GlyphState.of(index: k, strokes: AnalogDial.glyphStrokes).dotted
+        check(dotted == (turn > 0.25 && turn < 0.75), "glyph \(k) is dotted only on the lower half")
+    }
+    let neighbours = hypot(AnalogGeometry.glyph(0).tx - AnalogGeometry.glyph(1).tx, AnalogGeometry.glyph(0).ty - AnalogGeometry.glyph(1).ty)
+    check(neighbours > 4 * reach * AnalogGeometry.glyphHeight / (span.foot - span.top), "the glyphs stand apart")
+    check(AnalogGeometry.glyph(0).d > 0 && abs(AnalogGeometry.glyph(0).b) < 1e-12, "the top glyph stands upright")
+
     // the Preon dots clear the round parts and the window
     for k in 0..<36 where k % 4 != 0 {
         let p = AnalogGeometry.polar(Double(k) / 36, AnalogGeometry.preonDots)

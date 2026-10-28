@@ -4,6 +4,7 @@ import Foundation
 // What the analog dial reads (Features/Face/Analog), with no SwiftUI: checked by Analog/Checks.
 //
 // Each hand turns once while the one before it moves a tick, as on a watch:
+//   engraved bezel   the Helion's 16 glyph states, each where it begins: the Helion hand points into its first glyph
 //   Nuclide rider    on the bezel, once round the chapter ring per Nuclide: 77 Helions (7 ζ of 11η), its Pentads
 //                    marked where they start
 //   Helion hand      the dauphine, once per Helion, over 36 Preons (9 θ indices of 4ι, the Preons between as dots)
@@ -99,6 +100,11 @@ enum AnalogDial {
 
     /// The Blink counts printed in the Flavon register at the μ ticks (0, 5 … 20).
     static let muNumbers = (0..<5).map { $0 * blinksPerMu }
+
+    /// The glyph states engraved round the bezel (SPEC §4): the 16 of a two-stroke glyph, the first of the Helion's
+    /// 256-state pair (`Notation.pair`'s `hi`), so the Helion hand points into the glyph pure mode shows first.
+    static let glyphStrokes = 2
+    static let glyphStates = GlyphState.states(strokes: glyphStrokes)
 
     /// The Helion's quarters on the main dial (peak ¼, node ½, valley ¾), as fractions of a turn.
     static let quarters = [0.25, 0.5, 0.75]

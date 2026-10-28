@@ -266,7 +266,9 @@ often as it changes:
   moves a tick: a rider on the bezel round the Nuclide's 77 Helions (each Pentad's stretch in gold on the ring), the
   Helion hand over 36 Preons (the 9 θ as indices, the Preons between as dots), a long Preon hand over the railway's
   65 Flavons, a Flavon register of 25 Blinks at 6 o'clock, a Pentad register of the sync's 19 Helions (a tap opens
-  the explainer), and a balance swinging with the μ. The balance is a Core
+  the explainer), a balance swinging with the μ, and round it all an engraved bezel of the Helion's 16 glyph states,
+  each where it begins (the falling half dotted, at the bottom), the Helion hand pointing into the glyph pure mode
+  shows first. The balance is a Core
   Animation layer kept in step with the displayed time (`AnalogBalance`): a 60 Hz SwiftUI timeline cost ~21 % of a
   core on the Mac, the layer next to nothing — the pattern for anything that swings continuously.
 - **Epicycles** (Face/Epicycles): a ladder of arms from a base period down to a top one (η θ ι κ by default, at most

@@ -90,7 +90,7 @@ struct AnalogBalanceRim: View, Equatable {
     }
 }
 
-/// The balance's moving parts as paths around `c` (y down), `unit` the case radius.
+/// The balance's moving parts as paths around `c` (y down), `unit` the bezel's radius.
 enum AnalogBalanceParts {
     /// Three arms from the hub to the rim.
     static func arms(_ c: CGPoint, unit: CGFloat) -> Path {

@@ -15,7 +15,7 @@ enum AnalogHandKind: Equatable, Sendable {
     /// The Pentad register's needle, in gold.
     case pentad
 
-    /// Tip and tail, in units of the case radius (the rider: its back, and nothing behind the pivot).
+    /// Tip and tail, in units of the bezel's radius (the rider: its back, and nothing behind the pivot).
     var length: CGFloat {
         switch self {
         case .nuclide: AnalogGeometry.riderBack
@@ -49,7 +49,7 @@ enum AnalogHandKind: Equatable, Sendable {
 
 struct AnalogHand: View, Equatable {
     let kind: AnalogHandKind
-    /// The case radius in points.
+    /// The bezel's radius in points.
     let unit: CGFloat
     /// The hand's angle in `shades`ths of a turn.
     let shade: Int
