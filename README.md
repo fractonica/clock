@@ -116,9 +116,11 @@ phase with its four quarter ticks, and a ripple of one sync wavelength along the
 
 [`lab/epicycles.html`](lab/epicycles.html) (http://localhost:5199/lab/epicycles.html with `npm start`) composes the iOS
 epicycle face: a ladder of period arms from a base down to a top level, each turning with its own phase on the tip of the
-one before, with every arm's length, direction and on/off set by hand. It draws the closed figure the pen traces in one base
-cycle, follows the clock live or plays a cycle in seconds, keeps the figure in the URL's hash, and gives the iOS launch
-arguments that show the same figure in the simulator (or an SVG/PNG). The figure's rules (`lab/epicycles-figure.js`) are
+one before, with every arm's length (0.01–10, proportions), direction and on/off set by hand. Each arm can also be a Keplerian
+orbit round the tip that carries it (its length the semi-major axis, an eccentricity and a periapsis direction): it still
+goes round once a cycle of its period, starting at periapsis and sweeping equal areas in equal times. It draws the closed
+figure the pen traces in one base cycle, follows the clock live or plays a cycle in seconds, keeps the figure in the URL's
+hash, and gives the iOS launch arguments that show the same figure in the simulator (circles only) or an SVG/PNG. The figure's rules (`lab/epicycles-figure.js`) are
 checked against the engine in `test/epicycles-lab.test.js`.
 
 ### Reading the labels

@@ -108,10 +108,12 @@ select { padding: 7px 8px; min-width: 0; width: 100%; }
 .arm .tools button { font: inherit; width: 30px; height: 28px; border-radius: 8px; border: 1px solid var(--line-2); background: var(--panel-2); color: var(--ink-2); cursor: pointer; }
 .arm .tools button[aria-pressed="true"] { color: var(--teal); border-color: var(--teal); }
 .arm .tools input[type="checkbox"] { width: 18px; height: 18px; }
-.arm .length { grid-column: 2 / 4; display: flex; gap: 8px; align-items: center; }
-.arm .length input[type="range"] { flex: 1; min-width: 0; }
-.arm .length input[type="number"] { width: 74px; padding: 4px 6px; text-align: right; }
-.arm.off .letter, .arm.off .name, .arm.off .length { opacity: 0.4; }
+.arm .knob { grid-column: 2 / 4; display: grid; grid-template-columns: 74px 1fr 74px; gap: 8px; align-items: center; }
+.arm .knob > span { color: var(--ink-3); font-size: 11.5px; }
+.arm .knob input[type="range"] { min-width: 0; width: 100%; }
+.arm .knob input[type="number"] { width: 74px; padding: 4px 6px; text-align: right; }
+.arm .knob.idle { opacity: 0.45; }
+.arm.off .letter, .arm.off .name, .arm.off .knob { opacity: 0.4; }
 
 input[type="range"] { accent-color: var(--teal); }
 input[type="checkbox"] { accent-color: var(--teal); }

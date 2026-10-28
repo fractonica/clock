@@ -24,6 +24,8 @@ const PRESETS = [
   { name: 'ε ζ η, the Nuclide', config: { base: 4, top: 6, radii: { 4: 1, 5: 0.5, 6: 0.12 } } },
   { name: 'δ → η, a Delta', config: { base: 3, top: 6, radii: { 3: 1, 4: 0.45, 5: 0.15, 6: 0.04 } } },
   { name: 'ι → ν, Preon to Blink', config: { base: 8, top: 12, radii: { 8: 1, 9: 0.3, 10: 0.1, 11: 0.04, 12: 0.015 } } },
+  { name: 'η θ ι on ellipses', config: { base: 6, top: 8, radii: { 6: 1, 7: 0.45, 8: 0.12 }, ecc: { 6: 0.3, 7: 0.7, 8: 0.5 }, peri: { 6: 0, 7: 90, 8: 180 } } },
+  { name: 'η → κ, a comet’s θ', config: { base: 6, top: 9, radii: { 6: 1, 7: 1.6, 8: 0.15, 9: 0.05 }, ecc: { 7: 0.85 }, peri: { 7: 40 } } },
 ];
 
 // MARK: state
@@ -68,12 +70,18 @@ const DIAL = { plate: 0.99, bezel: 0.955, quarters: 0.928, tickOuter: 0.905, tic
 
 function rebuildFigure() {
   const arms = fig.arms(config, factorOf);
-  const reachPx = (size / 2) * DIAL.reach;
-  const d = fig.detailFor(arms, reachPx / dpr);
-  figure = { arms, ...d, tips: fig.curve(arms, d.detail, d.samples) };
+  const d = fig.detailFor(arms, ((size / 2) * DIAL.reach) / dpr);
+  const tips = fig.curve(arms, d.detail, d.samples);
+  // the figure fills the reach: on ellipses the arms never all stand at their farthest at once
+  let extent = 0;
+  for (const tip of tips) for (let s = 0; s < tip.length; s += 2) extent = Math.max(extent, Math.hypot(tip[s], tip[s + 1]));
+  figure = { arms, ...d, tips, fit: 1 / Math.max(1e-6, extent + d.band) };
   drawStatic();
   traced = -1;
 }
+
+/** Canvas pixels to a reach unit of the figure. */
+const unit = () => (size / 2) * DIAL.reach * (figure?.fit ?? 1);
 
 function layer() {
   const c = document.createElement('canvas');
@@ -83,8 +91,8 @@ function layer() {
 }
 
 /** Points in canvas pixels. */
-const X = (x) => size / 2 + x * (size / 2) * DIAL.reach;
-const Y = (y) => size / 2 + y * (size / 2) * DIAL.reach;
+const X = (x) => size / 2 + x * unit();
+const Y = (y) => size / 2 + y * unit();
 
 function strokeCurve(g, tip, from, to) {
   g.beginPath();
@@ -154,7 +162,7 @@ function drawStatic() {
   // the arms folded into a band: the width they sweep along the drawn path
   if (band > 0) {
     g.strokeStyle = levelColor(bandLevel, 0.1);
-    g.lineWidth = Math.max(dpr, 2 * band * R * DIAL.reach);
+    g.lineWidth = Math.max(dpr, 2 * band * unit());
     strokeCurve(g, pen, 0, samples);
   }
   // the other tips' paths, faint in their levels' colours
@@ -191,7 +199,7 @@ function drawTrace() {
   if (k > from) {
     if (band > 0) {
       g.strokeStyle = levelColor(bandLevel, 0.22);
-      g.lineWidth = Math.max(dpr, 2 * band * (size / 2) * DIAL.reach);
+      g.lineWidth = Math.max(dpr, 2 * band * unit());
       strokeCurve(g, pen, from, k);
     }
     g.strokeStyle = 'rgb(231 237 243 / 0.85)';
@@ -208,18 +216,29 @@ function draw() {
   ctx.drawImage(staticLayer, 0, 0);
   ctx.drawImage(traceLayer, 0, 0);
   const { arms } = figure;
-  const joints = fig.joints(arms, phase);
-  const reachPx = (size / 2) * DIAL.reach;
+  const { joints, frames } = fig.pose(arms, phase);
+  const reachPx = unit();
   ctx.lineCap = 'round';
-  // each arm's circle round its pivot
+  // each arm's orbit, its pivot at a focus, a dot at its periapsis
   if (show.circles) {
     ctx.lineWidth = dpr;
     arms.forEach((arm, i) => {
-      if (arm.length === 0 || arm.length * reachPx < 2 * dpr) return;
+      const a = arm.length * reachPx;
+      if (arm.length === 0 || a < 2 * dpr) return;
+      const turn = 2 * Math.PI * (frames[i] + arm.peri);
+      const u = [Math.sin(turn), -Math.cos(turn)]; // towards periapsis, canvas axes
+      const fx = X(joints[i][0]);
+      const fy = Y(joints[i][1]);
       ctx.strokeStyle = levelColor(arm.level, 0.28);
       ctx.beginPath();
-      ctx.arc(X(joints[i][0]), Y(joints[i][1]), arm.length * reachPx, 0, 2 * Math.PI);
+      ctx.ellipse(fx - u[0] * a * arm.ecc, fy - u[1] * a * arm.ecc, a, a * Math.sqrt(1 - arm.ecc * arm.ecc), turn - Math.PI / 2, 0, 2 * Math.PI);
       ctx.stroke();
+      if (arm.ecc > 0) {
+        ctx.fillStyle = levelColor(arm.level, 0.6);
+        ctx.beginPath();
+        ctx.arc(fx + u[0] * a * (1 - arm.ecc), fy + u[1] * a * (1 - arm.ecc), 1.8 * dpr, 0, 2 * Math.PI);
+        ctx.fill();
+      }
     });
   }
   // the arms, in their levels' colours, thinner as they go
@@ -351,6 +370,8 @@ function renderArms() {
     const isTop = level === config.top;
     const off = config.off.includes(level);
     const r = fig.radiusOf(config, level);
+    const e = fig.eccOf(config, level);
+    const w = fig.periOf(config, level);
     const li = document.createElement('li');
     li.className = 'arm' + (off ? ' off' : '');
     const name = unitName(level) ?? `depth ${level + 1}`;
@@ -362,9 +383,20 @@ function renderArms() {
         <button type="button" class="rev" aria-pressed="${arm.sign < 0}" title="Turn anticlockwise" aria-label="${letter(level)} turns anticlockwise">↺</button>
         <input type="checkbox" class="on" ${off ? '' : 'checked'} ${isTop ? 'disabled title="The pen’s arm stays on"' : 'title="On"'} aria-label="${letter(level)} on">
       </span>
-      <div class="length">
+      <div class="knob">
+        <span>length</span>
         <input type="range" class="len" min="0" max="1" step="0.001" value="${toSlider(r)}" aria-label="${letter(level)} length">
         <input type="number" class="len-n mono" min="${fig.RADIUS_MIN}" max="${fig.RADIUS_MAX}" step="0.001" value="${+r.toPrecision(3)}" aria-label="${letter(level)} length">
+      </div>
+      <div class="knob">
+        <span>eccentricity</span>
+        <input type="range" class="ecc" min="0" max="${fig.ECC_MAX}" step="0.01" value="${e}" aria-label="${letter(level)} eccentricity">
+        <input type="number" class="ecc-n mono" min="0" max="${fig.ECC_MAX}" step="0.01" value="${e}" aria-label="${letter(level)} eccentricity">
+      </div>
+      <div class="knob${e > 0 ? '' : ' idle'}">
+        <span>periapsis</span>
+        <input type="range" class="peri" min="0" max="359" step="1" value="${Math.round(w)}" aria-label="${letter(level)} periapsis direction, degrees">
+        <input type="number" class="peri-n mono" min="0" max="359" step="1" value="${Math.round(w)}" aria-label="${letter(level)} periapsis direction, degrees">
       </div>`;
     li.querySelector('.len').addEventListener('input', (e) => {
       const v = fromSlider(+e.target.value);
@@ -376,6 +408,21 @@ function renderArms() {
       if (!Number.isFinite(v)) return;
       change((c) => { c.radii[level] = v; });
     });
+    // a slider and its number box set the same value; the box applies on Return or leaving it
+    const pair = (cls, set, show = (v) => String(v)) => {
+      li.querySelector(`.${cls}`).addEventListener('input', (ev) => {
+        const v = +ev.target.value;
+        li.querySelector(`.${cls}-n`).value = show(v);
+        li.querySelector(`.${cls}`).closest('.knob').nextElementSibling?.classList.toggle('idle', cls === 'ecc' && v === 0);
+        change((c) => set(c, v), { arms: false });
+      });
+      li.querySelector(`.${cls}-n`).addEventListener('change', (ev) => {
+        const v = +ev.target.value;
+        if (Number.isFinite(v)) change((c) => set(c, v));
+      });
+    };
+    pair('ecc', (c, v) => { c.ecc[level] = v; });
+    pair('peri', (c, v) => { c.peri[level] = v; });
     li.querySelector('.rev').addEventListener('click', () =>
       change((c) => { c.reversed = c.reversed.includes(level) ? c.reversed.filter((l) => l !== level) : [...c.reversed, level]; }));
     li.querySelector('.on').addEventListener('change', (e) =>
@@ -388,6 +435,13 @@ function renderArms() {
 function renderExport() {
   if (!figure) return;
   $('ios-args').textContent = fig.launchArguments(config);
+  const notes = [];
+  if (fig.hasEllipses(config)) notes.push('The iOS face draws circles: the eccentricities and periapsides stay here.');
+  const radii = [];
+  for (let l = config.base; l <= config.top; l++) radii.push(fig.radiusOf(config, l));
+  if (Math.min(...radii) / Math.max(...radii) < fig.IOS_RADIUS_MIN) notes.push('iOS keeps every arm at least 1% of the longest.');
+  $('ios-note').textContent = notes.join(' ');
+  $('ios-note').hidden = !notes.length;
   const { arms, detail, samples, bandLevel } = figure;
   const fastest = arms.slice(0, detail + 1).reduce((m, a) => Math.max(m, Math.abs(a.turns)), 1);
   const parts = [`The fastest arm drawn turns ${fastest.toLocaleString('en')} times a cycle, ${samples.toLocaleString('en')} samples.`];
@@ -463,13 +517,14 @@ function svg() {
     for (let s = 1; s <= samples; s++) d += `L${tip[2 * s].toFixed(4)} ${tip[2 * s + 1].toFixed(4)}`;
     return d;
   };
-  const w = 1.2 / 900;
+  const v = 1.1 / figure.fit; // the figure's extent, with a margin
+  const w = (1.2 / 900) * (v / 1.1);
   const others = show.tips
     ? arms.slice(0, detail).filter((a) => a.length > 0)
         .map((a) => `<path d="${path(tips[arms.indexOf(a)])}" stroke="${levelColor(a.level, 0.5)}" stroke-width="${w}"/>`)
     : [];
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="-1.1 -1.1 2.2 2.2" width="1200" height="1200">
-<rect x="-1.1" y="-1.1" width="2.2" height="2.2" fill="#07090d"/>
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${-v} ${-v} ${2 * v} ${2 * v}" width="1200" height="1200">
+<rect x="${-v}" y="${-v}" width="${2 * v}" height="${2 * v}" fill="#07090d"/>
 <g fill="none" stroke-linecap="round" stroke-linejoin="round">
 ${others.join('\n')}
 <path d="${path(tips[detail])}" stroke="${INK}" stroke-width="${w * 1.4}"/>
@@ -484,7 +539,7 @@ function init() {
   $('preset').add(new Option('Your own', '-1'));
   $('preset').addEventListener('change', (e) => {
     const p = PRESETS[+e.target.value];
-    if (p) change((c) => Object.assign(c, { radii: {}, off: [], reversed: [], frame: 'dial', tips: true }, structuredClone(p.config)));
+    if (p) change((c) => Object.assign(c, { radii: {}, ecc: {}, peri: {}, off: [], reversed: [], frame: 'dial', tips: true }, structuredClone(p.config)));
   });
   $('base').addEventListener('change', (e) => setBase(+e.target.value));
   $('top').addEventListener('change', (e) => change((c) => { c.top = +e.target.value; }));
@@ -506,7 +561,7 @@ function init() {
   $('play').addEventListener('click', () => setMotion({ play: !playing }));
   $('live').addEventListener('click', () => setMotion({ follow: !live }));
   $('loop').addEventListener('change', (e) => { loopSeconds = +e.target.value; });
-  $('reset').addEventListener('click', () => change((c) => Object.assign(c, structuredClone(fig.STANDARD), { radii: {}, off: [], reversed: [] })));
+  $('reset').addEventListener('click', () => change((c) => Object.assign(c, structuredClone(fig.STANDARD))));
   $('copy-link').addEventListener('click', () => copy(location.href, 'Link'));
   $('copy-ios').addEventListener('click', () => copy(fig.launchArguments(config), 'iOS arguments'));
   $('save-svg').addEventListener('click', () => download(fileName('svg'), new Blob([svg()], { type: 'image/svg+xml' })));

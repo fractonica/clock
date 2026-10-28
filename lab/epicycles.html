@@ -64,6 +64,9 @@
       <div class="group">
         <h2>Arms <small id="arms-note"></small></h2>
         <ol class="arms" id="arms"></ol>
+        <p class="note">Each arm is an orbit round the tip that carries it, at a focus: its length the semi-major axis. It still
+          goes round once a cycle of its period, starting at periapsis, fastest there and slowest at the far end (equal areas in
+          equal times). Eccentricity 0 is the circle of the iOS face.</p>
       </div>
 
       <div class="group">
@@ -71,7 +74,7 @@
         <div class="checks">
           <label><input type="checkbox" id="show-tips" checked> Other tips' paths</label>
           <label><input type="checkbox" id="show-ghost" checked> Whole figure</label>
-          <label><input type="checkbox" id="show-circles" checked> Arm circles</label>
+          <label><input type="checkbox" id="show-circles" checked> Orbits</label>
           <label><input type="checkbox" id="show-scale" checked> Base scale</label>
         </div>
       </div>
@@ -86,6 +89,7 @@
           <button type="button" class="btn ghost" id="reset">Reset</button>
         </div>
         <code class="ios mono" id="ios-args"></code>
+        <p class="note" id="ios-note" hidden></p>
         <p class="note" id="stats"></p>
       </div>
     </aside>
