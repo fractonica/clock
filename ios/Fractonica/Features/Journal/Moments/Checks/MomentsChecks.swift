@@ -20,6 +20,7 @@ struct MomentsChecks {
         multiCaptureChecks()
         await storeChecks()
         soundChecks()
+        reelChecks()
         Checks.finish()
     }
 }
@@ -156,8 +157,15 @@ private func labelChecks() {
     // names
     if let m = calendar.upcoming(after: vectorA, count: 200, where: { $0.level == .helion && $0.boundary == .node }).first {
         let helionName = notation.cycleShort(level: 6, cycle: m.cycle)
-        check(m.title() == "Helion \(helionName) Node" && helionName.hasSuffix("η"), "a Helion node's name: \(m.title())")
-        check(m.spoken == "Helion node" && m.soundName == "moment-helion-node", "a Helion node's announcement")
+        check(m.title() == "Helion \(helionName) Descending Node" && helionName.hasSuffix("η"), "a Helion node's name: \(m.title())")
+        check(m.spoken == "Helion descending node" && m.soundName == "moment-helion-node", "a Helion node's announcement")
+    }
+    if let m = calendar.upcoming(after: vectorA, count: 200, where: { $0.level == .helion && $0.boundary == .start }).first {
+        check(m.title() == "Helion \(notation.cycleShort(level: 6, cycle: m.cycle)) Ascending Node", "a Helion start's name: \(m.title())")
+        check(m.spoken == "Helion ascending node" && m.soundName == "moment-helion-start", "a Helion start's announcement")
+    }
+    if let m = calendar.upcoming(after: vectorA, count: 200, where: { $0.level == .helion && $0.boundary == .peak }).first {
+        check(m.title().hasSuffix(" Peak"), "a Helion peak keeps its name: \(m.title())")
     }
     if let m = calendar.upcoming(after: vectorA, count: 2000, scan: 4000, where: { $0.level == .nuclide && $0.boundary == .start }).first {
         check(m.title().hasPrefix("Nuclide ε#") && m.title().hasSuffix(" Start") && m.rarity == .rare, "a Nuclide start's name: \(m.title())")
@@ -208,12 +216,18 @@ private func settingsChecks() {
     let node = list.first { $0.level == .helion && $0.boundary == .node }!
     let delta = list.first { $0.level == .delta } ?? calendar.upcoming(after: vectorA, count: 1, scan: 3000) { $0.rarity >= .epic }.first!
     let start = list.first { $0.level == .helion && $0.boundary == .start }!
-    let nuclide = list.first { $0.level == .nuclide }!
+    let nuclideStart = calendar.upcoming(after: vectorA, count: 1, scan: 3000) { $0.level == .nuclide && $0.boundary == .start }.first!
+    let nuclidePeak = calendar.upcoming(after: vectorA, count: 1, scan: 3000) { $0.level == .nuclide && $0.boundary == .peak }.first!
     check(s.enabled && s.helion == .nodes && s.voice && s.quiet.enabled, "defaults: on, Helion nodes, voice, quiet hours")
-    check(!s.asks(start) && !s.asks(peak) && s.asks(node) && s.asks(delta) && !s.asks(nuclide),
-          "only a Helion's node is a rare moment; Delta and longer always")
+    check(s.asks(start) && !s.asks(peak) && s.asks(node) && s.asks(delta),
+          "a Helion's two nodes (its start and mid point) are rare moments; Delta and longer always")
+    check(s.asks(nuclideStart) && !s.asks(nuclidePeak), "a Nuclide's start is a Helion's start; its peak a Helion's peak")
+    // twice a Helion: over a Nuclide, its 77 starts and 77 nodes (a Delta's boundaries among them)
+    let nuclide = calendar.next(atLeast: .nuclide, after: vectorA)!
+    let asked = calendar.upcoming(after: nuclide.time - 1, count: 10_000, scan: 77 * 4) { s.asks($0) }
+    check(asked.count == 2 * 77, "two moments a Helion: \(asked.count) in a Nuclide")
     s.helion = .none
-    check(!s.asks(node) && s.asks(delta), "Delta and longer are always asked for")
+    check(!s.asks(node) && !s.asks(start) && s.asks(delta), "Delta and longer are always asked for")
     s.enabled = false
     check(!s.asks(delta), "off: nothing")
     // persistence, lenient
@@ -300,13 +314,13 @@ private func captureChecks() {
     check(MomentLevel.allCases.map(\.rarity) == [.rare, .rare, .epic, .legendary, .mythic, .cosmic], "levels give rarities")
 }
 
-/// Several captures of a moment: their offsets, times, photo names (hub/API.md) and the setting.
+/// Several photo captures of a moment (as the app made them before its reels): their offsets, times and photo names
+/// (hub/API.md), still read and shown.
 private func multiCaptureChecks() {
     check(MomentCaptures.offsets(count: 1) == [0], "one capture: at the moment")
     check(MomentCaptures.offsets(count: 3) == [-1, 0, 1], "three: a Flavon before, at, a Flavon after")
     check(MomentCaptures.offsets(count: 5) == [-2, -1, 0, 1, 2], "five: two Flavons either side")
     check(MomentCaptures.offsets(count: 4) == [-1, 0, 1] && MomentCaptures.offsets(count: 0) == [-1, 0, 1], "another count takes the default")
-    check(MomentSettings().captures == 3, "three captures by default")
     // names
     check(MomentCaptures.photoName(camera: "front", offset: 0, count: 1) == "front"
           && MomentCaptures.photoName(camera: "back", offset: 0, count: 1) == "back", "a single capture: front, back")
@@ -346,15 +360,9 @@ private func multiCaptureChecks() {
         if calendar.promptTime(of: m) >= times[0] { check(false, "the prompt comes before the first capture"); return }
     }
     check(true, "captures are a Flavon apart, on the millisecond, around the moment")
-    // the setting, lenient
-    func decoded(_ json: String) -> MomentSettings? { try? JSONDecoder().decode(MomentSettings.self, from: Data(json.utf8)) }
-    check(decoded(#"{"captures":5}"#)?.captures == 5 && decoded(#"{"captures":1}"#)?.captures == 1, "1 and 5 read")
-    check(decoded(#"{"captures":4}"#)?.captures == 3 && decoded(#"{"captures":"x"}"#)?.captures == 3
-          && decoded(#"{"captures":null}"#)?.captures == 3 && decoded("{}")?.captures == 3, "anything else: three")
-    check(decoded(#"{"captures":4,"voice":false}"#)?.voice == false, "a bad count leaves the rest alone")
-    var s = MomentSettings()
-    s.captures = 5
-    check((try? JSONDecoder().decode(MomentSettings.self, from: JSONEncoder().encode(s)))?.captures == 5, "the count round-trips")
+    // settings saved when there was a count still read (the count is gone)
+    let old = try? JSONDecoder().decode(MomentSettings.self, from: Data(#"{"captures":5,"voice":false}"#.utf8))
+    check(old?.voice == false && old?.enabled == true, "old settings with a capture count still read")
 }
 
 @MainActor private func storeChecks() async {
@@ -386,4 +394,65 @@ private func soundChecks() {
         }
     }
     check(missing.isEmpty, "an announcement for every level and boundary in \(folder.path): missing \(missing)")
+}
+
+// MARK: - The reel
+
+private func reelChecks() {
+    let flavon = clock.levelInfo(10).meanSeconds
+    // the film: half a Flavon either side of the moment, by position
+    for m in calendar.upcoming(after: vectorA, count: 6) {
+        let span = calendar.filmSpan(of: m)
+        let before = calendar.flavons(from: span.start, to: m), after = calendar.flavons(from: span.end, to: m)
+        if abs(before - 0.5) > 1e-4 || abs(after + 0.5) > 1e-4 || span.start >= m.time || span.end <= m.time {
+            check(false, "the film spans half a Flavon either side: \(before), \(after)")
+        }
+    }
+    check(true, "a moment's film spans half a Flavon either side of it")
+    let timing = MomentReelTiming(half: flavon / 2)
+    typealias T = MomentReelTiming
+    check(abs(T.forwardSpeed(-1) - 1) < 1e-4 && abs(T.forwardSpeed(1) - 1) < 1e-4 && abs(T.forwardSpeed(0) - T.slowest) < 1e-12,
+          "forward: real time at the ends, an eighth at the moment")
+    check(abs(T.backwardSpeed(0) - 1) < 1e-4 && abs(T.backwardSpeed(1) - T.slowest) < 1e-12 && abs(T.backwardSpeed(-1) - T.slowest) < 1e-12,
+          "backward: the slowing reflected, slow at the ends, real time at the moment")
+    check((-20...20).allSatisfy { k in let x = Double(k) / 20; return abs(T.forwardSpeed(x) - T.forwardSpeed(-x)) < 1e-12 },
+          "the slowing is symmetric about the moment")
+    // a pass lasts H·∫dx/s: longer than the clip (it slows), shorter than all of it at the slowest
+    check(timing.passDuration > flavon && timing.passDuration < flavon / T.slowest, "a pass: \(timing.passDuration) s for a \(flavon) s Flavon")
+    check(abs(timing.duration - 2 * timing.passDuration) < 1e-9 && timing.frameCount == Int((timing.duration * 30).rounded()),
+          "two passes of equal length, 30 frames a second")
+    // the passes' landmarks
+    func at(_ t: Double) -> (x: Double, backward: Bool) { timing.source(at: t) }
+    check(at(0).x == -1 && !at(0).backward, "the reel opens half a Flavon before the moment")
+    check(abs(at(timing.passDuration / 2).x) < 1e-3 && !at(timing.passDuration / 2).backward, "the forward pass reaches the moment halfway")
+    check(abs(at(timing.passDuration).x - 1) < 1e-3, "the forward pass ends half a Flavon after")
+    check(abs(at(timing.passDuration * 1.5).x) < 1e-3 && at(timing.passDuration * 1.5).backward, "the backward pass crosses the moment halfway")
+    check(abs(at(timing.duration).x + 1) < 1e-9 && at(timing.duration).backward, "and ends where the reel began")
+    check(timing.moments.count == 2 && abs(timing.moments[0] - timing.passDuration / 2) < 1e-9, "a click at the moment in each pass")
+    // monotonic, and as slow as asked: source seconds per output second near the moment (forward) and the ends (back)
+    var monotonic = true
+    var previous = -2.0
+    for k in 0...timing.frameCount / 2 - 1 {
+        let x = at(timing.frameTime(k)).x
+        if x < previous { monotonic = false }
+        previous = x
+    }
+    check(monotonic, "the forward pass only moves forward")
+    let dt = 0.05
+    func rate(_ t: Double) -> Double { abs(at(t + dt).x - at(t - dt).x) * timing.half / (2 * dt) }
+    check(abs(rate(timing.passDuration / 2) - T.slowest) < 0.005, "an eighth of real time at the moment: \(rate(timing.passDuration / 2))")
+    check(abs(rate(timing.passDuration * 1.5) - 1) < 0.02, "real time through the moment going back: \(rate(timing.passDuration * 1.5))")
+    check(abs(rate(timing.passDuration + 0.06) - T.slowest) < 0.01, "slow where the backward pass begins: \(rate(timing.passDuration + 0.06))")
+    check(abs(rate(0.06) - 1) < 0.01, "real time where the reel opens: \(rate(0.06))")
+    // the countdown in Preons
+    let preon = clock.levelInfo(8).meanSeconds
+    check(MomentReelText.countdown(seconds: -flavon / 2, preon: preon) == "\u{2212}0.00769ι", "half a Flavon before: \(MomentReelText.countdown(seconds: -flavon / 2, preon: preon))")
+    check(MomentReelText.countdown(seconds: 0, preon: preon) == "0.00000ι" && MomentReelText.countdown(seconds: -1e-4, preon: preon) == "0.00000ι",
+          "the moment itself")
+    check(MomentReelText.countdown(seconds: flavon / 4, preon: preon) == "+0.00385ι", "a quarter Flavon after: \(MomentReelText.countdown(seconds: flavon / 4, preon: preon))")
+    // the frames an output frame blends
+    let times = [-0.5, -0.25, 0, 0.25, 0.5]
+    check(MomentReelFrames.pick(times, -1) == (0, 0, 0) && MomentReelFrames.pick(times, 2) == (4, 4, 0), "outside the film: its ends held")
+    let p = MomentReelFrames.pick(times, 0.1)
+    check(p.a == 2 && p.b == 3 && abs(p.weight - 0.4) < 1e-12, "between two frames: both, weighted by nearness")
 }

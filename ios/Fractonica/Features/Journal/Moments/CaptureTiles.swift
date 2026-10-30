@@ -1,3 +1,4 @@
+@preconcurrency import AVFoundation
 import SwiftUI
 
 /// A moment's captures as BeReal tiles: each capture its back photo with the front one inset, captioned with its
@@ -86,11 +87,14 @@ struct CaptureTile: View {
     }
 }
 
-/// A captured entry as a card: its emoji and line, the stamp, the captures as tiles (or the photos as the journal shows
-/// them, for a single capture), in its rarity's frame. The instant view's saved state and the Moments screen.
+/// A captured entry as a card: its emoji and line, the stamp, its reel (playing in the instant view, its poster
+/// elsewhere) — or, for the photo captures made before the reels, the captures as tiles (or the photos as the journal
+/// shows them, for a single capture) — in its rarity's frame. The instant view's saved state and the Moments screen.
 struct CaptureCard: View {
     let record: HubRecord
     let words: Wording
+    /// The reel plays, looping, in the card; otherwise its poster stands for it.
+    var plays = false
 
     var body: some View {
         let entry = record.entry ?? JournalEntry()
@@ -115,7 +119,11 @@ struct CaptureCard: View {
                     .foregroundStyle(Theme.ink2)
                     .lineLimit(3)
             }
-            if let tiles = CaptureTiles(photos: photos) {
+            if let reel = media.first(where: { $0.role == "video" && $0.name == MomentReel.name }) {
+                ReelTile(blob: reel, plays: plays)
+                let others = media.filter { $0.hash != reel.hash && $0.role != "poster" }
+                if !others.isEmpty { MediaStrip(media: others, words: words, time: record.time) }
+            } else if let tiles = CaptureTiles(photos: photos) {
                 tiles
                 let others = media.filter { $0.role != "photo" }
                 if !others.isEmpty { MediaStrip(media: others, words: words, time: record.time) }
@@ -132,3 +140,99 @@ struct CaptureCard: View {
         .accessibilityElement(children: .combine)
     }
 }
+
+/// A moment's reel in a card, two squares high: playing and looping (with its clicks, as the silent switch allows),
+/// or its poster — the moment's frame — with its length.
+struct ReelTile: View {
+    let blob: BlobRef
+    var plays = false
+
+    @State private var player: AVQueuePlayer?
+    @State private var looper: AVPlayerLooper?
+
+    var body: some View {
+        Color.clear
+            .aspectRatio(0.5, contentMode: .fit)
+            .overlay {
+                if let player {
+                    PlayerLayerView(player: player)
+                } else {
+                    BlobImage(blob: blob, points: 600)
+                }
+            }
+            .overlay(alignment: .bottomTrailing) {
+                if player == nil, let duration = blob.duration {
+                    Label(String(format: "%.0f s", duration), systemImage: "play.fill")
+                        .font(.caption.weight(.bold).monospacedDigit())
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(.black.opacity(0.55), in: .capsule)
+                        .padding(8)
+                }
+            }
+            .clipShape(.rect(cornerRadius: 16, style: .continuous))
+            .frame(maxWidth: .infinity, maxHeight: 460)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("The moment's reel")
+            .accessibilityAddTraits(.isImage)
+            .task(id: plays) { await start() }
+            .onDisappear { player?.pause() }
+    }
+
+    private func start() async {
+        guard plays, player == nil else { return }
+        var url = JournalStore.shared.blobFile(blob.hash)
+        if url == nil, let fetch = JournalHooks.fetchBlob { url = try? await fetch(blob.hash) }
+        guard let url else { return }
+        #if os(iOS)
+        // the silent switch silences the clicks, as it does the announcement
+        try? AVAudioSession.sharedInstance().setCategory(.ambient, options: [.mixWithOthers])
+        try? AVAudioSession.sharedInstance().setActive(true)
+        #endif
+        let queue = AVQueuePlayer()
+        looper = AVPlayerLooper(player: queue, templateItem: AVPlayerItem(url: url))
+        player = queue
+        queue.play()
+    }
+}
+
+/// An AVPlayer's picture, filling its frame.
+private struct PlayerLayerView {
+    let player: AVPlayer
+}
+
+#if os(iOS)
+extension PlayerLayerView: UIViewRepresentable {
+    func makeUIView(context: Context) -> PlayerUIView {
+        let view = PlayerUIView()
+        view.playerLayer.videoGravity = .resizeAspectFill
+        view.playerLayer.player = player
+        return view
+    }
+
+    func updateUIView(_ view: PlayerUIView, context: Context) {
+        view.playerLayer.player = player
+    }
+
+    final class PlayerUIView: UIView {
+        override class var layerClass: AnyClass { AVPlayerLayer.self }
+        var playerLayer: AVPlayerLayer { layer as! AVPlayerLayer }
+    }
+}
+#else
+extension PlayerLayerView: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        let layer = AVPlayerLayer(player: player)
+        layer.videoGravity = .resizeAspectFill
+        view.layer = layer
+        view.wantsLayer = true
+        return view
+    }
+
+    func updateNSView(_ view: NSView, context: Context) {
+        (view.layer as? AVPlayerLayer)?.player = player
+    }
+}
+#endif

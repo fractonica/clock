@@ -130,7 +130,7 @@ enum JournalMedia {
 
     // MARK: Videos
 
-    static func processVideo(_ url: URL, name: String? = nil, quality: VideoQuality, disk: JournalDisk,
+    static func processVideo(_ url: URL, name: String? = nil, quality: VideoQuality, disk: JournalDisk, posterAt: Double? = nil,
                              progress: @escaping @Sendable (Double) -> Void = { _ in }) async throws -> Item {
         let asset = AVURLAsset(url: url)
         let duration = try await asset.load(.duration).seconds
@@ -146,7 +146,7 @@ enum JournalMedia {
             try FileManager.default.copyItem(at: url, to: file)
         }
         try Task.checkCancellation()
-        let poster = try? await makePoster(AVURLAsset(url: file), disk: disk)
+        let poster = try? await makePoster(AVURLAsset(url: file), disk: disk, at: posterAt)
         return Item(file: file, type: mime, role: "video", name: name, width: Int(size.width.rounded()), height: Int(size.height.rounded()),
                     duration: duration.isFinite ? duration : nil, poster: poster.map(Box.init))
     }
@@ -227,13 +227,18 @@ enum JournalMedia {
         }
     }
 
-    /// The first frame as a JPEG, long side at most 1280.
-    static func makePoster(_ asset: AVURLAsset, disk: JournalDisk) async throws -> Item {
+    /// The frame at `time` exactly, or about the first, as a JPEG, long side at most 1280.
+    static func makePoster(_ asset: AVURLAsset, disk: JournalDisk, at time: Double? = nil) async throws -> Item {
         let generator = AVAssetImageGenerator(asset: asset)
         generator.appliesPreferredTrackTransform = true
         generator.maximumSize = CGSize(width: 1280, height: 1280)
-        generator.requestedTimeToleranceAfter = CMTime(seconds: 0.5, preferredTimescale: 600)
-        let image = try await generator.image(at: CMTime(seconds: 0.1, preferredTimescale: 600)).image
+        if time == nil {
+            generator.requestedTimeToleranceAfter = CMTime(seconds: 0.5, preferredTimescale: 600)
+        } else {
+            generator.requestedTimeToleranceBefore = .zero
+            generator.requestedTimeToleranceAfter = .zero
+        }
+        let image = try await generator.image(at: CMTime(seconds: time ?? 0.1, preferredTimescale: 600)).image
         let target = disk.temporaryFile(ext: "jpg")
         guard let destination = CGImageDestinationCreateWithURL(target as CFURL, UTType.jpeg.identifier as CFString, 1, nil) else {
             throw Failure.unreadable("the poster")

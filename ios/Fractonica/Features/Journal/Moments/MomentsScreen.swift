@@ -47,7 +47,7 @@ struct MomentsScreen: View {
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button("Moment Settings", systemImage: "slider.horizontal.3") { showSettings = true }
-                    .help("Moment settings: captures, which moments, quiet hours")
+                    .help("Moment settings: which moments, quiet hours, the announcement")
             }
         }
         .navigationDestination(for: MomentsRoute.self) { route in
@@ -78,7 +78,7 @@ struct MomentsScreen: View {
         let captured = journal.entries.filter { $0.capture != nil }
         MomentsSection(title: "Recent captures") {
             if captured.isEmpty {
-                Text("Your captures show here: when a moment comes, Fractonica calls you 11 Flavons ahead and both cameras capture it.")
+                Text("Your captures show here: when a moment comes, Fractonica calls you 11 Flavons ahead and both cameras film the Flavon around it.")
                     .font(.footnote)
                     .foregroundStyle(Theme.ink3)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -113,9 +113,6 @@ struct MomentsScreen: View {
                 Label("Moment Settings", systemImage: "slider.horizontal.3")
                     .foregroundStyle(Theme.ink)
                 Spacer()
-                Text(verbatim: moments.capturesPerMoment == 1 ? "1 capture" : "\(moments.capturesPerMoment) captures")
-                    .font(.subheadline)
-                    .foregroundStyle(Theme.ink3)
                 Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(Theme.ink3)
             }
             .padding(14)
@@ -264,7 +261,6 @@ private struct NextMomentCard: View {
     private func card(at t: Double) -> some View {
         if let m = moments.nextMoment(after: t) {
             let prompt = moments.calendar.promptTime(of: m)
-            let count = moments.capturesPerMoment
             VStack(alignment: .leading, spacing: 10) {
                 HStack {
                     Text("Next moment")
@@ -286,7 +282,7 @@ private struct NextMomentCard: View {
                         .font(.footnote)
                         .foregroundStyle(Theme.ink3)
                 }
-                Label(Self.capturesLine(count), systemImage: count > 1 ? "camera.on.rectangle" : "camera")
+                Label("A Flavon of film, slowing at the moment", systemImage: "video")
                     .font(.footnote)
                     .foregroundStyle(Theme.ink2)
                 if prompt <= t {
@@ -316,13 +312,6 @@ private struct NextMomentCard: View {
                 .font(.callout)
                 .foregroundStyle(Theme.ink3)
         }
-    }
-
-    /// "3 captures: 1λ before, at the moment, 1λ after".
-    static func capturesLine(_ count: Int) -> String {
-        guard count > 1 else { return "1 capture, at the exact moment" }
-        let k = count / 2
-        return "\(count) captures, a Flavon apart: from \(k)λ before to \(k)λ after"
     }
 }
 
@@ -376,7 +365,7 @@ extension MomentRarity {
     var source: String {
         switch self {
         case .common: "any time"
-        case .rare: "Helion node"
+        case .rare: "Helion nodes"
         case .epic: "Delta"
         case .legendary: "Gamma"
         case .mythic: "Beta"
@@ -502,17 +491,7 @@ struct MomentSettingsView: View {
                 }
                 .disabled(!moments.settings.enabled)
             } footer: {
-                Text("A rare moment is a Helion's node, its mid point (Preon 18). The start, peak, node and valley of a Delta, Gamma, Beta or Alpha are always announced: they are rarer still.")
-            }
-            Section {
-                Picker("Captures per moment", selection: $moments.settings.captures) {
-                    ForEach(MomentCaptures.choices, id: \.self) { n in
-                        Text(verbatim: n == 1 ? "1" : "\(n)").tag(n)
-                    }
-                }
-                .disabled(!moments.settings.enabled)
-            } footer: {
-                Text(capturesFooter)
+                Text("A Helion's rare moments are its two nodes: ascending at its start (Preon 0), descending at its mid point (Preon 18). The start, peak, node and valley of a Delta, Gamma, Beta or Alpha are always announced: they are rarer still.")
             }
             Section {
                 Toggle("Quiet hours", isOn: $moments.settings.quiet.enabled)
@@ -556,14 +535,6 @@ struct MomentSettingsView: View {
         .navigationBarTitleDisplayMode(.inline)
         #endif
         .environment(\.timeZone, settings.timeZone)
-    }
-
-    private var capturesFooter: String {
-        switch moments.settings.captures {
-        case 1: "One capture, at the exact moment: the front and back cameras at once."
-        case 5: "Five captures a Flavon apart: two before the moment, at it, and two after. Each takes the front and back cameras at once; the call still comes 11 Flavons before the moment."
-        default: "Three captures a Flavon apart: one Flavon before the moment, at it, and one Flavon after. Each takes the front and back cameras at once; the call still comes 11 Flavons before the moment."
-        }
     }
 
     private var permission: String {

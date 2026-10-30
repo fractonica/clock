@@ -9,8 +9,10 @@ import AppKit
 
 /// The instant view's cameras: the back and front cameras at once (`AVCaptureMultiCamSession`, iPhone XS and later)
 /// with a live preview of each, one camera where only one runs at a time, the Mac's camera on the Mac, and none in the
-/// Simulator (the view shows a placeholder and a still is drawn instead, so the whole capture runs there too).
-/// `capture()` takes every camera's photo at once and returns them by name: `back`, `front`, or `camera` (the Mac).
+/// Simulator (the view shows a placeholder and the reel is drawn instead, so the whole capture runs there too). Each
+/// camera runs at the fastest frame rate the session affords (60 frames a second on most iPhones, both cameras at once).
+/// `record(from:to:)` films the span from every camera, each into a movie file of its own: `back`, `front`, or
+/// `camera` (the Mac).
 @MainActor @Observable
 final class MomentCamera {
     enum Mode: Equatable {
@@ -25,9 +27,8 @@ final class MomentCamera {
     }
 
     private(set) var mode = Mode.starting
-    /// The preview layers, back (or the only camera) first.
-    private(set) var mainLayer: AVCaptureVideoPreviewLayer?
-    private(set) var insetLayer: AVCaptureVideoPreviewLayer?
+    /// The preview layers by camera: `back`, `front` or `camera`.
+    private(set) var previews: [String: AVCaptureVideoPreviewLayer] = [:]
 
     @ObservationIgnored private let rig = CameraRig()
 
@@ -41,9 +42,8 @@ final class MomentCamera {
             return
         }
         let result = await rig.configure()
-        mainLayer = result.main
-        insetLayer = result.inset
-        mode = result.outputs == 0 ? .none : result.outputs > 1 ? .dual : .single
+        previews = result.previews
+        mode = result.previews.isEmpty ? .none : result.previews.count > 1 ? .dual : .single
         #endif
     }
 
@@ -51,24 +51,31 @@ final class MomentCamera {
         rig.stop()
     }
 
-    /// Every camera's photo, taken at once, as encoded image data (HEIC or JPEG) by name.
-    func capture() async -> [(name: String, data: Data)] {
-        await rig.capture()
+    /// Films every camera from Unix time `start` to `end` (from the first frame at or after `start`); returns each
+    /// camera's file once the span is over. Cancelling the task ends the films at once.
+    func record(from start: Double, to end: Double) async -> [MomentFilm] {
+        await rig.record(from: start, to: end)
     }
 }
 
-/// The capture session and its outputs, configured and driven on a serial queue of its own.
+/// One camera's film of a moment: a movie file, and the Unix time of its first frame.
+struct MomentFilm: Sendable {
+    let camera: String
+    let url: URL
+    /// Unix time of the file's time zero.
+    let start: Double
+}
+
+/// The capture session and its outputs, configured and driven on a serial queue of its own; each camera's frames
+/// arrive on a queue of their own and go to a `FilmWriter` while a recording is on.
 private final class CameraRig: @unchecked Sendable {
     private let queue = DispatchQueue(label: "app.fractonica.moments.camera")
     private var session: AVCaptureSession?
-    /// Photo outputs by name.
-    private var outputs: [(name: String, output: AVCapturePhotoOutput)] = []
-    private var delegates: [PhotoGrab] = []
+    /// Frame taps by camera name.
+    private var taps: [FrameTap] = []
 
     struct Configured: @unchecked Sendable {
-        var main: AVCaptureVideoPreviewLayer?
-        var inset: AVCaptureVideoPreviewLayer?
-        var outputs: Int
+        var previews: [String: AVCaptureVideoPreviewLayer]
     }
 
     func configure() async -> Configured {
@@ -86,21 +93,32 @@ private final class CameraRig: @unchecked Sendable {
         return buildSingle()
     }
 
+    private func videoOutput(_ name: String) -> (AVCaptureVideoDataOutput, FrameTap) {
+        let output = AVCaptureVideoDataOutput()
+        output.videoSettings = [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_420YpCbCr8BiPlanarFullRange]
+        // every frame for the film: the writer keeps up (a hardware encoder per camera)
+        output.alwaysDiscardsLateVideoFrames = false
+        let tap = FrameTap(camera: name)
+        output.setSampleBufferDelegate(tap, queue: tap.queue)
+        return (output, tap)
+    }
+
     #if os(iOS)
-    /// Back and front cameras in one multi-camera session, each with a photo output and a preview layer connected by
-    /// hand (Apple's AVMultiCamPiP pattern). Nil when the hardware cannot afford both.
+    /// Back and front cameras in one multi-camera session, each with a video data output and a preview layer
+    /// connected by hand (Apple's AVMultiCamPiP pattern), at the fastest frame rate the hardware affords for both.
+    /// Nil when the hardware cannot afford both at all.
     private func buildDual() -> Configured? {
         let session = AVCaptureMultiCamSession()
         session.beginConfiguration()
-        var layers: [AVCaptureVideoPreviewLayer] = []
-        var made: [(String, AVCapturePhotoOutput)] = []
+        var previews: [String: AVCaptureVideoPreviewLayer] = [:]
+        var made: [FrameTap] = []
+        var devices: [AVCaptureDevice] = []
         for (name, position) in [("back", AVCaptureDevice.Position.back), ("front", .front)] {
             guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: position),
                   let input = try? AVCaptureDeviceInput(device: device), session.canAddInput(input) else { continue }
-            Self.chooseMultiCamFormat(device)
             session.addInputWithNoConnections(input)
             guard let port = input.ports(for: .video, sourceDeviceType: device.deviceType, sourceDevicePosition: position).first else { continue }
-            let output = AVCapturePhotoOutput()
+            let (output, tap) = videoOutput(name)
             guard session.canAddOutput(output) else { continue }
             session.addOutputWithNoConnections(output)
             let connection = AVCaptureConnection(inputPorts: [port], output: output)
@@ -122,30 +140,55 @@ private final class CameraRig: @unchecked Sendable {
                     preview.isVideoMirrored = true
                 }
             }
-            layers.append(layer)
-            made.append((name, output))
+            previews[name] = layer
+            made.append(tap)
+            devices.append(device)
         }
+        let fps = Self.fastestAffordable(devices, session: session)
         session.commitConfiguration()
         guard made.count == 2, session.hardwareCost <= 1, session.systemPressureCost <= 1 else {
             return nil
         }
+        momentsLog.info("cameras: back and front at \(fps) fps")
+        made.forEach { $0.clock = session.synchronizationClock }
         session.startRunning()
         self.session = session
-        outputs = made
-        return Configured(main: layers.first, inset: layers.last, outputs: made.count)
+        taps = made
+        return Configured(previews: previews)
     }
 
-    /// A format the multi-camera session can run, no larger than 1920 × 1440 (keeps the hardware cost down).
-    private static func chooseMultiCamFormat(_ device: AVCaptureDevice) {
+    /// Sets each camera to the fastest frame rate both can run at once within the hardware's budget: tries 240, 120,
+    /// 60 and 30 frames a second in turn (a camera that cannot reach the rate runs at its own best), each on its
+    /// largest multi-camera format of at most 1920 × 1440 that reaches it. Returns the rate settled on.
+    private static func fastestAffordable(_ devices: [AVCaptureDevice], session: AVCaptureMultiCamSession) -> Double {
+        for rate in [240.0, 120, 60, 30] {
+            for device in devices { setFormat(device, fps: rate) }
+            if session.hardwareCost <= 1 { return rate }
+        }
+        return 30
+    }
+
+    /// The device's largest multi-camera format (at most 1920 × 1440) reaching `fps`, or failing that its fastest,
+    /// locked to that rate.
+    private static func setFormat(_ device: AVCaptureDevice, fps: Double) {
         let formats = device.formats.filter { format in
             let d = CMVideoFormatDescriptionGetDimensions(format.formatDescription)
             return format.isMultiCamSupported && d.width <= 1920 && d.height <= 1440
         }
-        guard let best = formats.max(by: {
-            let a = CMVideoFormatDescriptionGetDimensions($0.formatDescription), b = CMVideoFormatDescriptionGetDimensions($1.formatDescription)
-            return Int(a.width) * Int(a.height) < Int(b.width) * Int(b.height)
-        }), (try? device.lockForConfiguration()) != nil else { return }
-        device.activeFormat = best
+        func best(_ f: AVCaptureDevice.Format) -> Double { f.videoSupportedFrameRateRanges.map(\.maxFrameRate).max() ?? 0 }
+        func pixels(_ f: AVCaptureDevice.Format) -> Int {
+            let d = CMVideoFormatDescriptionGetDimensions(f.formatDescription)
+            return Int(d.width) * Int(d.height)
+        }
+        let reaching = formats.filter { best($0) >= fps }
+        let chosen = reaching.max { pixels($0) < pixels($1) }
+            ?? formats.max { best($0) < best($1) || (best($0) == best($1) && pixels($0) < pixels($1)) }
+        guard let chosen, (try? device.lockForConfiguration()) != nil else { return }
+        device.activeFormat = chosen
+        let rate = min(fps, best(chosen))
+        let frame = CMTime(value: 1000, timescale: CMTimeScale(rate * 1000))
+        device.activeVideoMinFrameDuration = frame
+        device.activeVideoMaxFrameDuration = frame
         device.unlockForConfiguration()
     }
     #endif
@@ -154,7 +197,7 @@ private final class CameraRig: @unchecked Sendable {
     private func buildSingle() -> Configured {
         let session = AVCaptureSession()
         session.beginConfiguration()
-        session.sessionPreset = .photo
+        session.sessionPreset = .high
         #if os(iOS)
         let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back)
             ?? AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .front)
@@ -165,17 +208,21 @@ private final class CameraRig: @unchecked Sendable {
         #endif
         guard let device, let input = try? AVCaptureDeviceInput(device: device), session.canAddInput(input) else {
             session.commitConfiguration()
-            return Configured(main: nil, inset: nil, outputs: 0)
+            return Configured(previews: [:])
         }
         session.addInput(input)
-        let output = AVCapturePhotoOutput()
+        let (output, tap) = videoOutput(name)
         guard session.canAddOutput(output) else {
             session.commitConfiguration()
-            return Configured(main: nil, inset: nil, outputs: 0)
+            return Configured(previews: [:])
         }
         session.addOutput(output)
         #if os(iOS)
         if let c = output.connection(with: .video), c.isVideoRotationAngleSupported(90) { c.videoRotationAngle = 90 }
+        if device.position == .front, let c = output.connection(with: .video), c.isVideoMirroringSupported {
+            c.automaticallyAdjustsVideoMirroring = false
+            c.isVideoMirrored = true
+        }
         #endif
         session.commitConfiguration()
         let layer = AVCaptureVideoPreviewLayer(session: session)
@@ -183,70 +230,169 @@ private final class CameraRig: @unchecked Sendable {
         #if os(iOS)
         if let c = layer.connection, c.isVideoRotationAngleSupported(90) { c.videoRotationAngle = 90 }
         #endif
+        tap.clock = session.synchronizationClock
         session.startRunning()
         self.session = session
-        outputs = [(name, output)]
-        return Configured(main: layer, inset: nil, outputs: 1)
+        taps = [tap]
+        return Configured(previews: [name: layer])
     }
 
     func stop() {
         queue.async {
             if let session = self.session, session.isRunning { session.stopRunning() }
             self.session = nil
-            self.outputs = []
+            self.taps.forEach { $0.cancel() }
+            self.taps = []
         }
     }
 
-    /// Fires every photo output at once and waits for all of them.
-    func capture() async -> [(name: String, data: Data)] {
-        let grabs: [(String, PhotoGrab)] = await withCheckedContinuation { continuation in
-            queue.async {
-                var list: [(String, PhotoGrab)] = []
-                for (name, output) in self.outputs {
-                    let settings: AVCapturePhotoSettings
-                    if output.availablePhotoCodecTypes.contains(.hevc) {
-                        settings = AVCapturePhotoSettings(format: [AVVideoCodecKey: AVVideoCodecType.hevc])
-                    } else {
-                        settings = AVCapturePhotoSettings(format: [AVVideoCodecKey: AVVideoCodecType.jpeg])
-                    }
-                    let grab = PhotoGrab()
-                    list.append((name, grab))
-                    output.capturePhoto(with: settings, delegate: grab)
-                }
-                self.delegates = list.map(\.1)
-                continuation.resume(returning: list)
+    /// Films from `start` to `end` on every camera; the files once all are written.
+    func record(from start: Double, to end: Double) async -> [MomentFilm] {
+        let taps: [FrameTap] = await withCheckedContinuation { continuation in
+            queue.async { continuation.resume(returning: self.taps) }
+        }
+        taps.forEach { $0.arm(from: start, to: end) }
+        // a camera that stops sending frames (the session interrupted) still ends its film a moment after the span
+        let deadline = Task {
+            try? await Task.sleep(for: .seconds(max(0, end - Date.now.timeIntervalSince1970) + 1))
+            taps.forEach { $0.finishNow() }
+        }
+        defer { deadline.cancel() }
+        return await withTaskCancellationHandler {
+            var films: [MomentFilm] = []
+            for tap in taps {
+                if let film = await tap.film() { films.append(film) }
             }
+            return films
+        } onCancel: {
+            taps.forEach { $0.finishNow() }
         }
-        var out: [(name: String, data: Data)] = []
-        for (name, grab) in grabs {
-            if let data = await grab.value() { out.append((name, data)) }
-        }
-        queue.async { self.delegates = [] }
-        return out
     }
 }
 
-/// One photo's delegate: its data once processed (nil on failure). Waiting is safe before or after it arrives.
-private final class PhotoGrab: NSObject, AVCapturePhotoCaptureDelegate, @unchecked Sendable {
+/// One camera's frames: while armed, the frames inside the span go into a movie file (HEVC, at the camera's own size
+/// and rate). Frame times come from the session's clock, mapped to Unix time when armed.
+private final class FrameTap: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate, @unchecked Sendable {
+    let camera: String
+    let queue: DispatchQueue
+    /// The session's clock (its frames' timestamps).
+    var clock: CMClock?
+
     private let lock = NSLock()
-    private var result: Data??
-    private var waiter: CheckedContinuation<Data?, Never>?
+    private var span: (start: Double, end: Double)?
+    /// Unix time minus clock time, taken when armed.
+    private var offset = 0.0
+    private var writer: AVAssetWriter?
+    private var input: AVAssetWriterInput?
+    private var firstUnix: Double?
+    private var finishing = false
+    /// The film handed over (until armed again): later ends change nothing.
+    private var delivered = false
+    private var result: MomentFilm??
+    private var waiter: CheckedContinuation<MomentFilm?, Never>?
 
-    func photoOutput(_ output: AVCapturePhotoOutput, didFinishProcessingPhoto photo: AVCapturePhoto, error: Error?) {
-        finish(error == nil ? photo.fileDataRepresentation() : nil)
+    init(camera: String) {
+        self.camera = camera
+        queue = DispatchQueue(label: "app.fractonica.moments.frames.\(camera)")
     }
 
-    private func finish(_ data: Data?) {
-        lock.lock()
-        guard result == nil else { lock.unlock(); return }
-        result = .some(data)
-        let w = waiter
-        waiter = nil
-        lock.unlock()
-        w?.resume(returning: data)
+    func arm(from start: Double, to end: Double) {
+        let now = CMClockGetTime(clock ?? CMClockGetHostTimeClock()).seconds
+        lock.withLock {
+            span = (start, end)
+            offset = Date.now.timeIntervalSince1970 - now
+            result = nil
+        }
+        queue.async { self.delivered = false }
     }
 
-    func value() async -> Data? {
+    func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
+        let (span, offset) = lock.withLock { (self.span, self.offset) }
+        guard let span, !finishing else { return }
+        let pts = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
+        let unix = pts.seconds + offset
+        if unix < span.start { return }
+        if unix > span.end {
+            finish()
+            return
+        }
+        if writer == nil, !begin(sampleBuffer, at: pts, unix: unix) { return }
+        if let input, input.isReadyForMoreMediaData { input.append(sampleBuffer) }
+    }
+
+    private func begin(_ sample: CMSampleBuffer, at pts: CMTime, unix: Double) -> Bool {
+        guard let format = CMSampleBufferGetFormatDescription(sample) else { return false }
+        let size = CMVideoFormatDescriptionGetDimensions(format)
+        let url = FileManager.default.temporaryDirectory.appending(path: "moment-\(camera)-\(UUID().uuidString).mov")
+        guard let writer = try? AVAssetWriter(outputURL: url, fileType: .mov) else { return false }
+        let input = AVAssetWriterInput(mediaType: .video, outputSettings: [
+            AVVideoCodecKey: AVVideoCodecType.hevc,
+            AVVideoWidthKey: Int(size.width),
+            AVVideoHeightKey: Int(size.height),
+        ])
+        input.expectsMediaDataInRealTime = true
+        guard writer.canAdd(input) else { return false }
+        writer.add(input)
+        guard writer.startWriting() else {
+            momentsLog.error("the \(self.camera) film could not start: \(writer.error?.localizedDescription ?? "?")")
+            return false
+        }
+        writer.startSession(atSourceTime: pts)
+        self.writer = writer
+        self.input = input
+        firstUnix = unix
+        return true
+    }
+
+    /// Ends the film now (the span cut short).
+    func finishNow() {
+        queue.async { self.finish() }
+    }
+
+    /// Stops filming for good (the session going away).
+    func cancel() {
+        queue.async {
+            self.finish()
+        }
+    }
+
+    /// On the tap's queue: closes the file and hands it over (nil when nothing was filmed).
+    private func finish() {
+        guard !finishing, !delivered else { return }
+        lock.withLock { span = nil }
+        guard let writer, let input, let firstUnix else {
+            deliver(nil)
+            return
+        }
+        finishing = true
+        input.markAsFinished()
+        let url = writer.outputURL
+        writer.finishWriting { [self] in
+            queue.async {
+                let ok = self.writer?.status == .completed
+                if !ok { momentsLog.error("the \(self.camera) film failed: \(self.writer?.error?.localizedDescription ?? "?")") }
+                self.writer = nil
+                self.input = nil
+                self.firstUnix = nil
+                self.finishing = false
+                self.deliver(ok ? MomentFilm(camera: self.camera, url: url, start: firstUnix) : nil)
+            }
+        }
+    }
+
+    private func deliver(_ film: MomentFilm?) {
+        delivered = true
+        let w = lock.withLock { () -> CheckedContinuation<MomentFilm?, Never>? in
+            result = .some(film)
+            let w = waiter
+            waiter = nil
+            return w
+        }
+        w?.resume(returning: film)
+    }
+
+    /// The film once it is written (nil when nothing was filmed).
+    func film() async -> MomentFilm? {
         await withCheckedContinuation { continuation in
             lock.lock()
             if let result {

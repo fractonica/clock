@@ -5,8 +5,9 @@ import Foundation
 // 0 (a Helion's start), 9 (its peak), 18 (its node) and 27 (its valley). Every quarter boundary of a longer period
 // (Nuclide, Delta, Gamma, Beta, Alpha) falls on one of them, so each moment is labelled by the longest level for which
 // it is a start or a quarter boundary; that level gives its rarity (hub/API.md, `journal.entry` `capture`). The app
-// prompts 11 Flavons before each moment the settings ask for — a Helion's node and every quarter boundary of a Delta
-// or longer (`MomentSettings.asks`) — opens the instant view and captures at the exact moment.
+// prompts 11 Flavons before each moment the settings ask for — a Helion's two nodes, its start (ascending: the wave
+// rising through zero) and its mid point (descending), and every quarter boundary of a Delta or longer
+// (`MomentSettings.asks`) — opens the instant view and films the Flavon around the moment.
 //
 // Everything here is pure logic on FractonicaKit (no UI), checked by Moments/Checks. Moments are numbered by their
 // Helion quarter count from the catalogue's start: moment q sits at position q / P(η) Saros, exactly.
@@ -91,9 +92,20 @@ struct Moment: Hashable, Identifiable, Sendable {
     var rarity: MomentRarity { level.rarity }
     var capture: MomentCapture { MomentCapture(at: time, level: level.rawValue, boundary: boundary.rawValue, rarity: rarity) }
 
-    /// "Delta Trifracton Node", "Nuclide ε#3 Start", "Helion 34η Peak".
+    /// "Delta Trifracton Node", "Nuclide ε#3 Start", "Helion 34η Descending Node".
     func title(_ notation: Notation = .standard) -> String {
-        "\(periodName(notation)) \(boundary.word)"
+        "\(periodName(notation)) \(boundaryWord)"
+    }
+
+    /// The boundary in words: a Helion's start and mid point are its ascending and descending nodes (its wave rising
+    /// and falling through zero); every other boundary by its name.
+    var boundaryWord: String {
+        guard level == .helion else { return boundary.word }
+        switch boundary {
+        case .start: return "Ascending Node"
+        case .node: return "Descending Node"
+        default: return boundary.word
+        }
     }
 
     /// The Pentad the moment falls in (SPEC §7.5; a moment on a Helion boundary belongs to the Helion it starts).
@@ -116,9 +128,10 @@ struct Moment: Hashable, Identifiable, Sendable {
         }
     }
 
-    /// What the announcement says: "A new Delta begins", "Gamma node".
+    /// What the announcement says: "A new Delta begins", "Gamma node", "Helion ascending node".
     var spoken: String {
-        boundary == .start ? "A new \(level.name) begins" : "\(level.name) \(boundary.rawValue)"
+        if level == .helion, boundary == .start || boundary == .node { return "Helion \(boundaryWord.lowercased())" }
+        return boundary == .start ? "A new \(level.name) begins" : "\(level.name) \(boundary.rawValue)"
     }
 
     /// The bundled announcement for this kind of moment ("moment-delta-node", a .caf in Resources/Moments).
@@ -266,6 +279,14 @@ struct MomentCalendar: Sendable {
         return (exact * 1000).rounded(.up) / 1000
     }
 
+    /// When moment `m`'s film begins and ends: half a Flavon either side of it, exactly (in position).
+    func filmSpan(of m: Moment) -> (start: Double, end: Double) {
+        let n = Int128(m.index) * flavonsPerQuarter
+        let half = clock.levelInfo(10).meanSeconds / 2
+        return (clock.time(atPositionNumerator: n - 2, denominator: prefixes[10]) ?? m.time - half,
+                clock.time(atPositionNumerator: n + 2, denominator: prefixes[10]) ?? m.time + half)
+    }
+
     /// Flavons (with their fraction) from `t` to moment `m`, measured in position as the clock counts them.
     func flavons(from t: Double, to m: Moment) -> Double {
         guard let p = clock.position(at: t) else { return (m.time - t) / clock.levelInfo(10).meanSeconds }
@@ -345,25 +366,26 @@ struct MomentQuietHours: Hashable, Codable, Sendable {
     }
 }
 
-/// Which Helion moments are announced; Delta and longer always are. Only a Helion's node (its mid point, Preon 18)
-/// is a rare moment: its start, peak and valley, and a Nuclide's start, are not announced and do not count for the
-/// streak (unless a Delta or longer has a quarter boundary there).
+/// Which Helion moments are announced; Delta and longer always are. A Helion's two nodes are its rare moments: the
+/// ascending one at its start (Preon 0) and the descending one at its mid point (Preon 18); its peak and valley are not
+/// announced and do not count for the streak (unless a Delta or longer has a quarter boundary there). A Nuclide's
+/// boundaries fall on the same boundary of a Helion (77 ≡ 1 mod 4), so its start and node are announced with them.
 enum HelionPrompts: String, CaseIterable, Codable, Sendable {
-    /// Every Helion's node (about every 5 hours).
+    /// Both nodes of every Helion (about every 2.5 hours).
     case nodes
     /// None: only Delta and longer.
     case none
 
     var title: String {
         switch self {
-        case .nodes: "Helion nodes"
+        case .nodes: "Ascending and descending nodes"
         case .none: "Delta and longer only"
         }
     }
 
     func includes(_ boundary: MomentBoundary) -> Bool {
         switch self {
-        case .nodes: boundary == .node
+        case .nodes: boundary == .start || boundary == .node
         case .none: false
         }
     }
@@ -378,8 +400,6 @@ struct MomentSettings: Hashable, Codable, Sendable {
     var voice = true
     /// Open the instant view by itself when a moment is announced while the app is in front.
     var autoOpen = true
-    /// How many times a moment is captured, one Flavon apart and centred on it (`MomentCaptures`): 1, 3 or 5.
-    var captures = MomentCaptures.defaultCount
 
     init() {}
 
@@ -392,18 +412,15 @@ struct MomentSettings: Hashable, Codable, Sendable {
         quiet = (try? c.decodeIfPresent(MomentQuietHours.self, forKey: .quiet)) ?? d.quiet
         voice = (try? c.decodeIfPresent(Bool.self, forKey: .voice)) ?? d.voice
         autoOpen = (try? c.decodeIfPresent(Bool.self, forKey: .autoOpen)) ?? d.autoOpen
-        captures = (try? c.decodeIfPresent(Int.self, forKey: .captures)).flatMap { $0 }
-            .flatMap { MomentCaptures.choices.contains($0) ? $0 : nil } ?? d.captures
     }
 
-    private enum CodingKeys: String, CodingKey { case enabled, helion, quiet, voice, autoOpen, captures }
+    private enum CodingKeys: String, CodingKey { case enabled, helion, quiet, voice, autoOpen }
 
     /// Whether the settings ask for this kind of moment (quiet hours aside).
     func asks(_ m: Moment) -> Bool {
         guard enabled else { return false }
         switch m.level {
-        case .helion: return helion.includes(m.boundary)
-        case .nuclide: return false
+        case .helion, .nuclide: return helion.includes(m.boundary)
         default: return true
         }
     }
@@ -416,10 +433,10 @@ struct MomentSettings: Hashable, Codable, Sendable {
 
 // MARK: - Captures
 
-/// The captures of one moment: `count` of them one Flavon apart, centred on the moment (3: one Flavon before, at the
-/// moment, one Flavon after), each the front and back cameras at once. Their photos are named as hub/API.md says:
+/// The photo captures of a moment, as the app made them before its reels (MomentReel): `count` of them one Flavon
+/// apart, centred on the moment, each the front and back cameras at once. Their photos are named as hub/API.md says:
 /// `front` and `back` for a single capture; `front@-1`, `back@-1`, `front@0` … (the offset from the moment in Flavons)
-/// for several.
+/// for several. Entries keep them, and show them as they always did.
 enum MomentCaptures {
     static let choices = [1, 3, 5]
     static let defaultCount = 3

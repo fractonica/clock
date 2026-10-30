@@ -9,64 +9,51 @@ import UniformTypeIdentifiers
 import UIKit
 #endif
 
-/// The instant view's state: the moment, the emoji and the line being written, the cameras and the voice recording
-/// that run from the moment the view opens, and the captures — `MomentStore.capturesPerMoment` of them (3 by default),
-/// one Flavon apart and centred on the moment (`MomentCaptures`), each scheduled for its exact instant (a sleep on the
-/// continuous clock, not a tick). Each capture takes every camera's photo at once, with its own flash and haptic; its
-/// photos are written into the journal's media at once (named `back@-1`, `front@-1` … per hub/API.md). The recording
-/// stops at the last capture, and the entry — time = the moment, `capture` filled, the photos, the voice note — is
-/// written right then, before the view changes, and only then shown. Closed before the moment's own capture, nothing
-/// is saved; closed after it, the entry keeps the captures taken so far.
+/// The instant view's state: the moment, the emoji and the line being written, the cameras running from the moment the
+/// view opens, and the film: every camera filming the Flavon centred on the moment (`MomentCalendar.filmSpan`: from half
+/// a Flavon before to half after, armed by a sleep on the continuous clock, not a tick), a flash and a haptic at the
+/// moment itself. When the film ends it is made into the moment's reel (`MomentReelRenderer`: the selfie's square over
+/// the back camera's, slowing to an eighth at the moment with a click, then played backwards) and the entry — time =
+/// the moment, `capture` filled, the reel (named `reel`, its poster the moment's frame) — is written, before the view
+/// changes, and only then shown. Nothing records sound. Closed before the moment, nothing is saved; closed after it,
+/// the film ends there and the entry keeps what was filmed.
 @MainActor @Observable
 final class InstantModel {
     enum Phase: Equatable {
-        /// Before the last capture (some may be taken already).
+        /// Before the film.
         case waiting
-        /// The last capture is taken: the entry is being written.
+        /// The cameras filming the Flavon around the moment.
+        case filming
+        /// The film made into the reel (`developed` says how far).
+        case developing
+        /// The entry being written.
         case saving
         case saved(String)
         case failed(String)
     }
 
-    /// One planned capture: its offset from the moment in Flavons and its instant.
-    struct Shot: Equatable {
-        let offset: Int
-        let time: Double
-    }
-
     let moment: Moment
     let demo: Bool
-    /// How many captures the moment gets (1, 3 or 5).
-    let count: Int
-    /// Every capture of the moment, earliest first.
-    let plan: [Shot]
-    /// The captures still to take when the view opened (earlier ones, already past, are left out).
-    let shots: [Shot]
+    /// The film's span (Unix seconds): half a Flavon either side of the moment — or, opened after that has passed, a
+    /// Flavon from now.
+    let filmStart: Double
+    let filmEnd: Double
     var emoji: String?
     var text = ""
-    let recorder = VoiceRecorder()
     let camera = MomentCamera()
     private(set) var phase = Phase.waiting
-    /// The offsets captured so far.
-    private(set) var taken: [Int] = []
-    /// Bumped at each capture: the flash.
+    /// How far the reel is made, 0 … 1.
+    private(set) var developed = 0.0
+    /// Bumped at the moment: the flash.
     private(set) var flashes = 0
-    /// The microphone paused by the user.
-    var muted = false {
-        didSet {
-            guard muted != oldValue else { return }
-            if muted { recorder.pause() } else { recorder.resume() }
-        }
-    }
+    /// The moment itself is past, inside the film.
+    private(set) var reachedMoment = false
     /// The length of a Flavon around the moment, for the countdown.
     let flavonSeconds: Double
 
     @ObservationIgnored private var captureTask: Task<Void, Never>?
     @ObservationIgnored private var voiceTask: Task<Void, Never>?
     @ObservationIgnored private var opened = false
-    /// Each capture's photos on their way into the journal's media.
-    @ObservationIgnored private var adopting: [Task<[BlobRef], Never>] = []
-    @ObservationIgnored private var audio: URL?
     #if os(iOS)
     @ObservationIgnored private var backgroundTask = UIBackgroundTaskIdentifier.invalid
     #endif
@@ -78,128 +65,143 @@ final class InstantModel {
         emoji = EmojiCatalog.categories.prefix(5).flatMap(\.emoji).randomElement()
         let flavon = FractonicaClock.shared.level(at: m.time - 1, 10)?.duration ?? FractonicaClock.shared.levelInfo(10).meanSeconds
         flavonSeconds = flavon
-        let store = MomentStore.shared
-        count = store.capturesPerMoment
-        // a demo moment's time is made up: its captures are a mean Flavon apart
-        plan = MomentCaptures.offsets(count: count).map { k in
-            Shot(offset: k, time: request.demo ? m.time + Double(k) * flavon : store.calendar.captureTime(of: m, offset: k))
+        // a demo moment's time is made up: its film is a mean Flavon around it
+        let span = request.demo ? (start: m.time - flavon / 2, end: m.time + flavon / 2) : MomentStore.shared.calendar.filmSpan(of: m)
+        if span.end > now + 1 {
+            filmStart = span.start
+            filmEnd = span.end
+        } else {
+            // opened too late for the moment's own Flavon: a Flavon from now, slowing at its middle
+            filmStart = now + 0.5
+            filmEnd = now + 0.5 + flavon
         }
-        let ahead = plan.filter { $0.time > now - 0.5 }
-        shots = ahead.isEmpty ? plan.suffix(1) : ahead
     }
 
     var savedID: String? { if case .saved(let id) = phase { id } else { nil } }
 
-    /// The next capture to take, while there is one.
-    var next: Shot? { phase == .waiting ? shots.first { !taken.contains($0.offset) } : nil }
+    /// Where the reel slows: the moment, or a late film's middle.
+    var center: Double { moment.time >= filmStart && moment.time <= filmEnd ? moment.time : (filmStart + filmEnd) / 2 }
 
-    /// "2 of 3": a capture's number among the moment's.
-    func number(of shot: Shot) -> Int { (plan.firstIndex(of: shot) ?? 0) + 1 }
-
-    /// Flavons left until the next capture (until the moment once there is none).
+    /// Flavons left until the film starts (until the moment while filming).
     func flavons(at t: Double = Date.now.timeIntervalSince1970) -> Double {
-        max(0, ((next?.time ?? moment.time) - t) / flavonSeconds)
+        max(0, ((phase == .waiting ? filmStart : center) - t) / flavonSeconds)
     }
 
     // MARK: Lifecycle
 
-    /// Starts the cameras, the announcement and then the recording, and arms the captures.
+    /// Starts the cameras and the announcement, and arms the film.
     func open() {
         guard !opened else { return }
         opened = true
         Task { await camera.start() }
-        let speak = MomentStore.shared.settings.voice && (moment.time - Date.now.timeIntervalSince1970) / flavonSeconds >= 8
-        voiceTask = Task {
-            if speak { await MomentVoice.play(moment) }
-            guard !Task.isCancelled, phase == .waiting else { return }
-            await recorder.start(quality: JournalPreferences.shared.audioQuality, disk: JournalStore.shared.disk)
-            if muted { recorder.pause() }
+        if MomentStore.shared.settings.voice && (moment.time - Date.now.timeIntervalSince1970) / flavonSeconds >= 8 {
+            let m = moment
+            voiceTask = Task { await MomentVoice.play(m) }
         }
-        let shots = shots
-        captureTask = Task {
-            for shot in shots {
-                let delay = shot.time - Date.now.timeIntervalSince1970
-                if delay > 0 {
-                    // the continuous clock keeps counting through a locked screen; a tolerance of zero asks for the
-                    // instant itself, not a coalesced wake
-                    try? await Task.sleep(until: .now + .seconds(delay), tolerance: .zero, clock: .continuous)
-                }
-                guard !Task.isCancelled else { break }
-                await take(shot, last: shot == shots.last)
-            }
-            // closed before the moment's own capture: nothing is kept; otherwise the entry is written now, in a task of
-            // its own that closing the view does not cancel
-            if Task.isCancelled && !taken.contains(0) {
-                discard()
-            } else {
-                await Task { await self.finish() }.value
-            }
-        }
+        captureTask = Task { await film() }
     }
 
-    /// Closing: before the moment's own capture nothing is kept; after it, the entry keeps what was captured.
+    /// Closing: before the moment nothing is kept; after it, the film ends and the entry keeps what was filmed.
     func close() {
         captureTask?.cancel()
         voiceTask?.cancel()
         MomentVoice.stop()
-        if phase != .waiting || captureTask == nil { camera.stop() }
+        if phase == .waiting { camera.stop() }
     }
 
-    // MARK: The captures
+    // MARK: The film
 
-    /// One capture: the flash and the haptic, every camera at once, the photos on their way into the journal.
-    private func take(_ shot: Shot, last: Bool) async {
-        guard phase == .waiting else { return }
+    private func film() async {
+        await Self.sleep(until: filmStart - 0.05)
+        guard !Task.isCancelled else {
+            camera.stop()
+            return
+        }
         beginBackgroundWork()
-        flashes += 1
-        MomentHaptics.capture()
-        if last {
-            // the recording runs until the last capture
-            voiceTask?.cancel()
-            MomentVoice.stop()
-            audio = recorder.stop()
+        phase = .filming
+        voiceTask?.cancel()
+        MomentVoice.stop()
+        let (start, end, center) = (filmStart, filmEnd, center)
+        let filming = Task { await camera.record(from: start, to: end) }
+        await Self.sleep(until: center)
+        if !Task.isCancelled {
+            reachedMoment = true
+            flashes += 1
+            MomentHaptics.capture()
         }
-        var photos = await camera.capture()
-        if photos.isEmpty, camera.mode == .none {
-            // the Simulator, or a device without a camera: a still of the moment stands in, so the entry has its photos
-            photos = MomentStill.make(moment, words: AppSettings.shared.wording, offset: count > 1 ? shot.offset : nil)
+        let films = await withTaskCancellationHandler { await filming.value } onCancel: { filming.cancel() }
+        guard reachedMoment else {
+            // closed before the moment: nothing is kept
+            films.forEach { try? FileManager.default.removeItem(at: $0.url) }
+            camera.stop()
+            endBackgroundWork()
+            return
         }
-        let named = photos.map { (name: MomentCaptures.photoName(camera: $0.name, offset: shot.offset, count: count), data: $0.data) }
-        taken.append(shot.offset)
-        adopting.append(Task { await MomentSaver.adopt(named) })
-        momentsLog.info("capture \(shot.offset) of \(self.moment.index): \(named.map(\.name))")
+        // the reel and the entry, in a task of their own that closing the view does not cancel
+        await Task { await self.finish(films) }.value
     }
 
-    /// Writes the entry with every capture taken (waiting for their photos), then shows it.
-    private func finish() async {
-        guard phase == .waiting else { return }
+    private static func sleep(until t: Double) async {
+        let delay = t - Date.now.timeIntervalSince1970
+        guard delay > 0 else { return }
+        // the continuous clock keeps counting through a locked screen; a tolerance of zero asks for the instant itself
+        try? await Task.sleep(until: .now + .seconds(delay), tolerance: .zero, clock: .continuous)
+    }
+
+    /// Makes the reel (a drawn one where there is no camera), writes the entry, then shows it.
+    private func finish(_ films: [MomentFilm]) async {
+        camera.stop()
+        phase = .developing
+        #if os(iOS)
+        // the GPU and the video encoder are the front app's: a film that ended in the background becomes the reel on
+        // the way back
+        while UIApplication.shared.applicationState == .background { try? await Task.sleep(for: .milliseconds(500)) }
+        #endif
+        var media: [BlobRef] = []
+        if !films.isEmpty || camera.mode == .none {
+            let disk = JournalStore.shared.disk
+            let url = disk.temporaryFile(ext: "mov")
+            let script = reelScript()
+            do {
+                try await MomentReelRenderer.render(films: films, script: script, to: url) { [weak self] p in
+                    Task { @MainActor in self?.developed = max(self?.developed ?? 0, p) }
+                }
+                media = try await MomentSaver.adoptReel(url, posterAt: MomentReelTiming(half: script.half).moments[0])
+                momentsLog.info("reel of \(self.moment.index): \(films.map(\.camera)), \(media.count) blobs")
+            } catch {
+                momentsLog.error("could not make the reel: \(error.localizedDescription)")
+                // the films themselves, rather than nothing
+                media = await MomentSaver.adoptFilms(films)
+            }
+            try? FileManager.default.removeItem(at: url)
+        }
+        films.forEach { try? FileManager.default.removeItem(at: $0.url) }
         phase = .saving
-        voiceTask?.cancel()
-        if audio == nil { audio = recorder.stop() }
-        var blobs: [BlobRef] = []
-        for task in adopting { blobs += await task.value }
         do {
-            let record = try await MomentSaver.save(moment: moment, emoji: emoji, text: text, photos: blobs, audio: audio)
-            audio = nil
+            let record = try await MomentSaver.save(moment: moment, emoji: emoji, text: text, media: media)
             phase = .saved(record.id)
             Haptics.play(.success)
-            momentsLog.info("captured \(self.moment.title()) at \(self.moment.time): \(blobs.count) photos in \(self.taken.count) captures")
+            momentsLog.info("captured \(self.moment.title()) at \(self.moment.time): \(media.count) blobs")
         } catch {
             phase = .failed(error.localizedDescription)
             momentsLog.error("could not save the capture: \(error.localizedDescription)")
         }
-        camera.stop()
         endBackgroundWork()
     }
 
-    /// Closed before the moment: the recording and the photos go (the journal sweeps media no record names).
-    private func discard() {
-        recorder.cancel()
-        camera.stop()
-        endBackgroundWork()
+    private func reelScript() -> MomentReelScript {
+        let words = AppSettings.shared.wording
+        let clock = FractonicaClock.shared
+        let rgb = moment.rarity.color.resolve(in: EnvironmentValues())
+        let side = JournalPreferences.shared.videoQuality == .hevc720 ? 640 : 960
+        return MomentReelScript(
+            moment: moment.time, center: center, half: (filmEnd - filmStart) / 2,
+            preon: clock.level(at: moment.time - 1, 8)?.duration ?? clock.levelInfo(8).meanSeconds,
+            title: moment.ledTitle(words.notation), notation: words.notation, pure: words.pure,
+            zone: AppSettings.shared.timeZone, accent: [Double(rgb.red), Double(rgb.green), Double(rgb.blue)], side: side)
     }
 
-    /// iOS: the captures and the save finish even when the app leaves the front meanwhile.
+    /// iOS: the film, the reel and the save finish even when the app leaves the front meanwhile.
     private func beginBackgroundWork() {
         #if os(iOS)
         guard backgroundTask == .invalid else { return }
@@ -218,9 +220,9 @@ final class InstantModel {
     }
 }
 
-/// Writes a captured moment into the journal: each capture's photos into its media as soon as they are taken
-/// (`adopt`), then the entry (`save`) — photos in `MomentCaptures.sortKey` order (back first, through the moment, then
-/// front), the voice note, the moment's exact time and its `capture`. The record is on disk when `save` returns.
+/// Writes a captured moment into the journal: the reel (or, failing it, the films) into its media (`adoptReel`), then
+/// the entry (`save`) — the media, the moment's exact time and its `capture`. The record is on disk when `save`
+/// returns.
 enum MomentSaver {
     /// Puts photos into the journal's media; the references (a photo that cannot be read is left out, and logged).
     @MainActor
@@ -242,20 +244,36 @@ enum MomentSaver {
         return blobs
     }
 
-    /// Writes the entry (the photos already adopted).
+    /// Puts the reel into the journal's media, named `reel`, its poster the frame at `posterAt` (the moment).
     @MainActor
-    static func save(moment: Moment, emoji: String?, text: String, photos: [BlobRef], audio: URL?,
-                     store: JournalStore = .shared) async throws -> HubRecord {
-        var blobs = photos.sorted { MomentCaptures.sortKey($0.name) < MomentCaptures.sortKey($1.name) }
-        if let audio {
+    static func adoptReel(_ url: URL, posterAt: Double, store: JournalStore = .shared) async throws -> [BlobRef] {
+        // made at the journal's video size already: kept as it is
+        let item = try await JournalMedia.processVideo(url, name: MomentReel.name, quality: .original, disk: store.disk,
+                                                       posterAt: posterAt)
+        return try await store.adopt(item)
+    }
+
+    /// The cameras' films as they are (named by camera), when the reel could not be made.
+    @MainActor
+    static func adoptFilms(_ films: [MomentFilm], store: JournalStore = .shared) async -> [BlobRef] {
+        var blobs: [BlobRef] = []
+        for film in films {
             do {
-                let item = try await JournalMedia.processAudio(audio, disk: store.disk, move: true)
+                let item = try await JournalMedia.processVideo(film.url, name: film.camera, quality: JournalPreferences.shared.videoQuality,
+                                                               disk: store.disk)
                 blobs += try await store.adopt(item)
             } catch {
-                // the photos and the moment matter more than the voice note: the entry is written without it
-                momentsLog.error("could not keep the voice note: \(error.localizedDescription)")
+                momentsLog.error("could not keep the \(film.camera) film: \(error.localizedDescription)")
             }
         }
+        return blobs
+    }
+
+    /// Writes the entry (the media already adopted).
+    @MainActor
+    static func save(moment: Moment, emoji: String?, text: String, media: [BlobRef],
+                     store: JournalStore = .shared) async throws -> HubRecord {
+        let blobs = media.sorted { MomentCaptures.sortKey($0.name) < MomentCaptures.sortKey($1.name) }
         let zone = AppSettings.shared.zone ?? TimeZone.current.identifier
         let entry = JournalEntry(emoji: emoji, markdown: text.trimmingCharacters(in: .whitespacesAndNewlines))
         var record = HubRecord.journalEntry(time: moment.time, zone: zone, entry: entry, blobs: blobs, now: Date.now.timeIntervalSince1970)

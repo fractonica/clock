@@ -247,17 +247,23 @@ JournalHooks) to every record it writes, and `SkyTagging.backfill` retags the en
 `SkyTags.version` (a migration recorded in state.json, the changed records pending). Keyword search reads the tags.
 Moments (Features/Journal/Moments) are BeReal-style captures on the clock: every Helion quarter boundary is a candidate moment, labelled
 by the longest period with a quarter boundary there (its rarity: rare Helion, epic Delta, legendary Gamma,
-mythic Beta, cosmic Alpha; of the Helion ones only nodes are announced, `MomentSettings.asks`); 11 Flavons ahead the app announces it (a notification with a spoken clip from
-Resources/Moments, made by scripts/make-moment-voices.sh, or the instant view itself while the app is in front) and
-the instant view captures it — 1, 3 (the default) or 5 times, one Flavon apart and centred on the moment
-(`MomentCaptures`, `MomentSettings.captures`), each capture both cameras at once — records the voice from opening to
-the last capture, and writes the entry right after the last capture, before the view changes: `time` and
-`data.capture.at` the moment, photos named `back@-1`, `front@-1` … (`front` and `back` for a single capture;
-hub/API.md). Every way the instant view opens without a tap goes through `MomentStore.openByItself`, which "Open by
-itself" and `-FXMomentsAuto 0` turn off. The streak and the collection derive from the records. Moments is a screen of
-its own (`MomentsScreen`: the streak, the next moment, the collection by rarity, recent captures, the settings); cards
-wear their rarity's frame (`rarityFrame(for:)`), and a moment's captures show as `CaptureTiles` (the back photo with
-the front one inset) in the instant view, on the Moments screen and capture by capture in the entry's detail.
+mythic Beta, cosmic Alpha; of the Helion ones its two nodes are announced, the ascending one at its start and the
+descending one at its mid point, `MomentSettings.asks`); 11 Flavons ahead the app announces it (a notification with a
+spoken clip from Resources/Moments, made by scripts/make-moment-voices.sh, or the instant view itself while the app is
+in front) and the instant view films it: both cameras at once (`MomentCamera`, each at the fastest rate the
+multi-camera session affords, into a movie file of its own) from half a Flavon before the moment to half after
+(`MomentCalendar.filmSpan`), no sound. Then `MomentReelRenderer` makes the reel (MomentReel.swift has its arithmetic,
+checked): the selfie's square over the back camera's, the Flavon played forward slowing to an eighth at the moment
+(a Gaussian, symmetric about it) with a click there, then backwards with the slowing reflected (slow at the ends, real
+time through the moment, a click again), each frame stamped at the top with its instant and at the foot with the time
+to the moment in Preons; in the Simulator a drawn film stands in for the cameras. The entry is written right after,
+before the view changes: `time` and `data.capture.at` the moment, the reel a video named `reel` whose poster is the
+moment's frame (hub/API.md). Older entries keep their photo captures (`back@-1`, `front@-1` …, `MomentCaptures`), shown
+as `CaptureTiles` as before. Every way the instant view opens without a tap goes through `MomentStore.openByItself`,
+which "Open by itself" and `-FXMomentsAuto 0` turn off. The streak and the collection derive from the records. Moments
+is a screen of its own (`MomentsScreen`: the streak, the next moment, the collection by rarity, recent captures, the
+settings); cards wear their rarity's frame (`rarityFrame(for:)`) and show the reel (`ReelTile`: playing in the
+instant view, its poster elsewhere).
 The Now screen pages through five faces (`FacePager`; `FaceCatalog.swift` gives each its title, aspect ratio and
 whether it steps through levels). The three drawn faces carry the Pentads themselves, so the Pentad card is left out
 under them; each keeps its geometry and reading pure (checked in its own Checks folder) and redraws in layers, each as
@@ -474,7 +480,7 @@ Read from UserDefaults' argument domain, never persisted; they work on iOS (simc
 Features add their own (`-FXJump…`, `-FXLadder…`, `-FXAlerts…`, `-FXSound…`, `-FXFocus…`, `-FXHub…`, `-FXMoments…`; each feature's
 file lists them). `-FXHubSettings 1` presents the hub settings page, `-FXHubDemo <n>` attaches a demo journal store with
 n entries to sync, `-FXHubScheme light|dark` sets the hub sheets' appearance (HubSyncHooks.swift). `-FXMomentsInstant <s>` opens the instant view for a moment that many seconds
-away (it captures and saves; `-FXMomentsCaptures 1|3|5` sets the count for the launch), `-FXMomentsSettings 1` the
+away (it films, makes the reel and saves; a drawn film in the Simulator), `-FXMomentsSettings 1` the
 Moments screen on its settings, `-FXMomentsDemo 1` fills the journal with captures of every rarity (with
 `-FXJournalStore <dir>`), `-FXMomentsAuto 0` keeps the instant view from opening by itself and the moments' banners
 away (MomentStore.swift lists them all). `-FXEpicycles 6-10` sets the epicycle face's arms (base–top levels), with

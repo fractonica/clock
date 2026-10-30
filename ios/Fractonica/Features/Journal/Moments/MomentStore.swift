@@ -127,9 +127,6 @@ final class MomentStore {
     /// `-FXMomentsAuto 0`). Every way it opens without a tap goes through `openByItself(_:)`, which asks this.
     var opensByItself: Bool { settings.enabled && settings.autoOpen && launch.autoOpen }
 
-    /// How many times a moment is captured: the setting, or `-FXMomentsCaptures` for this launch.
-    var capturesPerMoment: Int { launch.captures ?? settings.captures }
-
     /// Opens the instant view for a moment (not when another one is up): a tap (a notification, Get Ready).
     func openInstant(_ m: Moment, demo: Bool = false) {
         handled.insert(m.index)
@@ -439,10 +436,10 @@ enum MomentScheduling {
 /// Moments' launch arguments, for screenshots and checks (never persisted):
 ///
 ///     -FXMomentsInstant <seconds>   open the instant view for a moment that many seconds away (its label is the next
-///                                   real moment's, or -FXMomentsLevel / -FXMomentsBoundary); it captures and saves
+///                                   real moment's, or -FXMomentsLevel / -FXMomentsBoundary); it films, makes the reel
+///                                   and saves (in the Simulator a drawn film stands in)
 ///     -FXMomentsLevel <level>       helion nuclide delta gamma beta alpha
 ///     -FXMomentsBoundary <b>        start peak node valley
-///     -FXMomentsCaptures 1|3|5      capture that many times for this launch (the setting stays)
 ///     -FXMomentsSheet 1             show the Moments screen (as -FXTab moments does)
 ///     -FXMomentsSettings 1          … on its settings
 ///     -FXMomentsDemo 1              fill the journal with captured entries of every rarity and a streak (use with
@@ -454,7 +451,6 @@ struct MomentLaunchOptions: Sendable {
     var instantIn: Double?
     var level: MomentLevel?
     var boundary: MomentBoundary?
-    var captures: Int?
     var screen = false
     var settings = false
     var demo = false
@@ -468,7 +464,6 @@ struct MomentLaunchOptions: Sendable {
             instantIn: string("FXMomentsInstant").flatMap(Double.init),
             level: string("FXMomentsLevel").flatMap { MomentLevel(rawValue: $0.lowercased()) },
             boundary: string("FXMomentsBoundary").flatMap { MomentBoundary(rawValue: $0.lowercased()) },
-            captures: string("FXMomentsCaptures").flatMap(Int.init).flatMap { MomentCaptures.choices.contains($0) ? $0 : nil },
             screen: flag("FXMomentsSheet") || flag("FXMomentsSettings"),
             settings: flag("FXMomentsSettings"),
             demo: flag("FXMomentsDemo"),
