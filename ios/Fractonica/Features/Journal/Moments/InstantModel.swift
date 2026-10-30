@@ -53,6 +53,8 @@ final class InstantModel {
     private(set) var reachedMoment = false
     /// Why the reel could not be made (the films were kept as they are instead).
     private(set) var reelFailure: String?
+    /// A camera that lost many of its frames while filming ("the back camera lost 40 % of its frames").
+    private(set) var filmTrouble: String?
     /// Photos taken by a tap on a camera, by camera.
     private(set) var snaps: [String: Int] = [:]
     /// Bumped at each photo, by camera: its square's flash.
@@ -266,6 +268,10 @@ final class InstantModel {
             try? FileManager.default.removeItem(at: url)
         }
         films.forEach { try? FileManager.default.removeItem(at: $0.url) }
+        if let worst = films.filter({ $0.camera != "sound" && $0.lost > 0.1 }).max(by: { $0.lost < $1.lost }) {
+            filmTrouble = "the \(worst.camera) camera lost \(Int((worst.lost * 100).rounded())) % of its frames"
+            momentsLog.error("films: \(films.compactMap(\.report).joined(separator: "; "))")
+        }
         for task in photos { media += await task.value }
         if let voice {
             do {

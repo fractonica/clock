@@ -19,6 +19,9 @@ struct MomentFilm: Sendable {
     let url: URL
     /// Unix time of the file's time zero.
     let start: Double
+    /// How the filming went ("back: 466 kept, 3 refused by the writer"), and the share of frames lost.
+    var report: String?
+    var lost = 0.0
 }
 
 /// What a reel shows besides the film: the moment, the clip's centre and half-length, the words.
@@ -327,11 +330,11 @@ enum MomentReelRenderer {
                 let s = Double(i) / sampleRate
                 seed = seed &* 1_664_525 &+ 1_013_904_223
                 let noise = Double(Int32(bitPattern: seed)) / Double(Int32.max)
-                // a struck tick: a bright ping over a lower knock, a breath of noise at the strike
-                let ping = 0.5 * sin(2 * .pi * 2600 * s) * exp(-s / 0.006)
-                let knock = 0.4 * sin(2 * .pi * 1100 * s) * exp(-s / 0.012)
-                let strike = 0.35 * noise * exp(-s / 0.0015)
-                out[start + i] += Float(0.7 * (ping + knock + strike))
+                // a soft tick: a short ping over a lower knock, a breath of noise at the strike
+                let ping = 0.5 * sin(2 * .pi * 2000 * s) * exp(-s / 0.003)
+                let knock = 0.4 * sin(2 * .pi * 900 * s) * exp(-s / 0.007)
+                let strike = 0.2 * noise * exp(-s / 0.001)
+                out[start + i] += Float(0.28 * (ping + knock + strike))
             }
         }
     }

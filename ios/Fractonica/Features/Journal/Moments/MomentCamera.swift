@@ -142,8 +142,8 @@ private final class CameraRig: @unchecked Sendable {
     private func videoOutput(_ name: String) -> (AVCaptureVideoDataOutput, FrameTap) {
         let output = AVCaptureVideoDataOutput()
         output.videoSettings = [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_420YpCbCr8BiPlanarFullRange]
-        // every frame for the film: the writer keeps up (a hardware encoder per camera)
-        output.alwaysDiscardsLateVideoFrames = false
+        // a frame the film cannot take in time is let go rather than queued: queued frames hold the camera's buffers
+        output.alwaysDiscardsLateVideoFrames = true
         let tap = FrameTap(camera: name)
         output.setSampleBufferDelegate(tap, queue: tap.queue)
         return (output, tap)
@@ -208,7 +208,7 @@ private final class CameraRig: @unchecked Sendable {
 
     /// Sets each camera to the fastest frame rate both can run at once within the hardware's budget: tries 240, 120,
     /// 60 and 30 frames a second in turn (a camera that cannot reach the rate runs at its own best), each on its
-    /// largest multi-camera format of at most 1920 × 1440 that reaches it. Returns the rate settled on.
+    /// smallest multi-camera format that still fills the reel's square (`setFormat`). Returns the rate settled on.
     private static func fastestAffordable(_ devices: [AVCaptureDevice], session: AVCaptureMultiCamSession) -> Double {
         for rate in [240.0, 120, 60, 30] {
             for device in devices { setFormat(device, fps: rate) }
@@ -217,20 +217,28 @@ private final class CameraRig: @unchecked Sendable {
         return 30
     }
 
-    /// The device's largest multi-camera format (at most 1920 × 1440) reaching `fps`, or failing that its fastest,
-    /// locked to that rate.
+    /// The device's smallest 8-bit multi-camera format reaching `fps` whose short side still fills the reel's square
+    /// (960 pixels: 1920 × 1080 on most iPhones; every pixel more is load on two encoders at once), or failing that its
+    /// fastest; locked to that rate.
     private static func setFormat(_ device: AVCaptureDevice, fps: Double) {
         let formats = device.formats.filter { format in
             let d = CMVideoFormatDescriptionGetDimensions(format.formatDescription)
+            let subtype = CMFormatDescriptionGetMediaSubType(format.formatDescription)
             return format.isMultiCamSupported && d.width <= 1920 && d.height <= 1440
+                && subtype != kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange && subtype != kCVPixelFormatType_420YpCbCr10BiPlanarFullRange
         }
         func best(_ f: AVCaptureDevice.Format) -> Double { f.videoSupportedFrameRateRanges.map(\.maxFrameRate).max() ?? 0 }
         func pixels(_ f: AVCaptureDevice.Format) -> Int {
             let d = CMVideoFormatDescriptionGetDimensions(f.formatDescription)
             return Int(d.width) * Int(d.height)
         }
+        func fills(_ f: AVCaptureDevice.Format) -> Bool {
+            let d = CMVideoFormatDescriptionGetDimensions(f.formatDescription)
+            return min(d.width, d.height) >= 960
+        }
         let reaching = formats.filter { best($0) >= fps }
-        let chosen = reaching.max { pixels($0) < pixels($1) }
+        let chosen = reaching.filter(fills).min { pixels($0) < pixels($1) }
+            ?? reaching.max { pixels($0) < pixels($1) }
             ?? formats.max { best($0) < best($1) || (best($0) == best($1) && pixels($0) < pixels($1)) }
         guard let chosen, (try? device.lockForConfiguration()) != nil else { return }
         device.activeFormat = chosen
@@ -329,13 +337,21 @@ private final class CameraRig: @unchecked Sendable {
     func still(_ camera: String) async -> Data? {
         await withCheckedContinuation { continuation in
             queue.async {
-                guard let pixels = self.taps.first(where: { $0.camera == camera })?.latest() else {
+                guard let tap = self.taps.first(where: { $0.camera == camera }) else {
                     continuation.resume(returning: nil)
                     return
                 }
-                let data = self.stills.jpegRepresentation(of: CIImage(cvPixelBuffer: pixels), colorSpace: CGColorSpace(name: CGColorSpace.sRGB)!,
-                                                          options: [kCGImageDestinationLossyCompressionQuality as CIImageRepresentationOption: 0.92])
-                continuation.resume(returning: data)
+                let stills = self.stills
+                tap.nextFrame { image in
+                    // the frame is copied on the tap's queue; the JPEG is made here, off it
+                    self.queue.async {
+                        let data = image.flatMap {
+                            stills.jpegRepresentation(of: CIImage(cgImage: $0), colorSpace: CGColorSpace(name: CGColorSpace.sRGB)!,
+                                                      options: [kCGImageDestinationLossyCompressionQuality as CIImageRepresentationOption: 0.92])
+                        }
+                        continuation.resume(returning: data)
+                    }
+                }
             }
         }
     }
@@ -374,8 +390,14 @@ private final class FrameTap: NSObject, AVCaptureVideoDataOutputSampleBufferDele
     private var delivered = false
     private var result: MomentFilm??
     private var waiter: CheckedContinuation<MomentFilm?, Never>?
-    /// The latest frame (a camera's tap).
-    private var newest: CVPixelBuffer?
+    /// A photo asked for: the next frame, copied (no frame of the camera's is kept).
+    private var stillWanted: (@Sendable (CGImage?) -> Void)?
+    private lazy var copier = CIContext()
+    /// What happened to the span's frames: taken into the film, refused by a busy writer, dropped by the camera (by
+    /// reason).
+    private var written = 0
+    private var busy = 0
+    private var dropped: [String: Int] = [:]
     /// The voice note (the microphone's tap), on the tap's queue.
     private let tape = VoiceTape()
 
@@ -396,7 +418,11 @@ private final class FrameTap: NSObject, AVCaptureVideoDataOutputSampleBufferDele
 
     func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
         if let pixels = CMSampleBufferGetImageBuffer(sampleBuffer) {
-            lock.withLock { newest = pixels }
+            if let wanted = stillWanted {
+                stillWanted = nil
+                let image = CIImage(cvPixelBuffer: pixels)
+                wanted(copier.createCGImage(image, from: image.extent))
+            }
         } else {
             tape.take(sampleBuffer)
         }
@@ -410,23 +436,63 @@ private final class FrameTap: NSObject, AVCaptureVideoDataOutputSampleBufferDele
             return
         }
         if writer == nil, !begin(sampleBuffer, at: pts, unix: unix) { return }
-        if let input, input.isReadyForMoreMediaData { input.append(sampleBuffer) }
+        if let input, input.isReadyForMoreMediaData, input.append(sampleBuffer) {
+            written += 1
+        } else {
+            busy += 1
+        }
+    }
+
+    func captureOutput(_ output: AVCaptureOutput, didDrop sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
+        guard writer != nil else { return }
+        let reason = CMGetAttachment(sampleBuffer, key: kCMSampleBufferAttachmentKey_DroppedFrameReason, attachmentModeOut: nil) as? String
+        dropped[reason.map(Self.dropName) ?? "unknown", default: 0] += 1
+    }
+
+    private static func dropName(_ reason: String) -> String {
+        if reason == (kCMSampleBufferDroppedFrameReason_FrameWasLate as String) { return "late" }
+        if reason == (kCMSampleBufferDroppedFrameReason_OutOfBuffers as String) { return "out of buffers" }
+        if reason == (kCMSampleBufferDroppedFrameReason_Discontinuity as String) { return "discontinuity" }
+        return reason
+    }
+
+    /// How the film went, for the log and the saved screen: "back: 466 frames kept, 3 refused by the writer, 0 dropped".
+    private var report: String {
+        let lost = dropped.map { "\($0.value) \($0.key)" }.sorted().joined(separator: ", ")
+        return "\(camera): \(written) kept, \(busy) refused by the writer" + (lost.isEmpty ? "" : ", dropped \(lost)")
+    }
+
+    /// The share of the span's frames that did not make it into the film.
+    private var lostShare: Double {
+        let lost = busy + dropped.values.reduce(0, +)
+        return Double(lost) / Double(max(1, written + lost))
     }
 
     private func begin(_ sample: CMSampleBuffer, at pts: CMTime, unix: Double) -> Bool {
         guard let format = CMSampleBufferGetFormatDescription(sample) else { return false }
         let audio = CMFormatDescriptionGetMediaType(format) == kCMMediaType_Audio
         let url = FileManager.default.temporaryDirectory.appending(path: "moment-\(camera)-\(UUID().uuidString).\(audio ? "m4a" : "mov")")
+        written = 0
+        busy = 0
+        dropped = [:]
         guard let writer = try? AVAssetWriter(outputURL: url, fileType: audio ? .m4a : .mov) else { return false }
         let input: AVAssetWriterInput
         if audio {
             input = AVAssetWriterInput(mediaType: .audio, outputSettings: VoiceTape.aac(for: format))
         } else {
             let size = CMVideoFormatDescriptionGetDimensions(format)
+            // no frame reordering: the encoder hands each frame back at once instead of holding several of the
+            // camera's buffers (a camera runs out of them, and its film stalls)
             input = AVAssetWriterInput(mediaType: .video, outputSettings: [
                 AVVideoCodecKey: AVVideoCodecType.hevc,
                 AVVideoWidthKey: Int(size.width),
                 AVVideoHeightKey: Int(size.height),
+                AVVideoCompressionPropertiesKey: [
+                    AVVideoAllowFrameReorderingKey: false,
+                    AVVideoExpectedSourceFrameRateKey: 60,
+                    AVVideoAverageBitRateKey: Int(size.width) * Int(size.height) * 8,
+                    AVVideoMaxKeyFrameIntervalDurationKey: 1,
+                ],
             ])
         }
         input.expectsMediaDataInRealTime = true
@@ -470,11 +536,13 @@ private final class FrameTap: NSObject, AVCaptureVideoDataOutputSampleBufferDele
             queue.async {
                 let ok = self.writer?.status == .completed
                 if !ok { momentsLog.error("the \(self.camera) film failed: \(self.writer?.error?.localizedDescription ?? "?")") }
+                momentsLog.info("film \(self.report)")
+                let film = MomentFilm(camera: self.camera, url: url, start: firstUnix, report: self.report, lost: self.lostShare)
                 self.writer = nil
                 self.input = nil
                 self.firstUnix = nil
                 self.finishing = false
-                self.deliver(ok ? MomentFilm(camera: self.camera, url: url, start: firstUnix) : nil)
+                self.deliver(ok ? film : nil)
             }
         }
     }
@@ -490,9 +558,14 @@ private final class FrameTap: NSObject, AVCaptureVideoDataOutputSampleBufferDele
         w?.resume(returning: film)
     }
 
-    /// A camera's latest frame.
-    func latest() -> CVPixelBuffer? {
-        lock.withLock { newest }
+    /// The camera's next frame, copied (nil when none comes within a second).
+    func nextFrame(_ done: @escaping @Sendable (CGImage?) -> Void) {
+        let once = Once(done)
+        queue.async { self.stillWanted = { once.call($0) } }
+        queue.asyncAfter(deadline: .now() + 1) {
+            self.stillWanted = nil
+            once.call(nil)
+        }
     }
 
     /// The microphone's tap: its sound goes into the voice note while `on`.
@@ -693,5 +766,22 @@ private final class VoiceTape {
             settings[AVChannelLayoutKey] = Data(bytes: &layout, count: MemoryLayout<AudioChannelLayout>.size)
         }
         return settings
+    }
+}
+
+/// A callback called at most once.
+private final class Once<T>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var done: ((T) -> Void)?
+
+    init(_ done: @escaping (T) -> Void) { self.done = done }
+
+    func call(_ value: T) {
+        let d = lock.withLock { () -> ((T) -> Void)? in
+            let d = done
+            done = nil
+            return d
+        }
+        d?(value)
     }
 }

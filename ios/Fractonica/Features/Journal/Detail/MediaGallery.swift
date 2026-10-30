@@ -223,7 +223,7 @@ private struct ZoomableImage: View {
     }
 }
 
-/// A video in the system player; it pauses when its page is left.
+/// A video in the system player, playing with its sound as soon as its page shows; it pauses when the page is left.
 private struct GalleryVideo: View {
     let blob: BlobRef
     let active: Bool
@@ -244,10 +244,20 @@ private struct GalleryVideo: View {
             if url == nil, let fetch = JournalHooks.fetchBlob { url = try? await fetch(blob.hash) }
             guard let url else { return }
             JournalAudioPlayer.shared.pause()
-            JournalAudioPlayer.activateSession()
-            player = AVPlayer(url: url)
+            #if os(iOS)
+            // a film plays aloud, the silent switch aside, whatever the session was left as (the instant view's
+            // recording one routes quietly)
+            try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback, options: [])
+            try? AVAudioSession.sharedInstance().setActive(true)
+            #endif
+            let player = AVPlayer(url: url)
+            player.isMuted = false
+            self.player = player
+            if active { player.play() }
         }
-        .onChange(of: active) { _, isActive in if !isActive { player?.pause() } }
+        .onChange(of: active) { _, isActive in
+            if isActive { player?.play() } else { player?.pause() }
+        }
         .onDisappear { player?.pause() }
     }
 }
