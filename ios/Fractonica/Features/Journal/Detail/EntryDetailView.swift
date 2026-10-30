@@ -107,7 +107,9 @@ struct EntryDetailView: View {
         }
         #if os(iOS)
         .fullScreenCover(item: $gallery) { start in
+            // clear: the entry shows through as a photo is swiped away
             MediaGallery(visuals: visuals, start: start.index, words: words, time: record.time)
+                .presentationBackground(.clear)
         }
         #else
         .sheet(item: $gallery) { start in
