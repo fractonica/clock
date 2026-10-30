@@ -251,13 +251,7 @@ struct ComposerView: View {
             }
             .frame(maxWidth: .infinity, minHeight: 200, alignment: .topLeading)
         } else {
-            TextEditor(text: $model.draft.markdown, selection: $selection)
-                .font(.body)
-                .foregroundStyle(Theme.ink)
-                .scrollContentBackground(.hidden)
-                .scrollDisabled(true)
-                .focused($focus, equals: .body)
-                .frame(minHeight: 220)
+            textEditor
                 .overlay(alignment: .topLeading) {
                     if model.draft.markdown.isEmpty {
                         Text("What’s happening?")
@@ -269,6 +263,28 @@ struct ComposerView: View {
                     }
                 }
         }
+    }
+
+    /// The body's editor, as tall as its text (the page scrolls, not the editor).
+    private var textEditor: some View {
+        let editor = TextEditor(text: $model.draft.markdown, selection: $selection)
+            .font(.body)
+            .foregroundStyle(Theme.ink)
+            .scrollContentBackground(.hidden)
+            .scrollDisabled(true)
+            .focused($focus, equals: .body)
+        #if os(macOS)
+        // the Mac's editor keeps the height it is given and, its scrolling off, cuts the text past it: an invisible
+        // copy of the text (a line to spare for the caret) sets the height and the editor fills it
+        return Text(verbatim: model.draft.markdown + "\n ")
+            .font(.body)
+            .padding(.horizontal, 5)
+            .frame(maxWidth: .infinity, minHeight: 220, alignment: .topLeading)
+            .hidden()
+            .overlay { editor }
+        #else
+        return editor.frame(minHeight: 220)
+        #endif
     }
 
     // MARK: Toolbar
