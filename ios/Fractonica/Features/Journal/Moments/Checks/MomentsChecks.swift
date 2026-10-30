@@ -419,8 +419,10 @@ private func reelChecks() {
           "the slowing is symmetric about the moment")
     // a pass lasts H·∫dx/s: longer than the clip (it slows), shorter than all of it at the slowest
     check(timing.passDuration > flavon && timing.passDuration < flavon / T.slowest, "a pass: \(timing.passDuration) s for a \(flavon) s Flavon")
-    check(abs(timing.duration - 2 * timing.passDuration) < 1e-9 && timing.frameCount == Int((timing.duration * 30).rounded()),
-          "two passes of equal length, 30 frames a second")
+    check(abs(timing.duration - 2 * timing.passDuration) < 1e-9 && timing.frameCount == Int((timing.duration / timing.frame).rounded()),
+          "two passes of equal length, a frame each Sub-blink")
+    check(abs(T.subBlink - clock.levelInfo(12).meanSeconds / 7) < 1e-9 && abs(T.subBlink - 0.0444) < 0.0005,
+          "a Sub-blink, a seventh of a Blink: \(T.subBlink) s")
     // the passes' landmarks
     func at(_ t: Double) -> (x: Double, backward: Bool) { timing.source(at: t) }
     check(at(0).x == -1 && !at(0).backward, "the reel opens half a Flavon before the moment")
@@ -448,12 +450,18 @@ private func reelChecks() {
         let t = timing.passDuration * Double(k) / 20
         return abs(at(timing.passDuration + t).x + at(t).x) < 1e-9
     }, "going back is going forward, mirrored")
-    // the countdown in Preons
-    let preon = clock.levelInfo(8).meanSeconds
-    check(MomentReelText.countdown(seconds: -flavon / 2, preon: preon) == "\u{2212}0.00769ι", "half a Flavon before: \(MomentReelText.countdown(seconds: -flavon / 2, preon: preon))")
-    check(MomentReelText.countdown(seconds: 0, preon: preon) == "0.00000ι" && MomentReelText.countdown(seconds: -1e-4, preon: preon) == "0.00000ι",
-          "the moment itself")
-    check(MomentReelText.countdown(seconds: flavon / 4, preon: preon) == "+0.00385ι", "a quarter Flavon after: \(MomentReelText.countdown(seconds: flavon / 4, preon: preon))")
+    // the words: the date without the cycles' marks, the time down to the Sub-blink, one ξ a frame
+    let date = MomentReelText.date(at: vectorA, notation: notation)
+    check(date == "α6 β4 γ9 δ3 ε5", "the date: \(date)")
+    let time = MomentReelText.time(at: vectorA, notation: notation)
+    check(time.hasPrefix("34η 29ι 21λ ") && time.hasSuffix("ξ"), "the time to the ξ: \(time)")
+    let xi = T.subBlink
+    let start = vectorA + 0.0123
+    let reads = (0..<40).map { i -> Int64 in
+        let jitter = Double((i * 7919) % 11 - 5) / 5 * 0.004 // ±4 ms
+        return clock.level(at: MomentReelText.readAt(start + Double(i) * xi + jitter, first: start, frame: xi), 13)!.cycle
+    }
+    check(zip(reads, reads.dropFirst()).allSatisfy { $1 == $0 + 1 }, "frames a Sub-blink apart read one ξ apart, jitter or not")
     // the frames an output frame blends
     let times = [-0.5, -0.25, 0, 0.25, 0.5]
     check(MomentReelFrames.pick(times, -1) == (0, 0, 0) && MomentReelFrames.pick(times, 2) == (4, 4, 0), "outside the film: its ends held")
@@ -486,15 +494,17 @@ private func reelRenderChecks() async {
         return
     }
     films.append(MomentFilm(camera: "sound", url: soundURL, start: moment - half))
-    let script = MomentReelScript(moment: moment, center: moment, half: half, preon: clock.levelInfo(8).meanSeconds,
-                                  title: "Helion 34η Descending Node", notation: notation, pure: false, zone: utc,
-                                  accent: [0.3, 0.5, 1], side: 160)
+    let script = MomentReelScript(center: moment, half: half, notation: notation, accent: [0.3, 0.5, 1], side: 160)
     let out = dir.appending(path: "reel.mov")
     do {
         try await MomentReelRenderer.render(films: films, script: script, to: out) { _ in }
     } catch {
         check(false, "the reel is made from two films: \(error.localizedDescription)")
         return
+    }
+    if let keep = ProcessInfo.processInfo.environment["FX_REEL_OUT"] {
+        try? FileManager.default.removeItem(atPath: keep)
+        try? FileManager.default.copyItem(at: out, to: URL(fileURLWithPath: keep))
     }
     let asset = AVURLAsset(url: out)
     let timing = MomentReelTiming(half: half)

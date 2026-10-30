@@ -1,12 +1,14 @@
+import FractonicaKit
 import Foundation
 
 // A moment's reel: the Flavon around the moment filmed by both cameras at once (half a Flavon before it, half after)
-// with its sound, made into one video — the selfie camera's square over the back camera's — that plays the Flavon
-// forward, slowing towards the moment (a click at it) and back to real time, then at once backwards the same way:
-// real time at the ends, slowing through the moment (a click again). The sound follows the picture (deepening as it
-// slows, backwards on the way back). Each frame wears its stamp at the top and the time to the moment in Preons at
-// the foot. This file is the reel's arithmetic (no AVFoundation: checked by Moments/Checks); MomentReelRenderer makes
-// the video.
+// with its sound, a frame each Sub-blink (ξ, 44.4 ms), made into one video — the selfie camera's square over the back
+// camera's — that plays the Flavon forward, slowing towards the moment (a click at it) and back to real time, then at
+// once backwards the same way: real time at the ends, slowing through the moment (a click again). Its frames last a
+// Sub-blink too, so at real time each shows the next filmed one and its ξ count rolls over; slowed, a filmed frame
+// holds for several. The sound follows the picture (deepening as it slows, backwards on the way back). Each frame
+// wears its date and its time down to the ξ at the top. This file is the reel's arithmetic and words (no
+// AVFoundation: checked by Moments/Checks); MomentReelRenderer makes the video.
 //
 // Source time u runs over the filmed seconds around the clip's centre c (the moment), u ∈ [−H, H], H half a Flavon;
 // x = u / H ∈ [−1, 1]. Both passes show the source at speed s(x) = 1 − (1 − m)·exp(−x² / 2σ²): real time at the ends,
@@ -24,20 +26,21 @@ struct MomentReelTiming: Sendable {
     static let slowest = 1.0 / 8
     /// The slowing's width σ, in half-clips: most of it within ±2σ of the moment (±40 % of the clip).
     static let width = 0.2
-    /// Output frames a second.
-    static let fps = 30.0
     /// Grid steps of the integrals.
     private static let steps = 4096
 
     /// Half the clip, in seconds (H).
     let half: Double
+    /// An output frame's length, in seconds: a Sub-blink.
+    let frame: Double
     /// Each pass's length, in output seconds.
     let passDuration: Double
     /// ∫ dx / s from −1 to each grid point, in half-clips.
     private let forward: [Double]
 
-    init(half: Double) {
+    init(half: Double, frame: Double = MomentReelTiming.subBlink) {
         self.half = max(half, 1e-3)
+        self.frame = max(frame, 1e-3)
         let n = Self.steps
         let dx = 2.0 / Double(n)
         func x(_ j: Int) -> Double { -1 + Double(j) * dx }
@@ -59,8 +62,11 @@ struct MomentReelTiming: Sendable {
     /// The whole reel, both passes, in output seconds.
     var duration: Double { 2 * passDuration }
 
+    /// A Sub-blink (ξ, 44.4 ms): the film's and the reel's frame.
+    static var subBlink: Double { FractonicaClock.shared.levelInfo(13).meanSeconds }
+
     /// Output frames in the reel.
-    var frameCount: Int { max(1, Int((duration * Self.fps).rounded())) }
+    var frameCount: Int { max(1, Int((duration / frame).rounded())) }
 
     /// When the moment shows: the middle of each pass (output seconds) — where the clicks go.
     var moments: [Double] { [passDuration / 2, passDuration * 1.5] }
@@ -90,19 +96,27 @@ struct MomentReelTiming: Sendable {
     }
 
     /// The output frame times, in seconds.
-    func frameTime(_ k: Int) -> Double { Double(k) / Self.fps }
+    func frameTime(_ k: Int) -> Double { Double(k) * frame }
 }
 
-/// The reel's labels and frame choice.
+/// The words on the reel's frames.
 enum MomentReelText {
-    /// The time to the moment in Preons, signed as a countdown: "−0.00769ι" half a Flavon before, "0.00000ι" at it,
-    /// "+0.00384ι" after (a Flavon is 1/65 of a Preon, so the reel's whole span is ±0.00769ι).
-    static func countdown(seconds: Double, preon: Double) -> String {
-        guard preon > 0 else { return "—" }
-        let v = seconds / preon
-        let digits = String(format: "%.5f", abs(v))
-        if digits == "0.00000" { return "0.00000ι" }
-        return (v < 0 ? "\u{2212}" : "+") + digits + "ι"
+    /// "α6 β4 γ9 δ4 ε1": the date, its letters without the cycles' marks.
+    static func date(at t: Double, notation: Notation) -> String {
+        notation.stamp(at: t, upTo: "epsilon").replacingOccurrences(of: "#", with: "")
+    }
+
+    /// "62η 4ι 29λ 4ν 3ξ": the Helion, Preon, Flavon, Blink and Sub-blink.
+    static func time(at t: Double, notation: Notation, clock: FractonicaClock = .shared) -> String {
+        guard let c = notation.clock(at: t), let xi = clock.level(at: t, 13) else { return "—" }
+        return "\(c.eta)η \(c.iota)ι \(c.lambda)λ \(c.nu)ν \(xi.local)ξ"
+    }
+
+    /// Where filmed frame i (Unix time `times[i]`) is read: the middle of the Sub-blink it opens, found from the first
+    /// frame's place in its Sub-blink — frames a Sub-blink apart then read one ξ apart, however they jitter.
+    static func readAt(_ t: Double, first: Double, frame: Double, clock: FractonicaClock = .shared) -> Double {
+        let phase = clock.level(at: first, 13)?.phase ?? 0.5
+        return t + (0.5 - phase) * frame
     }
 }
 

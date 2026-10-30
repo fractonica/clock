@@ -254,9 +254,10 @@ final class InstantModel {
             let url = disk.temporaryFile(ext: "mov")
             let script = reelScript()
             do {
-                try await MomentReelRenderer.render(films: films, script: script, to: url) { [weak self] p in
+                let gaps = try await MomentReelRenderer.render(films: films, script: script, to: url) { [weak self] p in
                     Task { @MainActor in self?.developed = max(self?.developed ?? 0, p) }
                 }
+                if let gap = gaps.first { filmTrouble = gap }
                 media = try await MomentSaver.adoptReel(url, posterAt: MomentReelTiming(half: script.half).moments[0])
                 momentsLog.info("reel of \(self.moment.index): \(films.map(\.camera)), \(media.count) blobs")
             } catch {
@@ -267,7 +268,7 @@ final class InstantModel {
             }
             try? FileManager.default.removeItem(at: url)
         }
-        films.forEach { try? FileManager.default.removeItem(at: $0.url) }
+        MomentFilmArchive.keep(films)
         if let worst = films.filter({ $0.camera != "sound" && $0.lost > 0.1 }).max(by: { $0.lost < $1.lost }) {
             filmTrouble = "the \(worst.camera) camera lost \(Int((worst.lost * 100).rounded())) % of its frames"
             momentsLog.error("films: \(films.compactMap(\.report).joined(separator: "; "))")
@@ -295,15 +296,10 @@ final class InstantModel {
     }
 
     private func reelScript() -> MomentReelScript {
-        let words = AppSettings.shared.wording
-        let clock = FractonicaClock.shared
         let rgb = moment.rarity.color.resolve(in: EnvironmentValues())
         let side = JournalPreferences.shared.videoQuality == .hevc720 ? 640 : 960
-        return MomentReelScript(
-            moment: moment.time, center: center, half: (filmEnd - filmStart) / 2,
-            preon: clock.level(at: moment.time - 1, 8)?.duration ?? clock.levelInfo(8).meanSeconds,
-            title: moment.ledTitle(words.notation), notation: words.notation, pure: words.pure,
-            zone: AppSettings.shared.timeZone, accent: [Double(rgb.red), Double(rgb.green), Double(rgb.blue)], side: side)
+        return MomentReelScript(center: center, half: (filmEnd - filmStart) / 2, notation: AppSettings.shared.wording.notation,
+                                accent: [Double(rgb.red), Double(rgb.green), Double(rgb.blue)], side: side)
     }
 
     /// iOS: the film, the reel and the save finish even when the app leaves the front meanwhile.
@@ -494,5 +490,27 @@ enum MomentStill {
             }
             .environment(\.colorScheme, .dark)
         }
+    }
+}
+
+/// The last capture's films as filmed, kept in Caches/MomentFilms until the next capture (replacing them): to look into
+/// a reel that came out wrong (`devicectl device copy from` reads them off a phone).
+enum MomentFilmArchive {
+    static func keep(_ films: [MomentFilm]) {
+        let fm = FileManager.default
+        guard let caches = fm.urls(for: .cachesDirectory, in: .userDomainMask).first else {
+            films.forEach { try? fm.removeItem(at: $0.url) }
+            return
+        }
+        let dir = caches.appending(path: "MomentFilms")
+        try? fm.removeItem(at: dir)
+        try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
+        var lines: [String] = []
+        for film in films {
+            let target = dir.appending(path: "\(film.camera).\(film.url.pathExtension)")
+            if (try? fm.moveItem(at: film.url, to: target)) == nil { try? fm.removeItem(at: film.url) }
+            lines.append("\(film.camera) start \(film.start) lost \(film.lost) \(film.report ?? "")")
+        }
+        try? lines.joined(separator: "\n").write(to: dir.appending(path: "films.txt"), atomically: true, encoding: .utf8)
     }
 }

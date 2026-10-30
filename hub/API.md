@@ -204,9 +204,10 @@ there (`helion`, `nuclide`, `delta`, `gamma`, `beta`, `alpha`), `boundary` which
 a period's end is the next one's `start`), and `rarity` follows from the level: `rare` (a Helion's nodes, blue),
 `epic` (Delta, purple), `legendary` (Gamma, yellow), `mythic` (Beta, red), `cosmic` (Alpha, rainbow). An entry without
 `capture` is `common` (grey). The capture is a video, role `video`, `name` `reel`, with its `poster` the frame at the
-moment: the front camera's square over the back camera's, the Flavon from half before the moment to half after played
-forward slowing to an eighth at the moment, then backwards the same way, each frame stamped with its instant and its
-distance from the moment in Preons, its sound the moment's own at the picture's pace with a click at the moment. Photos
+moment: the front camera's square over the back camera's, filmed a frame each Sub-blink (ξ, 44.4 ms), the Flavon from
+half before the moment to half after played forward slowing to an eighth at the moment, then backwards the same way,
+each frame stamped with its date and its time down to the Sub-blink, its sound the moment's own at the picture's pace
+with a click at the moment. Photos
 taken while waiting for it follow (role `photo`, `name` `front` or `back`), then a voice note (role `audio`, `name`
 `voice`). (When the reel cannot be made, the cameras' own videos are kept instead, named `back` and `front`, and their
 sound as audio named `sound`.) Entries captured before the reels have photos instead: roles `photo` with `name` `front` and

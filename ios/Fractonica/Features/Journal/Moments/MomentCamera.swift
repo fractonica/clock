@@ -11,7 +11,7 @@ import AppKit
 /// The instant view's cameras: the back and front cameras at once (`AVCaptureMultiCamSession`, iPhone XS and later)
 /// with a live preview of each, one camera where only one runs at a time, the Mac's camera on the Mac, and none in the
 /// Simulator (the view shows a placeholder and the reel is drawn instead, so the whole capture runs there too). Each
-/// camera runs at the fastest frame rate the session affords (60 frames a second on most iPhones, both cameras at once).
+/// camera takes a frame each Sub-blink (ξ, 44.4 ms: 22.5 frames a second), the reel's own frame.
 /// The session hears the microphone too (when allowed). `record(from:to:)` films the span from every camera, each into
 /// a movie file of its own — `back`, `front`, or `camera` (the Mac) — and its sound into one more, `sound`. `still(_:)`
 /// is a camera's latest frame as a photo; `voice(_:)` lets the microphone into the voice note while the button is held,
@@ -191,13 +191,13 @@ private final class CameraRig: @unchecked Sendable {
             made.append(tap)
             devices.append(device)
         }
-        let fps = Self.fastestAffordable(devices, session: session)
+        devices.forEach { Self.setFormat($0, frame: MomentReelTiming.subBlink) }
         let mic = sound ? addMicrophone(to: session, byHand: true) : nil
         session.commitConfiguration()
         guard made.count == 2, session.hardwareCost <= 1, session.systemPressureCost <= 1 else {
             return nil
         }
-        momentsLog.info("cameras: back and front at \(fps) fps, \(mic == nil ? "no sound" : "with sound")")
+        momentsLog.info("cameras: back and front a frame each Sub-blink, \(mic == nil ? "no sound" : "with sound")")
         (made + [mic].compactMap { $0 }).forEach { $0.clock = session.synchronizationClock }
         session.startRunning()
         self.session = session
@@ -206,26 +206,17 @@ private final class CameraRig: @unchecked Sendable {
         return Configured(previews: previews, hearing: mic != nil)
     }
 
-    /// Sets each camera to the fastest frame rate both can run at once within the hardware's budget: tries 240, 120,
-    /// 60 and 30 frames a second in turn (a camera that cannot reach the rate runs at its own best), each on its
-    /// smallest multi-camera format that still fills the reel's square (`setFormat`). Returns the rate settled on.
-    private static func fastestAffordable(_ devices: [AVCaptureDevice], session: AVCaptureMultiCamSession) -> Double {
-        for rate in [240.0, 120, 60, 30] {
-            for device in devices { setFormat(device, fps: rate) }
-            if session.hardwareCost <= 1 { return rate }
-        }
-        return 30
-    }
-
-    /// The device's smallest 8-bit multi-camera format reaching `fps` whose short side still fills the reel's square
-    /// (960 pixels: 1920 × 1080 on most iPhones; every pixel more is load on two encoders at once), or failing that its
-    /// fastest; locked to that rate.
-    private static func setFormat(_ device: AVCaptureDevice, fps: Double) {
+    /// The device's smallest 8-bit format (multi-camera where `multi`) taking a frame each `frame` seconds whose short
+    /// side still fills the reel's square (960 pixels: 1920 × 1080 on most iPhones; every pixel more is load on two
+    /// encoders at once), or failing that its fastest; locked to that frame.
+    static func setFormat(_ device: AVCaptureDevice, frame: Double, multi: Bool = true) {
+        let fps = 1 / frame
         let formats = device.formats.filter { format in
             let d = CMVideoFormatDescriptionGetDimensions(format.formatDescription)
             let subtype = CMFormatDescriptionGetMediaSubType(format.formatDescription)
-            return format.isMultiCamSupported && d.width <= 1920 && d.height <= 1440
+            return (format.isMultiCamSupported || !multi) && d.width <= 1920 && d.height <= 1440
                 && subtype != kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange && subtype != kCVPixelFormatType_420YpCbCr10BiPlanarFullRange
+                && format.videoSupportedFrameRateRanges.contains { $0.minFrameRate <= fps }
         }
         func best(_ f: AVCaptureDevice.Format) -> Double { f.videoSupportedFrameRateRanges.map(\.maxFrameRate).max() ?? 0 }
         func pixels(_ f: AVCaptureDevice.Format) -> Int {
@@ -242,10 +233,9 @@ private final class CameraRig: @unchecked Sendable {
             ?? formats.max { best($0) < best($1) || (best($0) == best($1) && pixels($0) < pixels($1)) }
         guard let chosen, (try? device.lockForConfiguration()) != nil else { return }
         device.activeFormat = chosen
-        let rate = min(fps, best(chosen))
-        let frame = CMTime(value: 1000, timescale: CMTimeScale(rate * 1000))
-        device.activeVideoMinFrameDuration = frame
-        device.activeVideoMaxFrameDuration = frame
+        let duration = CMTime(seconds: max(frame, 1 / best(chosen)), preferredTimescale: 1_000_000)
+        device.activeVideoMinFrameDuration = duration
+        device.activeVideoMaxFrameDuration = duration
         device.unlockForConfiguration()
     }
     #endif
@@ -271,6 +261,10 @@ private final class CameraRig: @unchecked Sendable {
             return Configured(previews: [:])
         }
         session.addInput(input)
+        #if os(iOS)
+        session.sessionPreset = .inputPriority
+        Self.setFormat(device, frame: MomentReelTiming.subBlink, multi: false)
+        #endif
         let (output, tap) = videoOutput(name)
         guard session.canAddOutput(output) else {
             session.commitConfiguration()
@@ -489,7 +483,7 @@ private final class FrameTap: NSObject, AVCaptureVideoDataOutputSampleBufferDele
                 AVVideoHeightKey: Int(size.height),
                 AVVideoCompressionPropertiesKey: [
                     AVVideoAllowFrameReorderingKey: false,
-                    AVVideoExpectedSourceFrameRateKey: 60,
+                    AVVideoExpectedSourceFrameRateKey: 23,
                     AVVideoAverageBitRateKey: Int(size.width) * Int(size.height) * 8,
                     AVVideoMaxKeyFrameIntervalDurationKey: 1,
                 ],
