@@ -31,6 +31,7 @@ struct MomentsScreen: View {
                     }
                 }
                 NextMomentCard(words: words, live: visible)
+                TestMomentRow()
                 MomentsSection(title: "Collection") { CollectionGrid(stats: moments.stats) }
                 recent(words)
                 MomentsSection(title: "Rarer moments ahead") { RareAhead(words: words, live: visible) }
@@ -237,6 +238,39 @@ private struct StreakHero: View {
         .background(Theme.panel, in: .rect(cornerRadius: 22, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(Theme.line, lineWidth: 1))
         .accessibilityElement(children: .combine)
+    }
+}
+
+/// Test a Moment: the instant view on a made-up moment, to try the film and the reel any time — 2 Flavons ahead (the
+/// film starts in about 12 s), or 11 as a real call comes (with the spoken announcement). The entry is saved like a
+/// real capture; it never counts for the streak.
+private struct TestMomentRow: View {
+    @State private var moments = MomentStore.shared
+
+    private var flavon: Double { FractonicaClock.shared.levelInfo(10).meanSeconds }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Menu {
+                Button("In 2 Flavons", systemImage: "bolt") { moments.openTest(in: 2 * flavon) }
+                Button("In 11 Flavons, Announced", systemImage: "speaker.wave.2") {
+                    moments.openTest(in: Double(MomentCalendar.leadFlavons) * flavon)
+                }
+            } label: {
+                Label("Test a Moment", systemImage: "video.badge.checkmark").frame(maxWidth: .infinity)
+            } primaryAction: {
+                moments.openTest(in: 2 * flavon)
+            }
+            .menuStyle(.button)
+            .glassButtonStyle()
+            .controlSize(.large)
+            .buttonBorderShape(.capsule)
+            .disabled(moments.instant != nil)
+            .accessibilityHint("Films a made-up moment two Flavons from now")
+            Text("A made-up moment 2 Flavons away (hold for 11, with the announcement): filmed, made into a reel and saved to your journal like a real capture. It never counts for the streak.")
+                .font(.footnote)
+                .foregroundStyle(Theme.ink3)
+        }
     }
 }
 

@@ -261,8 +261,9 @@ before the view changes: `time` and `data.capture.at` the moment, the reel a vid
 moment's frame (hub/API.md). Older entries keep their photo captures (`back@-1`, `front@-1` …, `MomentCaptures`), shown
 as `CaptureTiles` as before. Every way the instant view opens without a tap goes through `MomentStore.openByItself`,
 which "Open by itself" and `-FXMomentsAuto 0` turn off. The streak and the collection derive from the records. Moments
-is a screen of its own (`MomentsScreen`: the streak, the next moment, the collection by rarity, recent captures, the
-settings); cards wear their rarity's frame (`rarityFrame(for:)`) and show the reel (`ReelTile`: playing in the
+is a screen of its own (`MomentsScreen`: the streak, the next moment, Test a Moment — the instant view on a made-up
+moment 2 Flavons away, or 11 with the announcement, `MomentStore.openTest`, saved like a real capture but never on the
+streak — the collection by rarity, recent captures, the settings); cards wear their rarity's frame (`rarityFrame(for:)`) and show the reel (`ReelTile`: playing in the
 instant view, its poster elsewhere).
 The Now screen pages through five faces (`FacePager`; `FaceCatalog.swift` gives each its title, aspect ratio and
 whether it steps through levels). The three drawn faces carry the Pentads themselves, so the Pentad card is left out

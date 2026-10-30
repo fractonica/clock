@@ -127,6 +127,21 @@ final class MomentStore {
     /// `-FXMomentsAuto 0`). Every way it opens without a tap goes through `openByItself(_:)`, which asks this.
     var opensByItself: Bool { settings.enabled && settings.autoOpen && launch.autoOpen }
 
+    /// Opens the instant view on a made-up moment `seconds` from now (the Moments screen's Test a Moment,
+    /// `-FXMomentsInstant`): named as the next real moment, or as `level` and `boundary`, and filmed, made into a reel and
+    /// saved exactly as a real one. Its time is no real moment's, so it never counts for the streak, and the real
+    /// moment it borrows its name from still opens by itself.
+    func openTest(in seconds: Double, level: MomentLevel? = nil, boundary: MomentBoundary? = nil) {
+        guard instant == nil else { return }
+        let t = now + seconds
+        let real = nextMoment(after: t) ?? calendar.upcoming(after: t, count: 1).first
+        let level = level ?? real?.level ?? .helion
+        let boundary = boundary ?? real?.boundary ?? .node
+        let m = Moment(index: real?.index ?? 0, time: t, level: level, boundary: boundary,
+                       cycle: real.map { cycle(of: $0, at: level) } ?? 0)
+        instant = InstantRequest(moment: m, demo: true)
+    }
+
     /// Opens the instant view for a moment (not when another one is up): a tap (a notification, Get Ready).
     func openInstant(_ m: Moment, demo: Bool = false) {
         handled.insert(m.index)
@@ -281,12 +296,7 @@ final class MomentStore {
     private func applyLaunchOptions() {
         if launch.screen { AppRouter.shared.show(.moments) }
         if let seconds = launch.instantIn {
-            let t = now + seconds
-            let real = nextMoment(after: t) ?? calendar.upcoming(after: t, count: 1).first
-            let level = launch.level ?? real?.level ?? .helion
-            let boundary = launch.boundary ?? real?.boundary ?? .node
-            let m = Moment(index: real?.index ?? 0, time: t, level: level, boundary: boundary, cycle: real.map { cycle(of: $0, at: level) } ?? 0)
-            instant = InstantRequest(moment: m, demo: true)
+            openTest(in: seconds, level: launch.level, boundary: launch.boundary)
         }
     }
 
