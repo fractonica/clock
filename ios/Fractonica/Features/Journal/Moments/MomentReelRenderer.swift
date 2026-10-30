@@ -12,6 +12,14 @@ import UIKit
 import AppKit
 #endif
 
+/// One camera's film of a moment (`MomentCamera.record`): a movie file, and the Unix time of its first frame.
+struct MomentFilm: Sendable {
+    let camera: String
+    let url: URL
+    /// Unix time of the file's time zero.
+    let start: Double
+}
+
 /// What a reel shows besides the film: the moment, the clip's centre and half-length, the words.
 struct MomentReelScript: Sendable {
     /// The moment's time (Unix): the countdown's zero.
@@ -172,6 +180,7 @@ enum MomentReelRenderer {
 
         let sound = clicks(at: timing.moments, duration: timing.duration)
         var heard = 0 // samples appended
+        var heardAll = false
         func feedAudio(until seconds: Double) {
             let limit = min(sound.count, Int(seconds * sampleRate))
             while heard < limit, audio.isReadyForMoreMediaData {
@@ -179,6 +188,12 @@ enum MomentReelRenderer {
                 guard let buffer = audioBuffer(sound, from: heard, count: n, format: format) else { break }
                 audio.append(buffer)
                 heard += n
+            }
+            // finished as soon as it is all in: the writer otherwise holds the picture's last half second back, waiting
+            // for more sound to interleave with it
+            if heard >= sound.count, !heardAll {
+                audio.markAsFinished()
+                heardAll = true
             }
         }
 
@@ -209,10 +224,11 @@ enum MomentReelRenderer {
             // the writer interleaves: audio runs a little ahead of the picture
             var waited = 0
             while !video.isReadyForMoreMediaData {
+                if writer.status == .failed { throw Failure.writer(writer.error?.localizedDescription ?? "it failed") }
                 feedAudio(until: tau + 1)
                 try await Task.sleep(for: .milliseconds(2))
                 waited += 1
-                if waited > 5000 { throw Failure.writer("the video input stalled") }
+                if waited > 5000 { throw Failure.writer("the video input stalled at frame \(k) of \(count), \(heard) samples heard") }
             }
             feedAudio(until: tau + 0.5)
             adaptor.append(buffer, withPresentationTime: CMTime(value: CMTimeValue(k), timescale: CMTimeScale(MomentReelTiming.fps)))
@@ -220,15 +236,15 @@ enum MomentReelRenderer {
         }
         video.markAsFinished()
         var waited = 0
-        while heard < sound.count {
+        while !heardAll {
+            if writer.status == .failed { throw Failure.writer(writer.error?.localizedDescription ?? "it failed") }
             feedAudio(until: timing.duration + 1)
-            if heard < sound.count {
+            if !heardAll {
                 try await Task.sleep(for: .milliseconds(2))
                 waited += 1
                 if waited > 5000 { throw Failure.writer("the audio input stalled") }
             }
         }
-        audio.markAsFinished()
         await writer.finishWriting()
         guard writer.status == .completed else { throw Failure.writer(writer.error?.localizedDescription ?? "?") }
     }

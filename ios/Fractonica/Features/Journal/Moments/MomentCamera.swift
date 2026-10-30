@@ -58,16 +58,8 @@ final class MomentCamera {
     }
 }
 
-/// One camera's film of a moment: a movie file, and the Unix time of its first frame.
-struct MomentFilm: Sendable {
-    let camera: String
-    let url: URL
-    /// Unix time of the file's time zero.
-    let start: Double
-}
-
 /// The capture session and its outputs, configured and driven on a serial queue of its own; each camera's frames
-/// arrive on a queue of their own and go to a `FilmWriter` while a recording is on.
+/// arrive on a queue of their own and go to a `FrameTap`'s film while a recording is on.
 private final class CameraRig: @unchecked Sendable {
     private let queue = DispatchQueue(label: "app.fractonica.moments.camera")
     private var session: AVCaptureSession?

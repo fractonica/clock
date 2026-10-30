@@ -120,7 +120,7 @@ struct InstantView: View {
         case .filming: "Filming"
         case .developing: "Making the reel…"
         case .saving: "Saving…"
-        case .saved: "Captured and saved"
+        case .saved: model.reelFailure.map { "Saved the films as they are — \($0)" } ?? "Captured and saved"
         case .failed(let reason): reason
         }
     }

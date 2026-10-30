@@ -48,6 +48,8 @@ final class InstantModel {
     private(set) var flashes = 0
     /// The moment itself is past, inside the film.
     private(set) var reachedMoment = false
+    /// Why the reel could not be made (the films were kept as they are instead).
+    private(set) var reelFailure: String?
     /// The length of a Flavon around the moment, for the countdown.
     let flavonSeconds: Double
 
@@ -170,6 +172,7 @@ final class InstantModel {
                 momentsLog.info("reel of \(self.moment.index): \(films.map(\.camera)), \(media.count) blobs")
             } catch {
                 momentsLog.error("could not make the reel: \(error.localizedDescription)")
+                reelFailure = error.localizedDescription
                 // the films themselves, rather than nothing
                 media = await MomentSaver.adoptFilms(films)
             }

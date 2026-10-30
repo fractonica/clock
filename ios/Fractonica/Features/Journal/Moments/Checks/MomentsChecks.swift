@@ -1,4 +1,5 @@
 import FractonicaKit
+import AVFoundation
 import Foundation
 
 // Moments' logic: the moments (every Helion quarter boundary) against FractonicaKit's own cycles and thresholds, their
@@ -21,6 +22,7 @@ struct MomentsChecks {
         await storeChecks()
         soundChecks()
         reelChecks()
+        await reelRenderChecks()
         Checks.finish()
     }
 }
@@ -455,4 +457,81 @@ private func reelChecks() {
     check(MomentReelFrames.pick(times, -1) == (0, 0, 0) && MomentReelFrames.pick(times, 2) == (4, 4, 0), "outside the film: its ends held")
     let p = MomentReelFrames.pick(times, 0.1)
     check(p.a == 2 && p.b == 3 && abs(p.weight - 0.4) < 1e-12, "between two frames: both, weighted by nearness")
+}
+
+// MARK: - The reel, made
+
+/// Two films as the cameras write them (HEVC, portrait, their time zero a host clock's hours in), made into a reel.
+private func reelRenderChecks() async {
+    let dir = FileManager.default.temporaryDirectory.appending(path: "reel-checks-\(UUID().uuidString)")
+    try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let flavon = clock.levelInfo(10).meanSeconds
+    let moment = vectorA
+    let half = flavon / 2
+    var films: [MomentFilm] = []
+    for (camera, rate) in [("back", 60.0), ("front", 30.0)] {
+        let url = dir.appending(path: "\(camera).mov")
+        guard let first = writeFilm(to: url, from: moment - half, to: moment + half, rate: rate) else {
+            check(false, "the \(camera) film was written")
+            return
+        }
+        films.append(MomentFilm(camera: camera, url: url, start: first))
+    }
+    let script = MomentReelScript(moment: moment, center: moment, half: half, preon: clock.levelInfo(8).meanSeconds,
+                                  title: "Helion 34η Descending Node", notation: notation, pure: false, zone: utc,
+                                  accent: [0.3, 0.5, 1], side: 160)
+    let out = dir.appending(path: "reel.mov")
+    do {
+        try await MomentReelRenderer.render(films: films, script: script, to: out) { _ in }
+    } catch {
+        check(false, "the reel is made from two films: \(error.localizedDescription)")
+        return
+    }
+    let asset = AVURLAsset(url: out)
+    let timing = MomentReelTiming(half: half)
+    let duration = (try? await asset.load(.duration).seconds) ?? 0
+    let video = try? await asset.loadTracks(withMediaType: .video).first
+    let audio = try? await asset.loadTracks(withMediaType: .audio).first
+    let size = try? await video?.load(.naturalSize)
+    check(abs(duration - timing.duration) < 0.1, "the reel lasts both passes: \(duration) s of \(timing.duration)")
+    check(size == CGSize(width: 160, height: 320), "two squares, one over the other: \(String(describing: size))")
+    check(audio != nil, "with its clicks")
+}
+
+/// A film of plain frames from Unix `start` to `end` as FrameTap writes one: HEVC, 1080 × 1920 shrunk to 270 × 480,
+/// its session started at a host clock time; returns the Unix time of its first frame.
+private func writeFilm(to url: URL, from start: Double, to end: Double, rate: Double) -> Double? {
+    guard let writer = try? AVAssetWriter(outputURL: url, fileType: .mov) else { return nil }
+    let input = AVAssetWriterInput(mediaType: .video, outputSettings: [AVVideoCodecKey: AVVideoCodecType.hevc, AVVideoWidthKey: 270,
+                                                                      AVVideoHeightKey: 480])
+    input.expectsMediaDataInRealTime = true
+    let adaptor = AVAssetWriterInputPixelBufferAdaptor(assetWriterInput: input, sourcePixelBufferAttributes: [
+        kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_420YpCbCr8BiPlanarFullRange,
+        kCVPixelBufferWidthKey as String: 270, kCVPixelBufferHeightKey as String: 480,
+    ])
+    writer.add(input)
+    guard writer.startWriting() else { return nil }
+    let host = CMTime(seconds: 91_234.5678, preferredTimescale: 1_000_000_000)
+    writer.startSession(atSourceTime: host)
+    let count = Int((end - start) * rate)
+    for k in 0..<count {
+        while !input.isReadyForMoreMediaData { usleep(500) }
+        var buffer: CVPixelBuffer?
+        guard let pool = adaptor.pixelBufferPool else { return nil }
+        CVPixelBufferPoolCreatePixelBuffer(nil, pool, &buffer)
+        guard let buffer else { return nil }
+        CVPixelBufferLockBaseAddress(buffer, [])
+        for plane in 0..<CVPixelBufferGetPlaneCount(buffer) {
+            memset(CVPixelBufferGetBaseAddressOfPlane(buffer, plane), Int32(40 + k % 160),
+                   CVPixelBufferGetBytesPerRowOfPlane(buffer, plane) * CVPixelBufferGetHeightOfPlane(buffer, plane))
+        }
+        CVPixelBufferUnlockBaseAddress(buffer, [])
+        adaptor.append(buffer, withPresentationTime: host + CMTime(seconds: Double(k) / rate, preferredTimescale: 1_000_000_000))
+    }
+    input.markAsFinished()
+    let done = DispatchSemaphore(value: 0)
+    writer.finishWriting { done.signal() }
+    done.wait()
+    return writer.status == .completed ? start : nil
 }
