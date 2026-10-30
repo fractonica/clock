@@ -251,14 +251,17 @@ mythic Beta, cosmic Alpha; of the Helion ones its two nodes are announced, the a
 descending one at its mid point, `MomentSettings.asks`); 11 Flavons ahead the app announces it (a notification with a
 spoken clip from Resources/Moments, made by scripts/make-moment-voices.sh, or the instant view itself while the app is
 in front) and the instant view films it: both cameras at once (`MomentCamera`, each at the fastest rate the
-multi-camera session affords, into a movie file of its own) from half a Flavon before the moment to half after
-(`MomentCalendar.filmSpan`), no sound. Then `MomentReelRenderer` makes the reel (MomentReel.swift has its arithmetic,
-checked): the selfie's square over the back camera's, the Flavon played forward slowing to an eighth at the moment
-(a Gaussian, symmetric about it) with a click there, then backwards with the slowing reflected (slow at the ends, real
-time through the moment, a click again), each frame stamped at the top with its instant and at the foot with the time
-to the moment in Preons; in the Simulator a drawn film stands in for the cameras. The entry is written right after,
-before the view changes: `time` and `data.capture.at` the moment, the reel a video named `reel` whose poster is the
-moment's frame (hub/API.md). Older entries keep their photo captures (`back@-1`, `front@-1` …, `MomentCaptures`), shown
+multi-camera session affords, into a movie file of its own) and the microphone (into one more) from half a Flavon
+before the moment to half after (`MomentCalendar.filmSpan`). Until then a tap on a camera's square keeps its latest
+frame as a photo, and the microphone button records a voice note while held, the held stretches back to back in one
+file (from the session's microphone; a recorder of its own where there is none). Then `MomentReelRenderer` makes the
+reel (MomentReel.swift has its arithmetic, checked; a check makes one from two films and a sound): the selfie's square
+over the back camera's, the Flavon played forward slowing to an eighth at the moment (a Gaussian, symmetric about it)
+with a click there, then at once backwards the same way (a click again), the sound read at the picture's pace, each
+frame stamped at the top with its instant and at the foot with the time to the moment in Preons; in the Simulator a
+drawn film stands in for the cameras. The entry is written right after, before the view changes: `time` and
+`data.capture.at` the moment, the reel a video named `reel` whose poster is the moment's frame, the photos (`front`,
+`back`) and the voice note (`voice`) after it (hub/API.md). Older entries keep their photo captures (`back@-1`, `front@-1` …, `MomentCaptures`), shown
 as `CaptureTiles` as before. Every way the instant view opens without a tap goes through `MomentStore.openByItself`,
 which "Open by itself" and `-FXMomentsAuto 0` turn off. The streak and the collection derive from the records. Moments
 is a screen of its own (`MomentsScreen`: the streak, the next moment, Test a Moment — the instant view on a made-up

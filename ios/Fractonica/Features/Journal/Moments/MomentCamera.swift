@@ -1,4 +1,5 @@
 @preconcurrency import AVFoundation
+import CoreImage
 import Observation
 import SwiftUI
 #if os(iOS)
@@ -11,8 +12,10 @@ import AppKit
 /// with a live preview of each, one camera where only one runs at a time, the Mac's camera on the Mac, and none in the
 /// Simulator (the view shows a placeholder and the reel is drawn instead, so the whole capture runs there too). Each
 /// camera runs at the fastest frame rate the session affords (60 frames a second on most iPhones, both cameras at once).
-/// `record(from:to:)` films the span from every camera, each into a movie file of its own: `back`, `front`, or
-/// `camera` (the Mac).
+/// The session hears the microphone too (when allowed). `record(from:to:)` films the span from every camera, each into
+/// a movie file of its own — `back`, `front`, or `camera` (the Mac) — and its sound into one more, `sound`. `still(_:)`
+/// is a camera's latest frame as a photo; `voice(_:)` lets the microphone into the voice note while the button is held,
+/// every held stretch back to back in one file (`finishVoice()`).
 @MainActor @Observable
 final class MomentCamera {
     enum Mode: Equatable {
@@ -29,6 +32,8 @@ final class MomentCamera {
     private(set) var mode = Mode.starting
     /// The preview layers by camera: `back`, `front` or `camera`.
     private(set) var previews: [String: AVCaptureVideoPreviewLayer] = [:]
+    /// The session hears the microphone: the films have their sound and the voice note comes from it.
+    private(set) var hearing = false
 
     @ObservationIgnored private let rig = CameraRig()
 
@@ -41,8 +46,10 @@ final class MomentCamera {
             mode = .denied
             return
         }
-        let result = await rig.configure()
+        let sound = await AVCaptureDevice.requestAccess(for: .audio)
+        let result = await rig.configure(sound: sound)
         previews = result.previews
+        hearing = result.hearing
         mode = result.previews.isEmpty ? .none : result.previews.count > 1 ? .dual : .single
         #endif
     }
@@ -56,6 +63,21 @@ final class MomentCamera {
     func record(from start: Double, to end: Double) async -> [MomentFilm] {
         await rig.record(from: start, to: end)
     }
+
+    /// A camera's latest frame as JPEG data (nil without one).
+    func still(_ camera: String) async -> Data? {
+        await rig.still(camera)
+    }
+
+    /// While `on`, the microphone's sound goes into the voice note.
+    func voice(_ on: Bool) {
+        rig.voice(on)
+    }
+
+    /// The voice note: every held stretch, back to back in one file; nil when nothing was held.
+    func finishVoice() async -> URL? {
+        await rig.finishVoice()
+    }
 }
 
 /// The capture session and its outputs, configured and driven on a serial queue of its own; each camera's frames
@@ -65,24 +87,56 @@ private final class CameraRig: @unchecked Sendable {
     private var session: AVCaptureSession?
     /// Frame taps by camera name.
     private var taps: [FrameTap] = []
+    /// The microphone's tap: the films' sound and the voice note.
+    private var sound: FrameTap?
+    private lazy var stills = CIContext()
 
     struct Configured: @unchecked Sendable {
         var previews: [String: AVCaptureVideoPreviewLayer]
+        var hearing = false
     }
 
-    func configure() async -> Configured {
+    func configure(sound: Bool) async -> Configured {
         await withCheckedContinuation { continuation in
             queue.async {
-                continuation.resume(returning: self.build())
+                continuation.resume(returning: self.build(sound: sound))
             }
         }
     }
 
-    private func build() -> Configured {
+    private func build(sound: Bool) -> Configured {
         #if os(iOS)
-        if AVCaptureMultiCamSession.isMultiCamSupported, let dual = buildDual() { return dual }
+        if sound {
+            // one category for the film's sound, the voice note and the announcement over them
+            let audio = AVAudioSession.sharedInstance()
+            try? audio.setCategory(.playAndRecord, mode: .videoRecording, options: [.defaultToSpeaker, .mixWithOthers, .allowBluetoothA2DP])
+            try? audio.setActive(true)
+        }
+        if AVCaptureMultiCamSession.isMultiCamSupported, let dual = buildDual(sound: sound) { return dual }
         #endif
-        return buildSingle()
+        return buildSingle(sound: sound)
+    }
+
+    /// The microphone as an input with an audio data output, connected by hand in a multi-camera session.
+    private func addMicrophone(to session: AVCaptureSession, byHand: Bool) -> FrameTap? {
+        guard let mic = AVCaptureDevice.default(for: .audio), let input = try? AVCaptureDeviceInput(device: mic),
+              session.canAddInput(input) else { return nil }
+        let output = AVCaptureAudioDataOutput()
+        let tap = FrameTap(camera: "sound")
+        output.setSampleBufferDelegate(tap, queue: tap.queue)
+        guard byHand else {
+            session.addInput(input)
+            guard session.canAddOutput(output) else { return nil }
+            session.addOutput(output)
+            return tap
+        }
+        session.addInputWithNoConnections(input)
+        guard let port = input.ports.first(where: { $0.mediaType == .audio }), session.canAddOutput(output) else { return nil }
+        session.addOutputWithNoConnections(output)
+        let connection = AVCaptureConnection(inputPorts: [port], output: output)
+        guard session.canAddConnection(connection) else { return nil }
+        session.addConnection(connection)
+        return tap
     }
 
     private func videoOutput(_ name: String) -> (AVCaptureVideoDataOutput, FrameTap) {
@@ -99,8 +153,9 @@ private final class CameraRig: @unchecked Sendable {
     /// Back and front cameras in one multi-camera session, each with a video data output and a preview layer
     /// connected by hand (Apple's AVMultiCamPiP pattern), at the fastest frame rate the hardware affords for both.
     /// Nil when the hardware cannot afford both at all.
-    private func buildDual() -> Configured? {
+    private func buildDual(sound: Bool) -> Configured? {
         let session = AVCaptureMultiCamSession()
+        session.automaticallyConfiguresApplicationAudioSession = false
         session.beginConfiguration()
         var previews: [String: AVCaptureVideoPreviewLayer] = [:]
         var made: [FrameTap] = []
@@ -137,16 +192,18 @@ private final class CameraRig: @unchecked Sendable {
             devices.append(device)
         }
         let fps = Self.fastestAffordable(devices, session: session)
+        let mic = sound ? addMicrophone(to: session, byHand: true) : nil
         session.commitConfiguration()
         guard made.count == 2, session.hardwareCost <= 1, session.systemPressureCost <= 1 else {
             return nil
         }
-        momentsLog.info("cameras: back and front at \(fps) fps")
-        made.forEach { $0.clock = session.synchronizationClock }
+        momentsLog.info("cameras: back and front at \(fps) fps, \(mic == nil ? "no sound" : "with sound")")
+        (made + [mic].compactMap { $0 }).forEach { $0.clock = session.synchronizationClock }
         session.startRunning()
         self.session = session
         taps = made
-        return Configured(previews: previews)
+        self.sound = mic
+        return Configured(previews: previews, hearing: mic != nil)
     }
 
     /// Sets each camera to the fastest frame rate both can run at once within the hardware's budget: tries 240, 120,
@@ -186,8 +243,11 @@ private final class CameraRig: @unchecked Sendable {
     #endif
 
     /// One camera: the back one on iPhone and iPad (the front one where there is no back), the default on the Mac.
-    private func buildSingle() -> Configured {
+    private func buildSingle(sound: Bool) -> Configured {
         let session = AVCaptureSession()
+        #if os(iOS)
+        session.automaticallyConfiguresApplicationAudioSession = false
+        #endif
         session.beginConfiguration()
         session.sessionPreset = .high
         #if os(iOS)
@@ -216,6 +276,7 @@ private final class CameraRig: @unchecked Sendable {
             c.isVideoMirrored = true
         }
         #endif
+        let mic = sound ? addMicrophone(to: session, byHand: false) : nil
         session.commitConfiguration()
         let layer = AVCaptureVideoPreviewLayer(session: session)
         layer.videoGravity = .resizeAspectFill
@@ -223,25 +284,28 @@ private final class CameraRig: @unchecked Sendable {
         if let c = layer.connection, c.isVideoRotationAngleSupported(90) { c.videoRotationAngle = 90 }
         #endif
         tap.clock = session.synchronizationClock
+        mic?.clock = session.synchronizationClock
         session.startRunning()
         self.session = session
         taps = [tap]
-        return Configured(previews: [name: layer])
+        self.sound = mic
+        return Configured(previews: [name: layer], hearing: mic != nil)
     }
 
     func stop() {
         queue.async {
             if let session = self.session, session.isRunning { session.stopRunning() }
             self.session = nil
-            self.taps.forEach { $0.cancel() }
+            (self.taps + [self.sound].compactMap { $0 }).forEach { $0.cancel() }
             self.taps = []
+            self.sound = nil
         }
     }
 
-    /// Films from `start` to `end` on every camera; the files once all are written.
+    /// Films from `start` to `end` on every camera, and the microphone; the files once all are written.
     func record(from start: Double, to end: Double) async -> [MomentFilm] {
         let taps: [FrameTap] = await withCheckedContinuation { continuation in
-            queue.async { continuation.resume(returning: self.taps) }
+            queue.async { continuation.resume(returning: self.taps + [self.sound].compactMap { $0 }) }
         }
         taps.forEach { $0.arm(from: start, to: end) }
         // a camera that stops sending frames (the session interrupted) still ends its film a moment after the span
@@ -260,11 +324,39 @@ private final class CameraRig: @unchecked Sendable {
             taps.forEach { $0.finishNow() }
         }
     }
+
+    /// A camera's latest frame as JPEG data.
+    func still(_ camera: String) async -> Data? {
+        await withCheckedContinuation { continuation in
+            queue.async {
+                guard let pixels = self.taps.first(where: { $0.camera == camera })?.latest() else {
+                    continuation.resume(returning: nil)
+                    return
+                }
+                let data = self.stills.jpegRepresentation(of: CIImage(cvPixelBuffer: pixels), colorSpace: CGColorSpace(name: CGColorSpace.sRGB)!,
+                                                          options: [kCGImageDestinationLossyCompressionQuality as CIImageRepresentationOption: 0.92])
+                continuation.resume(returning: data)
+            }
+        }
+    }
+
+    func voice(_ on: Bool) {
+        queue.async { self.sound?.hold(on) }
+    }
+
+    func finishVoice() async -> URL? {
+        let sound: FrameTap? = await withCheckedContinuation { continuation in
+            queue.async { continuation.resume(returning: self.sound) }
+        }
+        return await sound?.finishVoice()
+    }
 }
 
-/// One camera's frames: while armed, the frames inside the span go into a movie file (HEVC, at the camera's own size
-/// and rate). Frame times come from the session's clock, mapped to Unix time when armed.
-private final class FrameTap: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate, @unchecked Sendable {
+/// One camera's frames, or the microphone's sound: while armed, the samples inside the span go into a file of their own
+/// (HEVC at the camera's own size and rate, or AAC). Sample times come from the session's clock, mapped to Unix time
+/// when armed. A camera's tap keeps its latest frame (for a photo); the microphone's feeds the voice note while held.
+private final class FrameTap: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate, AVCaptureAudioDataOutputSampleBufferDelegate,
+    @unchecked Sendable {
     let camera: String
     let queue: DispatchQueue
     /// The session's clock (its frames' timestamps).
@@ -282,6 +374,10 @@ private final class FrameTap: NSObject, AVCaptureVideoDataOutputSampleBufferDele
     private var delivered = false
     private var result: MomentFilm??
     private var waiter: CheckedContinuation<MomentFilm?, Never>?
+    /// The latest frame (a camera's tap).
+    private var newest: CVPixelBuffer?
+    /// The voice note (the microphone's tap), on the tap's queue.
+    private let tape = VoiceTape()
 
     init(camera: String) {
         self.camera = camera
@@ -299,6 +395,11 @@ private final class FrameTap: NSObject, AVCaptureVideoDataOutputSampleBufferDele
     }
 
     func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
+        if let pixels = CMSampleBufferGetImageBuffer(sampleBuffer) {
+            lock.withLock { newest = pixels }
+        } else {
+            tape.take(sampleBuffer)
+        }
         let (span, offset) = lock.withLock { (self.span, self.offset) }
         guard let span, !finishing else { return }
         let pts = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
@@ -314,14 +415,20 @@ private final class FrameTap: NSObject, AVCaptureVideoDataOutputSampleBufferDele
 
     private func begin(_ sample: CMSampleBuffer, at pts: CMTime, unix: Double) -> Bool {
         guard let format = CMSampleBufferGetFormatDescription(sample) else { return false }
-        let size = CMVideoFormatDescriptionGetDimensions(format)
-        let url = FileManager.default.temporaryDirectory.appending(path: "moment-\(camera)-\(UUID().uuidString).mov")
-        guard let writer = try? AVAssetWriter(outputURL: url, fileType: .mov) else { return false }
-        let input = AVAssetWriterInput(mediaType: .video, outputSettings: [
-            AVVideoCodecKey: AVVideoCodecType.hevc,
-            AVVideoWidthKey: Int(size.width),
-            AVVideoHeightKey: Int(size.height),
-        ])
+        let audio = CMFormatDescriptionGetMediaType(format) == kCMMediaType_Audio
+        let url = FileManager.default.temporaryDirectory.appending(path: "moment-\(camera)-\(UUID().uuidString).\(audio ? "m4a" : "mov")")
+        guard let writer = try? AVAssetWriter(outputURL: url, fileType: audio ? .m4a : .mov) else { return false }
+        let input: AVAssetWriterInput
+        if audio {
+            input = AVAssetWriterInput(mediaType: .audio, outputSettings: VoiceTape.aac(for: format))
+        } else {
+            let size = CMVideoFormatDescriptionGetDimensions(format)
+            input = AVAssetWriterInput(mediaType: .video, outputSettings: [
+                AVVideoCodecKey: AVVideoCodecType.hevc,
+                AVVideoWidthKey: Int(size.width),
+                AVVideoHeightKey: Int(size.height),
+            ])
+        }
         input.expectsMediaDataInRealTime = true
         guard writer.canAdd(input) else { return false }
         writer.add(input)
@@ -381,6 +488,25 @@ private final class FrameTap: NSObject, AVCaptureVideoDataOutputSampleBufferDele
             return w
         }
         w?.resume(returning: film)
+    }
+
+    /// A camera's latest frame.
+    func latest() -> CVPixelBuffer? {
+        lock.withLock { newest }
+    }
+
+    /// The microphone's tap: its sound goes into the voice note while `on`.
+    func hold(_ on: Bool) {
+        queue.async { self.tape.held = on }
+    }
+
+    /// The voice note, closed: nil when nothing was held.
+    func finishVoice() async -> URL? {
+        await withCheckedContinuation { continuation in
+            queue.async {
+                self.tape.finish { continuation.resume(returning: $0) }
+            }
+        }
     }
 
     /// The film once it is written (nil when nothing was filmed).
@@ -477,3 +603,95 @@ private struct PreviewHost: NSViewRepresentable {
     }
 }
 #endif
+
+/// The voice note: the microphone's sound while the button is held, the stretches between held ones cut out, so every
+/// held stretch follows the one before in one AAC file. Used on its tap's queue only.
+private final class VoiceTape {
+    var held = false {
+        didSet { if !held, writer != nil { cut = true } }
+    }
+    private var writer: AVAssetWriter?
+    private var input: AVAssetWriterInput?
+    /// How far later samples are moved back: the released stretches so far.
+    private var shift = CMTime.zero
+    /// Where the last sample taken ends (source time), and whether a release came since.
+    private var end: CMTime?
+    private var cut = false
+
+    func take(_ sample: CMSampleBuffer) {
+        guard held else { return }
+        let pts = CMSampleBufferGetPresentationTimeStamp(sample)
+        if writer == nil {
+            guard let format = CMSampleBufferGetFormatDescription(sample) else { return }
+            let url = FileManager.default.temporaryDirectory.appending(path: "moment-voice-\(UUID().uuidString).m4a")
+            guard let writer = try? AVAssetWriter(outputURL: url, fileType: .m4a) else { return }
+            let input = AVAssetWriterInput(mediaType: .audio, outputSettings: Self.aac(for: format))
+            input.expectsMediaDataInRealTime = true
+            guard writer.canAdd(input) else { return }
+            writer.add(input)
+            guard writer.startWriting() else { return }
+            writer.startSession(atSourceTime: pts)
+            self.writer = writer
+            self.input = input
+        } else if cut, let end {
+            shift = shift + (pts - end)
+            cut = false
+        }
+        end = pts + CMSampleBufferGetDuration(sample)
+        guard let input, input.isReadyForMoreMediaData, let moved = Self.moved(sample, by: shift) else { return }
+        input.append(moved)
+    }
+
+    /// Closes the file: `done` hears it, or nil when nothing was held.
+    func finish(_ done: @escaping @Sendable (URL?) -> Void) {
+        held = false
+        guard let writer, let input else {
+            done(nil)
+            return
+        }
+        self.writer = nil
+        self.input = nil
+        input.markAsFinished()
+        let url = writer.outputURL
+        nonisolated(unsafe) let closing = writer
+        writer.finishWriting {
+            done(closing.status == .completed ? url : nil)
+        }
+    }
+
+    /// The sample moved `shift` earlier.
+    private static func moved(_ sample: CMSampleBuffer, by shift: CMTime) -> CMSampleBuffer? {
+        guard shift != .zero else { return sample }
+        var count: CMItemCount = 0
+        CMSampleBufferGetSampleTimingInfoArray(sample, entryCount: 0, arrayToFill: nil, entriesNeededOut: &count)
+        var timing = [CMSampleTimingInfo](repeating: CMSampleTimingInfo(), count: count)
+        CMSampleBufferGetSampleTimingInfoArray(sample, entryCount: count, arrayToFill: &timing, entriesNeededOut: &count)
+        for i in timing.indices {
+            timing[i].presentationTimeStamp = timing[i].presentationTimeStamp - shift
+            timing[i].decodeTimeStamp = .invalid
+        }
+        var out: CMSampleBuffer?
+        CMSampleBufferCreateCopyWithNewTiming(allocator: kCFAllocatorDefault, sampleBuffer: sample, sampleTimingEntryCount: count,
+                                              sampleTimingArray: &timing, sampleBufferOut: &out)
+        return out
+    }
+
+    /// AAC settings for the microphone's format: its rate, mono or stereo.
+    static func aac(for format: CMFormatDescription) -> [String: Any] {
+        let asbd = CMAudioFormatDescriptionGetStreamBasicDescription(format)?.pointee
+        let rate = asbd.map { $0.mSampleRate > 0 ? $0.mSampleRate : 48_000 } ?? 48_000
+        let channels = min(2, max(1, Int(asbd?.mChannelsPerFrame ?? 1)))
+        var settings: [String: Any] = [
+            AVFormatIDKey: kAudioFormatMPEG4AAC,
+            AVSampleRateKey: rate,
+            AVNumberOfChannelsKey: channels,
+            AVEncoderBitRateKey: channels == 1 ? 96_000 : 160_000,
+        ]
+        if channels == 2 {
+            var layout = AudioChannelLayout()
+            layout.mChannelLayoutTag = kAudioChannelLayoutTag_Stereo
+            settings[AVChannelLayoutKey] = Data(bytes: &layout, count: MemoryLayout<AudioChannelLayout>.size)
+        }
+        return settings
+    }
+}

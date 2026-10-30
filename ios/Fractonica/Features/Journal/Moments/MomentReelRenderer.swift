@@ -12,7 +12,8 @@ import UIKit
 import AppKit
 #endif
 
-/// One camera's film of a moment (`MomentCamera.record`): a movie file, and the Unix time of its first frame.
+/// One camera's film of a moment (`MomentCamera.record`), or the microphone's (`sound`): a file, and the Unix time of its
+/// first sample.
 struct MomentFilm: Sendable {
     let camera: String
     let url: URL
@@ -45,9 +46,10 @@ struct MomentReelScript: Sendable {
 /// Makes a moment's reel (MomentReel.swift has its arithmetic) from the cameras' films: first every frame of the back
 /// camera with the front camera's frame of the same instant over it, as squares (the selfie on top), kept as JPEG files;
 /// then the reel at 30 frames a second, each frame the filmed instant `MomentReelTiming` says (two neighbouring frames
-/// blended where the slowing shows each for several), with the stamp at the top, the countdown in Preons at the foot,
-/// and a click at the moment in each pass. Without films (the Simulator, a Mac without a camera) a drawn film of the
-/// same span stands in, so the whole capture runs there. Runs off the main thread; `progress` hears 0 … 1.
+/// blended where the slowing shows each for several), with the stamp at the top, the countdown in Preons at the foot;
+/// its sound the microphone's, played at the picture's speed (lower as it slows, backwards going back), a click at the
+/// moment in each pass. Without films (the Simulator, a Mac without a camera) a drawn film of the same span stands
+/// in, so the whole capture runs there. Runs off the main thread; `progress` hears 0 … 1.
 enum MomentReelRenderer {
     enum Failure: LocalizedError {
         case writer(String)
@@ -71,8 +73,11 @@ enum MomentReelRenderer {
             try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
             defer { try? FileManager.default.removeItem(at: dir) }
             let context = CIContext(options: [.cacheIntermediates: false])
-            let developed = try await develop(films: films, script: script, dir: dir, context: context) { progress(0.45 * $0) }
-            try await write(developed, script: script, dir: dir, to: url, context: context) { progress(0.45 + 0.55 * $0) }
+            let pictures = films.filter { $0.camera != "sound" }
+            var heard: Heard?
+            if let sound = films.first(where: { $0.camera == "sound" }) { heard = try await samples(of: sound, center: script.center) }
+            let developed = try await develop(films: pictures, script: script, dir: dir, context: context) { progress(0.45 * $0) }
+            try await write(developed, heard: heard, script: script, dir: dir, to: url, context: context) { progress(0.45 + 0.55 * $0) }
         }.value
     }
 
@@ -141,8 +146,8 @@ enum MomentReelRenderer {
 
     private static let sampleRate = 48_000.0
 
-    private static func write(_ developed: Developed, script: MomentReelScript, dir: URL, to url: URL, context: CIContext,
-                              progress: (Double) -> Void) async throws {
+    private static func write(_ developed: Developed, heard: Heard?, script: MomentReelScript, dir: URL, to url: URL,
+                              context: CIContext, progress: (Double) -> Void) async throws {
         let timing = MomentReelTiming(half: script.half)
         let width = script.side, height = developed.dual ? 2 * script.side : script.side
         try? FileManager.default.removeItem(at: url)
@@ -178,7 +183,7 @@ enum MomentReelRenderer {
         guard writer.startWriting() else { throw Failure.writer(writer.error?.localizedDescription ?? "?") }
         writer.startSession(atSourceTime: .zero)
 
-        let sound = clicks(at: timing.moments, duration: timing.duration)
+        let sound = soundtrack(heard, timing: timing)
         var heard = 0 // samples appended
         var heardAll = false
         func feedAudio(until seconds: Double) {
@@ -249,11 +254,71 @@ enum MomentReelRenderer {
         guard writer.status == .completed else { throw Failure.writer(writer.error?.localizedDescription ?? "?") }
     }
 
-    // MARK: The clicks
+    // MARK: The sound
 
-    /// The reel's sound: silence with a click at each of `times` (output seconds), mono at 48 kHz.
-    private static func clicks(at times: [Double], duration: Double) -> [Float] {
-        var out = [Float](repeating: 0, count: Int((duration * sampleRate).rounded(.up)) + 1)
+    /// The microphone's film as samples at the reel's rate, mono, and the source time of the first.
+    struct Heard {
+        var first: Double
+        var samples: [Float]
+    }
+
+    private static func samples(of film: MomentFilm, center: Double) async throws -> Heard? {
+        let asset = AVURLAsset(url: film.url)
+        guard let track = try await asset.loadTracks(withMediaType: .audio).first else { return nil }
+        let reader = try AVAssetReader(asset: asset)
+        let output = AVAssetReaderTrackOutput(track: track, outputSettings: [
+            AVFormatIDKey: kAudioFormatLinearPCM,
+            AVLinearPCMBitDepthKey: 32,
+            AVLinearPCMIsFloatKey: true,
+            AVLinearPCMIsBigEndianKey: false,
+            AVLinearPCMIsNonInterleaved: false,
+            AVSampleRateKey: sampleRate,
+            AVNumberOfChannelsKey: 1,
+        ])
+        reader.add(output)
+        guard reader.startReading() else { return nil }
+        var samples: [Float] = []
+        var first: Double?
+        while let buffer = output.copyNextSampleBuffer() {
+            try Task.checkCancellation()
+            guard let block = CMSampleBufferGetDataBuffer(buffer) else { continue }
+            if first == nil { first = CMSampleBufferGetPresentationTimeStamp(buffer).seconds }
+            let length = CMBlockBufferGetDataLength(block)
+            var chunk = [Float](repeating: 0, count: length / MemoryLayout<Float>.size)
+            chunk.withUnsafeMutableBytes { raw in
+                _ = CMBlockBufferCopyDataBytes(block, atOffset: 0, dataLength: length, destination: raw.baseAddress!)
+            }
+            samples += chunk
+        }
+        guard !samples.isEmpty else { return nil }
+        return Heard(first: film.start - center + (first ?? 0), samples: samples)
+    }
+
+    /// The reel's sound, mono at 48 kHz: the heard sound read at the picture's pace (each output sample takes the
+    /// source instant its time shows, between two samples by their nearness: lower and slower as the picture slows,
+    /// backwards going back), and a click at each moment.
+    private static func soundtrack(_ heard: Heard?, timing: MomentReelTiming) -> [Float] {
+        var out = [Float](repeating: 0, count: Int((timing.duration * sampleRate).rounded(.up)) + 1)
+        if let heard, heard.samples.count > 1 {
+            let last = heard.samples.count - 1
+            heard.samples.withUnsafeBufferPointer { s in
+                for i in out.indices {
+                    let u = timing.source(at: Double(i) / sampleRate).x * timing.half
+                    let p = (u - heard.first) * sampleRate
+                    guard p >= 0, p < Double(last) else { continue }
+                    let j = Int(p)
+                    let f = Float(p - Double(j))
+                    out[i] = s[j] + (s[j + 1] - s[j]) * f
+                }
+            }
+        }
+        addClicks(&out, at: timing.moments)
+        for i in out.indices { out[i] = min(1, max(-1, out[i])) }
+        return out
+    }
+
+    /// A click at each of `times` (output seconds), over what is there.
+    private static func addClicks(_ out: inout [Float], at times: [Double]) {
         let length = Int(0.05 * sampleRate)
         var seed: UInt32 = 0x9E37_79B9
         for t in times {
@@ -269,7 +334,6 @@ enum MomentReelRenderer {
                 out[start + i] += Float(0.7 * (ping + knock + strike))
             }
         }
-        return out
     }
 
     private static func audioBuffer(_ samples: [Float], from start: Int, count: Int, format: CMAudioFormatDescription) -> CMSampleBuffer? {

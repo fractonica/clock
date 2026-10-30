@@ -3,10 +3,11 @@ import SwiftUI
 
 /// The instant view: full screen (a sheet on the Mac), from 11 Flavons before a moment until its reel is saved. The
 /// moment's name in its level's colour, the cameras live as the reel will show them (the selfie's square over the back
-/// camera's), a big countdown in Flavons and Blinks (and seconds outside pure mode) ticking to the film — half a
-/// Flavon before the moment — then, filming, to the moment itself (a flash and a strong haptic there), an emoji and a
-/// line to write. When the film ends the reel is made (a progress bar), the entry saves itself and shows as its card —
-/// the reel playing — with its rarity's frame and the streak. Nothing records sound.
+/// camera's; a tap on one keeps its frame as a photo), a big countdown in Flavons and Blinks (and seconds outside pure
+/// mode) ticking to the film — half a Flavon before the moment — then, filming, to the moment itself (a flash and a
+/// strong haptic there), an emoji, a line to write and a microphone to hold for a voice note. When the film ends the
+/// reel is made (a progress bar), the entry saves itself and shows as its card — the reel playing — with its rarity's
+/// frame and the streak.
 struct InstantView: View {
     @Environment(AppSettings.self) private var settings
     @Environment(AppRouter.self) private var router
@@ -116,7 +117,7 @@ struct InstantView: View {
 
     private var subtitle: String {
         switch model.phase {
-        case .waiting: "\(model.moment.rarity.title) moment · a Flavon of film, slowing at the moment"
+        case .waiting: "Tap a camera for a photo · hold the microphone to talk"
         case .filming: "Filming"
         case .developing: "Making the reel…"
         case .saving: "Saving…"
@@ -142,6 +143,25 @@ struct InstantView: View {
                 }
                 .aspectRatio(1, contentMode: .fit)
                 .clipped()
+                .overlay { SnapFlash(count: model.snapFlashes[name] ?? 0) }
+                .overlay(alignment: name == "front" ? .topLeading : .bottomLeading) {
+                    if let n = model.snaps[name], n > 0 {
+                        Label(n == 1 ? "1 photo" : "\(n) photos", systemImage: "photo")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 9)
+                            .padding(.vertical, 5)
+                            .background(.black.opacity(0.5), in: .capsule)
+                            .padding(12)
+                    }
+                }
+                .contentShape(.rect)
+                .onTapGesture { model.snap(name) }
+                .allowsHitTesting(model.takesExtras)
+                .accessibilityElement()
+                .accessibilityLabel(name == "front" ? "Selfie camera" : "Back camera")
+                .accessibilityHint("Takes a photo for the entry")
+                .accessibilityAddTraits(.isButton)
             }
         }
         .background(.black)
@@ -190,6 +210,7 @@ struct InstantView: View {
                 .background(Theme.panel2, in: .rect(cornerRadius: 18, style: .continuous))
                 .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(Theme.line, lineWidth: 1))
                 .disabled(model.phase == .saving || model.savedID != nil)
+            HoldToTalk(model: model)
         }
     }
 
@@ -301,6 +322,72 @@ private struct InstantCountdown: View {
         case .developing, .saving: return "Making the reel"
         default: return "Captured"
         }
+    }
+}
+
+/// A camera square's flash when its frame is kept.
+private struct SnapFlash: View {
+    let count: Int
+    @State private var opacity = 0.0
+
+    var body: some View {
+        Color.white
+            .opacity(opacity)
+            .allowsHitTesting(false)
+            .onChange(of: count) {
+                opacity = 0.85
+                withAnimation(.easeOut(duration: 0.45)) { opacity = 0 }
+            }
+    }
+}
+
+/// The microphone to hold: the voice note records while it is held (red, a little larger), its length so far above.
+private struct HoldToTalk: View {
+    let model: InstantModel
+    @GestureState private var pressed = false
+
+    var body: some View {
+        let on = model.talking
+        ZStack {
+            Circle().fill(on ? Theme.danger : Theme.panel2)
+            Circle().stroke(on ? Theme.danger : Theme.line2, lineWidth: 1)
+            Image(systemName: on ? "waveform" : "mic.fill")
+                .font(.system(size: 21, weight: .semibold))
+                .foregroundStyle(on ? .white : model.takesExtras ? Theme.teal : Theme.ink3)
+                .symbolEffect(.variableColor.iterative, isActive: on)
+        }
+        .frame(width: 54, height: 54)
+        .scaleEffect(on ? 1.12 : 1)
+        .animation(.snappy, value: on)
+        .overlay(alignment: .top) {
+            if on || model.voiceSeconds > 0 {
+                TimelineView(.periodic(from: .now, by: 0.25)) { context in
+                    Text(verbatim: Self.length(model.voiceLength(at: context.date.timeIntervalSince1970)))
+                        .font(.caption2.weight(.bold).monospacedDigit())
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(on ? Theme.danger : .black.opacity(0.6), in: .capsule)
+                        .fixedSize()
+                }
+                .offset(y: -16)
+            }
+        }
+        .contentShape(.circle)
+        .gesture(DragGesture(minimumDistance: 0).updating($pressed) { _, pressed, _ in pressed = true })
+        .onChange(of: pressed) { _, held in model.talk(held) }
+        .opacity(model.takesExtras || model.voiceSeconds > 0 ? 1 : 0.5)
+        .allowsHitTesting(model.takesExtras)
+        .accessibilityElement()
+        .accessibilityLabel(on ? "Recording a voice note" : "Hold to record a voice note")
+        .accessibilityAddTraits(.isButton)
+        .accessibilityAction { model.talk(!model.talking) }
+    }
+
+    /// "0:07".
+    static func length(_ seconds: Double) -> String {
+        let s = Int(seconds)
+        return "\(s / 60):\(String(format: "%02d", s % 60))"
     }
 }
 

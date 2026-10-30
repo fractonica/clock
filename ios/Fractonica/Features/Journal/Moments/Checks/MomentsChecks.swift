@@ -413,11 +413,9 @@ private func reelChecks() {
     check(true, "a moment's film spans half a Flavon either side of it")
     let timing = MomentReelTiming(half: flavon / 2)
     typealias T = MomentReelTiming
-    check(abs(T.forwardSpeed(-1) - 1) < 1e-4 && abs(T.forwardSpeed(1) - 1) < 1e-4 && abs(T.forwardSpeed(0) - T.slowest) < 1e-12,
-          "forward: real time at the ends, an eighth at the moment")
-    check(abs(T.backwardSpeed(0) - 1) < 1e-4 && abs(T.backwardSpeed(1) - T.slowest) < 1e-12 && abs(T.backwardSpeed(-1) - T.slowest) < 1e-12,
-          "backward: the slowing reflected, slow at the ends, real time at the moment")
-    check((-20...20).allSatisfy { k in let x = Double(k) / 20; return abs(T.forwardSpeed(x) - T.forwardSpeed(-x)) < 1e-12 },
+    check(abs(T.speed(-1) - 1) < 1e-4 && abs(T.speed(1) - 1) < 1e-4 && abs(T.speed(0) - T.slowest) < 1e-12,
+          "real time at the ends, an eighth at the moment")
+    check((-20...20).allSatisfy { k in let x = Double(k) / 20; return abs(T.speed(x) - T.speed(-x)) < 1e-12 },
           "the slowing is symmetric about the moment")
     // a pass lasts H·∫dx/s: longer than the clip (it slows), shorter than all of it at the slowest
     check(timing.passDuration > flavon && timing.passDuration < flavon / T.slowest, "a pass: \(timing.passDuration) s for a \(flavon) s Flavon")
@@ -443,9 +441,13 @@ private func reelChecks() {
     let dt = 0.05
     func rate(_ t: Double) -> Double { abs(at(t + dt).x - at(t - dt).x) * timing.half / (2 * dt) }
     check(abs(rate(timing.passDuration / 2) - T.slowest) < 0.005, "an eighth of real time at the moment: \(rate(timing.passDuration / 2))")
-    check(abs(rate(timing.passDuration * 1.5) - 1) < 0.02, "real time through the moment going back: \(rate(timing.passDuration * 1.5))")
-    check(abs(rate(timing.passDuration + 0.06) - T.slowest) < 0.01, "slow where the backward pass begins: \(rate(timing.passDuration + 0.06))")
+    check(abs(rate(timing.passDuration * 1.5) - T.slowest) < 0.005, "an eighth going back through it too: \(rate(timing.passDuration * 1.5))")
+    check(abs(rate(timing.passDuration + 0.06) - 1) < 0.01, "real time where the backward pass begins: \(rate(timing.passDuration + 0.06))")
     check(abs(rate(0.06) - 1) < 0.01, "real time where the reel opens: \(rate(0.06))")
+    check((1..<20).allSatisfy { k in
+        let t = timing.passDuration * Double(k) / 20
+        return abs(at(timing.passDuration + t).x + at(t).x) < 1e-9
+    }, "going back is going forward, mirrored")
     // the countdown in Preons
     let preon = clock.levelInfo(8).meanSeconds
     check(MomentReelText.countdown(seconds: -flavon / 2, preon: preon) == "\u{2212}0.00769ι", "half a Flavon before: \(MomentReelText.countdown(seconds: -flavon / 2, preon: preon))")
@@ -478,6 +480,12 @@ private func reelRenderChecks() async {
         }
         films.append(MomentFilm(camera: camera, url: url, start: first))
     }
+    let soundURL = dir.appending(path: "sound.m4a")
+    guard writeTone(to: soundURL, seconds: 2 * half) else {
+        check(false, "the sound film was written")
+        return
+    }
+    films.append(MomentFilm(camera: "sound", url: soundURL, start: moment - half))
     let script = MomentReelScript(moment: moment, center: moment, half: half, preon: clock.levelInfo(8).meanSeconds,
                                   title: "Helion 34η Descending Node", notation: notation, pure: false, zone: utc,
                                   accent: [0.3, 0.5, 1], side: 160)
@@ -496,7 +504,44 @@ private func reelRenderChecks() async {
     let size = try? await video?.load(.naturalSize)
     check(abs(duration - timing.duration) < 0.1, "the reel lasts both passes: \(duration) s of \(timing.duration)")
     check(size == CGSize(width: 160, height: 320), "two squares, one over the other: \(String(describing: size))")
-    check(audio != nil, "with its clicks")
+    check(audio != nil, "with its sound")
+    // the heard tone runs under the clicks: loud at the reel's start (real time), still there through the slowing
+    if let audio, let reader = try? AVAssetReader(asset: asset) {
+        let output = AVAssetReaderTrackOutput(track: audio, outputSettings: [
+            AVFormatIDKey: kAudioFormatLinearPCM, AVLinearPCMBitDepthKey: 32, AVLinearPCMIsFloatKey: true,
+            AVLinearPCMIsBigEndianKey: false, AVLinearPCMIsNonInterleaved: false, AVSampleRateKey: 48_000, AVNumberOfChannelsKey: 1,
+        ])
+        reader.add(output)
+        reader.startReading()
+        var pcm: [Float] = []
+        while let buffer = output.copyNextSampleBuffer(), let block = CMSampleBufferGetDataBuffer(buffer) {
+            let n = CMBlockBufferGetDataLength(block)
+            var chunk = [Float](repeating: 0, count: n / 4)
+            chunk.withUnsafeMutableBytes { _ = CMBlockBufferCopyDataBytes(block, atOffset: 0, dataLength: n, destination: $0.baseAddress!) }
+            pcm += chunk
+        }
+        func rms(_ from: Double, _ to: Double) -> Double {
+            let a = max(0, Int(from * 48_000)), b = min(pcm.count, Int(to * 48_000))
+            guard b > a else { return 0 }
+            return (pcm[a..<b].reduce(0) { $0 + Double($1 * $1) } / Double(b - a)).squareRoot()
+        }
+        check(rms(0.5, 1.5) > 0.1, "the heard sound at the start: \(rms(0.5, 1.5))")
+        check(rms(timing.passDuration / 2 - 1, timing.passDuration / 2 - 0.1) > 0.05, "and through the slowing: \(rms(timing.passDuration / 2 - 1, timing.passDuration / 2 - 0.1))")
+        check(rms(timing.passDuration + 0.5, timing.passDuration + 1.5) > 0.1, "and going back: \(rms(timing.passDuration + 0.5, timing.passDuration + 1.5))")
+    }
+}
+
+/// A steady 440 Hz tone as the microphone's film (AAC).
+private func writeTone(to url: URL, seconds: Double) -> Bool {
+    let rate = 48_000.0
+    guard let format = AVAudioFormat(standardFormatWithSampleRate: rate, channels: 1),
+          let file = try? AVAudioFile(forWriting: url, settings: [AVFormatIDKey: kAudioFormatMPEG4AAC, AVSampleRateKey: rate,
+                                                                   AVNumberOfChannelsKey: 1, AVEncoderBitRateKey: 96_000]),
+          let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(seconds * rate)) else { return false }
+    buffer.frameLength = buffer.frameCapacity
+    let p = buffer.floatChannelData![0]
+    for i in 0..<Int(buffer.frameLength) { p[i] = Float(0.4 * sin(2 * .pi * 440 * Double(i) / rate)) }
+    return (try? file.write(from: buffer)) != nil
 }
 
 /// A film of plain frames from Unix `start` to `end` as FrameTap writes one: HEVC, 1080 × 1920 shrunk to 270 × 480,

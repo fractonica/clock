@@ -1,17 +1,17 @@
 import Foundation
 
-// A moment's reel: the Flavon around the moment filmed by both cameras at once (half a Flavon before it, half after),
-// made into one video — the selfie camera's square over the back camera's — that plays the Flavon forward, slowing
-// towards the moment (a click at it) and back to real time, then plays it backwards with the slowing reflected: slow
-// at both ends, real time through the moment (a click again). Each frame wears its stamp at the top and the time to
-// the moment in Preons at the foot. This file is the reel's arithmetic (no AVFoundation: checked by Moments/Checks);
-// MomentReelRenderer makes the video.
+// A moment's reel: the Flavon around the moment filmed by both cameras at once (half a Flavon before it, half after)
+// with its sound, made into one video — the selfie camera's square over the back camera's — that plays the Flavon
+// forward, slowing towards the moment (a click at it) and back to real time, then at once backwards the same way:
+// real time at the ends, slowing through the moment (a click again). The sound follows the picture (deepening as it
+// slows, backwards on the way back). Each frame wears its stamp at the top and the time to the moment in Preons at
+// the foot. This file is the reel's arithmetic (no AVFoundation: checked by Moments/Checks); MomentReelRenderer makes
+// the video.
 //
 // Source time u runs over the filmed seconds around the clip's centre c (the moment), u ∈ [−H, H], H half a Flavon;
-// x = u / H ∈ [−1, 1]. The forward pass shows the source at speed s(x) = 1 − (1 − m)·exp(−x² / 2σ²): real time at the
-// ends, m (an eighth) at the moment, symmetric about it. The backward pass runs at r(x) = s(1 − |x|): the forward's
-// slowness reflected from the middle to the ends. Output time spent on dx is H·dx / speed, so both passes last the
-// same, H·∫ dx / s.
+// x = u / H ∈ [−1, 1]. Both passes show the source at speed s(x) = 1 − (1 − m)·exp(−x² / 2σ²): real time at the ends,
+// m (an eighth) at the moment, symmetric about it. Output time spent on dx is H·dx / s, so a pass lasts H·∫ dx / s, and
+// the backward pass at output time t is the forward pass at t, mirrored: x_back(t) = −x_forward(t).
 
 /// The reel as a journal entry's media: a video named `reel` (hub/API.md).
 enum MomentReel {
@@ -33,36 +33,27 @@ struct MomentReelTiming: Sendable {
     let half: Double
     /// Each pass's length, in output seconds.
     let passDuration: Double
-    /// ∫ dx / s from −1 to each grid point, in half-clips; the backward pass's ∫ dx / r from 1 down to each.
+    /// ∫ dx / s from −1 to each grid point, in half-clips.
     private let forward: [Double]
-    private let backward: [Double]
 
     init(half: Double) {
         self.half = max(half, 1e-3)
         let n = Self.steps
         let dx = 2.0 / Double(n)
         func x(_ j: Int) -> Double { -1 + Double(j) * dx }
-        var f = [0.0], b = [0.0]
+        var f = [0.0]
         f.reserveCapacity(n + 1)
-        b.reserveCapacity(n + 1)
         for j in 0..<n {
-            // trapezoids; the backward integral is built from x = 1 downwards (b[k] at x = 1 − k·dx)
-            f.append(f[j] + dx * (1 / Self.forwardSpeed(x(j)) + 1 / Self.forwardSpeed(x(j + 1))) / 2)
-            b.append(b[j] + dx * (1 / Self.backwardSpeed(x(n - j)) + 1 / Self.backwardSpeed(x(n - j - 1))) / 2)
+            // trapezoids
+            f.append(f[j] + dx * (1 / Self.speed(x(j)) + 1 / Self.speed(x(j + 1))) / 2)
         }
         forward = f
-        backward = b
         passDuration = self.half * f[n]
     }
 
-    /// The forward pass's speed at x (fraction of real time).
-    static func forwardSpeed(_ x: Double) -> Double {
+    /// Either pass's speed at x (fraction of real time).
+    static func speed(_ x: Double) -> Double {
         1 - (1 - slowest) * exp(-x * x / (2 * width * width))
-    }
-
-    /// The backward pass's speed at x: the forward's, reflected from the middle to the ends.
-    static func backwardSpeed(_ x: Double) -> Double {
-        forwardSpeed(1 - min(1, abs(x)))
     }
 
     /// The whole reel, both passes, in output seconds.
@@ -80,13 +71,11 @@ struct MomentReelTiming: Sendable {
         if t <= passDuration {
             return (Self.invert(forward, t / half), false)
         }
-        // the backward table runs from x = 1 down, so its inversion comes out mirrored: −x
-        let mirrored = Self.invert(backward, (t - passDuration) / half)
-        return (-mirrored, true)
+        // the speed is symmetric about the moment: going back is going forward, mirrored
+        return (-Self.invert(forward, (t - passDuration) / half), true)
     }
 
-    /// The source position whose integral (in half-clips) is v, along a table from −1 to 1 (x = −1 + 2k/n); for the
-    /// backward table the same arithmetic gives its distance from 1, returned as −x by `source`.
+    /// The source position whose integral (in half-clips) is v, along a table from −1 to 1 (x = −1 + 2k/n).
     private static func invert(_ table: [Double], _ v: Double) -> Double {
         let n = table.count - 1
         guard let last = table.last, v > 0 else { return -1 }
