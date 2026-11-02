@@ -193,26 +193,39 @@ Searchable text by kind, as a title and a body: `journal.entry` → title `emoji
 Media are the record's `blobs`: roles `photo`, `video` (with a `poster`), `audio`. Everything about the entry that is
 not text lives in `blobs`; an entry with only a voice note has empty `markdown`.
 
-An entry captured on a clock **moment** (the app prompts before each of a Helion's two nodes — its start, the ascending
-node, and its mid point, the descending node — and every quarter boundary of a Delta or longer, and films the Flavon
-centred on the moment) also has
+An entry captured on a clock **moment** (the app calls like a phone a Flavon before each of a Helion's two nodes — its
+start, the ascending node, and its mid point, the descending node — and every quarter boundary of a Delta or longer,
+ringing for 11 Flavons) also has
 ```json
-"capture": { "at": 1791460800.0, "level": "delta", "boundary": "node", "rarity": "epic" }
+"capture": { "at": 1791460800.0, "level": "delta", "boundary": "node", "rarity": "epic", "outcome": "muted" }
 ```
 `at` is the boundary's exact time (the record's `time` is the same), `level` the longest period with a quarter boundary
 there (`helion`, `nuclide`, `delta`, `gamma`, `beta`, `alpha`), `boundary` which one (`start`, `peak`, `node`, `valley`;
 a period's end is the next one's `start`), and `rarity` follows from the level: `rare` (a Helion's nodes, blue),
 `epic` (Delta, purple), `legendary` (Gamma, yellow), `mythic` (Beta, red), `cosmic` (Alpha, rainbow). An entry without
-`capture` is `common` (grey). The capture is a video, role `video`, `name` `reel`, with its `poster` the frame at the
-moment: the front camera's square over the back camera's, filmed a frame each Sub-blink (ξ, 44.4 ms), the Flavon from
-half before the moment to half after played forward slowing to an eighth at the moment, then backwards the same way,
-each frame stamped with its date and its time down to the Sub-blink, its sound the moment's own at the picture's pace
-with a click at the moment. Photos
-taken while waiting for it follow (role `photo`, `name` `front` or `back`), then a voice note (role `audio`, `name`
-`voice`). (When the reel cannot be made, the cameras' own videos are kept instead, named `back` and `front`, and their
-sound as audio named `sound`.) Entries captured before the reels have photos instead: roles `photo` with `name` `front` and
-`back`; a moment captured several times (Flavons around it) names them `front@-1`, `back@-1`, `front@0`, `back@0`,
-`front@1`, … with the capture's offset from the moment in Flavons.
+`capture` is `common` (grey). `outcome` says how the moment's call went; entries captured before the calls have none.
+
+- `answered`: picked up; the back camera filmed with the microphone until hung up. A video, role `video`, `name`
+  `call`, its `poster` the frame at the moment when the call ran through it; `title` "Answered", `emoji` 📞. Photos
+  taken during the call follow (role `photo`, `name` `back`).
+- `muted`: both cameras filmed from the press through the moment, made into its **reel**: a video, role `video`,
+  `name` `reel`, with its `poster` the frame at the moment: the front camera's square over the back camera's, filmed a
+  frame each Sub-blink (ξ, 44.4 ms), from the press to half a Flavon after the moment, played forward slowing to an
+  eighth at the moment, then backwards the same way, each frame stamped with its date and its time down to the
+  Sub-blink, its sound the moment's own at the picture's pace with a click at the moment. Muted after the moment had
+  passed, it films a Flavon from the press, slows at its middle without clicks and is stamped MISSED in red. Photos
+  taken while it films follow (role `photo`, `name` `front` or `back`), then a voice note (role `audio`, `name`
+  `voice`). (When the reel cannot be made, the cameras' own videos are kept instead, named `back` and `front`, and
+  their sound as audio named `sound`.)
+- `declined`: a photo from each camera at the press (role `photo`, `name` `front` and `back`); `title` "Declined",
+  `emoji` 📵.
+- `missed`: it rang out unanswered. No media; `title` "Missed", `emoji` 🔴. Its rarity is `common`; it is neither a
+  capture of the moment nor part of the collection, and the apps count it as a missed call (unless another entry
+  captured the same moment). One device writes them (the iPhone).
+
+Entries captured before the calls have the reel (no `outcome`), or before the reels photos: roles `photo` with `name`
+`front` and `back`; a moment captured several times (Flavons around it) names them `front@-1`, `back@-1`, `front@0`,
+`back@0`, `front@1`, … with the capture's offset from the moment in Flavons.
 
 Sky events near an entry are **tags** `sky:<event>` with the event names of the printable diary's astronomy
 (`src/diary/astro/index.js` `EVENT_INFO`: `sky:full-moon`, `sky:solar-eclipse`, `sky:june-solstice`, …): the apps add

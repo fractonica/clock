@@ -3,8 +3,10 @@ import AVFoundation
 import Foundation
 
 // Moments' logic: the moments (every Helion quarter boundary) against FractonicaKit's own cycles and thresholds, their
-// labels (the longest level with a quarter boundary there) and names, the prompt 11 Flavons ahead, quiet hours, the
-// settings, the streak and the collection, the `capture` JSON and an edit keeping it, the bundled announcements.
+// labels (the longest level with a quarter boundary there) and names, the call a Flavon ahead ringing 11 Flavons, quiet
+// hours, the settings, the streak, the collection and the missed calls, the calls that rang out, the `capture` JSON
+// (with how its call went) and an edit keeping it, the bundled announcements and ringtones, the reel's timing (a span
+// even or not about the moment) and a reel made from films.
 // Run: ios/scripts/check.sh ios/Fractonica/Features/Journal/Moments/Checks
 
 @main @MainActor
@@ -20,6 +22,7 @@ struct MomentsChecks {
         captureChecks()
         multiCaptureChecks()
         await storeChecks()
+        missedChecks()
         soundChecks()
         reelChecks()
         await reelRenderChecks()
@@ -188,13 +191,18 @@ private func labelChecks() {
 private func promptChecks() {
     let flavon = clock.levelInfo(10).meanSeconds
     for m in calendar.upcoming(after: vectorA, count: 50) {
-        let p = calendar.promptTime(of: m)
+        let p = calendar.promptTime(of: m), end = calendar.ringEnd(of: m)
         let lead = m.time - p
-        if abs(lead - 11 * flavon) > 0.5 { check(false, "11 Flavons ahead: \(lead) s"); return }
-        let f = calendar.flavons(from: p, to: m)
-        if abs(f - 11) > 0.001 { check(false, "11 Flavons by position: \(f)"); return }
+        if abs(lead - flavon) > 0.05 { check(false, "a Flavon ahead: \(lead) s"); return }
+        let f = calendar.flavons(from: p, to: m), g = calendar.flavons(from: end, to: m)
+        if abs(f - 1) > 0.001 || abs(g + 10) > 0.001 { check(false, "a Flavon ahead, ten after, by position: \(f), \(g)"); return }
+        if calendar.ringing(at: p - 0.01)?.index == m.index || calendar.ringing(at: p + 0.01)?.index != m.index
+            || calendar.ringing(at: m.time + 5 * flavon)?.index != m.index || calendar.ringing(at: end + 0.01)?.index == m.index {
+            check(false, "ringing(at:) over \(m.index)'s call"); return
+        }
     }
-    check(true, "every prompt is 11 Flavons before its moment")
+    check(true, "every call rings a Flavon before its moment, for 11 Flavons")
+    check(calendar.ringing(at: calendar.upcoming(after: vectorA, count: 1)[0].time - 30 * flavon) == nil, "no call between moments")
 }
 
 private func quietChecks() {
@@ -220,7 +228,8 @@ private func settingsChecks() {
     let start = list.first { $0.level == .helion && $0.boundary == .start }!
     let nuclideStart = calendar.upcoming(after: vectorA, count: 1, scan: 3000) { $0.level == .nuclide && $0.boundary == .start }.first!
     let nuclidePeak = calendar.upcoming(after: vectorA, count: 1, scan: 3000) { $0.level == .nuclide && $0.boundary == .peak }.first!
-    check(s.enabled && s.helion == .nodes && s.voice && s.quiet.enabled, "defaults: on, Helion nodes, voice, quiet hours")
+    check(s.enabled && s.helion == .nodes && s.voice && s.quiet.enabled && s.ringtone == .helion,
+          "defaults: on, Helion nodes, voice, quiet hours, the Helion ringtone")
     check(s.asks(start) && !s.asks(peak) && s.asks(node) && s.asks(delta),
           "a Helion's two nodes (its start and mid point) are rare moments; Delta and longer always")
     check(s.asks(nuclideStart) && !s.asks(nuclidePeak), "a Nuclide's start is a Helion's start; its peak a Helion's peak")
@@ -238,8 +247,9 @@ private func settingsChecks() {
     t.quiet.start = 22 * 60
     let data = try! JSONEncoder().encode(t)
     check((try? JSONDecoder().decode(MomentSettings.self, from: data)) == t, "settings round-trip")
-    let partial = try? JSONDecoder().decode(MomentSettings.self, from: Data(#"{"helion":"bogus","voice":false}"#.utf8))
-    check(partial?.helion == .nodes && partial?.voice == false && partial?.enabled == true, "unknown values take their defaults")
+    let partial = try? JSONDecoder().decode(MomentSettings.self, from: Data(#"{"helion":"bogus","voice":false,"ringtone":"bell"}"#.utf8))
+    check(partial?.helion == .nodes && partial?.voice == false && partial?.enabled == true && partial?.ringtone == .bell,
+          "unknown values take their defaults")
     // quiet hours stop prompting
     let s2 = MomentSettings()
     let night = list.first { s2.asks($0) && s2.quiet.contains($0.time, zone: utc) }!
@@ -306,6 +316,20 @@ private func captureChecks() {
     let bare = MomentCapture(json: .object(["at": .number(1), "level": .string("alpha"), "boundary": .string("node")]))
     check(bare?.rarity == .cosmic, "rarity from the level")
     check(MomentCapture(json: .object(["level": .string("alpha")])) == nil, "no time, no capture")
+    // how its call went
+    for outcome in MomentOutcome.allCases {
+        let c = MomentCapture(json: m.capture(outcome).json)
+        if c?.outcome != outcome || c?.at != m.time { check(false, "the outcome \(outcome) round-trips"); return }
+    }
+    check(MomentCapture(json: m.capture.json)?.outcome == nil && m.capture.json.object?["outcome"] == nil, "a capture before the calls has none")
+    var odd = m.capture.json.object!
+    odd["outcome"] = .string("hung")
+    check(MomentCapture(json: .object(odd))?.outcome == nil, "an unknown outcome reads as none")
+    var missed = entry(m)
+    missed.data = missed.data.with(capture: m.capture(.missed))
+    check(missed.rarity == .common && missed.capture?.missed == true, "a missed call captured nothing: common")
+    check(MomentOutcome.missed.title == "Missed" && MomentOutcome.missed.emoji == "🔴" && MomentOutcome.muted.title == nil,
+          "a missed call's entry: Missed, red")
     check(HubRecord.journalEntry(time: 1, zone: nil, entry: JournalEntry(), blobs: [], now: 1).rarity == .common, "no capture: common")
     // the composer's data keeps capture
     let edited = JournalEntry(emoji: "🌙", markdown: "edited").data.keepingFields(of: r.data)
@@ -359,7 +383,6 @@ private func multiCaptureChecks() {
             }
         }
         if !zip(times, times.dropFirst()).allSatisfy({ $0 < $1 }) { check(false, "captures in order"); return }
-        if calendar.promptTime(of: m) >= times[0] { check(false, "the prompt comes before the first capture"); return }
     }
     check(true, "captures are a Flavon apart, on the millisecond, around the moment")
     // settings saved when there was a count still read (the count is gone)
@@ -381,6 +404,47 @@ private func multiCaptureChecks() {
     check(edited.time == m.time, "and its moment")
 }
 
+// MARK: - Missed calls
+
+private func missedChecks() {
+    var settings = MomentSettings()
+    settings.quiet.enabled = false
+    let flavon = clock.levelInfo(10).meanSeconds
+    let list = calendar.upcoming(after: vectorA, count: 12, scan: 400) { settings.asks($0) }
+    // the stats: a missed call's entry is neither a capture nor in the collection
+    func call(_ m: Moment, _ outcome: MomentOutcome, id: String? = nil) -> HubRecord {
+        var r = entry(m, id: id)
+        r.data = r.data.with(capture: m.capture(outcome))
+        return r
+    }
+    let records = [call(list[0], .answered), call(list[1], .missed), call(list[2], .declined), call(list[3], .muted),
+                   call(list[4], .missed), call(list[4], .answered, id: "elsewhere"), call(list[5], .missed)]
+    let stats = MomentStats.make(entries: records, calendar: calendar, settings: settings, zone: utc, now: list[6].time + 5)
+    check(stats.captured == Set([list[0], list[2], list[3], list[4]].map(\.index)), "answered, declined and muted count; missed do not")
+    check(stats.missed == Set([list[1].index, list[5].index]) && stats.missedCount == 2,
+          "missed calls, but not one answered on another device: \(stats.missed)")
+    check(stats.missedTimes == [list[1].time, list[5].time] && stats.missedCount(after: list[3].time) == 1, "the missed calls after a time")
+    check(stats.totals.values.reduce(0, +) == 4, "missed calls are not in the collection: \(stats.totals)")
+    check(stats.current == 0 && stats.best == 3, "a missed call ends the run: \(stats.current), best \(stats.best)")
+    // the calls that rang out: announced, from `since` on, rung out by `now`, none covered
+    let since = calendar.promptTime(of: list[1]) - 1
+    let now = calendar.ringEnd(of: list[5]) + 1
+    let rang = MomentCalls.unanswered(since: since, now: now, calendar: calendar, settings: settings, zone: utc, covered: [list[2].index])
+    check(rang.map(\.index) == [1, 3, 4, 5].map { list[$0].index }, "rang out: \(rang.map(\.index))")
+    let ringing = MomentCalls.unanswered(since: since, now: calendar.ringEnd(of: list[5]) - 1, calendar: calendar, settings: settings, zone: utc, covered: [])
+    check(ringing.last?.index == list[4].index, "a call still ringing has not rung out")
+    let begun = MomentCalls.unanswered(since: calendar.promptTime(of: list[1]) + 1, now: now, calendar: calendar, settings: settings, zone: utc, covered: [])
+    check(begun.first?.index == list[2].index, "a call rung before the calls began is not missed")
+    check(MomentCalls.unanswered(since: now, now: now - 1, calendar: calendar, settings: settings, zone: utc, covered: []).isEmpty, "nothing before since")
+    var quiet = settings
+    quiet.quiet = MomentQuietHours(enabled: true, start: 0, end: 24 * 60 - 1)
+    check(MomentCalls.unanswered(since: since, now: now, calendar: calendar, settings: quiet, zone: utc, covered: []).isEmpty,
+          "quiet hours do not call, nor miss")
+    let limited = MomentCalls.unanswered(since: vectorA, now: vectorA + 40 * 3600, calendar: calendar, settings: settings, zone: utc, covered: [], limit: 5)
+    check(limited.count == 5 && limited.allSatisfy { calendar.ringEnd(of: $0) <= vectorA + 40 * 3600 }, "at most the limit")
+    check(abs(MomentRingtone.cycle - flavon / 2) < 0.01, "a ring is half a Flavon: \(MomentRingtone.cycle)")
+}
+
 // MARK: - Sounds
 
 private func soundChecks() {
@@ -396,6 +460,17 @@ private func soundChecks() {
         }
     }
     check(missing.isEmpty, "an announcement for every level and boundary in \(folder.path): missing \(missing)")
+    // the ringtones: whole rings, under the 30 s a notification's or an alarm's sound may last
+    for tone in MomentRingtone.allCases {
+        let url = folder.appending(path: tone.fileName)
+        guard let file = try? AVAudioFile(forReading: url) else {
+            check(false, "the ringtone \(tone.fileName) is there")
+            continue
+        }
+        let seconds = Double(file.length) / file.fileFormat.sampleRate
+        check(abs(seconds - Double(MomentRingtone.rings) * MomentRingtone.cycle) < 0.05 && seconds < 30,
+              "\(tone.fileName): \(MomentRingtone.rings) rings, \(String(format: "%.2f", seconds)) s")
+    }
 }
 
 // MARK: - The reel
@@ -424,13 +499,15 @@ private func reelChecks() {
     check(abs(T.subBlink - clock.levelInfo(12).meanSeconds / 7) < 1e-9 && abs(T.subBlink - 0.0444) < 0.0005,
           "a Sub-blink, a seventh of a Blink: \(T.subBlink) s")
     // the passes' landmarks
-    func at(_ t: Double) -> (x: Double, backward: Bool) { timing.source(at: t) }
+    // x: the source instant in half Flavons
+    func at(_ t: Double) -> (x: Double, backward: Bool) { let s = timing.source(at: t); return (s.u / timing.half, s.backward) }
     check(at(0).x == -1 && !at(0).backward, "the reel opens half a Flavon before the moment")
     check(abs(at(timing.passDuration / 2).x) < 1e-3 && !at(timing.passDuration / 2).backward, "the forward pass reaches the moment halfway")
     check(abs(at(timing.passDuration).x - 1) < 1e-3, "the forward pass ends half a Flavon after")
     check(abs(at(timing.passDuration * 1.5).x) < 1e-3 && at(timing.passDuration * 1.5).backward, "the backward pass crosses the moment halfway")
     check(abs(at(timing.duration).x + 1) < 1e-9 && at(timing.duration).backward, "and ends where the reel began")
-    check(timing.moments.count == 2 && abs(timing.moments[0] - timing.passDuration / 2) < 1e-9, "a click at the moment in each pass")
+    check(timing.moments.count == 2 && abs(timing.moments[0] - timing.passDuration / 2) < 1e-6
+          && abs(timing.moments[1] - timing.passDuration * 1.5) < 1e-6, "a click at the moment in each pass: \(timing.moments)")
     // monotonic, and as slow as asked: source seconds per output second near the moment (forward) and the ends (back)
     var monotonic = true
     var previous = -2.0
@@ -450,6 +527,20 @@ private func reelChecks() {
         let t = timing.passDuration * Double(k) / 20
         return abs(at(timing.passDuration + t).x + at(t).x) < 1e-9
     }, "going back is going forward, mirrored")
+    // muted 2 s before the moment: filmed from then to half a Flavon after
+    let late = MomentReelTiming(before: 2, after: flavon / 2, half: flavon / 2)
+    func lateAt(_ t: Double) -> Double { late.source(at: t).u }
+    check(abs(lateAt(0) + 2) < 1e-9 && abs(lateAt(late.passDuration) - flavon / 2) < 1e-6 && abs(lateAt(late.duration) + 2) < 1e-9,
+          "a short stretch before the moment: from −2 s to half a Flavon after, and back")
+    check(late.passDuration < timing.passDuration && late.passDuration > 2 + flavon / 2, "a shorter pass, still slowed: \(late.passDuration)")
+    check(abs(lateAt(late.moments[0])) < 1e-3 && abs(lateAt(late.moments[1])) < 1e-3 && late.moments[0] < late.passDuration / 2,
+          "the clicks where the moment shows, early in the forward pass: \(late.moments)")
+    check((1..<20).allSatisfy { k in
+        let t = late.passDuration * Double(k) / 20
+        return abs(lateAt(late.duration - t) - lateAt(t)) < 1e-9
+    }, "going back is going forward, played in reverse")
+    let lateRate = abs(late.source(at: late.moments[0] + dt).u - late.source(at: late.moments[0] - dt).u) / (2 * dt)
+    check(abs(lateRate - T.slowest) < 0.005, "an eighth at the moment, however much was filmed before it: \(lateRate)")
     // the words: the date without the cycles' marks, the time down to the Sub-blink, one ξ a frame
     let date = MomentReelText.date(at: vectorA, notation: notation)
     check(date == "α6 β4 γ9 δ3 ε5", "the date: \(date)")
@@ -507,7 +598,7 @@ private func reelRenderChecks() async {
         try? FileManager.default.copyItem(at: out, to: URL(fileURLWithPath: keep))
     }
     let asset = AVURLAsset(url: out)
-    let timing = MomentReelTiming(half: half)
+    let timing = script.timing
     let duration = (try? await asset.load(.duration).seconds) ?? 0
     let video = try? await asset.loadTracks(withMediaType: .video).first
     let audio = try? await asset.loadTracks(withMediaType: .audio).first
@@ -538,6 +629,20 @@ private func reelRenderChecks() async {
         check(rms(0.5, 1.5) > 0.1, "the heard sound at the start: \(rms(0.5, 1.5))")
         check(rms(timing.passDuration / 2 - 1, timing.passDuration / 2 - 0.1) > 0.05, "and through the slowing: \(rms(timing.passDuration / 2 - 1, timing.passDuration / 2 - 0.1))")
         check(rms(timing.passDuration + 0.5, timing.passDuration + 1.5) > 0.1, "and going back: \(rms(timing.passDuration + 0.5, timing.passDuration + 1.5))")
+    }
+    // muted 1.5 s before the moment (the film's earlier frames left out), and one marked missed without clicks
+    for missed in [false, true] {
+        let short = MomentReelScript(center: moment, before: 1.5, after: half, half: half, notation: notation, accent: [0.3, 0.5, 1],
+                                     side: 160, clicks: !missed, missed: missed)
+        let url = dir.appending(path: "short-\(missed).mov")
+        do {
+            try await MomentReelRenderer.render(films: films, script: short, to: url) { _ in }
+            let length = try await AVURLAsset(url: url).load(.duration).seconds
+            check(abs(length - short.timing.duration) < 0.1 && short.timing.duration < timing.duration,
+                  "a reel from 1.5 s before the moment\(missed ? ", marked missed" : ""): \(length) s of \(short.timing.duration)")
+        } catch {
+            check(false, "a reel from 1.5 s before the moment: \(error.localizedDescription)")
+        }
     }
 }
 

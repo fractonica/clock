@@ -1,9 +1,9 @@
 #!/bin/bash
 # Generates the spoken announcements of Moments (Features/Journal/Moments): one clip per level and boundary the app can
-# announce, "A new Delta begins in eleven Flavons", "Gamma node in eleven Flavons", "Helion ascending node in eleven
-# Flavons" (a Helion's start; its mid point is its descending node) … They are the notifications' sound
-# and the instant view's greeting, so they are IMA4 .caf files (a format notification sounds accept, ≤ 30 s), written
-# to ios/Fractonica/Resources/Moments/moment-<level>-<boundary>.caf.
+# call for, "A new Delta begins in one Flavon", "Gamma node in one Flavon", "Helion ascending node in one Flavon" (a
+# Helion's start; its mid point is its descending node) … A call says it over its ringtone as it starts ringing, a
+# Flavon before the moment. IMA4 .caf files (a format notification sounds accept, ≤ 30 s), written to
+# ios/Fractonica/Resources/Moments/moment-<level>-<boundary>.caf.
 #
 #   ios/scripts/make-moment-voices.sh [voice]      # default af_heart: calm and clear
 #
@@ -23,13 +23,13 @@ for level in helion nuclide delta gamma beta alpha; do
   name="$(tr '[:lower:]' '[:upper:]' <<< "${level:0:1}")${level:1}"
   for boundary in start peak node valley; do
     if [ "$level" = helion ] && [ "$boundary" = start ]; then
-      text="Helion ascending node in eleven Flavons."
+      text="Helion ascending node in one Flavon."
     elif [ "$level" = helion ] && [ "$boundary" = node ]; then
-      text="Helion descending node in eleven Flavons."
+      text="Helion descending node in one Flavon."
     elif [ "$boundary" = start ]; then
-      text="A new $name begins in eleven Flavons."
+      text="A new $name begins in one Flavon."
     else
-      text="$name $boundary in eleven Flavons."
+      text="$name $boundary in one Flavon."
     fi
     raw="$TMP/$level-$boundary.wav"
     sk say -v "$VOICE" -o "$raw" --no-play "$text" >/dev/null

@@ -12,10 +12,11 @@ import AppKit
 /// with a live preview of each, one camera where only one runs at a time, the Mac's camera on the Mac, and none in the
 /// Simulator (the view shows a placeholder and the reel is drawn instead, so the whole capture runs there too). Each
 /// camera takes a frame each Sub-blink (ξ, 44.4 ms: 22.5 frames a second), the reel's own frame.
-/// The session hears the microphone too (when allowed). `record(from:to:)` films the span from every camera, each into
-/// a movie file of its own — `back`, `front`, or `camera` (the Mac) — and its sound into one more, `sound`. `still(_:)`
-/// is a camera's latest frame as a photo; `voice(_:)` lets the microphone into the voice note while the button is held,
-/// every held stretch back to back in one file (`finishVoice()`).
+/// The session hears the microphone too (when allowed). `record(from:to:only:)` films the span from every camera (or
+/// those named), each into a movie file of its own — `back`, `front`, or `camera` (the Mac) — and its sound into one
+/// more, `sound`; a span without an end films until the task is cancelled (an answered call, hung up). `still(_:)` is a
+/// camera's latest frame as a photo; `voice(_:)` lets the microphone into the voice note while the button is held,
+/// every held stretch back to back in one file (`finishVoice()`). The cameras start once, however many ask.
 @MainActor @Observable
 final class MomentCamera {
     enum Mode: Equatable {
@@ -36,8 +37,19 @@ final class MomentCamera {
     private(set) var hearing = false
 
     @ObservationIgnored private let rig = CameraRig()
+    @ObservationIgnored private var starting: Task<Void, Never>?
+
+    /// The camera a single film is made with: the back one, else the only one.
+    var main: String? { previews["back"] != nil ? "back" : previews.keys.sorted().first }
 
     func start() async {
+        if let starting { return await starting.value }
+        let task = Task { await run() }
+        starting = task
+        await task.value
+    }
+
+    private func run() async {
         #if targetEnvironment(simulator)
         mode = .none
         return
@@ -56,17 +68,36 @@ final class MomentCamera {
 
     func stop() {
         rig.stop()
+        starting = nil
     }
 
-    /// Films every camera from Unix time `start` to `end` (from the first frame at or after `start`); returns each
-    /// camera's file once the span is over. Cancelling the task ends the films at once.
-    func record(from start: Double, to end: Double) async -> [MomentFilm] {
-        await rig.record(from: start, to: end)
+    /// Films every camera (or those in `only`, and the sound) from Unix time `start` to `end` (from the first frame at or
+    /// after `start`; `.infinity` for no end); returns each camera's file once the span is over. Cancelling the task ends
+    /// the films at once.
+    func record(from start: Double, to end: Double, only: Set<String>? = nil) async -> [MomentFilm] {
+        await rig.record(from: start, to: end, only: only.map { $0.union(["sound"]) })
     }
 
     /// A camera's latest frame as JPEG data (nil without one).
     func still(_ camera: String) async -> Data? {
         await rig.still(camera)
+    }
+
+    /// The audio session a moment's call runs in, through the silent switch: playing and recording at once where the
+    /// microphone is allowed (the films' sound, the voice note, the ringtone and the announcement over them, the
+    /// vibration and the moment's haptic with them), playing only otherwise. The ringtone and the cameras ask for the
+    /// same, so neither interrupts the other.
+    nonisolated static func prepareAudio(recording: Bool) {
+        #if os(iOS)
+        let audio = AVAudioSession.sharedInstance()
+        if recording {
+            try? audio.setCategory(.playAndRecord, mode: .videoRecording, options: [.defaultToSpeaker, .mixWithOthers, .allowBluetoothA2DP])
+            try? audio.setAllowHapticsAndSystemSoundsDuringRecording(true)
+        } else if audio.category != .playAndRecord {
+            try? audio.setCategory(.playback, options: [.mixWithOthers])
+        }
+        try? audio.setActive(true)
+        #endif
     }
 
     /// While `on`, the microphone's sound goes into the voice note.
@@ -106,12 +137,7 @@ private final class CameraRig: @unchecked Sendable {
 
     private func build(sound: Bool) -> Configured {
         #if os(iOS)
-        if sound {
-            // one category for the film's sound, the voice note and the announcement over them
-            let audio = AVAudioSession.sharedInstance()
-            try? audio.setCategory(.playAndRecord, mode: .videoRecording, options: [.defaultToSpeaker, .mixWithOthers, .allowBluetoothA2DP])
-            try? audio.setActive(true)
-        }
+        if sound { MomentCamera.prepareAudio(recording: true) }
         if AVCaptureMultiCamSession.isMultiCamSupported, let dual = buildDual(sound: sound) { return dual }
         #endif
         return buildSingle(sound: sound)
@@ -304,14 +330,18 @@ private final class CameraRig: @unchecked Sendable {
         }
     }
 
-    /// Films from `start` to `end` on every camera, and the microphone; the files once all are written.
-    func record(from start: Double, to end: Double) async -> [MomentFilm] {
+    /// Films from `start` to `end` on every camera (those in `only`), and the microphone; the files once all are written.
+    func record(from start: Double, to end: Double, only: Set<String>?) async -> [MomentFilm] {
         let taps: [FrameTap] = await withCheckedContinuation { continuation in
-            queue.async { continuation.resume(returning: self.taps + [self.sound].compactMap { $0 }) }
+            queue.async {
+                let all = self.taps + [self.sound].compactMap { $0 }
+                continuation.resume(returning: all.filter { only?.contains($0.camera) ?? true })
+            }
         }
         taps.forEach { $0.arm(from: start, to: end) }
         // a camera that stops sending frames (the session interrupted) still ends its film a moment after the span
         let deadline = Task {
+            guard end.isFinite else { return }
             try? await Task.sleep(for: .seconds(max(0, end - Date.now.timeIntervalSince1970) + 1))
             taps.forEach { $0.finishNow() }
         }

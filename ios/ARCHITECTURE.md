@@ -247,28 +247,44 @@ JournalHooks) to every record it writes, and `SkyTagging.backfill` retags the en
 `SkyTags.version` (a migration recorded in state.json, the changed records pending). Keyword search reads the tags.
 Moments (Features/Journal/Moments) are BeReal-style captures on the clock: every Helion quarter boundary is a candidate moment, labelled
 by the longest period with a quarter boundary there (its rarity: rare Helion, epic Delta, legendary Gamma,
-mythic Beta, cosmic Alpha; of the Helion ones its two nodes are announced, the ascending one at its start and the
-descending one at its mid point, `MomentSettings.asks`); 11 Flavons ahead the app announces it (a notification with a
-spoken clip from Resources/Moments, made by scripts/make-moment-voices.sh, or the instant view itself while the app is
-in front) and the instant view films it: both cameras at once (`MomentCamera`, a frame each Sub-blink — ξ, 44.4 ms —
-each into a movie file of its own) and the microphone (into one more) from half a Flavon before the moment to half after
-(`MomentCalendar.filmSpan`); the last capture's films stay in Caches/MomentFilms until the next (`MomentFilmArchive`). Until then a tap on a camera's square keeps its latest
-frame as a photo, and the microphone button records a voice note while held, the held stretches back to back in one
-file (from the session's microphone; a recorder of its own where there is none). Then `MomentReelRenderer` makes the
-reel (MomentReel.swift has its arithmetic, checked; a check makes one from two films and a sound): the selfie's square
-over the back camera's, the Flavon played forward slowing to an eighth at the moment (a Gaussian, symmetric about it)
-with a click there, then at once backwards the same way (a click again), the sound read at the picture's pace; its
-frames last a Sub-blink too, each a whole filmed frame stamped at the top with its date ("α6 β4 γ9 δ4 ε1") and its time
-down to the Sub-blink ("62η 4ι 29λ 4ν 3ξ"), so at real time the ξ rolls over every frame; in the Simulator a drawn film
-stands in for the cameras. The entry is written right after, before the view changes: `time` and
-`data.capture.at` the moment, the reel a video named `reel` whose poster is the moment's frame, the photos (`front`,
-`back`) and the voice note (`voice`) after it (hub/API.md). Older entries keep their photo captures (`back@-1`, `front@-1` …, `MomentCaptures`), shown
-as `CaptureTiles` as before. Every way the instant view opens without a tap goes through `MomentStore.openByItself`,
-which "Open by itself" and `-FXMomentsAuto 0` turn off. The streak and the collection derive from the records. Moments
-is a screen of its own (`MomentsScreen`: the streak, the next moment, Test a Moment — the instant view on a made-up
-moment 2 Flavons away, or 11 with the announcement, `MomentStore.openTest`, saved like a real capture but never on the
-streak — the collection by rarity, recent captures, the settings); cards wear their rarity's frame (`rarityFrame(for:)`) and show the reel (`ReelTile`: playing in the
-instant view, its poster elsewhere).
+mythic Beta, cosmic Alpha; of the Helion ones its two nodes call, the ascending one at its start and the
+descending one at its mid point, `MomentSettings.asks`). Each is a **call**: it rings a Flavon before the moment for 11
+Flavons (`MomentCalendar.promptTime`, `ringEnd`), its ringtone looping (`MomentRingtone`: four synthesised by
+scripts/make-ringtones.swift into Resources/Moments, whole rings of half a Flavon, chosen in the settings) with a buzz
+each ring and the moment's name spoken over it (clips made by scripts/make-moment-voices.sh). While the app is in front
+its call screen rings (`MomentCallView`, `MomentCallModel`, `MomentRinger`: the period for the caller's name, Mute and
+Decline over slide to answer); otherwise an AlarmKit alarm (iOS 26, `MomentAlarms`: one per call for the next 8, set on
+leaving and in the background refresh, cleared on coming back) rings it on the Lock Screen — its Answer
+(`AnswerMomentCallIntent`) opens the app on the call picked up, its Stop (`DeclineMomentCallIntent`) declined — or,
+without alarms, a time-sensitive notification with the ringtone. The cameras start with the first ring
+(`MomentCamera`: both at once, a frame each Sub-blink — ξ, 44.4 ms — each into a movie file of its own, the microphone
+into one more), so each choice starts at once. **Answered**: the back camera films with the microphone until the red
+button (`record(from:to: .infinity)`), the screen dark at the ear (proximity), a haptic at the moment; the entry keeps
+the film as `call` (`MomentCallFilm.merge` lays the sound under the picture, passed through). **Muted**: the instant
+view (`InstantView`, `InstantModel`) takes the call's place and its cameras and films from the press to half a Flavon
+after the moment (`MomentCalendar.filmSpan`) — muted after the moment, a Flavon from the press marked MISSED in red;
+the last capture's films stay in Caches/MomentFilms until the next (`MomentFilmArchive`). Until the film ends a tap on a
+camera's square keeps its latest frame as a photo, and the microphone button records a voice note while held, the held
+stretches back to back in one file (from the session's microphone; a recorder of its own where there is none). Then
+`MomentReelRenderer` makes the reel (MomentReel.swift has its arithmetic, checked; a check makes one from two films and
+a sound): the selfie's square over the back camera's, the film played forward slowing to an eighth at the moment (a
+Gaussian of half a Flavon's scale about it, whatever was filmed before it) with a click there, then at once backwards
+the same way (a click again), the sound read at the picture's pace; its frames last a Sub-blink too, each a whole filmed
+frame stamped at the top with its date ("α6 β4 γ9 δ4 ε1") and its time down to the Sub-blink ("62η 4ι 29λ 4ν 3ξ"), so
+at real time the ξ rolls over every frame; in the Simulator a drawn film stands in for the cameras. **Declined**: each
+camera's photo at the press, Declined. **Rung out**: a missed call. Every entry is written right after, before the view
+changes: `time` and `data.capture.at` the moment, `capture.outcome` how the call went (hub/API.md). What became of each
+call is kept a few days (`MomentStore` `marks`); calls that rang out unanswered become entries titled Missed, 🔴, on the
+iPhone only (`sweepMissed`, from the first launch that rang them), with a "Missed Call" notification at each call's end
+numbering the app's badge — the missed calls not yet looked at on the Moments screen, also the Moments tab's badge.
+Older entries keep their reels, or their photo captures (`back@-1`, `front@-1` …, `MomentCaptures`), shown as
+`CaptureTiles` as before. Every way a call rings without a tap goes through `MomentStore.openByItself`, which "Ring in
+the app" and `-FXMomentsAuto 0` turn off. The streak, the collection and the missed calls derive from the records.
+Moments is a screen of its own (`MomentsScreen`: the streak, the next moment, the missed calls, Test a Call — a made-up
+moment calling now, or in 2 Flavons to hear the alarm with the phone locked, `MomentStore.openTest` / `scheduleTest`,
+saved like a real call but never on the streak — the collection by rarity, recent captures, the settings); cards wear
+their rarity's frame (`rarityFrame(for:)`) and show the reel (`ReelTile`: playing in the instant view, its poster
+elsewhere).
 The Now screen pages through five faces (`FacePager`; `FaceCatalog.swift` gives each its title, aspect ratio and
 whether it steps through levels). The three drawn faces carry the Pentads themselves, so the Pentad card is left out
 under them; each keeps its geometry and reading pure (checked in its own Checks folder) and redraws in layers, each as
@@ -398,9 +414,10 @@ requires; Alerts registers its `BGAppRefreshTask` (`app.fractonica.clock.refresh
 
 `NotificationRouter` (App/) is the one `UNUserNotificationCenter` delegate, installed while launching on both
 platforms. Features never set the delegate. They post with identifier prefixes — `timer.` (Timer and Stopwatch),
-`alert.` (Alerts), `moment.` (Moments) — attach an `AppLink`, request authorization themselves at a moment of intent,
-and share the system's budget of 64 pending requests: Alerts keeps at most 50 `alert.` requests pending and Moments at
-most 12 `moment.` ones, so Timer always has room. Alerts' background refresh refills the moments too.
+`alert.` (Alerts), `moment.` (Moments: a call's ring, and `moment.missed.` when it rings out) — attach an `AppLink`,
+request authorization themselves at a moment of intent, and share the system's budget of 64 pending requests: Alerts
+keeps at most 50 `alert.` requests pending and Moments at most 12 `moment.` ones, so Timer always has room. Alerts'
+background refresh refills the moments (and their alarms) too.
 Never call `UNUserNotificationCenter` on the main thread (except `NotificationRouter.install()`, which must set the
 delegate there before launch finishes): it answers over synchronous XPC, and a slow daemon freezes the interface.
 Make the calls from a nonisolated async function, a detached task or a serial queue of your own (Alerts'
@@ -484,11 +501,12 @@ Read from UserDefaults' argument domain, never persisted; they work on iOS (simc
 
 Features add their own (`-FXJump…`, `-FXLadder…`, `-FXAlerts…`, `-FXSound…`, `-FXFocus…`, `-FXHub…`, `-FXMoments…`; each feature's
 file lists them). `-FXHubSettings 1` presents the hub settings page, `-FXHubDemo <n>` attaches a demo journal store with
-n entries to sync, `-FXHubScheme light|dark` sets the hub sheets' appearance (HubSyncHooks.swift). `-FXMomentsInstant <s>` opens the instant view for a moment that many seconds
-away (it films, makes the reel and saves; a drawn film in the Simulator), `-FXMomentsSettings 1` the
+n entries to sync, `-FXHubScheme light|dark` sets the hub sheets' appearance (HubSyncHooks.swift). `-FXMomentsInstant <s>` rings a call for a moment that many seconds
+away (`-FXMomentsRang <s>`: one that has rung that long; `-FXMomentsPick answer|mute|decline` picks it up 2 s in;
+it films, makes the reel and saves; a drawn film in the Simulator), `-FXMomentsSettings 1` the
 Moments screen on its settings, `-FXMomentsDemo 1` fills the journal with captures of every rarity (with
-`-FXJournalStore <dir>`), `-FXMomentsAuto 0` keeps the instant view from opening by itself and the moments' banners
-away (MomentStore.swift lists them all). `-FXEpicycles 6-10` sets the epicycle face's arms (base–top levels), with
+`-FXJournalStore <dir>`), `-FXMomentsAuto 0` keeps calls from ringing by themselves (or as alarms), missed calls
+from being written and the moments' banners away (MomentStore.swift lists them all). `-FXEpicycles 6-10` sets the epicycle face's arms (base–top levels), with
 `-FXEpicycleRadii 1,0.4,0.15,0.05,0.02`, `-FXEpicycleOff`, `-FXEpicycleReverse`, `-FXEpicycleFrame dial|carrier`,
 `-FXEpicycleTips 0|1` and `-FXEpicycleEdit 1` (the editor open); shown for the launch, never saved (FaceLaunch.swift
 lists the Now screen's hooks). How the argument domain reads values:

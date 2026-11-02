@@ -5,9 +5,11 @@ import Foundation
 // 0 (a Helion's start), 9 (its peak), 18 (its node) and 27 (its valley). Every quarter boundary of a longer period
 // (Nuclide, Delta, Gamma, Beta, Alpha) falls on one of them, so each moment is labelled by the longest level for which
 // it is a start or a quarter boundary; that level gives its rarity (hub/API.md, `journal.entry` `capture`). The app
-// prompts 11 Flavons before each moment the settings ask for — a Helion's two nodes, its start (ascending: the wave
-// rising through zero) and its mid point (descending), and every quarter boundary of a Delta or longer
-// (`MomentSettings.asks`) — opens the instant view and films the Flavon around the moment.
+// calls 1 Flavon before each moment the settings ask for — a Helion's two nodes, its start (ascending: the wave rising
+// through zero) and its mid point (descending), and every quarter boundary of a Delta or longer
+// (`MomentSettings.asks`) — and rings for 11 Flavons: answered, the back camera films until hung up; muted, both
+// cameras film through the moment into a reel; declined, each camera takes a photo; left ringing, it is a missed call
+// (`MomentOutcome`).
 //
 // Everything here is pure logic on FractonicaKit (no UI), checked by Moments/Checks. Moments are numbered by their
 // Helion quarter count from the catalogue's start: moment q sits at position q / P(η) Saros, exactly.
@@ -92,6 +94,13 @@ struct Moment: Hashable, Identifiable, Sendable {
     var rarity: MomentRarity { level.rarity }
     var capture: MomentCapture { MomentCapture(at: time, level: level.rawValue, boundary: boundary.rawValue, rarity: rarity) }
 
+    /// The capture with how its call went.
+    func capture(_ outcome: MomentOutcome) -> MomentCapture {
+        var c = capture
+        c.outcome = outcome
+        return c
+    }
+
     /// "Delta Trifracton Node", "Nuclide ε#3 Start", "Helion 34η Descending Node".
     func title(_ notation: Notation = .standard) -> String {
         "\(periodName(notation)) \(boundaryWord)"
@@ -138,25 +147,57 @@ struct Moment: Hashable, Identifiable, Sendable {
     var soundName: String { "moment-\(level.rawValue)-\(boundary.rawValue)" }
 }
 
-/// The `capture` of a journal entry made on a moment (hub/API.md): `{ at, level, boundary, rarity }`.
+/// How a moment's call went (`capture.outcome`, hub/API.md): picked up (the back camera filming until hung up), muted
+/// (both cameras filming through the moment into a reel), declined (a photo from each camera) or left ringing for its
+/// 11 Flavons (missed). Captures made before the calls have none: they count as captured.
+enum MomentOutcome: String, CaseIterable, Codable, Sendable {
+    case answered, muted, declined, missed
+
+    /// The entry's title, as a phone's recent calls say it (none for a muted call: its reel speaks for it).
+    var title: String? {
+        switch self {
+        case .answered: "Answered"
+        case .muted: nil
+        case .declined: "Declined"
+        case .missed: "Missed"
+        }
+    }
+
+    /// The entry's emoji (a muted call's is chosen in the instant view).
+    var emoji: String? {
+        switch self {
+        case .answered: "📞"
+        case .muted: nil
+        case .declined: "📵"
+        case .missed: "🔴"
+        }
+    }
+}
+
+/// The `capture` of a journal entry made on a moment (hub/API.md): `{ at, level, boundary, rarity, outcome? }`.
 struct MomentCapture: Hashable, Sendable {
     var at: Double
     var level: String
     var boundary: String
     var rarity: MomentRarity
+    var outcome: MomentOutcome?
 
     var json: JSONValue {
-        .object(["at": .number(at), "level": .string(level), "boundary": .string(boundary), "rarity": .string(rarity.rawValue)])
+        var o: [String: JSONValue] = ["at": .number(at), "level": .string(level), "boundary": .string(boundary),
+                                      "rarity": .string(rarity.rawValue)]
+        if let outcome { o["outcome"] = .string(outcome.rawValue) }
+        return .object(o)
     }
 
-    init(at: Double, level: String, boundary: String, rarity: MomentRarity) {
+    init(at: Double, level: String, boundary: String, rarity: MomentRarity, outcome: MomentOutcome? = nil) {
         self.at = at
         self.level = level
         self.boundary = boundary
         self.rarity = rarity
+        self.outcome = outcome
     }
 
-    /// Reads `data.capture`; the rarity follows from the level when it is missing or unknown.
+    /// Reads `data.capture`; the rarity follows from the level when it is missing or unknown, an unknown outcome is none.
     init?(json: JSONValue?) {
         guard let o = json?.object, let at = o["at"]?.number else { return nil }
         let level = o["level"]?.string ?? "helion"
@@ -164,7 +205,11 @@ struct MomentCapture: Hashable, Sendable {
         self.level = level
         boundary = o["boundary"]?.string ?? "start"
         rarity = o["rarity"]?.string.flatMap(MomentRarity.init(rawValue:)) ?? MomentRarity(level: level) ?? .rare
+        outcome = o["outcome"]?.string.flatMap(MomentOutcome.init(rawValue:))
     }
+
+    /// A missed call's entry: it records the moment, it did not capture it.
+    var missed: Bool { outcome == .missed }
 
     var momentLevel: MomentLevel? { MomentLevel(rawValue: level) }
     var momentBoundary: MomentBoundary? { MomentBoundary(rawValue: boundary) }
@@ -177,8 +222,11 @@ extension HubRecord {
         return MomentCapture(json: data["capture"])
     }
 
-    /// How rare the entry is: its capture's rarity, else common.
-    var rarity: MomentRarity { capture?.rarity ?? .common }
+    /// How rare the entry is: its capture's rarity, else common (a missed call's entry too: it captured nothing).
+    var rarity: MomentRarity {
+        guard let capture, !capture.missed else { return .common }
+        return capture.rarity
+    }
 }
 
 extension JSONValue {
@@ -192,8 +240,10 @@ extension JSONValue {
 
 /// Every moment of the catalogue, by number or by time.
 struct MomentCalendar: Sendable {
-    /// How long before a moment it is announced: 11 Flavons (≈ 85 s).
-    static let leadFlavons = 11
+    /// How long before a moment its call rings: 1 Flavon (≈ 7.8 s).
+    static let leadFlavons = 1
+    /// How long a call rings before it is missed: 11 Flavons (≈ 85 s) from its first ring.
+    static let ringFlavons = 11
 
     let clock: FractonicaClock
     /// P(L) for each level 0 … 10.
@@ -262,10 +312,29 @@ struct MomentCalendar: Sendable {
         return t
     }
 
-    /// When moment `m` is announced: `leadFlavons` Flavons before it, exactly.
+    /// When moment `m`'s call rings: `leadFlavons` Flavons before it, exactly.
     func promptTime(of m: Moment) -> Double {
         let n = Int128(m.index) * flavonsPerQuarter - 4 * Int128(Self.leadFlavons)
-        return clock.time(atPositionNumerator: n, denominator: prefixes[10]) ?? m.time - 85.5
+        return clock.time(atPositionNumerator: n, denominator: prefixes[10]) ?? m.time - 7.77 * Double(Self.leadFlavons)
+    }
+
+    /// When moment `m`'s call stops ringing, missed: `ringFlavons` Flavons after it began, exactly.
+    func ringEnd(of m: Moment) -> Double {
+        let n = Int128(m.index) * flavonsPerQuarter + 4 * Int128(Self.ringFlavons - Self.leadFlavons)
+        return clock.time(atPositionNumerator: n, denominator: prefixes[10])
+            ?? m.time + 7.77 * Double(Self.ringFlavons - Self.leadFlavons)
+    }
+
+    /// The moment whose call rings at `t` (its first ring at or before `t`, its last after) and that `include`
+    /// accepts. Calls are far shorter than the time between moments: there is at most one.
+    func ringing(at t: Double, where include: (Moment) -> Bool = { _ in true }) -> Moment? {
+        guard let q = index(after: t) else { return nil }
+        // the call of the next moment rings from a Flavon before it; a past moment's for ten Flavons after
+        for i in [q, q - 1] where i >= 0 {
+            guard let m = moment(i), promptTime(of: m) <= t, t < ringEnd(of: m), include(m) else { continue }
+            return m
+        }
+        return nil
     }
 
     /// When moment `m`'s capture `offset` Flavons from it happens: exactly that many Flavons away in position, on the
@@ -391,15 +460,37 @@ enum HelionPrompts: String, CaseIterable, Codable, Sendable {
     }
 }
 
+/// A call's ringtone: synthesised by ios/scripts/make-ringtones.swift into Resources/Moments/ring-<name>.caf — IMA4,
+/// whole rings of half a Flavon each, 7 of them (27 s: a notification sound or an alarm's must stay under 30 s), so it
+/// loops seamlessly.
+enum MomentRingtone: String, CaseIterable, Codable, Sendable {
+    /// Two rings of strikes climbing the harmonic ladder 4 : 5 : 7 : 9 (the timer chime's chord).
+    case helion
+    /// An old telephone's bell: a clapper between two bells, ring-ring.
+    case bell
+    /// A marimba figure on the same ladder, twice.
+    case marimba
+    /// Soft electronic pulses, a major third warbling.
+    case pulse
+
+    var title: String { rawValue.prefix(1).uppercased() + rawValue.dropFirst() }
+    /// The bundled sound's name, as `UNNotificationSound` and AlarmKit take it.
+    var fileName: String { "ring-\(rawValue).caf" }
+    /// One ring, in seconds: half a mean Flavon. The file holds `rings` of them.
+    static let cycle = 7.771_5 / 2
+    static let rings = 7
+}
+
 /// Moments' preferences, persisted as one JSON value under `moments.v1`.
 struct MomentSettings: Hashable, Codable, Sendable {
     var enabled = true
     var helion = HelionPrompts.nodes
     var quiet = MomentQuietHours()
-    /// Spoken announcements: the notification's sound and the instant view's greeting.
+    /// The moment's name spoken over the ringtone when its call rings in the app.
     var voice = true
-    /// Open the instant view by itself when a moment is announced while the app is in front.
+    /// The call rings in the app by itself while the app is in front (otherwise the system's alarm rings even then).
     var autoOpen = true
+    var ringtone = MomentRingtone.helion
 
     init() {}
 
@@ -412,9 +503,10 @@ struct MomentSettings: Hashable, Codable, Sendable {
         quiet = (try? c.decodeIfPresent(MomentQuietHours.self, forKey: .quiet)) ?? d.quiet
         voice = (try? c.decodeIfPresent(Bool.self, forKey: .voice)) ?? d.voice
         autoOpen = (try? c.decodeIfPresent(Bool.self, forKey: .autoOpen)) ?? d.autoOpen
+        ringtone = (try? c.decodeIfPresent(MomentRingtone.self, forKey: .ringtone)) ?? d.ringtone
     }
 
-    private enum CodingKeys: String, CodingKey { case enabled, helion, quiet, voice, autoOpen }
+    private enum CodingKeys: String, CodingKey { case enabled, helion, quiet, voice, autoOpen, ringtone }
 
     /// Whether the settings ask for this kind of moment (quiet hours aside).
     func asks(_ m: Moment) -> Bool {
@@ -518,19 +610,26 @@ struct MomentCaptureGroup<Item> {
 
 // MARK: - Streak and collection
 
-/// What the journal's captures add up to: the current and best streaks of announced moments captured in a row, and
-/// how many entries there are of each rarity.
+/// What the journal's captures add up to: the current and best streaks of announced moments captured in a row, how
+/// many entries there are of each rarity, and the missed calls.
 struct MomentStats: Hashable, Sendable {
     var current = 0
     var best = 0
     var totals: [MomentRarity: Int] = [:]
-    /// The numbers of the captured moments.
+    /// The numbers of the captured moments (a call answered, muted or declined, or a capture made before the calls).
     var captured: Set<Int64> = []
     /// The latest captured moment's time.
     var lastCapture: Double?
+    /// The missed calls' moments, and their times (soonest first): an entry says so and no other captured them.
+    var missed: Set<Int64> = []
+    var missedTimes: [Double] = []
 
     func total(_ rarity: MomentRarity) -> Int { totals[rarity] ?? 0 }
     var capturedCount: Int { captured.count }
+    var missedCount: Int { missed.count }
+
+    /// The missed calls after `t` (those not looked at yet).
+    func missedCount(after t: Double) -> Int { missedTimes.count { $0 > t } }
 
     /// Walks the moments from the first capture to `now`: a captured moment adds one to the run, an announced one
     /// that was missed ends it; moments that were not announced (quiet hours, not asked for) neither add nor break.
@@ -539,13 +638,26 @@ struct MomentStats: Hashable, Sendable {
     static func make(entries: [HubRecord], calendar: MomentCalendar, settings: MomentSettings, zone: TimeZone,
                      now: Double, grace: Double = 60) -> MomentStats {
         var stats = MomentStats()
+        var missed: [Int64: Double] = [:]
         for record in entries where record.kind == JournalEntry.kind && !record.isDeleted {
+            let c = record.capture
+            // the moment it is on, if it is on one
+            var q: Int64?
+            if let c, let i = calendar.index(near: c.at), let t = calendar.time(of: i), abs(t - c.at) < 1 { q = i }
+            if let c, c.missed {
+                // a missed call is neither a capture nor an entry of the collection
+                if let q { missed[q] = c.at }
+                continue
+            }
             stats.totals[record.rarity, default: 0] += 1
-            if let c = record.capture, let q = calendar.index(near: c.at), let t = calendar.time(of: q), abs(t - c.at) < 1 {
+            if let c, let q {
                 stats.captured.insert(q)
                 stats.lastCapture = max(stats.lastCapture ?? c.at, c.at)
             }
         }
+        for q in stats.captured { missed[q] = nil }
+        stats.missed = Set(missed.keys)
+        stats.missedTimes = missed.values.sorted()
         guard let first = stats.captured.min(), let next = calendar.index(after: now) else { return stats }
         var run = 0
         var q = first
@@ -560,5 +672,25 @@ struct MomentStats: Hashable, Sendable {
         }
         stats.current = run
         return stats
+    }
+}
+
+// MARK: - Calls
+
+/// The calls that rang out: which announced moments are missed calls without an entry yet.
+enum MomentCalls {
+    /// The announced moments whose call began at or after `since` and stopped ringing by `now`, none of `covered` (the
+    /// moments with an entry, or picked up, or ringing in the app), soonest first; at most `limit`.
+    static func unanswered(since: Double, now: Double, calendar: MomentCalendar, settings: MomentSettings, zone: TimeZone,
+                           covered: Set<Int64>, limit: Int = 200) -> [Moment] {
+        guard since < now, var q = calendar.index(after: since), let last = calendar.index(after: now) else { return [] }
+        var out: [Moment] = []
+        while q < last, out.count < limit, let m = calendar.moment(q) {
+            q += 1
+            guard !covered.contains(m.index), settings.prompts(m, zone: zone), calendar.promptTime(of: m) >= since,
+                  calendar.ringEnd(of: m) <= now else { continue }
+            out.append(m)
+        }
+        return out
     }
 }

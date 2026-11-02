@@ -658,10 +658,10 @@ function itemsOf(hh) {
 const RARITY_OF_LEVEL = { helion: 'rare', nuclide: 'rare', delta: 'epic', gamma: 'legendary', beta: 'mythic', alpha: 'cosmic' };
 const RARITIES = ['rare', 'epic', 'legendary', 'mythic', 'cosmic'];
 const cap = (w) => (w ? w[0].toUpperCase() + w.slice(1) : '');
-/** The capture of a journal entry, as { rarity, label }, or null for a common entry. */
+/** The capture of a journal entry, as { rarity, label }, or null for a common entry (a missed call's too). */
 function captureOf(r) {
   const c = r.data?.capture;
-  if (!c || typeof c !== 'object' || typeof c.at !== 'number') return null;
+  if (!c || typeof c !== 'object' || typeof c.at !== 'number' || c.outcome === 'missed') return null;
   const rarity = RARITIES.includes(c.rarity) ? c.rarity : RARITY_OF_LEVEL[c.level] ?? 'rare';
   return { rarity, label: [cap(c.level), c.boundary].filter(Boolean).join(' ') };
 }

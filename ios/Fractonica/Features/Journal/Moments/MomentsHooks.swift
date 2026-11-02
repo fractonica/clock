@@ -1,9 +1,10 @@
 import SwiftUI
 import UserNotifications
 
-/// Moments' lifecycle (listed in `AppHooks.all`): the store starts at launch, refills the `moment.` notifications on
-/// becoming active and on leaving, opens the instant view for a moment's notification (or the composer when the
-/// moment has passed), and keeps a moment's banner out of the way when the instant view opens by itself.
+/// Moments' lifecycle (listed in `AppHooks.all`): the store starts at launch, refills the `moment.` notifications and
+/// the alarms on becoming active and on leaving, rings a moment's call for its notification (or shows the Moments
+/// screen once it has rung out, and for a missed call), and keeps a call's banner out of the way when its screen rings
+/// by itself.
 @MainActor
 enum MomentsHooks: FeatureHooks {
     static func launch() {
@@ -21,11 +22,12 @@ enum MomentsHooks: FeatureHooks {
     static func presentation(ofNotification identifier: String) -> UNNotificationPresentationOptions? {
         guard identifier.hasPrefix(MomentScheduling.prefix) else { return nil }
         let store = MomentStore.shared
-        // screenshots and checks (-FXMomentsAuto 0): no instant view, no banner either
+        // screenshots and checks (-FXMomentsAuto 0): no call, no banner either
         if store.instant != nil || !store.launch.autoOpen { return [.list] }
+        if MomentScheduling.isMissed(identifier) { return [.banner, .list, .badge] }
         if store.opensByItself, let index = MomentScheduling.index(ofIdentifier: identifier),
-           let m = store.calendar.moment(index), m.time > Date.now.timeIntervalSince1970 {
-            // in front: the instant view opens (and speaks) instead of the banner — or opened already and was closed
+           let m = store.calendar.moment(index), Date.now.timeIntervalSince1970 < store.calendar.ringEnd(of: m) {
+            // in front: the call screen rings instead of the banner — or rang already and was picked up
             store.openByItself(m)
             return [.list]
         }
@@ -35,7 +37,11 @@ enum MomentsHooks: FeatureHooks {
     static func open(_ notification: NotificationResponse) -> Bool {
         guard notification.identifier.hasPrefix(MomentScheduling.prefix) else { return false }
         guard notification.isTap else { return true }
-        MomentStore.shared.openFromNotification(index: MomentScheduling.index(ofIdentifier: notification.identifier))
+        if MomentScheduling.isMissed(notification.identifier) {
+            AppRouter.shared.show(.moments)
+        } else {
+            MomentStore.shared.openFromNotification(index: MomentScheduling.index(ofIdentifier: notification.identifier))
+        }
         return true
     }
 
@@ -46,7 +52,7 @@ enum MomentsHooks: FeatureHooks {
     }
 }
 
-/// What Moments presents over the window: the instant view (full screen on iPhone and iPad, a sheet on the Mac).
+/// What Moments presents over the window: a moment's call (full screen on iPhone and iPad, a sheet on the Mac).
 /// RootView applies it.
 struct MomentsPresentations: ViewModifier {
     @State private var moments = MomentStore.shared
@@ -56,11 +62,11 @@ struct MomentsPresentations: ViewModifier {
         content
             #if os(iOS)
             .fullScreenCover(item: $moments.instant) { request in
-                InstantView(request: request)
+                MomentCallView(request: request)
             }
             #else
             .sheet(item: $moments.instant) { request in
-                InstantView(request: request)
+                MomentCallView(request: request)
             }
             #endif
     }

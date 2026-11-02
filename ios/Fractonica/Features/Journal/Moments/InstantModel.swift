@@ -9,17 +9,17 @@ import UniformTypeIdentifiers
 import UIKit
 #endif
 
-/// The instant view's state: the moment, the emoji and the line being written, the cameras running from the moment the
-/// view opens, and the film: every camera filming the Flavon centred on the moment (`MomentCalendar.filmSpan`: from half
-/// a Flavon before to half after, armed by a sleep on the continuous clock, not a tick), a flash and a haptic at the
-/// moment itself, the microphone heard with it. Until the film ends a tap on a camera's square keeps its frame as a
-/// photo (`front`, `back`), and holding the microphone button records a voice note — only while held, every held
-/// stretch back to back in one file. When the film ends it is made into the moment's reel (`MomentReelRenderer`: the
-/// selfie's square over the back camera's, slowing to an eighth at the moment with a click, then back the same way,
-/// the sound following) and the entry — time = the moment, `capture` filled, the reel (named `reel`, its poster the
-/// moment's frame), the photos, the voice note (`voice`) — is written, before the view changes, and only then shown.
-/// Closed before the moment, nothing is saved; closed after it, the film ends there and the entry keeps what was
-/// filmed.
+/// The instant view's state — a moment's call, muted: the moment, the emoji and the line being written, the cameras
+/// (the call's, running since it rang) and the film, from the press: every camera filming until half a Flavon after
+/// the moment (`MomentCalendar.filmSpan`, armed by a sleep on the continuous clock, not a tick), a flash and a haptic
+/// at the moment itself, the microphone heard with it; muted after the moment, a Flavon from the press, marked missed.
+/// Until the film ends a tap on a camera's square keeps its frame as a photo (`front`, `back`), and holding the
+/// microphone button records a voice note — only while held, every held stretch back to back in one file. When the
+/// film ends it is made into the moment's reel (`MomentReelRenderer`: the selfie's square over the back camera's,
+/// slowing to an eighth at the moment with a click, then back the same way, the sound following) and the entry — time
+/// = the moment, `capture` filled (outcome `muted`), the reel (named `reel`, its poster the moment's frame), the
+/// photos, the voice note (`voice`) — is written, before the view changes, and only then shown. Closed before the
+/// moment, nothing is saved; closed after it, the film ends there and the entry keeps what was filmed.
 @MainActor @Observable
 final class InstantModel {
     enum Phase: Equatable {
@@ -37,13 +37,15 @@ final class InstantModel {
 
     let moment: Moment
     let demo: Bool
-    /// The film's span (Unix seconds): half a Flavon either side of the moment — or, opened after that has passed, a
-    /// Flavon from now.
+    /// The film's span (Unix seconds): from the press to half a Flavon after the moment — or, the moment past, a
+    /// Flavon from the press.
     let filmStart: Double
     let filmEnd: Double
+    /// Muted after the moment had passed: the reel slows at its film's middle, without clicks, marked missed.
+    let missed: Bool
     var emoji: String?
     var text = ""
-    let camera = MomentCamera()
+    let camera: MomentCamera
     private(set) var phase = Phase.waiting
     /// How far the reel is made, 0 … 1.
     private(set) var developed = 0.0
@@ -71,28 +73,31 @@ final class InstantModel {
     let flavonSeconds: Double
 
     @ObservationIgnored private var captureTask: Task<Void, Never>?
-    @ObservationIgnored private var voiceTask: Task<Void, Never>?
     @ObservationIgnored private var opened = false
     #if os(iOS)
     @ObservationIgnored private var backgroundTask = UIBackgroundTaskIdentifier.invalid
     #endif
 
-    init(request: InstantRequest, now: Double = Date.now.timeIntervalSince1970) {
+    /// `camera`: the call's cameras, running already (new ones otherwise).
+    init(request: InstantRequest, camera: MomentCamera? = nil, now: Double = Date.now.timeIntervalSince1970) {
         let m = request.moment
         moment = m
         demo = request.demo
+        self.camera = camera ?? MomentCamera()
         emoji = EmojiCatalog.categories.prefix(5).flatMap(\.emoji).randomElement()
         let flavon = FractonicaClock.shared.level(at: m.time - 1, 10)?.duration ?? FractonicaClock.shared.levelInfo(10).meanSeconds
         flavonSeconds = flavon
-        // a demo moment's time is made up: its film is a mean Flavon around it
-        let span = request.demo ? (start: m.time - flavon / 2, end: m.time + flavon / 2) : MomentStore.shared.calendar.filmSpan(of: m)
-        if span.end > now + 1 {
-            filmStart = span.start
-            filmEnd = span.end
+        // filming at once (a moment's cameras run from its first ring)
+        filmStart = now + 0.1
+        // a demo moment's time is made up: its film ends a mean half Flavon after it
+        let end = request.demo ? m.time + flavon / 2 : MomentStore.shared.calendar.filmSpan(of: m).end
+        if m.time > filmStart + 0.05 {
+            filmEnd = max(end, m.time + 0.5)
+            missed = false
         } else {
-            // opened too late for the moment's own Flavon: a Flavon from now, slowing at its middle
-            filmStart = now + 0.5
-            filmEnd = now + 0.5 + flavon
+            // muted after the moment: a Flavon from now, slowing at its middle
+            filmEnd = filmStart + flavon
+            missed = true
         }
     }
 
@@ -164,7 +169,7 @@ final class InstantModel {
     }
 
     /// Where the reel slows: the moment, or a late film's middle.
-    var center: Double { moment.time >= filmStart && moment.time <= filmEnd ? moment.time : (filmStart + filmEnd) / 2 }
+    var center: Double { missed ? (filmStart + filmEnd) / 2 : moment.time }
 
     /// Flavons left until the film starts (until the moment while filming).
     func flavons(at t: Double = Date.now.timeIntervalSince1970) -> Double {
@@ -173,7 +178,7 @@ final class InstantModel {
 
     // MARK: Lifecycle
 
-    /// Starts the cameras and the announcement, and arms the film.
+    /// Starts the cameras (unless the call's run already) and the film.
     func open() {
         guard !opened else { return }
         opened = true
@@ -182,18 +187,12 @@ final class InstantModel {
             // the voice note without the session's microphone: asked now, not in the middle of the first hold
             if !camera.hearing { _ = await AVAudioApplication.requestRecordPermission() }
         }
-        if MomentStore.shared.settings.voice && (moment.time - Date.now.timeIntervalSince1970) / flavonSeconds >= 8 {
-            let m = moment
-            voiceTask = Task { await MomentVoice.play(m) }
-        }
         captureTask = Task { await film() }
     }
 
     /// Closing: before the moment nothing is kept; after it, the film ends and the entry keeps what was filmed.
     func close() {
         captureTask?.cancel()
-        voiceTask?.cancel()
-        MomentVoice.stop()
         if phase == .waiting { camera.stop() }
     }
 
@@ -207,15 +206,16 @@ final class InstantModel {
         }
         beginBackgroundWork()
         phase = .filming
-        voiceTask?.cancel()
-        MomentVoice.stop()
         let (start, end, center) = (filmStart, filmEnd, center)
         let filming = Task { await camera.record(from: start, to: end) }
         await Self.sleep(until: center)
         if !Task.isCancelled {
             reachedMoment = true
-            flashes += 1
-            MomentHaptics.capture()
+            // the moment itself: none in a missed one's film
+            if !missed {
+                flashes += 1
+                MomentHaptics.capture()
+            }
         }
         let films = await withTaskCancellationHandler { await filming.value } onCancel: { filming.cancel() }
         guard reachedMoment else {
@@ -258,7 +258,7 @@ final class InstantModel {
                     Task { @MainActor in self?.developed = max(self?.developed ?? 0, p) }
                 }
                 if let gap = gaps.first { filmTrouble = gap }
-                media = try await MomentSaver.adoptReel(url, posterAt: MomentReelTiming(half: script.half).moments[0])
+                media = try await MomentSaver.adoptReel(url, posterAt: script.timing.moments[0])
                 momentsLog.info("reel of \(self.moment.index): \(films.map(\.camera)), \(media.count) blobs")
             } catch {
                 momentsLog.error("could not make the reel: \(error.localizedDescription)")
@@ -284,7 +284,7 @@ final class InstantModel {
         }
         phase = .saving
         do {
-            let record = try await MomentSaver.save(moment: moment, emoji: emoji, text: text, media: media)
+            let record = try await MomentSaver.save(moment: moment, emoji: emoji, text: text, media: media, outcome: .muted)
             phase = .saved(record.id)
             Haptics.play(.success)
             momentsLog.info("captured \(self.moment.title()) at \(self.moment.time): \(media.count) blobs")
@@ -298,8 +298,10 @@ final class InstantModel {
     private func reelScript() -> MomentReelScript {
         let rgb = moment.rarity.color.resolve(in: EnvironmentValues())
         let side = JournalPreferences.shared.videoQuality == .hevc720 ? 640 : 960
-        return MomentReelScript(center: center, half: (filmEnd - filmStart) / 2, notation: AppSettings.shared.wording.notation,
-                                accent: [Double(rgb.red), Double(rgb.green), Double(rgb.blue)], side: side)
+        return MomentReelScript(center: center, before: center - filmStart, after: filmEnd - center, half: flavonSeconds / 2,
+                                notation: AppSettings.shared.wording.notation,
+                                accent: [Double(rgb.red), Double(rgb.green), Double(rgb.blue)], side: side,
+                                clicks: !missed, missed: missed)
     }
 
     /// iOS: the film, the reel and the save finish even when the app leaves the front meanwhile.
@@ -372,15 +374,15 @@ enum MomentSaver {
         return blobs
     }
 
-    /// Writes the entry (the media already adopted, in their order).
+    /// Writes the entry (the media already adopted, in their order), titled as its call went.
     @MainActor
-    static func save(moment: Moment, emoji: String?, text: String, media: [BlobRef],
+    static func save(moment: Moment, emoji: String?, text: String, media: [BlobRef], outcome: MomentOutcome,
                      store: JournalStore = .shared) async throws -> HubRecord {
         let blobs = media
         let zone = AppSettings.shared.zone ?? TimeZone.current.identifier
-        let entry = JournalEntry(emoji: emoji, markdown: text.trimmingCharacters(in: .whitespacesAndNewlines))
+        let entry = JournalEntry(emoji: emoji, title: outcome.title, markdown: text.trimmingCharacters(in: .whitespacesAndNewlines))
         var record = HubRecord.journalEntry(time: moment.time, zone: zone, entry: entry, blobs: blobs, now: Date.now.timeIntervalSince1970)
-        record.data = record.data.with(capture: moment.capture)
+        record.data = record.data.with(capture: moment.capture(outcome))
         return store.save(record)
     }
 
@@ -405,40 +407,6 @@ enum MomentHaptics {
         #else
         Haptics.play(.success)
         #endif
-    }
-}
-
-/// The spoken announcement of a moment ("A new Delta begins in eleven Flavons"), from the bundle. On iPhone it plays
-/// in the ambient category, so the silent switch silences it.
-@MainActor
-enum MomentVoice {
-    private static var player: AVAudioPlayer?
-
-    static func url(for m: Moment) -> URL? {
-        Bundle.main.url(forResource: m.soundName, withExtension: "caf")
-    }
-
-    /// Plays it and returns when it has finished (or at once when there is none).
-    static func play(_ m: Moment) async {
-        guard let url = url(for: m) else { return }
-        #if os(iOS)
-        // over the instant view's cameras the session already plays and records: it stays so (the microphone with it)
-        let session = AVAudioSession.sharedInstance()
-        if session.category != .playAndRecord {
-            try? session.setCategory(.ambient, mode: .spokenAudio, options: [.mixWithOthers])
-        }
-        try? session.setActive(true)
-        #endif
-        guard let player = try? AVAudioPlayer(contentsOf: url) else { return }
-        self.player = player
-        player.play()
-        try? await Task.sleep(for: .seconds(player.duration + 0.15))
-        if self.player === player { self.player = nil }
-    }
-
-    static func stop() {
-        player?.stop()
-        player = nil
     }
 }
 

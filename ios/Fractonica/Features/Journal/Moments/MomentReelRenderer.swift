@@ -30,9 +30,12 @@ struct MomentFilm: Sendable {
 
 /// What a reel shows besides the film: the clip's centre and half-length, its frame, the words, the colours.
 struct MomentReelScript: Sendable {
-    /// The clip's centre (the moment; later for a capture opened after the moment had passed): the slowest frame.
+    /// The clip's centre (the moment; a late film's middle): the slowest frame.
     let center: Double
-    /// Half the clip: half a Flavon, in seconds.
+    /// Seconds filmed before the centre and after it.
+    let before: Double
+    let after: Double
+    /// The slowing's scale: half a Flavon.
     let half: Double
     /// A frame's length, filmed and shown: a Sub-blink.
     var frame = MomentReelTiming.subBlink
@@ -41,6 +44,30 @@ struct MomentReelScript: Sendable {
     let accent: [Double]
     /// Each camera's square, in pixels.
     let side: Int
+    /// A click at the moment in each pass (none for a film that missed its moment).
+    var clicks = true
+    /// Filmed after the moment had passed: marked so in red.
+    var missed = false
+
+    init(center: Double, before: Double, after: Double, half: Double, notation: Notation, accent: [Double], side: Int,
+         clicks: Bool = true, missed: Bool = false) {
+        self.center = center
+        self.before = before
+        self.after = after
+        self.half = half
+        self.notation = notation
+        self.accent = accent
+        self.side = side
+        self.clicks = clicks
+        self.missed = missed
+    }
+
+    /// Filmed `half` either side of the moment.
+    init(center: Double, half: Double, notation: Notation, accent: [Double], side: Int) {
+        self.init(center: center, before: half, after: half, half: half, notation: notation, accent: accent, side: side)
+    }
+
+    var timing: MomentReelTiming { MomentReelTiming(before: before, after: after, half: half, frame: frame) }
 }
 
 /// Makes a moment's reel (MomentReel.swift has its arithmetic) from the cameras' films: first every frame of the back
@@ -109,7 +136,6 @@ enum MomentReelRenderer {
         var riderNow = rider?.next()
         var riderNext = rider?.next()
         var times: [Double] = []
-        let lead = script.half + 0.05
         // each film's longest stretch without a frame: (length, from)
         var gap = [(0.0, 0.0), (0.0, 0.0)]
         var last: [Double?] = [nil, riderNow?.u]
@@ -119,8 +145,8 @@ enum MomentReelRenderer {
         }
         while let frame = main.next() {
             try Task.checkCancellation()
-            if frame.u < -lead { continue }
-            if frame.u > lead { break }
+            if frame.u < -script.before - 0.05 { continue }
+            if frame.u > script.after + 0.05 { break }
             note(0, frame.u)
             // the front camera's latest frame at or before this one
             while let n = riderNext, n.u <= frame.u + 0.002 {
@@ -137,7 +163,7 @@ enum MomentReelRenderer {
                                                 to: file, colorSpace: space,
                                                 options: [kCGImageDestinationLossyCompressionQuality as CIImageRepresentationOption: 0.85])
             times.append(frame.u)
-            progress(min(1, (frame.u + lead) / (2 * lead)))
+            progress(min(1, (frame.u + script.before) / max(script.before + script.after, 0.1)))
         }
         guard !times.isEmpty else { throw Failure.nothing }
         let names = films.isEmpty ? ["drawn", "drawn"] : ordered.map(\.camera)
@@ -166,7 +192,7 @@ enum MomentReelRenderer {
 
     private static func write(_ developed: Developed, heard: Heard?, script: MomentReelScript, dir: URL, to url: URL,
                               context: CIContext, progress: (Double) -> Void) async throws {
-        let timing = MomentReelTiming(half: script.half)
+        let timing = script.timing
         let width = script.side, height = developed.dual ? 2 * script.side : script.side
         try? FileManager.default.removeItem(at: url)
         let writer = try AVAssetWriter(outputURL: url, fileType: .mov)
@@ -201,7 +227,7 @@ enum MomentReelRenderer {
         guard writer.startWriting() else { throw Failure.writer(writer.error?.localizedDescription ?? "?") }
         writer.startSession(atSourceTime: .zero)
 
-        let sound = soundtrack(heard, timing: timing)
+        let sound = soundtrack(heard, timing: timing, clicks: script.clicks)
         var heard = 0 // samples appended
         var heardAll = false
         func feedAudio(until seconds: Double) {
@@ -228,7 +254,7 @@ enum MomentReelRenderer {
         for k in 0..<count {
             try Task.checkCancellation()
             let tau = timing.frameTime(k)
-            let u = timing.source(at: tau).x * script.half
+            let u = timing.source(at: tau).u
             // the filmed frame showing at u, whole: its words are its own Sub-blink's
             let shown = MomentReelFrames.pick(developed.times, u).a
             let image = try frames.image(shown)
@@ -238,28 +264,28 @@ enum MomentReelRenderer {
             guard let buffer = made else { throw Failure.writer("no buffer") }
             context.render(image, to: buffer, bounds: CGRect(x: 0, y: 0, width: width, height: height), colorSpace: space)
             overlay.draw(on: buffer, at: MomentReelText.readAt(script.center + developed.times[shown], first: first, frame: script.frame))
-            // the writer interleaves: audio runs a little ahead of the picture
-            var waited = 0
+            // the writer interleaves: audio runs a little ahead of the picture, further the longer the picture waits
+            // (a busy encoder, or a writer holding the picture for more sound)
+            let waiting = Date.now
             while !video.isReadyForMoreMediaData {
                 if writer.status == .failed { throw Failure.writer(writer.error?.localizedDescription ?? "it failed") }
-                feedAudio(until: tau + 1)
+                let waited = -waiting.timeIntervalSinceNow
+                feedAudio(until: tau + 1 + min(waited, 4))
                 try await Task.sleep(for: .milliseconds(2))
-                waited += 1
-                if waited > 5000 { throw Failure.writer("the video input stalled at frame \(k) of \(count), \(heard) samples heard") }
+                if waited > 30 { throw Failure.writer("the video input stalled at frame \(k) of \(count), \(heard) samples heard") }
             }
             feedAudio(until: tau + 0.5)
             adaptor.append(buffer, withPresentationTime: CMTime(seconds: tau, preferredTimescale: 600_000))
             progress(Double(k + 1) / Double(count))
         }
         video.markAsFinished()
-        var waited = 0
+        let ending = Date.now
         while !heardAll {
             if writer.status == .failed { throw Failure.writer(writer.error?.localizedDescription ?? "it failed") }
             feedAudio(until: timing.duration + 1)
             if !heardAll {
                 try await Task.sleep(for: .milliseconds(2))
-                waited += 1
-                if waited > 5000 { throw Failure.writer("the audio input stalled") }
+                if -ending.timeIntervalSinceNow > 30 { throw Failure.writer("the audio input stalled") }
             }
         }
         await writer.finishWriting()
@@ -308,14 +334,14 @@ enum MomentReelRenderer {
 
     /// The reel's sound, mono at 48 kHz: the heard sound read at the picture's pace (each output sample takes the
     /// source instant its time shows, between two samples by their nearness: lower and slower as the picture slows,
-    /// backwards going back), and a click at each moment.
-    private static func soundtrack(_ heard: Heard?, timing: MomentReelTiming) -> [Float] {
+    /// backwards going back), and a click at each moment (`clicks`).
+    private static func soundtrack(_ heard: Heard?, timing: MomentReelTiming, clicks: Bool) -> [Float] {
         var out = [Float](repeating: 0, count: Int((timing.duration * sampleRate).rounded(.up)) + 1)
         if let heard, heard.samples.count > 1 {
             let last = heard.samples.count - 1
             heard.samples.withUnsafeBufferPointer { s in
                 for i in out.indices {
-                    let u = timing.source(at: Double(i) / sampleRate).x * timing.half
+                    let u = timing.source(at: Double(i) / sampleRate).u
                     let p = (u - heard.first) * sampleRate
                     guard p >= 0, p < Double(last) else { continue }
                     let j = Int(p)
@@ -324,7 +350,7 @@ enum MomentReelRenderer {
                 }
             }
         }
-        addClicks(&out, at: timing.moments)
+        if clicks { addClicks(&out, at: timing.moments) }
         for i in out.indices { out[i] = min(1, max(-1, out[i])) }
         return out
     }
@@ -417,8 +443,8 @@ private struct StandIn: ReelSource {
     }
 
     mutating func next() -> (u: Double, image: CIImage)? {
-        let u = -script.half - 0.05 + Double(k) * script.frame
-        guard u <= script.half + 0.05 else { return nil }
+        let u = -script.before - 0.05 + Double(k) * script.frame
+        guard u <= script.after + 0.05 else { return nil }
         k += 1
         return (u, picture(at: u))
     }
@@ -548,6 +574,18 @@ private struct Overlay {
         let timeFont = Self.font(size: s * 0.075, weight: .semibold, mono: true)
         Self.draw(Self.line(time, font: Self.fitting(time, font: timeFont, width: w - 2 * margin), color: CGColor(gray: 1, alpha: 1)),
                   in: ctx, centeredAt: w / 2, baseline: h - margin - s * 0.125)
+        if script.missed {
+            // a red tag under the time: filmed after the moment had passed
+            ctx.setShadow(offset: .zero, blur: 0, color: nil)
+            let tag = Self.line(MomentReelText.missed, font: Self.font(size: s * 0.036, weight: .heavy, mono: false),
+                                color: CGColor(gray: 1, alpha: 1), kern: s * 0.006)
+            let width = CTLineGetTypographicBounds(tag, nil, nil, nil) + s * 0.05
+            let pill = CGRect(x: w / 2 - width / 2, y: h - margin - s * 0.215, width: width, height: s * 0.058)
+            ctx.setFillColor(CGColor(red: 0.92, green: 0.18, blue: 0.2, alpha: 0.95))
+            ctx.addPath(CGPath(roundedRect: pill, cornerWidth: pill.height / 2, cornerHeight: pill.height / 2, transform: nil))
+            ctx.fillPath()
+            Self.draw(tag, in: ctx, centeredAt: w / 2, baseline: pill.minY + pill.height * 0.3)
+        }
     }
 
     private static func font(size: CGFloat, weight: PlatformFont.Weight, mono: Bool) -> CTFont {

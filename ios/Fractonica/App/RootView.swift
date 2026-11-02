@@ -102,6 +102,8 @@ private struct CompactRoot: View {
             Tab(Screen.moments.title, systemImage: Screen.moments.systemImage, value: CompactTab.moments) {
                 ScreenStack(screen: .moments)
             }
+            // the missed calls not looked at yet
+            .badge(MomentStore.shared.unseenMissed)
             Tab(ScreenGroup.clock.title, systemImage: ScreenGroup.clock.systemImage, value: CompactTab.group(.clock)) {
                 GroupStack(group: .clock)
             }
@@ -248,6 +250,7 @@ private struct SidebarRoot: View {
                 tab(.diary)
             }
             tab(.moments)
+                .badge(MomentStore.shared.unseenMissed)
             TabSection(ScreenGroup.cycles.title) {
                 tab(.rings)
                 tab(.ladder)

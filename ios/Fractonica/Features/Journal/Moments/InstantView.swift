@@ -1,11 +1,11 @@
 import FractonicaKit
 import SwiftUI
 
-/// The instant view: full screen (a sheet on the Mac), from 11 Flavons before a moment until its reel is saved. The
-/// moment's name in its level's colour, the cameras live as the reel will show them (the selfie's square over the back
-/// camera's; a tap on one keeps its frame as a photo), a big countdown in Flavons and Blinks (and seconds outside pure
-/// mode) ticking to the film — half a Flavon before the moment — then, filming, to the moment itself (a flash and a
-/// strong haptic there), an emoji, a line to write and a microphone to hold for a voice note. When the film ends the
+/// The instant view: a moment's call, muted (MomentCallView shows it in the call's place), filming from the press until
+/// its reel is saved. The moment's name in its level's colour, the cameras live as the reel will show them (the
+/// selfie's square over the back camera's; a tap on one keeps its frame as a photo), a big countdown in Flavons and
+/// Blinks (and seconds outside pure mode) ticking to the moment itself (a flash and a strong haptic there) — or, muted
+/// after it, MISSED in red — an emoji, a line to write and a microphone to hold for a voice note. When the film ends the
 /// reel is made (a progress bar), the entry saves itself and shows as its card — the reel playing — with its rarity's
 /// frame and the streak.
 struct InstantView: View {
@@ -21,8 +21,8 @@ struct InstantView: View {
     @State private var flash = 0.0
     @FocusState private var writing: Bool
 
-    init(request: InstantRequest) {
-        _model = State(initialValue: InstantModel(request: request))
+    init(model: InstantModel) {
+        _model = State(initialValue: model)
     }
 
     var body: some View {
@@ -117,8 +117,7 @@ struct InstantView: View {
 
     private var subtitle: String {
         switch model.phase {
-        case .waiting: "Tap a camera for a photo · hold the microphone to talk"
-        case .filming: "Filming"
+        case .waiting, .filming: "Tap a camera for a photo · hold the microphone to talk"
         case .developing: "Making the reel…"
         case .saving: "Saving…"
         case .saved: model.reelFailure.map { "Saved the films as they are — \($0)" }
@@ -167,8 +166,10 @@ struct InstantView: View {
         }
         .background(.black)
         .overlay {
-            InstantCountdown(model: model, pure: words.pure, color: rarity.color)
-                .padding(14)
+            if model.phase != .waiting {
+                InstantCountdown(model: model, pure: words.pure, color: rarity.color)
+                    .padding(14)
+            }
         }
         .overlay(alignment: .topTrailing) {
             if model.phase == .filming { RecordingDot().padding(16) }
@@ -253,37 +254,49 @@ struct InstantView: View {
     }
 }
 
-/// "10λ 13ν" and the seconds, ticking to the film; filming, to the moment (then "Now"); then the reel's progress.
+/// "0λ 13ν" and the seconds, ticking to the moment while filming (then "Now"; MISSED in red for a film muted after
+/// it); then the reel's progress.
 private struct InstantCountdown: View {
     let model: InstantModel
     let pure: Bool
     let color: Color
 
     var body: some View {
-        let waiting = model.phase == .waiting || model.phase == .filming
-        TimelineView(.animation(minimumInterval: 1 / 15, paused: !waiting)) { context in
+        let filming = model.phase == .filming
+        TimelineView(.animation(minimumInterval: 1 / 15, paused: !filming)) { context in
             let t = context.date.timeIntervalSince1970
-            let filming = model.phase == .filming
             let f = model.flavons(at: t)
             VStack(spacing: 2) {
                 switch model.phase {
-                case .waiting, .filming:
-                    Text(verbatim: filming ? (model.reachedMoment ? "The moment" : "The moment in") : "Filming in")
-                        .font(.caption.weight(.bold))
-                        .textCase(.uppercase)
-                        .kerning(1)
-                        .foregroundStyle(.white.opacity(0.75))
-                    Text(verbatim: filming && model.reachedMoment ? "Now" : Self.reading(f))
-                        .font(.reading(46, weight: .semibold))
-                        .foregroundStyle(filming || f < 3 ? color : .white)
-                        .contentTransition(.identity)
-                    if !pure && !(filming && model.reachedMoment) {
-                        Text(verbatim: String(format: "%.1f s", max(0, (filming ? model.center : model.filmStart) - t)))
-                            .font(.reading(15, weight: .medium))
-                            .foregroundStyle(.white.opacity(0.7))
+                case .waiting:
+                    EmptyView()
+                case .filming:
+                    if model.missed {
+                        Text(verbatim: MomentReelText.missed)
+                            .font(.reading(30, weight: .heavy))
+                            .kerning(3)
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 4)
+                            .background(Theme.danger, in: .capsule)
+                    } else {
+                        Text(verbatim: model.reachedMoment ? "The moment" : "The moment in")
+                            .font(.caption.weight(.bold))
+                            .textCase(.uppercase)
+                            .kerning(1)
+                            .foregroundStyle(.white.opacity(0.75))
+                        Text(verbatim: model.reachedMoment ? "Now" : Self.reading(f))
+                            .font(.reading(46, weight: .semibold))
+                            .foregroundStyle(color)
+                            .contentTransition(.identity)
+                        if !pure && !model.reachedMoment {
+                            Text(verbatim: String(format: "%.1f s", max(0, model.center - t)))
+                                .font(.reading(15, weight: .medium))
+                                .foregroundStyle(.white.opacity(0.7))
+                        }
                     }
-                    ProgressTrack(fraction: filming ? min(1, max(0, (t - model.filmStart) / (model.filmEnd - model.filmStart)))
-                                      : min(1, f / Double(MomentCalendar.leadFlavons)), color: color)
+                    ProgressTrack(fraction: min(1, max(0, (t - model.filmStart) / (model.filmEnd - model.filmStart))),
+                                  color: model.missed ? Theme.danger : color)
                         .frame(width: 180, height: 4)
                         .padding(.top, 4)
                 case .developing, .saving:
@@ -318,8 +331,10 @@ private struct InstantCountdown: View {
     private func accessibility(_ f: Double) -> String {
         let whole = Int(f), blinks = min(24, Int((f - Double(whole)) * 25))
         switch model.phase {
-        case .waiting: return "\(whole) Flavons \(blinks) Blinks to the film"
-        case .filming: return model.reachedMoment ? "Filming past the moment" : "Filming, \(whole) Flavons \(blinks) Blinks to the moment"
+        case .waiting: return "Filming"
+        case .filming:
+            if model.missed { return "Filming, the moment missed" }
+            return model.reachedMoment ? "Filming past the moment" : "Filming, \(whole) Flavons \(blinks) Blinks to the moment"
         case .developing, .saving: return "Making the reel"
         default: return "Captured"
         }

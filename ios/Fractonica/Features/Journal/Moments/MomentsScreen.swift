@@ -2,9 +2,10 @@ import FractonicaKit
 import SwiftUI
 
 /// Moments: a tab of its own on iPhone (Now · Cycles · Journal · Moments · Clock), a sidebar screen on iPad and Mac
-/// (⌘0). The streak, the next moment with its live countdown (and the way in while its 11 Flavons run), the collection
-/// by rarity (a rarity opens its entries), the recent captures as cards (each opens the entry), when each rarer kind
-/// comes next, and the settings. The countdowns run on the device clock and only while the screen is in view.
+/// (⌘0). The streak, the next moment with its live countdown (and the way back in while its call rings), the missed
+/// calls (looking at them clears the badge), Test a Call, the collection by rarity (a rarity opens its entries), the
+/// recent captures as cards (each opens the entry), when each rarer kind comes next, and the settings. The countdowns
+/// run on the device clock and only while the screen is in view.
 ///
 /// Launch arguments: `-FXTab moments` (or `-FXMomentsSheet 1`), `-FXMomentsSettings 1` (on its settings).
 struct MomentsScreen: View {
@@ -31,6 +32,7 @@ struct MomentsScreen: View {
                     }
                 }
                 NextMomentCard(words: words, live: visible)
+                if moments.stats.missedCount > 0 { MissedCalls(words: words) }
                 TestMomentRow()
                 MomentsSection(title: "Collection") { CollectionGrid(stats: moments.stats) }
                 recent(words)
@@ -60,6 +62,7 @@ struct MomentsScreen: View {
         .navigationDestination(isPresented: $showSettings) { MomentSettingsView() }
         .onAppear {
             visible = true
+            moments.markMissedSeen()
             if !launched, moments.launch.settings { showSettings = true }
             launched = true
             if moments.authorization == .notDetermined, moments.settings.enabled, !moments.launch.isPreview {
@@ -67,6 +70,7 @@ struct MomentsScreen: View {
             }
         }
         .onDisappear { visible = false }
+        .onChange(of: moments.stats.missedCount) { if visible { moments.markMissedSeen() } }
         .onChange(of: ui.composer) { _, request in
             // an entry's Edit (in its detail, pushed here): the composer belongs to the Journal, which presents it
             if request != nil, router.selection == .moments { router.show(.journal) }
@@ -76,10 +80,10 @@ struct MomentsScreen: View {
     /// The latest captures as cards, with the way to all of them.
     @ViewBuilder
     private func recent(_ words: Wording) -> some View {
-        let captured = journal.entries.filter { $0.capture != nil }
+        let captured = journal.entries.filter { $0.capture.map { !$0.missed } ?? false }
         MomentsSection(title: "Recent captures") {
             if captured.isEmpty {
-                Text("Your captures show here: when a moment comes, Fractonica calls you 11 Flavons ahead and both cameras film the Flavon around it.")
+                Text("Your captures show here: a Flavon before each moment Fractonica calls you. Answer and the back camera films until you hang up; mute and both cameras film through the moment into a reel; decline and each camera takes a photo.")
                     .font(.footnote)
                     .foregroundStyle(Theme.ink3)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -168,7 +172,10 @@ struct MomentsCollectionView: View {
 
     var body: some View {
         let words = settings.wording
-        let entries = journal.entries.filter { rarity == nil ? $0.capture != nil : $0.rarity == rarity }
+        let entries = journal.entries.filter { record in
+            guard record.capture?.missed != true else { return false }
+            return rarity == nil ? record.capture != nil : record.rarity == rarity
+        }
         ScrollView {
             LazyVStack(spacing: 14) {
                 if entries.isEmpty {
@@ -241,9 +248,9 @@ private struct StreakHero: View {
     }
 }
 
-/// Test a Moment: the instant view on a made-up moment, to try the film and the reel any time — 2 Flavons ahead (the
-/// film starts in about 12 s), or 11 as a real call comes (with the spoken announcement). The entry is saved like a
-/// real capture; it never counts for the streak.
+/// Test a Call: a made-up moment's call, to try the ringing and each choice any time — ringing now (its moment a Flavon
+/// away), or in 2 Flavons, time to lock the phone and hear it ring as an alarm. Whatever is chosen is saved like a real
+/// call; it never counts for the streak.
 private struct TestMomentRow: View {
     @State private var moments = MomentStore.shared
 
@@ -252,30 +259,78 @@ private struct TestMomentRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Menu {
-                Button("In 2 Flavons", systemImage: "bolt") { moments.openTest(in: 2 * flavon) }
-                Button("In 11 Flavons, Announced", systemImage: "speaker.wave.2") {
-                    moments.openTest(in: Double(MomentCalendar.leadFlavons) * flavon)
-                }
+                Button("Ring Now", systemImage: "phone.arrow.down.left") { moments.openTest() }
+                Button("Ring in 2 Flavons", systemImage: "lock.iphone") { moments.scheduleTest(in: 2 * flavon) }
             } label: {
-                Label("Test a Moment", systemImage: "video.badge.checkmark").frame(maxWidth: .infinity)
+                Label(moments.testCall != nil ? "Test Call Coming…" : "Test a Call", systemImage: "phone.badge.waveform").frame(maxWidth: .infinity)
             } primaryAction: {
-                moments.openTest(in: 2 * flavon)
+                moments.openTest()
             }
             .menuStyle(.button)
             .glassButtonStyle()
             .controlSize(.large)
             .buttonBorderShape(.capsule)
             .disabled(moments.instant != nil)
-            .accessibilityHint("Films a made-up moment two Flavons from now")
-            Text("A made-up moment 2 Flavons away (hold for 11, with the announcement): filmed, made into a reel and saved to your journal like a real capture. It never counts for the streak.")
+            .accessibilityHint("Rings a made-up moment's call now")
+            Text("A made-up moment calls now, a Flavon ahead (hold for one in 2 Flavons: lock the phone to hear it ring as an alarm). Answer, mute or decline it: it is saved like a real call and never counts for the streak.")
                 .font(.footnote)
                 .foregroundStyle(Theme.ink3)
         }
     }
 }
 
-/// The next announced moment: its name and rarity, the countdown, its captures, and while its 11 Flavons run, the way
-/// in. It ticks once a second on the device clock while `live` (the screen in view), and holds still otherwise.
+/// The missed calls: how many, the latest three in red (each opens its entry), as a phone's recent calls show them.
+private struct MissedCalls: View {
+    let words: Wording
+    @State private var moments = MomentStore.shared
+    @State private var journal = JournalStore.shared
+
+    var body: some View {
+        let missed = journal.entries.filter { $0.capture?.missed == true }
+        let count = moments.stats.missedCount
+        MomentsSection(title: count == 1 ? "1 missed call" : "\(count) missed calls") {
+            VStack(spacing: 0) {
+                ForEach(Array(missed.prefix(3).enumerated()), id: \.element.id) { i, record in
+                    NavigationLink(value: MomentsRoute.entry(record.id)) {
+                        HStack(spacing: 12) {
+                            Image(systemName: "phone.down.fill")
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundStyle(Theme.danger)
+                                .frame(width: 22)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(verbatim: name(record))
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundStyle(Theme.danger)
+                                JournalStampText(time: record.time, words: words, full: true)
+                            }
+                            Spacer(minLength: 0)
+                            Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(Theme.ink3)
+                        }
+                        .padding(.vertical, 10)
+                        .padding(.horizontal, 14)
+                        .contentShape(.rect)
+                    }
+                    .buttonStyle(.plain)
+                    if i < min(3, missed.count) - 1 { Divider().overlay(Theme.line).padding(.leading, 48) }
+                }
+            }
+            .background(Theme.panel, in: .rect(cornerRadius: 16, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Theme.line, lineWidth: 1))
+        }
+    }
+
+    /// The moment the missed call was: "Helion 34η Ascending Node".
+    private func name(_ record: HubRecord) -> String {
+        guard let c = record.capture, let q = moments.calendar.index(near: c.at), let m = moments.calendar.moment(q) else {
+            return "Missed Call"
+        }
+        return m.title(words.notation)
+    }
+}
+
+/// The next moment that calls: its name and rarity, the countdown, when it calls, and while a call rings unanswered,
+/// the way back to it. It ticks once a second on the device clock while `live` (the screen in view), and holds still
+/// otherwise.
 private struct NextMomentCard: View {
     let words: Wording
     let live: Bool
@@ -293,7 +348,7 @@ private struct NextMomentCard: View {
 
     @ViewBuilder
     private func card(at t: Double) -> some View {
-        if let m = moments.nextMoment(after: t) {
+        if let m = moments.ringingCall(at: t) ?? moments.nextMoment(after: t) {
             let prompt = moments.calendar.promptTime(of: m)
             VStack(alignment: .leading, spacing: 10) {
                 HStack {
@@ -307,7 +362,7 @@ private struct NextMomentCard: View {
                 Text.ledByPentad(m.pentad, Text(verbatim: m.title(words.notation)), separator: " · ")
                     .font(.title3.weight(.semibold))
                     .foregroundStyle(Theme.levelColor(m.level.kitLevel, lightness: 0.7))
-                Text(verbatim: words.countdown(m.time - t, at: t))
+                Text(verbatim: m.time > t ? words.countdown(m.time - t, at: t) : "Ringing now")
                     .font(.reading(17, weight: .medium))
                     .foregroundStyle(Theme.ink2)
                     .contentTransition(.identity)
@@ -316,21 +371,21 @@ private struct NextMomentCard: View {
                         .font(.footnote)
                         .foregroundStyle(Theme.ink3)
                 }
-                Label("A Flavon of film, slowing at the moment", systemImage: "video")
+                Label("Calls \(MomentCalendar.leadFlavons) Flavon before, rings for \(MomentCalendar.ringFlavons)", systemImage: "phone")
                     .font(.footnote)
                     .foregroundStyle(Theme.ink2)
                 if prompt <= t {
                     Button {
-                        moments.openInstant(m)
+                        moments.openCall(m)
                     } label: {
-                        Label("Get Ready", systemImage: "camera.fill").frame(maxWidth: .infinity)
+                        Label("Ringing — Pick Up", systemImage: "phone.fill").frame(maxWidth: .infinity)
                     }
                     .glassProminentButtonStyle()
-                    .tint(m.rarity.color)
+                    .tint(Color(red: 0.2, green: 0.78, blue: 0.35))
                     .controlSize(.large)
                     .buttonBorderShape(.capsule)
                 } else {
-                    Text(verbatim: "Announced \(MomentCalendar.leadFlavons) Flavons before: \(words.countdown(prompt - t, at: t))")
+                    Text(verbatim: "Calls \(words.countdown(prompt - t, at: t))")
                         .font(.footnote)
                         .foregroundStyle(Theme.ink3)
                         .contentTransition(.identity)
@@ -463,7 +518,7 @@ private struct OffCard: View {
             Text("Moments are off")
                 .font(.headline)
                 .foregroundStyle(Theme.ink)
-            Text("Turn them on to be called 11 Flavons before each moment and capture it with both cameras and your voice.")
+            Text("Turn them on to be called a Flavon before each moment, and answer, mute or decline to capture it.")
                 .font(.footnote)
                 .foregroundStyle(Theme.ink2)
             Button("Turn On", action: turnOn)
@@ -487,8 +542,8 @@ private struct PermissionCard: View {
                 .font(.headline)
                 .foregroundStyle(Theme.ink)
             Text(authorization == .denied
-                 ? "Moments open by themselves while the app is in front. To be called when it is not, allow notifications for Fractonica in Settings."
-                 : "Allow notifications to be called 11 Flavons before each moment, with a spoken announcement.")
+                 ? "Moments ring by themselves while the app is in front. To be called when it is not, allow notifications for Fractonica in Settings."
+                 : "Allow notifications (and alarms) to be called a Flavon before each moment, even with the phone locked.")
                 .font(.footnote)
                 .foregroundStyle(Theme.ink2)
             if authorization == .notDetermined {
@@ -506,11 +561,13 @@ private struct PermissionCard: View {
 
 // MARK: - Settings
 
-/// Moments' settings: on or off, which Helion moments are announced (Delta and longer always are), how many times a
-/// moment is captured, quiet hours, the spoken announcement and whether the instant view opens by itself.
+/// Moments' settings: on or off, which Helion moments call (Delta and longer always do), quiet hours, the ringtone
+/// (each previews on a tap), the spoken name, whether the call rings in the app by itself, and the permissions: alarms
+/// (to ring with the phone locked) and notifications.
 struct MomentSettingsView: View {
     @Environment(AppSettings.self) private var settings
     @State private var moments = MomentStore.shared
+    @State private var ringer = MomentRinger.shared
 
     var body: some View {
         @Bindable var moments = moments
@@ -525,7 +582,7 @@ struct MomentSettingsView: View {
                 }
                 .disabled(!moments.settings.enabled)
             } footer: {
-                Text("A Helion's rare moments are its two nodes: ascending at its start (Preon 0), descending at its mid point (Preon 18). The start, peak, node and valley of a Delta, Gamma, Beta or Alpha are always announced: they are rarer still.")
+                Text("A Helion's rare moments are its two nodes: ascending at its start (Preon 0), descending at its mid point (Preon 18). The start, peak, node and valley of a Delta, Gamma, Beta or Alpha always call: they are rarer still.")
             }
             Section {
                 Toggle("Quiet hours", isOn: $moments.settings.quiet.enabled)
@@ -540,25 +597,42 @@ struct MomentSettingsView: View {
                     }
                 }
             } footer: {
-                Text("Moments in quiet hours are not announced and do not break your streak.")
+                Text("Moments in quiet hours do not call and do not break your streak.")
             }
             Section {
-                Toggle("Spoken announcement", isOn: $moments.settings.voice)
-                Toggle("Open by itself", isOn: $moments.settings.autoOpen)
-                if let m = moments.nextMoment() {
-                    Button("Play an Announcement", systemImage: "speaker.wave.2") {
-                        Task { await MomentVoice.play(m) }
+                ForEach(MomentRingtone.allCases, id: \.self) { tone in
+                    RingtoneRow(tone: tone, selected: moments.settings.ringtone == tone) {
+                        moments.settings.ringtone = tone
+                        ringer.preview(tone)
                     }
                 }
+            } header: {
+                Text("Ringtone")
             } footer: {
-                Text("While Fractonica is in front, the instant view opens by itself 11 Flavons before a moment; otherwise a notification calls you. The announcement follows the silent switch.")
+                Text("A call rings a Flavon before its moment for 11 Flavons, through the silent switch. A tap plays two rings.")
             }
-            Section("Notifications") {
-                LabeledContent("Permission", value: permission)
-                LabeledContent("Moments queued", value: "\(moments.pendingCount)")
+            Section {
+                Toggle("Announce the moment", isOn: $moments.settings.voice)
+                Toggle("Ring in the app", isOn: $moments.settings.autoOpen)
+            } footer: {
+                Text("While Fractonica is in front its call screen rings, the moment's name spoken over the ringtone; otherwise an alarm rings it, on the Lock Screen too. With Ring in the app off, the alarm rings even then.")
+            }
+            Section {
+                LabeledContent("Alarms", value: alarmPermission)
+                if moments.alarmAuthorization == .notDetermined {
+                    Button("Allow Alarms") { Task { await moments.requestAlarms() } }
+                }
+                LabeledContent("Notifications", value: permission)
+                LabeledContent("Calls queued", value: "\(moments.pendingCount)")
                 if moments.authorization == .notDetermined {
                     Button("Allow Notifications") { Task { await moments.requestAuthorization() } }
                 }
+            } header: {
+                Text("Calling")
+            } footer: {
+                Text(moments.alarmAuthorization == .unsupported
+                     ? "Without alarms (iOS 26) a notification rings the ringtone once; \"Missed Call\" follows when a call rings out."
+                     : "Alarms ring a call with the phone locked: Answer opens it picked up, Stop declines it. A notification says \"Missed Call\" when one rings out.")
             }
         }
         .formStyle(.grouped)
@@ -569,6 +643,17 @@ struct MomentSettingsView: View {
         .navigationBarTitleDisplayMode(.inline)
         #endif
         .environment(\.timeZone, settings.timeZone)
+        .onDisappear { ringer.stop() }
+    }
+
+    private var alarmPermission: String {
+        switch moments.alarmAuthorization {
+        case .authorized: "Allowed"
+        case .denied: "Off in Settings"
+        case .notDetermined: "Not asked yet"
+        case .unsupported: "Needs iOS 26"
+        case .unknown: "…"
+        }
     }
 
     private var permission: String {
@@ -593,5 +678,30 @@ struct MomentSettingsView: View {
                 moments.settings.quiet[keyPath: key] = (c.hour ?? 0) * 60 + (c.minute ?? 0)
             }
         )
+    }
+}
+
+/// A ringtone to choose: its name, a tick when chosen, a speaker while it plays.
+private struct RingtoneRow: View {
+    let tone: MomentRingtone
+    let selected: Bool
+    let choose: () -> Void
+    @State private var ringer = MomentRinger.shared
+
+    var body: some View {
+        Button(action: choose) {
+            HStack {
+                Text(tone.title).foregroundStyle(Theme.ink)
+                Spacer()
+                if ringer.previewing == tone {
+                    Image(systemName: "speaker.wave.2.fill").foregroundStyle(Theme.teal).symbolEffect(.variableColor.iterative)
+                }
+                if selected { Image(systemName: "checkmark").foregroundStyle(Theme.teal).fontWeight(.semibold) }
+            }
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(selected ? .isSelected : [])
+        .accessibilityHint("Plays two rings")
     }
 }

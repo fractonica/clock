@@ -74,6 +74,8 @@ targets:
         # the Journal: voice notes, and photos and videos taken in the app (the Photos picker needs no permission)
         NSMicrophoneUsageDescription: Fractonica records voice notes for your journal entries.
         NSCameraUsageDescription: Fractonica takes photos and videos for your journal entries.
+        # Moments: a moment's call rings as an alarm while the app is not in front (Features/Journal/Moments/MomentAlarms)
+        NSAlarmKitUsageDescription: Fractonica calls you like a phone a Flavon before each moment, so you never miss one.
         UILaunchScreen:
           UIColorName: LaunchBackground
         UIUserInterfaceStyle: Dark
