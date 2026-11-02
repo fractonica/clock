@@ -258,25 +258,23 @@ leaving and in the background refresh, cleared on coming back; asked for on the 
 rings it on the Lock Screen — its Answer (`AnswerMomentCallIntent`) opens the app on the call picked up, its Stop
 (`DeclineMomentCallIntent`) declined — or, without alarms, a time-sensitive notification with the ringtone. The cameras start with the first ring
 (`MomentCamera`: both at once, a frame each Sub-blink — ξ, 44.4 ms — each into a movie file of its own, the microphone
-into one more), so each choice starts at once. **Answered**: the back camera films with the microphone until the red
-button (`record(from:to: .infinity)`), the screen dark at the ear (proximity), a tap on the viewfinder changing lens
-(the back camera is the multi-lens one where it runs beside the selfie camera, `MomentCamera.nextLens`: its zoom, so the
-film runs on), a haptic at the moment; the entry keeps the film as `call` (`MomentCallFilm.merge` lays the sound under
-the picture, passed through) and the Journal shows it. **Muted**: the instant
-view (`InstantView`, `InstantModel`) takes the call's place and its cameras and films from the press to half a Flavon
-after the moment (`MomentCalendar.filmSpan`) — muted after the moment, a Flavon from the press marked MISSED in red;
-the last capture's films stay in Caches/MomentFilms until the next (`MomentFilmArchive`). Until the film ends a tap on a
-camera's square keeps its latest frame as a photo, and the microphone button records a voice note while held, the held
-stretches back to back in one file (from the session's microphone; a recorder of its own where there is none). Then
-`MomentReelRenderer` makes the reel (MomentReel.swift has its arithmetic, checked; a check makes one from two films and
-a sound): the selfie's square over the back camera's, the film played forward slowing to an eighth at the moment (a
-Gaussian of half a Flavon's scale about it, whatever was filmed before it) with a click there, then at once backwards
-the same way (a click again), the sound read at the picture's pace; its frames last a Sub-blink too, each a whole filmed
-frame stamped at the top with its date ("α6 β4 γ9 δ4 ε1") and its time down to the Sub-blink ("62η 4ι 29λ 4ν 3ξ"), so
-at real time the ξ rolls over every frame; in the Simulator a drawn film stands in for the cameras; saved, the Journal
-shows it. **Declined**: each camera's photo at the press, Declined, and the app puts itself away as a phone does.
-**Rung out**: a missed call, and the call screen goes. No confirmation screen follows a call, unless saving went
-amiss. Every entry is written right after, before the view
+into one more; the back camera the multi-lens one where it runs beside the selfie camera, its lens changed by zoom so a
+film runs on, and its torch), so each choice starts at once, the call's cameras handed to the instant view
+(`InstantModel`). **Answered**: `InstantView` — nothing but the cameras live as the reel will show them (a tap on a
+square keeps its frame as a photo, a long press lights the torch, a small countdown to the moment at their foot) and the
+red button to hang up: it films until then (`record(from:to: .infinity)`). `MomentReelRenderer` makes the reel
+(MomentReel.swift has its arithmetic, checked; a check makes one from two films and a sound): the selfie's square over
+the back camera's, the film played forward slowing to two thirds at the moment (a Gaussian of half a Flavon's scale
+about it, whatever was filmed before it) with a click there, then at once backwards the same way (a click again), the
+sound read at the picture's pace; its frames last a Sub-blink too, each a whole filmed frame stamped at the top with its
+date ("α6 β4 γ9 δ4 ε1") and its time down to the Sub-blink ("62η 4ι 29λ 4ν 3ξ"); picked up after the moment it slows at
+its middle without clicks, stamped MISSED in red; in the Simulator a drawn film stands in for the cameras. **Muted**:
+`MutedView` — the screen dark (its brightness down, given back after) while both cameras film until a Flavon after the
+moment (End stops sooner), made the same way but played once at real time with a click at the moment. The last
+capture's films stay in Caches/MomentFilms until the next (`MomentFilmArchive`). Saved, the Journal shows either.
+**Declined**: each camera's photo at the press, Declined, and the app puts itself away as a phone does. **Rung out**: a
+missed call, and the call screen goes. No confirmation screen follows a call, unless saving went amiss.
+Every entry is written right after, before the view
 changes: `time` and `data.capture.at` the moment, `capture.outcome` how the call went (hub/API.md). What became of each
 call is kept a few days (`MomentStore` `marks`); calls that rang out unanswered become entries titled Missed, 🔴, on the
 iPhone only (`sweepMissed`, from the first launch that rang them), with a "Missed Call" notification at each call's end

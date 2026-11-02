@@ -205,25 +205,26 @@ a period's end is the next one's `start`), and `rarity` follows from the level: 
 `epic` (Delta, purple), `legendary` (Gamma, yellow), `mythic` (Beta, red), `cosmic` (Alpha, rainbow). An entry without
 `capture` is `common` (grey). `outcome` says how the moment's call went; entries captured before the calls have none.
 
-- `answered`: picked up; the back camera filmed with the microphone until hung up. A video, role `video`, `name`
-  `call`, its `poster` the frame at the moment when the call ran through it; `title` "Answered", `emoji` 📞. Photos
-  taken during the call follow (role `photo`, `name` `back`).
-- `muted`: both cameras filmed from the press through the moment, made into its **reel**: a video, role `video`,
-  `name` `reel`, with its `poster` the frame at the moment: the front camera's square over the back camera's, filmed a
-  frame each Sub-blink (ξ, 44.4 ms), from the press to half a Flavon after the moment, played forward slowing to an
-  eighth at the moment, then backwards the same way, each frame stamped with its date and its time down to the
-  Sub-blink, its sound the moment's own at the picture's pace with a click at the moment. Muted after the moment had
-  passed, it films a Flavon from the press, slows at its middle without clicks and is stamped MISSED in red. Photos
-  taken while it films follow (role `photo`, `name` `front` or `back`), then a voice note (role `audio`, `name`
-  `voice`). (When the reel cannot be made, the cameras' own videos are kept instead, named `back` and `front`, and
-  their sound as audio named `sound`.)
+- `answered`: picked up; both cameras filmed with the microphone from the pick-up until hung up, made into its
+  **reel**: a video, role `video`, `name` `reel`, with its `poster` the frame at the moment: the front camera's square
+  over the back camera's, filmed a frame each Sub-blink (ξ, 44.4 ms), played forward slowing at the moment to two thirds
+  of real time (over the same stretch as ever, a Gaussian of half a Flavon's scale), then backwards the same way, each
+  frame stamped with its date and its time down to the Sub-blink, its sound the moment's own at the picture's pace with
+  a click at the moment. Picked up after the moment had passed (or hung up before it), it slows at its middle without
+  clicks, stamped MISSED in red when the moment had passed. Photos taken while it films follow (role `photo`, `name`
+  `front` or `back`). `title` "Answered", `emoji` 📞. (When the reel cannot be made, the cameras' own videos are kept
+  instead, named `back` and `front`, and their sound as audio named `sound`.)
+- `muted`: both cameras filmed, the screen dark, from the press until a Flavon after the moment (a Flavon from the
+  press when the moment had passed): a video named `reel` as above, played once at real time with a click at the
+  moment. `title` "Muted", `emoji` 🔇.
 - `declined`: a photo from each camera at the press (role `photo`, `name` `front` and `back`); `title` "Declined",
   `emoji` 📵.
 - `missed`: it rang out unanswered. No media; `title` "Missed", `emoji` 🔴. Its rarity is `common`; it is neither a
   capture of the moment nor part of the collection, and the apps count it as a missed call (unless another entry
   captured the same moment). One device writes them (the iPhone).
 
-Entries captured before the calls have the reel (no `outcome`), or before the reels photos: roles `photo` with `name`
+Entries captured before the calls have the reel (no `outcome`; it slowed to an eighth), some of the first calls'
+answered films a video named `call` (the back camera alone), and entries from before the reels photos: roles `photo` with `name`
 `front` and `back`; a moment captured several times (Flavons around it) names them `front@-1`, `back@-1`, `front@0`,
 `back@0`, `front@1`, … with the capture's offset from the moment in Flavons.
 

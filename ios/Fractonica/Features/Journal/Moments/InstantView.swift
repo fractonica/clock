@@ -1,13 +1,16 @@
 import FractonicaKit
 import SwiftUI
+#if os(iOS)
+import UIKit
+#endif
 
-/// The instant view: a moment's call, muted (MomentCallView shows it in the call's place), filming from the press until
-/// its reel is saved. The moment's name in its level's colour, the cameras live as the reel will show them (the
-/// selfie's square over the back camera's; a tap on one keeps its frame as a photo), a big countdown in Flavons and
-/// Blinks (and seconds outside pure mode) ticking to the moment itself (a flash and a strong haptic there) — or, muted
-/// after it, MISSED in red — an emoji, a line to write and a microphone to hold for a voice note. When the film ends the
-/// reel is made (a progress bar), the entry saves itself and the Journal shows it. Only when the reel or a camera went
-/// amiss does the view stay, its card — the reel playing — saying so, with Done.
+/// The instant view: a moment's call, answered (MomentCallView shows it in the call's place), filming both cameras from
+/// the pick-up until hung up. Nothing but the cameras live as the reel will show them (the selfie's square over the back
+/// camera's): a tap on one keeps its frame as a photo, a long press lights the torch, the back camera's lens button
+/// changes lens; a small countdown at their foot ticks to the moment itself (a flash and a strong haptic there) — or,
+/// picked up after it, MISSED in red — and the red button hangs up. Then the reel is made (a progress bar), the entry
+/// saves itself and the Journal shows it. Only when the reel or a camera went amiss does the view stay, its card — the
+/// reel playing — saying so, with Done.
 struct InstantView: View {
     @Environment(AppSettings.self) private var settings
     @Environment(AppRouter.self) private var router
@@ -17,9 +20,7 @@ struct InstantView: View {
     @State private var model: InstantModel
     @State private var moments = MomentStore.shared
     @State private var journal = JournalStore.shared
-    @State private var showEmoji = false
     @State private var flash = 0.0
-    @FocusState private var writing: Bool
 
     init(model: InstantModel) {
         _model = State(initialValue: model)
@@ -30,17 +31,16 @@ struct InstantView: View {
         let rarity = model.moment.rarity
         ZStack {
             background(rarity)
-            VStack(spacing: 14) {
-                topBar(rarity)
-                title(words)
+            VStack(spacing: 18) {
                 if let id = model.savedID, let record = journal.record(id) {
                     saved(record, words)
                 } else {
                     cameras(rarity, words)
-                    composer
+                    footer
                 }
             }
             .padding(.horizontal, 16)
+            .padding(.top, 8)
             .padding(.bottom, 8)
             .frame(maxWidth: 620)
             Color.white
@@ -59,8 +59,6 @@ struct InstantView: View {
             withAnimation(.easeOut(duration: reduceMotion ? 0.3 : 0.7)) { flash = 0 }
         }
         .onChange(of: model.phase) { _, phase in
-            // the keyboard goes when the film ends (the line is saved with the entry)
-            if phase == .developing { writing = false }
             // saved: the Journal shows it (unless something went amiss, which the card says)
             if case .saved = phase, model.reelFailure == nil, model.filmTrouble == nil {
                 dismiss()
@@ -83,59 +81,12 @@ struct InstantView: View {
         .ignoresSafeArea()
     }
 
-    private func topBar(_ rarity: MomentRarity) -> some View {
-        HStack {
-            Button {
-                dismiss()
-            } label: {
-                Image(systemName: "xmark")
-                    .font(.system(size: 15, weight: .semibold))
-                    .frame(width: 36, height: 36)
-                    .contentShape(.circle)
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(Theme.ink2)
-            .background(Theme.panel2.opacity(0.8), in: .circle)
-            .accessibilityLabel(model.savedID != nil ? "Close" : model.reachedMoment ? "Close and keep the film" : "Close without capturing")
-            .keyboardShortcut(.cancelAction)
-            Spacer()
-            RarityBadge(rarity: rarity)
-        }
-        .padding(.top, 6)
-    }
-
-    private func title(_ words: Wording) -> some View {
-        VStack(spacing: 4) {
-            Text.ledByPentad(model.moment.pentad, Text(verbatim: model.moment.title(words.notation)), separator: " · ")
-                .font(.title2.weight(.bold))
-                .foregroundStyle(Theme.levelColor(model.moment.level.kitLevel, lightness: 0.7))
-                .multilineTextAlignment(.center)
-                .lineLimit(2)
-                .minimumScaleFactor(0.7)
-            Text(verbatim: subtitle)
-                .font(.footnote.weight(.medium))
-                .foregroundStyle(Theme.ink3)
-        }
-        .frame(maxWidth: .infinity)
-        .accessibilityElement(children: .combine)
-    }
-
-    private var subtitle: String {
-        switch model.phase {
-        case .waiting, .filming: "Tap a camera for a photo · hold the microphone to talk"
-        case .developing: "Making the reel…"
-        case .saving: "Saving…"
-        case .saved: model.reelFailure.map { "Saved the films as they are — \($0)" }
-            ?? model.filmTrouble.map { "Saved — \($0)" } ?? "Captured and saved"
-        case .failed(let reason): reason
-        }
-    }
-
-    /// The cameras as the reel will show them, the selfie's square over the back camera's, the countdown at their seam.
+    /// The cameras as the reel will show them, the selfie's square over the back camera's, the countdown at their foot.
     private func cameras(_ rarity: MomentRarity, _ words: Wording) -> some View {
         let shape = RoundedRectangle(cornerRadius: 28, style: .continuous)
-        let previews = model.camera.previews
-        let squares = previews.isEmpty ? (model.camera.mode == .none ? ["front", "back"] : ["back"]) : ["front", "back", "camera"].filter { previews[$0] != nil }
+        let camera = model.camera
+        let previews = camera.previews
+        let squares = previews.isEmpty ? (camera.mode == .none ? ["front", "back"] : ["back"]) : ["front", "back", "camera"].filter { previews[$0] != nil }
         return VStack(spacing: 2) {
             ForEach(squares, id: \.self) { name in
                 ZStack {
@@ -143,7 +94,7 @@ struct InstantView: View {
                     if let layer = previews[name] {
                         MomentCameraPreview(layer: layer)
                     } else {
-                        CameraPlaceholder(moment: model.moment, mode: model.camera.mode, camera: name)
+                        CameraPlaceholder(moment: model.moment, mode: camera.mode, camera: name)
                     }
                 }
                 .aspectRatio(1, contentMode: .fit)
@@ -160,20 +111,25 @@ struct InstantView: View {
                             .padding(12)
                     }
                 }
+                .overlay(alignment: .topLeading) {
+                    if name == "back" { backControls }
+                }
                 .contentShape(.rect)
                 .onTapGesture { model.snap(name) }
+                .onLongPressGesture(minimumDuration: 0.5) { model.toggleTorch() }
                 .allowsHitTesting(model.takesExtras)
                 .accessibilityElement()
                 .accessibilityLabel(name == "front" ? "Selfie camera" : "Back camera")
                 .accessibilityHint("Takes a photo for the entry")
                 .accessibilityAddTraits(.isButton)
+                .accessibilityAction(named: camera.torch ? "Torch off" : "Torch on") { model.toggleTorch() }
             }
         }
         .background(.black)
-        .overlay {
+        .overlay(alignment: .bottom) {
             if model.phase != .waiting {
                 InstantCountdown(model: model, pure: words.pure, color: rarity.color)
-                    .padding(14)
+                    .padding(12)
             }
         }
         .overlay(alignment: .topTrailing) {
@@ -185,46 +141,86 @@ struct InstantView: View {
         .layoutPriority(-1)
     }
 
-    /// Emoji and the line.
-    private var composer: some View {
-        HStack(spacing: 12) {
-            Button { showEmoji = true } label: {
-                ZStack {
-                    Circle().fill(Theme.panel2)
-                    Circle().stroke(Theme.line2, lineWidth: 1)
-                    if let emoji = model.emoji, !emoji.isEmpty {
-                        Text(verbatim: emoji).font(.system(size: 30))
-                    } else {
-                        Image(systemName: "face.smiling").font(.system(size: 22)).foregroundStyle(Theme.teal)
-                    }
+    /// On the back camera's square: the lens (a tap changes it) and the torch, lit.
+    @ViewBuilder
+    private var backControls: some View {
+        let camera = model.camera
+        HStack(spacing: 8) {
+            if camera.lenses.count > 1 {
+                Button {
+                    Haptics.play(.selection)
+                    camera.nextLens()
+                } label: {
+                    Text(verbatim: MomentCallView.lensName(camera.lenses[camera.lens]))
+                        .font(.caption.weight(.bold).monospacedDigit())
+                        .foregroundStyle(Theme.gold)
+                        .frame(minWidth: 34, minHeight: 34)
+                        .background(.black.opacity(0.55), in: .circle)
+                        .contentTransition(.numericText())
+                        .animation(.snappy, value: camera.lens)
                 }
-                .frame(width: 54, height: 54)
-                .contentShape(.circle)
+                .buttonStyle(.plain)
+                .accessibilityLabel("Lens \(MomentCallView.lensName(camera.lenses[camera.lens]))")
+                .accessibilityHint("Changes the back camera's lens")
+            }
+            if camera.torch {
+                Image(systemName: "flashlight.on.fill")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(Theme.gold)
+                    .frame(width: 34, height: 34)
+                    .background(.black.opacity(0.55), in: .circle)
+                    .accessibilityLabel("Torch on")
+            }
+        }
+        .padding(12)
+    }
+
+    /// The red button while it films; the reel's progress after.
+    @ViewBuilder
+    private var footer: some View {
+        switch model.phase {
+        case .waiting, .filming:
+            Button {
+                model.hangUp()
+            } label: {
+                Image(systemName: "phone.down.fill")
+                    .font(.system(size: 28, weight: .medium))
+                    .foregroundStyle(.white)
+                    .frame(width: 72, height: 72)
+                    .background(Color(red: 0.92, green: 0.2, blue: 0.22), in: .circle)
             }
             .buttonStyle(.plain)
-            .accessibilityLabel(model.emoji.map { "Emoji \($0), change" } ?? "Choose an emoji")
-            .popover(isPresented: $showEmoji) {
-                EmojiPicker(selection: $model.emoji) { showEmoji = false }
-                    .frame(minWidth: 340, idealWidth: 380, minHeight: 440, idealHeight: 520)
-                    .presentationDetents([.medium, .large])
+            .keyboardShortcut(.cancelAction)
+            .accessibilityLabel("Hang up")
+            .accessibilityHint("Ends the film and makes the reel")
+        case .developing, .saving:
+            VStack(spacing: 8) {
+                Text("Making the reel")
+                    .font(.caption.weight(.bold))
+                    .textCase(.uppercase)
+                    .kerning(1)
+                    .foregroundStyle(.white.opacity(0.75))
+                ProgressTrack(fraction: model.phase == .saving ? 1 : model.developed, color: model.moment.rarity.color)
+                    .frame(width: 200, height: 4)
             }
-            TextField("What’s happening?", text: $model.text, axis: .vertical)
-                .lineLimit(1...3)
-                .focused($writing)
-                .font(.body)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 12)
-                .background(Theme.panel2, in: .rect(cornerRadius: 18, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(Theme.line, lineWidth: 1))
-                .disabled(model.phase == .saving || model.savedID != nil)
-            HoldToTalk(model: model)
+            .frame(height: 72)
+            .animation(.snappy, value: model.developed)
+        case .saved, .failed(_):
+            if case .failed(let reason) = model.phase {
+                Text(verbatim: reason).font(.footnote).foregroundStyle(Theme.ink3)
+            }
         }
     }
 
-    /// The saved entry as its card (when something went amiss), the streak and Done.
+    /// The saved entry as its card (when something went amiss, which it says), the streak and Done.
     private func saved(_ record: HubRecord, _ words: Wording) -> some View {
         ScrollView {
             VStack(spacing: 18) {
+                Text(verbatim: model.reelFailure.map { "Saved the films as they are — \($0)" }
+                    ?? model.filmTrouble.map { "Saved — \($0)" } ?? "Saved")
+                    .font(.footnote.weight(.medium))
+                    .foregroundStyle(Theme.ink3)
+                    .multilineTextAlignment(.center)
                 CaptureCard(record: record, words: words, plays: true)
                     .transition(.scale(scale: 0.92).combined(with: .opacity))
                 StreakLine(stats: moments.stats, rarity: record.rarity)
@@ -246,8 +242,112 @@ struct InstantView: View {
     }
 }
 
-/// "0λ 13ν" and the seconds, ticking to the moment while filming (then "Now"; MISSED in red for a film muted after
-/// it); then the reel's progress.
+/// A muted call: both cameras filming with the screen dark (its brightness down too, given back after) until a Flavon
+/// after the moment, a dim line saying so and how long is left, and End to stop sooner. Then the film is saved and the
+/// Journal shows it.
+struct MutedView: View {
+    @Environment(AppSettings.self) private var settings
+    @Environment(AppRouter.self) private var router
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var model: InstantModel
+    @State private var moments = MomentStore.shared
+    #if os(iOS)
+    @State private var brightness: CGFloat?
+    #endif
+
+    init(model: InstantModel) {
+        _model = State(initialValue: model)
+    }
+
+    var body: some View {
+        ZStack {
+            Color.black.ignoresSafeArea()
+            VStack(spacing: 14) {
+                Spacer()
+                TimelineView(.periodic(from: .now, by: 0.25)) { context in
+                    Text(verbatim: line(at: context.date.timeIntervalSince1970, pure: settings.wording.pure))
+                        .font(.reading(15, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.28))
+                        .multilineTextAlignment(.center)
+                        .contentTransition(.identity)
+                }
+                Spacer()
+                if model.takesExtras {
+                    Button {
+                        model.hangUp()
+                    } label: {
+                        Text("End")
+                            .font(.footnote.weight(.semibold))
+                            .foregroundStyle(.white.opacity(0.35))
+                            .padding(.horizontal, 22)
+                            .padding(.vertical, 10)
+                            .overlay(Capsule().stroke(.white.opacity(0.18), lineWidth: 1))
+                    }
+                    .buttonStyle(.plain)
+                    .keyboardShortcut(.cancelAction)
+                    .accessibilityHint("Stops filming now and saves")
+                } else {
+                    ProgressView().tint(.white.opacity(0.4))
+                }
+            }
+            .padding(.bottom, 24)
+        }
+        .preferredColorScheme(.dark)
+        #if os(iOS)
+        .statusBarHidden()
+        #endif
+        .task {
+            dim(true)
+            model.open()
+        }
+        .onDisappear {
+            dim(false)
+            model.close()
+            moments.instantClosed()
+        }
+        .onChange(of: model.phase) { _, phase in
+            if case .saved = phase {
+                dim(false)
+                dismiss()
+                router.show(.journal)
+            }
+        }
+    }
+
+    /// "● Filming · the moment in 0λ 12ν" — "… ends in 0λ 20ν" after it — then "Saving".
+    private func line(at t: Double, pure: Bool) -> String {
+        switch model.phase {
+        case .waiting, .filming:
+            let flavon = model.flavonSeconds
+            if !model.missed, model.moment.time > t {
+                return "● Filming both cameras\nthe moment in \(MomentCallView.flavons((model.moment.time - t) / flavon))"
+            }
+            let left = model.filmEnd - t
+            return left.isFinite ? "● Filming both cameras\nends in \(MomentCallView.flavons(max(0, left) / flavon))" : "● Filming both cameras"
+        case .developing, .saving: return "Saving"
+        case .saved: return "Saved"
+        case .failed(let reason): return reason
+        }
+    }
+
+    /// The screen's brightness right down while it films, and back as it was.
+    private func dim(_ on: Bool) {
+        #if os(iOS)
+        guard let screen = (UIApplication.shared.connectedScenes.first { $0 is UIWindowScene } as? UIWindowScene)?.screen else { return }
+        if on {
+            if brightness == nil { brightness = screen.brightness }
+            screen.brightness = 0
+        } else if let brightness {
+            screen.brightness = brightness
+            self.brightness = nil
+        }
+        #endif
+    }
+}
+
+/// "0λ 13ν" and the seconds, small, ticking to the moment while filming (then "Now"; MISSED in red for a film picked
+/// up after it).
 private struct InstantCountdown: View {
     let model: InstantModel
     let pure: Bool
@@ -258,78 +358,54 @@ private struct InstantCountdown: View {
         TimelineView(.animation(minimumInterval: 1 / 15, paused: !filming)) { context in
             let t = context.date.timeIntervalSince1970
             let f = model.flavons(at: t)
-            VStack(spacing: 2) {
-                switch model.phase {
-                case .waiting:
+            let reached = model.moment.time <= t
+            HStack(spacing: 8) {
+                if !filming {
                     EmptyView()
-                case .filming:
-                    if model.missed {
-                        Text(verbatim: MomentReelText.missed)
-                            .font(.reading(30, weight: .heavy))
-                            .kerning(3)
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 4)
-                            .background(Theme.danger, in: .capsule)
-                    } else {
-                        Text(verbatim: model.reachedMoment ? "The moment" : "The moment in")
-                            .font(.caption.weight(.bold))
-                            .textCase(.uppercase)
-                            .kerning(1)
-                            .foregroundStyle(.white.opacity(0.75))
-                        Text(verbatim: model.reachedMoment ? "Now" : Self.reading(f))
-                            .font(.reading(46, weight: .semibold))
-                            .foregroundStyle(color)
-                            .contentTransition(.identity)
-                        if !pure && !model.reachedMoment {
-                            Text(verbatim: String(format: "%.1f s", max(0, model.center - t)))
-                                .font(.reading(15, weight: .medium))
-                                .foregroundStyle(.white.opacity(0.7))
-                        }
-                    }
-                    ProgressTrack(fraction: min(1, max(0, (t - model.filmStart) / (model.filmEnd - model.filmStart))),
-                                  color: model.missed ? Theme.danger : color)
-                        .frame(width: 180, height: 4)
-                        .padding(.top, 4)
-                case .developing, .saving:
-                    Text("Making the reel")
-                        .font(.caption.weight(.bold))
+                } else if model.missed {
+                    Text(verbatim: MomentReelText.missed)
+                        .font(.reading(13, weight: .heavy))
+                        .kerning(2)
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 2)
+                        .background(Theme.danger, in: .capsule)
+                } else {
+                    Text(verbatim: reached ? "The moment" : "The moment in")
+                        .font(.caption2.weight(.bold))
                         .textCase(.uppercase)
-                        .kerning(1)
+                        .kerning(0.8)
                         .foregroundStyle(.white.opacity(0.75))
-                    ProgressTrack(fraction: model.phase == .saving ? 1 : model.developed, color: color)
-                        .frame(width: 180, height: 4)
-                        .padding(.top, 6)
-                case .saved, .failed:
-                    EmptyView()
+                    Text(verbatim: reached ? "Now" : Self.reading(f))
+                        .font(.reading(18, weight: .semibold))
+                        .foregroundStyle(color)
+                        .contentTransition(.identity)
+                    if !pure && !reached {
+                        Text(verbatim: String(format: "%.1f s", max(0, model.moment.time - t)))
+                            .font(.reading(12, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.7))
+                    }
                 }
             }
-            .padding(.horizontal, 22)
-            .padding(.vertical, 12)
-            .background(.black.opacity(0.42), in: .rect(cornerRadius: 22, style: .continuous))
-            .animation(.snappy, value: model.developed)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 7)
+            .background(.black.opacity(filming ? 0.45 : 0), in: .capsule)
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel(accessibility(f))
+            .accessibilityLabel(accessibility(f, reached: reached))
         }
     }
 
-    /// "10λ 13ν".
+    /// "0λ 13ν".
     static func reading(_ flavons: Double) -> String {
         let f = max(0, flavons)
         let whole = Int(f)
         return "\(whole)λ \(String(format: "%02d", min(24, Int((f - Double(whole)) * 25))))ν"
     }
 
-    private func accessibility(_ f: Double) -> String {
+    private func accessibility(_ f: Double, reached: Bool) -> String {
         let whole = Int(f), blinks = min(24, Int((f - Double(whole)) * 25))
-        switch model.phase {
-        case .waiting: return "Filming"
-        case .filming:
-            if model.missed { return "Filming, the moment missed" }
-            return model.reachedMoment ? "Filming past the moment" : "Filming, \(whole) Flavons \(blinks) Blinks to the moment"
-        case .developing, .saving: return "Making the reel"
-        default: return "Captured"
-        }
+        if model.missed { return "Filming, the moment missed" }
+        return reached ? "Filming past the moment" : "Filming, \(whole) Flavons \(blinks) Blinks to the moment"
     }
 }
 
@@ -346,56 +422,6 @@ private struct SnapFlash: View {
                 opacity = 0.85
                 withAnimation(.easeOut(duration: 0.45)) { opacity = 0 }
             }
-    }
-}
-
-/// The microphone to hold: the voice note records while it is held (red, a little larger), its length so far above.
-private struct HoldToTalk: View {
-    let model: InstantModel
-    @GestureState private var pressed = false
-
-    var body: some View {
-        let on = model.talking
-        ZStack {
-            Circle().fill(on ? Theme.danger : Theme.panel2)
-            Circle().stroke(on ? Theme.danger : Theme.line2, lineWidth: 1)
-            Image(systemName: on ? "waveform" : "mic.fill")
-                .font(.system(size: 21, weight: .semibold))
-                .foregroundStyle(on ? .white : model.takesExtras ? Theme.teal : Theme.ink3)
-                .symbolEffect(.variableColor.iterative, isActive: on)
-        }
-        .frame(width: 54, height: 54)
-        .scaleEffect(on ? 1.12 : 1)
-        .animation(.snappy, value: on)
-        .overlay(alignment: .top) {
-            if on || model.voiceSeconds > 0 {
-                TimelineView(.periodic(from: .now, by: 0.25)) { context in
-                    Text(verbatim: Self.length(model.voiceLength(at: context.date.timeIntervalSince1970)))
-                        .font(.caption2.weight(.bold).monospacedDigit())
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(on ? Theme.danger : .black.opacity(0.6), in: .capsule)
-                        .fixedSize()
-                }
-                .offset(y: -16)
-            }
-        }
-        .contentShape(.circle)
-        .gesture(DragGesture(minimumDistance: 0).updating($pressed) { _, pressed, _ in pressed = true })
-        .onChange(of: pressed) { _, held in model.talk(held) }
-        .opacity(model.takesExtras || model.voiceSeconds > 0 ? 1 : 0.5)
-        .allowsHitTesting(model.takesExtras)
-        .accessibilityElement()
-        .accessibilityLabel(on ? "Recording a voice note" : "Hold to record a voice note")
-        .accessibilityAddTraits(.isButton)
-        .accessibilityAction { model.talk(!model.talking) }
-    }
-
-    /// "0:07".
-    static func length(_ seconds: Double) -> String {
-        let s = Int(seconds)
-        return "\(s / 60):\(String(format: "%02d", s % 60))"
     }
 }
 

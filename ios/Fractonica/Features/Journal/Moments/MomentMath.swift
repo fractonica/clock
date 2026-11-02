@@ -138,27 +138,27 @@ struct Moment: Hashable, Identifiable, Sendable {
     }
 }
 
-/// How a moment's call went (`capture.outcome`, hub/API.md): picked up (the back camera filming until hung up), muted
-/// (both cameras filming through the moment into a reel), declined (a photo from each camera) or left ringing for its
-/// 11 Flavons (missed). Captures made before the calls have none: they count as captured.
+/// How a moment's call went (`capture.outcome`, hub/API.md): picked up (both cameras filming until hung up, made into
+/// a reel), muted (both cameras filming until a Flavon after the moment, the screen dark), declined (a photo from each
+/// camera) or left ringing for its 11 Flavons (missed). Captures made before the calls have none: they count as captured.
 enum MomentOutcome: String, CaseIterable, Codable, Sendable {
     case answered, muted, declined, missed
 
-    /// The entry's title, as a phone's recent calls say it (none for a muted call: its reel speaks for it).
-    var title: String? {
+    /// The entry's title, as a phone's recent calls say it.
+    var title: String {
         switch self {
         case .answered: "Answered"
-        case .muted: nil
+        case .muted: "Muted"
         case .declined: "Declined"
         case .missed: "Missed"
         }
     }
 
-    /// The entry's emoji (a muted call's is chosen in the instant view).
-    var emoji: String? {
+    /// The entry's emoji.
+    var emoji: String {
         switch self {
         case .answered: "📞"
-        case .muted: nil
+        case .muted: "🔇"
         case .declined: "📵"
         case .missed: "🔴"
         }

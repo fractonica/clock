@@ -48,9 +48,12 @@ struct MomentReelScript: Sendable {
     var clicks = true
     /// Filmed after the moment had passed: marked so in red.
     var missed = false
+    /// The speed at the moment (1: played at real time throughout), and whether it then plays back.
+    var slowest = MomentReelTiming.deep
+    var backward = true
 
     init(center: Double, before: Double, after: Double, half: Double, notation: Notation, accent: [Double], side: Int,
-         clicks: Bool = true, missed: Bool = false) {
+         clicks: Bool = true, missed: Bool = false, slowest: Double = MomentReelTiming.deep, backward: Bool = true) {
         self.center = center
         self.before = before
         self.after = after
@@ -60,6 +63,8 @@ struct MomentReelScript: Sendable {
         self.side = side
         self.clicks = clicks
         self.missed = missed
+        self.slowest = slowest
+        self.backward = backward
     }
 
     /// Filmed `half` either side of the moment.
@@ -67,7 +72,9 @@ struct MomentReelScript: Sendable {
         self.init(center: center, before: half, after: half, half: half, notation: notation, accent: accent, side: side)
     }
 
-    var timing: MomentReelTiming { MomentReelTiming(before: before, after: after, half: half, frame: frame) }
+    var timing: MomentReelTiming {
+        MomentReelTiming(before: before, after: after, half: half, frame: frame, slowest: slowest, backward: backward)
+    }
 }
 
 /// Makes a moment's reel (MomentReel.swift has its arithmetic) from the cameras' films: first every frame of the back

@@ -7,14 +7,12 @@ import AppKit
 #endif
 
 /// A moment's call, full screen (a sheet on the Mac), as a phone shows one: the moment's period for the caller's name,
-/// its boundary under it, and how far the moment is. Ringing: Mute and Decline over slide to answer. Picked up: the
-/// call's length, the back camera's picture small (a tap changes lens; the screen goes dark at the ear), a photo button
-/// and the red button to hang up. Muted: the instant view takes its place. Then Call Ended, Declined or Missed Call (in
-/// red) while the entry is written, and the screen goes: an answered call's entry shows in the Journal, a declined one
-/// leaves the app as a phone does, a missed one just closes. Only when saving went amiss does it stay, saying so.
+/// its boundary under it, and how far the moment is. Ringing: Mute and Decline over slide to answer. Answered, the
+/// instant view takes its place; muted, the dark recording screen (`MutedView`). Declined or missed: Declined or Missed
+/// Call (in red) while the entry is written, then the screen goes — a declined call leaves the app as a phone does, a
+/// missed one just closes. Only when saving went amiss does it stay, saying so.
 struct MomentCallView: View {
     @Environment(AppSettings.self) private var settings
-    @Environment(AppRouter.self) private var router
     @Environment(\.dismiss) private var dismiss
 
     @State private var model: MomentCallModel
@@ -27,7 +25,7 @@ struct MomentCallView: View {
     var body: some View {
         Group {
             if let instant = model.instant {
-                InstantView(model: instant)
+                if instant.mode == .answered { InstantView(model: instant) } else { MutedView(model: instant) }
             } else {
                 call
             }
@@ -46,7 +44,7 @@ struct MomentCallView: View {
             guard let pick, pick.index == model.moment.index, !model.demo else { return }
             if pick.answer { model.answer() } else { model.decline() }
         }
-        .interactiveDismissDisabled(model.phase == .ringing || model.phase == .talking)
+        .interactiveDismissDisabled(model.phase != .ended(.missed))
         #if os(macOS)
         .frame(minWidth: 440, idealWidth: 480, minHeight: 720, idealHeight: 780)
         #endif
@@ -63,9 +61,6 @@ struct MomentCallView: View {
                 case .ringing:
                     Spacer(minLength: 24)
                     ringing
-                case .talking:
-                    Spacer(minLength: 16)
-                    talking
                 case .filming:
                     Spacer()
                 case .ended(let outcome):
@@ -82,7 +77,7 @@ struct MomentCallView: View {
 
     // MARK: Parts
 
-    /// The caller: what calls, the period, its boundary, how far the moment is (or how long the call lasts).
+    /// The caller: what calls, the period, its boundary, how far the moment is.
     private func header(_ words: Wording) -> some View {
         let m = model.moment
         return VStack(spacing: 6) {
@@ -97,7 +92,7 @@ struct MomentCallView: View {
             Text(verbatim: m.boundaryWord)
                 .font(.title3.weight(.medium))
                 .foregroundStyle(Theme.levelColor(m.level.kitLevel, lightness: 0.75))
-            TimelineView(.periodic(from: .now, by: model.phase == .talking ? 0.25 : 0.1)) { context in
+            TimelineView(.periodic(from: .now, by: 0.1)) { context in
                 if let status = status(at: context.date.timeIntervalSince1970, pure: words.pure) {
                     Text(verbatim: status)
                         .font(.reading(17, weight: .medium))
@@ -116,21 +111,16 @@ struct MomentCallView: View {
         let rarity = model.moment.rarity.title
         switch model.phase {
         case .ringing: return "Fractonica · \(rarity) moment"
-        case .talking: return "Recording · back camera"
-        case .filming: return ""
-        case .ended(.answered): return "Call Ended"
         case .ended(.declined): return "Declined"
         case .ended(.missed): return "Missed Call"
-        case .ended(.muted): return ""
+        case .filming, .ended: return ""
         }
     }
 
-    /// "in 0λ 18ν" while ringing (then "now", "0λ 6ν ago"), the call's length while talking and after.
+    /// "in 0λ 18ν" while ringing (then "now", "0λ 6ν ago").
     private func status(at t: Double, pure: Bool) -> String? {
         let flavon = FractonicaClock.shared.levelInfo(10).meanSeconds
         switch model.phase {
-        case .talking, .ended(.answered):
-            return Self.length(model.talked(at: t), pure: pure, flavon: flavon)
         case .ended, .filming:
             return nil
         case .ringing:
@@ -152,12 +142,6 @@ struct MomentCallView: View {
         return "\(whole)λ \(String(format: "%02d", min(24, Int((f - Double(whole)) * 25))))ν"
     }
 
-    /// "1:23" ("10λ 17ν" in pure mode).
-    static func length(_ seconds: Double, pure: Bool, flavon: Double) -> String {
-        if pure { return flavons(seconds / flavon) }
-        let s = Int(seconds)
-        return "\(s / 60):\(String(format: "%02d", s % 60))"
-    }
 
     // MARK: Ringing
 
@@ -165,7 +149,7 @@ struct MomentCallView: View {
         VStack(spacing: 34) {
             HStack(alignment: .top, spacing: 0) {
                 CallButton(symbol: "bell.slash.fill", title: "Mute", fill: .white.opacity(0.2)) { model.mute() }
-                    .accessibilityHint("Films both cameras from now through the moment")
+                    .accessibilityHint("Films both cameras with the screen dark until a Flavon after the moment")
                     .frame(maxWidth: .infinity)
                 CallButton(symbol: "phone.down.fill", title: "Decline", fill: Color(red: 0.92, green: 0.2, blue: 0.22)) { model.decline() }
                     .accessibilityHint("Takes a photo with each camera")
@@ -174,66 +158,6 @@ struct MomentCallView: View {
             }
             SlideToAnswer { model.answer() }
                 .keyboardShortcut(.defaultAction)
-        }
-    }
-
-    // MARK: Talking
-
-    private var talking: some View {
-        VStack(spacing: 26) {
-            ZStack {
-                Color.black
-                if let main = model.camera.main, let layer = model.camera.previews[main] {
-                    MomentCameraPreview(layer: layer)
-                } else {
-                    Image(systemName: model.camera.mode == .denied ? "video.slash" : "video")
-                        .font(.system(size: 30))
-                        .foregroundStyle(.white.opacity(0.4))
-                }
-                SnapFlash(count: model.snapFlashes)
-            }
-            .frame(width: 168, height: 224)
-            .clipShape(.rect(cornerRadius: 24, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).stroke(.white.opacity(0.18), lineWidth: 1))
-            .overlay(alignment: .bottomTrailing) {
-                let camera = model.camera
-                if camera.lenses.count > 1 {
-                    Text(verbatim: Self.lensName(camera.lenses[camera.lens]))
-                        .font(.caption.weight(.bold).monospacedDigit())
-                        .foregroundStyle(Theme.gold)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(.black.opacity(0.55), in: .capsule)
-                        .padding(10)
-                        .contentTransition(.numericText())
-                        .animation(.snappy, value: camera.lens)
-                }
-            }
-            .contentShape(.rect(cornerRadius: 24, style: .continuous))
-            .onTapGesture { model.nextLens() }
-            .overlay(alignment: .topLeading) {
-                Label("REC", systemImage: "circle.fill")
-                    .font(.caption2.weight(.heavy))
-                    .foregroundStyle(.white)
-                    .symbolEffect(.pulse)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(.black.opacity(0.5), in: .capsule)
-                    .padding(10)
-            }
-            .accessibilityElement()
-            .accessibilityLabel("The back camera, filming")
-            .accessibilityValue(model.camera.lenses.count > 1 ? Self.lensName(model.camera.lenses[model.camera.lens]) : "")
-            .accessibilityHint(model.camera.lenses.count > 1 ? "Changes lens" : "")
-            .accessibilityAction { model.nextLens() }
-            Spacer(minLength: 0)
-            CallButton(symbol: "camera.fill", title: model.snaps > 0 ? "Photo (\(model.snaps))" : "Photo", fill: .white.opacity(0.2)) {
-                model.snap()
-            }
-            CallButton(symbol: "phone.down.fill", title: "End", fill: Color(red: 0.92, green: 0.2, blue: 0.22), size: 78) {
-                model.hangUp()
-            }
-            .keyboardShortcut(.cancelAction)
         }
     }
 
@@ -270,13 +194,10 @@ struct MomentCallView: View {
         }
     }
 
-    /// The call is done: answered, the Journal with its entry; declined, out of the app (as a phone puts a declined call
-    /// away); missed, back where it rang.
+    /// The call is done: declined, out of the app (as a phone puts a declined call away); missed, back where it rang.
     private func leave(after outcome: MomentOutcome) {
         dismiss()
         switch outcome {
-        case .answered:
-            router.show(.journal)
         case .declined:
             Task {
                 // once the screen has gone
@@ -412,21 +333,5 @@ private struct SlideToAnswer: View {
             answered = true
             action()
         }
-    }
-}
-
-/// A flash over the camera when its frame is kept.
-private struct SnapFlash: View {
-    let count: Int
-    @State private var opacity = 0.0
-
-    var body: some View {
-        Color.white
-            .opacity(opacity)
-            .allowsHitTesting(false)
-            .onChange(of: count) {
-                opacity = 0.85
-                withAnimation(.easeOut(duration: 0.45)) { opacity = 0 }
-            }
     }
 }

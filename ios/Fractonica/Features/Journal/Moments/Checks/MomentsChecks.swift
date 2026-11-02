@@ -325,7 +325,7 @@ private func captureChecks() {
     var missed = entry(m)
     missed.data = missed.data.with(capture: m.capture(.missed))
     check(missed.rarity == .common && missed.capture?.missed == true, "a missed call captured nothing: common")
-    check(MomentOutcome.missed.title == "Missed" && MomentOutcome.missed.emoji == "🔴" && MomentOutcome.muted.title == nil,
+    check(MomentOutcome.missed.title == "Missed" && MomentOutcome.missed.emoji == "🔴" && MomentOutcome.muted.title == "Muted",
           "a missed call's entry: Missed, red")
     check(HubRecord.journalEntry(time: 1, zone: nil, entry: JournalEntry(), blobs: [], now: 1).rarity == .common, "no capture: common")
     // the composer's data keeps capture
@@ -475,12 +475,12 @@ private func reelChecks() {
     check(true, "a moment's film spans half a Flavon either side of it")
     let timing = MomentReelTiming(half: flavon / 2)
     typealias T = MomentReelTiming
-    check(abs(T.speed(-1) - 1) < 1e-4 && abs(T.speed(1) - 1) < 1e-4 && abs(T.speed(0) - T.slowest) < 1e-12,
+    check(abs(T.speed(-1) - 1) < 1e-4 && abs(T.speed(1) - 1) < 1e-4 && abs(T.speed(0) - T.deep) < 1e-12,
           "real time at the ends, an eighth at the moment")
     check((-20...20).allSatisfy { k in let x = Double(k) / 20; return abs(T.speed(x) - T.speed(-x)) < 1e-12 },
           "the slowing is symmetric about the moment")
     // a pass lasts H·∫dx/s: longer than the clip (it slows), shorter than all of it at the slowest
-    check(timing.passDuration > flavon && timing.passDuration < flavon / T.slowest, "a pass: \(timing.passDuration) s for a \(flavon) s Flavon")
+    check(timing.passDuration > flavon && timing.passDuration < flavon / T.deep, "a pass: \(timing.passDuration) s for a \(flavon) s Flavon")
     check(abs(timing.duration - 2 * timing.passDuration) < 1e-9 && timing.frameCount == Int((timing.duration / timing.frame).rounded()),
           "two passes of equal length, a frame each Sub-blink")
     check(abs(T.subBlink - clock.levelInfo(12).meanSeconds / 7) < 1e-9 && abs(T.subBlink - 0.0444) < 0.0005,
@@ -506,8 +506,8 @@ private func reelChecks() {
     check(monotonic, "the forward pass only moves forward")
     let dt = 0.05
     func rate(_ t: Double) -> Double { abs(at(t + dt).x - at(t - dt).x) * timing.half / (2 * dt) }
-    check(abs(rate(timing.passDuration / 2) - T.slowest) < 0.005, "an eighth of real time at the moment: \(rate(timing.passDuration / 2))")
-    check(abs(rate(timing.passDuration * 1.5) - T.slowest) < 0.005, "an eighth going back through it too: \(rate(timing.passDuration * 1.5))")
+    check(abs(rate(timing.passDuration / 2) - T.deep) < 0.005, "an eighth of real time at the moment: \(rate(timing.passDuration / 2))")
+    check(abs(rate(timing.passDuration * 1.5) - T.deep) < 0.005, "an eighth going back through it too: \(rate(timing.passDuration * 1.5))")
     check(abs(rate(timing.passDuration + 0.06) - 1) < 0.01, "real time where the backward pass begins: \(rate(timing.passDuration + 0.06))")
     check(abs(rate(0.06) - 1) < 0.01, "real time where the reel opens: \(rate(0.06))")
     check((1..<20).allSatisfy { k in
@@ -527,7 +527,21 @@ private func reelChecks() {
         return abs(lateAt(late.duration - t) - lateAt(t)) < 1e-9
     }, "going back is going forward, played in reverse")
     let lateRate = abs(late.source(at: late.moments[0] + dt).u - late.source(at: late.moments[0] - dt).u) / (2 * dt)
-    check(abs(lateRate - T.slowest) < 0.005, "an eighth at the moment, however much was filmed before it: \(lateRate)")
+    check(abs(lateRate - T.deep) < 0.005, "an eighth at the moment, however much was filmed before it: \(lateRate)")
+    // an answered call's reel: picked up 3 s before the moment, hung up 20 s after; at most a third slower, there and back
+    let answered = MomentReelTiming(before: 3, after: 20, half: flavon / 2, slowest: T.gentle)
+    func answeredRate(_ t: Double) -> Double { abs(answered.source(at: t + dt).u - answered.source(at: t - dt).u) / (2 * dt) }
+    check(abs(T.gentle - 2.0 / 3) < 1e-12 && abs(answeredRate(answered.moments[0]) - T.gentle) < 0.005
+          && abs(answeredRate(answered.moments[1]) - T.gentle) < 0.005, "two thirds of real time at the moment: \(answeredRate(answered.moments[0]))")
+    check(answered.passDuration > 23 && answered.passDuration < 23 / T.gentle && abs(answered.duration - 2 * answered.passDuration) < 1e-9,
+          "a pass a little longer than the film, then back: \(answered.passDuration) s")
+    check(abs(answeredRate(answered.moments[0] + 4) - 1) < 0.01, "real time again a few seconds on: \(answeredRate(answered.moments[0] + 4))")
+    // a muted call's: once, at real time throughout
+    let muted = MomentReelTiming(before: 5, after: flavon, half: flavon / 2, slowest: 1, backward: false)
+    check(abs(muted.duration - (5 + flavon)) < 1e-6 && muted.moments.count == 1 && abs(muted.moments[0] - 5) < 1e-6,
+          "a muted call's film plays once at real time, its click at the moment: \(muted.duration) s, \(muted.moments)")
+    check((0..<40).allSatisfy { k in let t = muted.duration * Double(k) / 40; return abs(muted.source(at: t).u - (t - 5)) < 1e-6 && !muted.source(at: t).backward },
+          "and every instant where it was filmed")
     // the words: the date without the cycles' marks, the time down to the Sub-blink, one ξ a frame
     let date = MomentReelText.date(at: vectorA, notation: notation)
     check(date == "α6 β4 γ9 δ3 ε5", "the date: \(date)")
@@ -617,16 +631,20 @@ private func reelRenderChecks() async {
         check(rms(timing.passDuration / 2 - 1, timing.passDuration / 2 - 0.1) > 0.05, "and through the slowing: \(rms(timing.passDuration / 2 - 1, timing.passDuration / 2 - 0.1))")
         check(rms(timing.passDuration + 0.5, timing.passDuration + 1.5) > 0.1, "and going back: \(rms(timing.passDuration + 0.5, timing.passDuration + 1.5))")
     }
-    // muted 1.5 s before the moment (the film's earlier frames left out), and one marked missed without clicks
-    for missed in [false, true] {
+    // picked up 1.5 s before the moment (the film's earlier frames left out): answered, slowing gently there and back;
+    // muted, once at real time; and one marked missed without clicks
+    for (kind, missed) in [("answered", false), ("muted", false), ("answered", true)] {
+        let answered = kind == "answered"
         let short = MomentReelScript(center: moment, before: 1.5, after: half, half: half, notation: notation, accent: [0.3, 0.5, 1],
-                                     side: 160, clicks: !missed, missed: missed)
-        let url = dir.appending(path: "short-\(missed).mov")
+                                     side: 160, clicks: !missed, missed: missed, slowest: answered ? MomentReelTiming.gentle : 1,
+                                     backward: answered)
+        let url = dir.appending(path: "short-\(kind)-\(missed).mov")
         do {
             try await MomentReelRenderer.render(films: films, script: short, to: url) { _ in }
             let length = try await AVURLAsset(url: url).load(.duration).seconds
-            check(abs(length - short.timing.duration) < 0.1 && short.timing.duration < timing.duration,
-                  "a reel from 1.5 s before the moment\(missed ? ", marked missed" : ""): \(length) s of \(short.timing.duration)")
+            let expected = answered ? short.timing.duration : 1.5 + half
+            check(abs(length - expected) < 0.1 && short.timing.duration < timing.duration,
+                  "\(kind) from 1.5 s before the moment\(missed ? ", marked missed" : ""): \(length) s of \(expected)")
         } catch {
             check(false, "a reel from 1.5 s before the moment: \(error.localizedDescription)")
         }
