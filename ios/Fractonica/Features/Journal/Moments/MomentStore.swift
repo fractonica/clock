@@ -115,8 +115,8 @@ final class MomentStore {
             applyLaunchOptions()
         }
         Task {
-            authorization = await MomentScheduling.authorization()
             alarmAuthorization = MomentAlarms.authorization()
+            await readAuthorization()
             await refill()
         }
         scheduleWake()
@@ -126,8 +126,8 @@ final class MomentStore {
         start()
         active = true
         Task {
-            authorization = await MomentScheduling.authorization()
             alarmAuthorization = MomentAlarms.authorization()
+            await readAuthorization()
             await refill()
         }
         sweepMissed()
@@ -191,14 +191,24 @@ final class MomentStore {
     }
 
     /// Rings a made-up moment's call in `seconds` (its moment a Flavon later): with the phone locked by then, as the
-    /// system's alarm.
+    /// system's alarm (asked for here when it never was), or as a notification without alarms.
     func scheduleTest(in seconds: Double) {
         let lead = Double(MomentCalendar.leadFlavons) * flavon
         let m = madeUp(at: now + seconds + lead)
         testCall = m
         if let data = try? JSONEncoder().encode(TestCall(m)) { defaults.set(data, forKey: Self.testKey) }
-        refillSoon()
         scheduleWake()
+        Task {
+            if alarmAuthorization == .notDetermined { alarmAuthorization = await MomentAlarms.requestAuthorization() }
+            await refill()
+        }
+    }
+
+    /// The test call's notification, tapped: it rings here.
+    func ringTest() {
+        guard let m = testCall else { return }
+        clearTest()
+        openCall(m, demo: true)
     }
 
     private var flavon: Double { FractonicaClock.shared.levelInfo(10).meanSeconds }
@@ -435,15 +445,25 @@ final class MomentStore {
 
     // MARK: - Notifications and alarms
 
+    /// Reads the notifications' permission; a notification centre that does not answer (it happens in the Simulator)
+    /// leaves it as it was rather than holding up the calls.
+    private func readAuthorization() async {
+        if let read = await AlertScheduling.within(5, { await MomentScheduling.authorization() }) {
+            authorization = read
+        } else {
+            momentsLog.error("the notification centre did not answer for the permission")
+        }
+    }
+
     /// Asks for permission to call: notifications, then alarms (at a moment of intent: the screen, turning Moments on).
     func requestAuthorization() async {
         await MomentScheduling.requestAuthorization()
-        authorization = await MomentScheduling.authorization()
+        await readAuthorization()
         if launch.autoOpen { alarmAuthorization = await MomentAlarms.requestAuthorization() }
         await refill()
     }
 
-    /// Asks for the alarms alone (the settings' button).
+    /// Asks for the alarms alone (the Moments screen while they were never asked for, the settings' button).
     func requestAlarms() async {
         alarmAuthorization = await MomentAlarms.requestAuthorization()
         await refill()
@@ -479,16 +499,22 @@ final class MomentStore {
             refillAgain = false
             guard !launch.isPreview else { break }
             let alarms = ringsAsAlarms && launch.autoOpen
+            let test = testCall.map { (fire: $0.time - Double(MomentCalendar.leadFlavons) * flavon, title: $0.ledTitle()) }
             let input = MomentScheduling.Input(settings: settings, zone: zone, pure: AppSettings.shared.pure, now: now, alarms: alarms,
-                                               unseen: unseenMissed, covered: Set(marks.keys))
+                                               unseen: unseenMissed, covered: Set(marks.keys), test: test)
             let calendar = calendar
-            let requests = authorization.canPost && settings.enabled
+            // the alarms first: they ring whatever the notification centre does
+            await syncAlarms(alarms)
+            let requests = authorization.canPost && (settings.enabled || testCall != nil)
                 ? await Task.detached(priority: .utility) { MomentScheduling.requests(input, calendar: calendar) }.value
                 : []
-            pendingCount = await MomentScheduling.apply(requests)
-            await syncAlarms(alarms)
+            if let held = await AlertScheduling.within(10, { await MomentScheduling.apply(requests) }) {
+                pendingCount = held
+            } else {
+                momentsLog.error("the notification centre did not answer while queueing")
+            }
             updateBadge()
-            momentsLog.info("refill: \(requests.count) requests queued, \(self.pendingCount) held")
+            momentsLog.info("refill: \(requests.count) requests queued, \(self.pendingCount) held; alarms \(String(describing: self.alarmAuthorization)), \(self.active ? "in front" : "away")")
         } while refillAgain
     }
 
@@ -525,6 +551,9 @@ final class MomentStore {
 
     private func applyLaunchOptions() {
         if launch.screen { AppRouter.shared.show(.moments) }
+        if let seconds = launch.testIn {
+            scheduleTest(in: seconds)
+        }
         if let seconds = launch.instantIn {
             openTest(in: seconds, level: launch.level, boundary: launch.boundary)
         } else if let rang = launch.rang {
@@ -615,6 +644,8 @@ enum MomentAuthorization: String, Sendable {
 enum MomentScheduling {
     static let prefix = "moment."
     static let missedPrefix = "moment.missed."
+    /// A test call's ring (where alarms do not ring it).
+    static let testID = "moment.test"
     static let budget = 12
     /// userInfo keys: the moment's number and a fingerprint of what the request says.
     static let indexKey = "fx.moment"
@@ -631,6 +662,8 @@ enum MomentScheduling {
         var unseen = 0
         /// Calls picked up already.
         var covered: Set<Int64> = []
+        /// A test call's first ring and its caller.
+        var test: (fire: Double, title: String)?
     }
 
     struct Request: Sendable, Hashable {
@@ -656,7 +689,11 @@ enum MomentScheduling {
         let list = calendar.upcoming(after: input.now - back, count: budget + 2, scan: 800) { input.settings.prompts($0, zone: input.zone) }
         var out: [Request] = []
         var badge = input.unseen
-        for m in list where !input.covered.contains(m.index) {
+        if !input.alarms, let test = input.test, test.fire > input.now + 1 {
+            out.append(Request(id: testID, index: -1, fire: test.fire, title: test.title, subtitle: "Test call · in 1 Flavon",
+                               body: "Answer, mute or decline it.", sound: input.settings.ringtone.fileName))
+        }
+        for m in list where input.settings.enabled && !input.covered.contains(m.index) {
             let ring = calendar.promptTime(of: m), end = calendar.ringEnd(of: m)
             if !input.alarms, ring > input.now + 1 { out.append(request(for: m, fire: ring, ringtone: input.settings.ringtone)) }
             if end > input.now + 1 {
@@ -774,6 +811,8 @@ enum MomentScheduling {
 ///                                   declined it films and saves (in the Simulator a drawn film stands in)
 ///     -FXMomentsRang <seconds>      … or one that has rung that long already (its moment past after a Flavon; it
 ///                                   rings out 11 Flavons in)
+///     -FXMomentsTestIn <seconds>    a test call that many seconds from now (Ring in 2 Flavons): away from the app by
+///                                   then, its alarm rings
 ///     -FXMomentsPick <choice>       pick it up by itself 2 s after it rings: answer, mute, decline (or wait: let it
 ///                                   ring out)
 ///     -FXMomentsLevel <level>       helion nuclide delta gamma beta alpha
@@ -787,6 +826,7 @@ enum MomentScheduling {
 ///     -FXMomentsPreview 1           never touch the notification centre
 struct MomentLaunchOptions: Sendable {
     var instantIn: Double?
+    var testIn: Double?
     var rang: Double?
     var pick: String?
     var level: MomentLevel?
@@ -802,6 +842,7 @@ struct MomentLaunchOptions: Sendable {
         func flag(_ key: String) -> Bool { string(key).map { ["1", "yes", "true"].contains($0.lowercased()) } ?? false }
         return MomentLaunchOptions(
             instantIn: string("FXMomentsInstant").flatMap(Double.init),
+            testIn: string("FXMomentsTestIn").flatMap(Double.init),
             rang: string("FXMomentsRang").flatMap(Double.init),
             pick: string("FXMomentsPick")?.lowercased(),
             level: string("FXMomentsLevel").flatMap { MomentLevel(rawValue: $0.lowercased()) },

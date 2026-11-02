@@ -136,15 +136,6 @@ struct Moment: Hashable, Identifiable, Sendable {
             "Helion \(notation.cycleShort(level: 6, cycle: cycle))"
         }
     }
-
-    /// What the announcement says: "A new Delta begins", "Gamma node", "Helion ascending node".
-    var spoken: String {
-        if level == .helion, boundary == .start || boundary == .node { return "Helion \(boundaryWord.lowercased())" }
-        return boundary == .start ? "A new \(level.name) begins" : "\(level.name) \(boundary.rawValue)"
-    }
-
-    /// The bundled announcement for this kind of moment ("moment-delta-node", a .caf in Resources/Moments).
-    var soundName: String { "moment-\(level.rawValue)-\(boundary.rawValue)" }
 }
 
 /// How a moment's call went (`capture.outcome`, hub/API.md): picked up (the back camera filming until hung up), muted
@@ -486,8 +477,6 @@ struct MomentSettings: Hashable, Codable, Sendable {
     var enabled = true
     var helion = HelionPrompts.nodes
     var quiet = MomentQuietHours()
-    /// The moment's name spoken over the ringtone when its call rings in the app.
-    var voice = true
     /// The call rings in the app by itself while the app is in front (otherwise the system's alarm rings even then).
     var autoOpen = true
     var ringtone = MomentRingtone.helion
@@ -501,12 +490,11 @@ struct MomentSettings: Hashable, Codable, Sendable {
         enabled = (try? c.decodeIfPresent(Bool.self, forKey: .enabled)) ?? d.enabled
         helion = (try? c.decodeIfPresent(HelionPrompts.self, forKey: .helion)) ?? d.helion
         quiet = (try? c.decodeIfPresent(MomentQuietHours.self, forKey: .quiet)) ?? d.quiet
-        voice = (try? c.decodeIfPresent(Bool.self, forKey: .voice)) ?? d.voice
         autoOpen = (try? c.decodeIfPresent(Bool.self, forKey: .autoOpen)) ?? d.autoOpen
         ringtone = (try? c.decodeIfPresent(MomentRingtone.self, forKey: .ringtone)) ?? d.ringtone
     }
 
-    private enum CodingKeys: String, CodingKey { case enabled, helion, quiet, voice, autoOpen, ringtone }
+    private enum CodingKeys: String, CodingKey { case enabled, helion, quiet, autoOpen, ringtone }
 
     /// Whether the settings ask for this kind of moment (quiet hours aside).
     func asks(_ m: Moment) -> Bool {

@@ -251,16 +251,18 @@ mythic Beta, cosmic Alpha; of the Helion ones its two nodes call, the ascending 
 descending one at its mid point, `MomentSettings.asks`). Each is a **call**: it rings a Flavon before the moment for 11
 Flavons (`MomentCalendar.promptTime`, `ringEnd`), its ringtone looping (`MomentRingtone`: four synthesised by
 scripts/make-ringtones.swift into Resources/Moments, whole rings of half a Flavon, chosen in the settings) with a buzz
-each ring and the moment's name spoken over it (clips made by scripts/make-moment-voices.sh). While the app is in front
+each ring. While the app is in front
 its call screen rings (`MomentCallView`, `MomentCallModel`, `MomentRinger`: the period for the caller's name, Mute and
 Decline over slide to answer); otherwise an AlarmKit alarm (iOS 26, `MomentAlarms`: one per call for the next 8, set on
-leaving and in the background refresh, cleared on coming back) rings it on the Lock Screen — its Answer
-(`AnswerMomentCallIntent`) opens the app on the call picked up, its Stop (`DeclineMomentCallIntent`) declined — or,
-without alarms, a time-sensitive notification with the ringtone. The cameras start with the first ring
+leaving and in the background refresh, cleared on coming back; asked for on the Moments screen and by Test a Call)
+rings it on the Lock Screen — its Answer (`AnswerMomentCallIntent`) opens the app on the call picked up, its Stop
+(`DeclineMomentCallIntent`) declined — or, without alarms, a time-sensitive notification with the ringtone. The cameras start with the first ring
 (`MomentCamera`: both at once, a frame each Sub-blink — ξ, 44.4 ms — each into a movie file of its own, the microphone
 into one more), so each choice starts at once. **Answered**: the back camera films with the microphone until the red
-button (`record(from:to: .infinity)`), the screen dark at the ear (proximity), a haptic at the moment; the entry keeps
-the film as `call` (`MomentCallFilm.merge` lays the sound under the picture, passed through). **Muted**: the instant
+button (`record(from:to: .infinity)`), the screen dark at the ear (proximity), a tap on the viewfinder changing lens
+(the back camera is the multi-lens one where it runs beside the selfie camera, `MomentCamera.nextLens`: its zoom, so the
+film runs on), a haptic at the moment; the entry keeps the film as `call` (`MomentCallFilm.merge` lays the sound under
+the picture, passed through) and the Journal shows it. **Muted**: the instant
 view (`InstantView`, `InstantModel`) takes the call's place and its cameras and films from the press to half a Flavon
 after the moment (`MomentCalendar.filmSpan`) — muted after the moment, a Flavon from the press marked MISSED in red;
 the last capture's films stay in Caches/MomentFilms until the next (`MomentFilmArchive`). Until the film ends a tap on a
@@ -271,8 +273,10 @@ a sound): the selfie's square over the back camera's, the film played forward sl
 Gaussian of half a Flavon's scale about it, whatever was filmed before it) with a click there, then at once backwards
 the same way (a click again), the sound read at the picture's pace; its frames last a Sub-blink too, each a whole filmed
 frame stamped at the top with its date ("α6 β4 γ9 δ4 ε1") and its time down to the Sub-blink ("62η 4ι 29λ 4ν 3ξ"), so
-at real time the ξ rolls over every frame; in the Simulator a drawn film stands in for the cameras. **Declined**: each
-camera's photo at the press, Declined. **Rung out**: a missed call. Every entry is written right after, before the view
+at real time the ξ rolls over every frame; in the Simulator a drawn film stands in for the cameras; saved, the Journal
+shows it. **Declined**: each camera's photo at the press, Declined, and the app puts itself away as a phone does.
+**Rung out**: a missed call, and the call screen goes. No confirmation screen follows a call, unless saving went
+amiss. Every entry is written right after, before the view
 changes: `time` and `data.capture.at` the moment, `capture.outcome` how the call went (hub/API.md). What became of each
 call is kept a few days (`MomentStore` `marks`); calls that rang out unanswered become entries titled Missed, 🔴, on the
 iPhone only (`sweepMissed`, from the first launch that rang them), with a "Missed Call" notification at each call's end

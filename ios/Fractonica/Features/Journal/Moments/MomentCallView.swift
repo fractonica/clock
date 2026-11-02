@@ -1,11 +1,17 @@
 import FractonicaKit
 import SwiftUI
+#if os(iOS)
+import UIKit
+#else
+import AppKit
+#endif
 
 /// A moment's call, full screen (a sheet on the Mac), as a phone shows one: the moment's period for the caller's name,
 /// its boundary under it, and how far the moment is. Ringing: Mute and Decline over slide to answer. Picked up: the
-/// call's length, the back camera's picture small (the screen goes dark at the ear), a photo button and the red button
-/// to hang up. Muted: the instant view takes its place. Then Call Ended, Declined (each camera's photo) or Missed Call
-/// in red, with the entry written and Edit and Done.
+/// call's length, the back camera's picture small (a tap changes lens; the screen goes dark at the ear), a photo button
+/// and the red button to hang up. Muted: the instant view takes its place. Then Call Ended, Declined or Missed Call (in
+/// red) while the entry is written, and the screen goes: an answered call's entry shows in the Journal, a declined one
+/// leaves the app as a phone does, a missed one just closes. Only when saving went amiss does it stay, saying so.
 struct MomentCallView: View {
     @Environment(AppSettings.self) private var settings
     @Environment(AppRouter.self) private var router
@@ -13,7 +19,6 @@ struct MomentCallView: View {
 
     @State private var model: MomentCallModel
     @State private var moments = MomentStore.shared
-    @State private var journal = JournalStore.shared
 
     init(request: InstantRequest) {
         _model = State(initialValue: MomentCallModel(request: request))
@@ -31,6 +36,10 @@ struct MomentCallView: View {
         .onDisappear {
             model.close()
             moments.instantClosed()
+        }
+        .onChange(of: model.finished) { _, outcome in
+            guard let outcome else { return }
+            leave(after: outcome)
         }
         .onChange(of: moments.pick) { _, pick in
             // the alarm's Answer or Stop for this call, its screen up already
@@ -60,7 +69,7 @@ struct MomentCallView: View {
                 case .filming:
                     Spacer()
                 case .ended(let outcome):
-                    ended(outcome, words)
+                    ended(outcome)
                 }
             }
             .padding(.horizontal, 24)
@@ -132,6 +141,11 @@ struct MomentCallView: View {
         }
     }
 
+    /// "0.5×", "1×", "3×".
+    static func lensName(_ lens: Double) -> String {
+        (lens == lens.rounded() ? String(Int(lens)) : String(format: "%.1f", lens)) + "×"
+    }
+
     /// "0λ 18ν".
     static func flavons(_ f: Double) -> String {
         let whole = Int(f)
@@ -181,6 +195,22 @@ struct MomentCallView: View {
             .frame(width: 168, height: 224)
             .clipShape(.rect(cornerRadius: 24, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).stroke(.white.opacity(0.18), lineWidth: 1))
+            .overlay(alignment: .bottomTrailing) {
+                let camera = model.camera
+                if camera.lenses.count > 1 {
+                    Text(verbatim: Self.lensName(camera.lenses[camera.lens]))
+                        .font(.caption.weight(.bold).monospacedDigit())
+                        .foregroundStyle(Theme.gold)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(.black.opacity(0.55), in: .capsule)
+                        .padding(10)
+                        .contentTransition(.numericText())
+                        .animation(.snappy, value: camera.lens)
+                }
+            }
+            .contentShape(.rect(cornerRadius: 24, style: .continuous))
+            .onTapGesture { model.nextLens() }
             .overlay(alignment: .topLeading) {
                 Label("REC", systemImage: "circle.fill")
                     .font(.caption2.weight(.heavy))
@@ -191,16 +221,11 @@ struct MomentCallView: View {
                     .background(.black.opacity(0.5), in: .capsule)
                     .padding(10)
             }
-            .overlay(alignment: .bottom) {
-                if model.reachedMoment {
-                    Text("past the moment")
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(.white.opacity(0.8))
-                        .padding(8)
-                }
-            }
             .accessibilityElement()
             .accessibilityLabel("The back camera, filming")
+            .accessibilityValue(model.camera.lenses.count > 1 ? Self.lensName(model.camera.lenses[model.camera.lens]) : "")
+            .accessibilityHint(model.camera.lenses.count > 1 ? "Changes lens" : "")
+            .accessibilityAction { model.nextLens() }
             Spacer(minLength: 0)
             CallButton(symbol: "camera.fill", title: model.snaps > 0 ? "Photo (\(model.snaps))" : "Photo", fill: .white.opacity(0.2)) {
                 model.snap()
@@ -214,73 +239,62 @@ struct MomentCallView: View {
 
     // MARK: Ended
 
-    @ViewBuilder
-    private func ended(_ outcome: MomentOutcome, _ words: Wording) -> some View {
-        let record = model.savedID.flatMap { journal.record($0) }
-        ScrollView {
-            VStack(spacing: 18) {
-                switch outcome {
-                case .declined:
-                    if let record { DeclinedPhotos(record: record) }
-                case .missed:
-                    Image(systemName: "phone.down.circle.fill")
-                        .font(.system(size: 76))
-                        .foregroundStyle(.white, Theme.danger)
-                        .padding(.top, 30)
-                    Text(model.demo ? "A test call rang out." : "Rang for \(MomentCalendar.ringFlavons) Flavons unanswered.")
-                        .font(.footnote)
-                        .foregroundStyle(Theme.ink3)
-                default:
-                    if let record { CaptureCard(record: record, words: words) }
-                }
-                if model.saving || (record == nil && outcome != .missed && model.trouble == nil) {
-                    ProgressView("Saving…")
-                        .tint(.white)
-                        .padding(.top, 24)
-                }
-                if let trouble = model.trouble {
-                    Text(verbatim: "Saved — \(trouble)")
-                        .font(.footnote)
-                        .foregroundStyle(Theme.ink3)
-                }
-                if record != nil {
-                    StreakLine(stats: moments.stats, rarity: model.moment.rarity)
-                }
-                buttons(record)
+    /// While the entry is written (or, when that went amiss, why, and Done).
+    private func ended(_ outcome: MomentOutcome) -> some View {
+        VStack(spacing: 18) {
+            Spacer()
+            if outcome == .missed {
+                Image(systemName: "phone.down.circle.fill")
+                    .font(.system(size: 76))
+                    .foregroundStyle(.white, Theme.danger)
             }
-            .padding(.top, 24)
+            if let trouble = model.trouble {
+                Text(verbatim: "Saved — \(trouble)")
+                    .font(.footnote)
+                    .foregroundStyle(Theme.ink2)
+                    .multilineTextAlignment(.center)
+                Button {
+                    dismiss()
+                } label: {
+                    Label("Done", systemImage: "checkmark").frame(maxWidth: .infinity)
+                }
+                .glassProminentButtonStyle()
+                .tint(Theme.teal)
+                .controlSize(.large)
+                .buttonBorderShape(.capsule)
+                .keyboardShortcut(.defaultAction)
+            } else if outcome != .missed {
+                ProgressView().tint(.white).controlSize(.large)
+            }
+            Spacer()
         }
-        .scrollBounceBehavior(.basedOnSize)
     }
 
-    private func buttons(_ record: HubRecord?) -> some View {
-        HStack(spacing: 12) {
-            if let record {
-                Button {
-                    let id = record.id
-                    dismiss()
-                    Task {
-                        try? await Task.sleep(for: .milliseconds(650))
-                        router.show(.journal)
-                        JournalUI.shared.edit(id)
-                    }
-                } label: {
-                    Label("Edit", systemImage: "pencil").frame(maxWidth: .infinity)
-                }
-                .glassButtonStyle()
+    /// The call is done: answered, the Journal with its entry; declined, out of the app (as a phone puts a declined call
+    /// away); missed, back where it rang.
+    private func leave(after outcome: MomentOutcome) {
+        dismiss()
+        switch outcome {
+        case .answered:
+            router.show(.journal)
+        case .declined:
+            Task {
+                // once the screen has gone
+                try? await Task.sleep(for: .milliseconds(450))
+                Self.leaveApp()
             }
-            Button {
-                dismiss()
-            } label: {
-                Label("Done", systemImage: "checkmark").frame(maxWidth: .infinity)
-            }
-            .glassProminentButtonStyle()
-            .tint(Theme.teal)
-            .keyboardShortcut(.defaultAction)
+        default:
+            break
         }
-        .controlSize(.large)
-        .buttonBorderShape(.capsule)
-        .disabled(model.saving)
+    }
+
+    /// Puts the app away to the Home Screen (or the Lock Screen it came from); the Mac hides it.
+    static func leaveApp() {
+        #if os(iOS)
+        UIControl().sendAction(#selector(URLSessionTask.suspend), to: UIApplication.shared, for: nil)
+        #else
+        NSApp.hide(nil)
+        #endif
     }
 }
 
@@ -398,29 +412,6 @@ private struct SlideToAnswer: View {
             answered = true
             action()
         }
-    }
-}
-
-/// A declined call's photos as the reel shows its cameras: the selfie's square over the back camera's.
-private struct DeclinedPhotos: View {
-    let record: HubRecord
-
-    var body: some View {
-        let photos = record.mediaBlobs.filter { $0.role == "photo" }
-        let ordered = ["front", "back", "camera"].compactMap { name in photos.first { $0.name == name } }
-        VStack(spacing: 2) {
-            ForEach(ordered, id: \.hash) { blob in
-                Color.clear
-                    .aspectRatio(1, contentMode: .fit)
-                    .overlay { BlobImage(blob: blob, points: 420) }
-                    .clipped()
-            }
-        }
-        .background(.black)
-        .clipShape(.rect(cornerRadius: 24, style: .continuous))
-        .frame(maxWidth: 250)
-        .accessibilityElement()
-        .accessibilityLabel("A photo from each camera, taken as the call was declined")
     }
 }
 

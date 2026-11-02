@@ -8,19 +8,22 @@ import AudioToolbox
 import UIKit
 #endif
 
-/// A moment's call: it rings from a Flavon before the moment for 11 Flavons (the ringtone looping, a buzz each ring,
-/// the moment's name spoken over the second), the cameras running from the first ring so whatever is chosen starts at
-/// once:
+/// A moment's call: it rings from a Flavon before the moment for 11 Flavons (the ringtone looping, a buzz each ring),
+/// the cameras running from the first ring so whatever is chosen starts at once:
 ///
 /// - **Answered** (slide to answer, or the alarm's Answer): the back camera films with the microphone until hung up,
-///   the screen dark against the ear (the proximity sensor), a haptic at the moment; the entry keeps the film as
-///   `call` (its poster the moment's frame), titled Answered.
+///   the screen dark against the ear (the proximity sensor), a tap on the viewfinder changing lens, a haptic at the
+///   moment; the entry keeps the film as `call` (its poster the moment's frame), titled Answered. Saved, the Journal
+///   shows it.
 /// - **Muted**: both cameras film from the press through the moment into its reel — the instant view (`InstantModel`)
 ///   takes the call's place and its cameras.
-/// - **Declined** (or the alarm's Stop): each camera's photo at the press (`front`, `back`), titled Declined.
-/// - **Rung out**: a missed call — on the iPhone an entry titled Missed, 🔴 (`MomentStore.recordMissed`).
+/// - **Declined** (or the alarm's Stop): each camera's photo at the press (`front`, `back`), titled Declined; then the
+///   app leaves the screen, as a declined call does.
+/// - **Rung out**: a missed call — on the iPhone an entry titled Missed, 🔴 (`MomentStore.recordMissed`) — and the
+///   call screen goes.
 ///
-/// Every entry is on the moment's time with its `capture` and how the call went (`MomentOutcome`).
+/// Every entry is on the moment's time with its `capture` and how the call went (`MomentOutcome`). `finished` says when
+/// the call's screen is done (the entry written, or the call missed).
 @MainActor @Observable
 final class MomentCallModel {
     enum Phase: Equatable {
@@ -43,8 +46,6 @@ final class MomentCallModel {
     /// When it was picked up and hung up.
     private(set) var talkStart: Double?
     private(set) var talkEnd: Double?
-    /// The moment itself is past, while talking.
-    private(set) var reachedMoment = false
     /// The entry written for the call (a muted one's instant view writes its own).
     private(set) var savedID: String?
     private(set) var saving = false
@@ -55,6 +56,8 @@ final class MomentCallModel {
     private(set) var snapFlashes = 0
     /// The muted call's instant view.
     private(set) var instant: InstantModel?
+    /// The call is over and its entry written (or it was missed): the screen goes.
+    private(set) var finished: MomentOutcome?
 
     @ObservationIgnored private let start: CallStart
     @ObservationIgnored private var opened = false
@@ -102,10 +105,7 @@ final class MomentCallModel {
         switch start {
         case .ringing:
             guard now < ringEnd else { return ringOut() }
-            let settings = MomentStore.shared.settings
-            let flavon = FractonicaClock.shared.levelInfo(10).meanSeconds
-            // the name is spoken while the moment is still ahead
-            MomentRinger.shared.ring(settings.ringtone, announcing: settings.voice && moment.time - now > 0.6 * flavon ? moment : nil)
+            MomentRinger.shared.ring(MomentStore.shared.settings.ringtone)
             let end = ringEnd
             timeout = Task { [weak self] in
                 await MomentClock.sleep(until: end)
@@ -156,15 +156,13 @@ final class MomentCallModel {
             return await camera.record(from: Date.now.timeIntervalSince1970, to: .infinity, only: Set([camera.main].compactMap { $0 }))
         }
         if moment.time > now {
+            // the moment itself, felt at the ear
             let t = moment.time
-            tick = Task { [weak self] in
+            tick = Task {
                 await MomentClock.sleep(until: t)
                 guard !Task.isCancelled else { return }
-                self?.reachedMoment = true
                 MomentHaptics.capture()
             }
-        } else {
-            reachedMoment = true
         }
     }
 
@@ -211,7 +209,15 @@ final class MomentCallModel {
             saving = true
             savedID = await MomentStore.shared.recordMissed(moment, demo: demo)
             saving = false
+            finished = .missed
         }
+    }
+
+    /// While talking: the back camera's next lens (1× → 3× → 0.5× …, as the phone has them).
+    func nextLens() {
+        guard phase == .talking, camera.lenses.count > 1 else { return }
+        Haptics.play(.selection)
+        camera.nextLens()
     }
 
     /// While talking: the back camera's frame kept as a photo.
@@ -286,6 +292,7 @@ final class MomentCallModel {
         for task in photos { media += await task.value }
         await save(.answered, media: media)
         endBackgroundWork()
+        if trouble == nil { finished = .answered }
     }
 
     private func saveDecline(photos: Bool) async {
@@ -310,6 +317,7 @@ final class MomentCallModel {
         camera.stop()
         let media = await MomentSaver.adopt(shots)
         await save(.declined, media: media)
+        if trouble == nil { finished = .declined }
     }
 
     private func save(_ outcome: MomentOutcome, media: [BlobRef]) async {
@@ -370,8 +378,8 @@ enum MomentClock {
 // MARK: - The ringing
 
 /// A call ringing in the app: its ringtone looping through the silent switch (in the call's audio session, so the
-/// cameras starting under it do not stop it), a buzz at each ring, and — the announcement on — the moment's name spoken
-/// over the second ring, the ringtone lowered under it. `preview` plays a ringtone's first two rings for the settings.
+/// cameras starting under it do not stop it) and a buzz at each ring. `preview` plays a ringtone's first two rings for
+/// the settings.
 @MainActor @Observable
 final class MomentRinger {
     static let shared = MomentRinger()
@@ -379,10 +387,9 @@ final class MomentRinger {
     /// The ringtone being previewed.
     private(set) var previewing: MomentRingtone?
     @ObservationIgnored private var player: AVAudioPlayer?
-    @ObservationIgnored private var voice: AVAudioPlayer?
     @ObservationIgnored private var tasks: [Task<Void, Never>] = []
 
-    func ring(_ tone: MomentRingtone, announcing m: Moment?) {
+    func ring(_ tone: MomentRingtone) {
         stop()
         #if os(iOS)
         MomentCamera.prepareAudio(recording: AVAudioApplication.shared.recordPermission == .granted)
@@ -400,18 +407,6 @@ final class MomentRinger {
             }
         })
         #endif
-        if let m, let url = Bundle.main.url(forResource: m.soundName, withExtension: "caf") {
-            tasks.append(Task { [weak self] in
-                try? await Task.sleep(for: .seconds(MomentRingtone.cycle))
-                guard !Task.isCancelled, let self, let voice = try? AVAudioPlayer(contentsOf: url) else { return }
-                self.player?.setVolume(0.25, fadeDuration: 0.2)
-                self.voice = voice
-                voice.play()
-                try? await Task.sleep(for: .seconds(voice.duration + 0.2))
-                guard !Task.isCancelled else { return }
-                self.player?.setVolume(1, fadeDuration: 0.4)
-            })
-        }
     }
 
     /// Plays a ringtone's first two rings, or stops it when it is the one playing.
@@ -436,8 +431,6 @@ final class MomentRinger {
         tasks = []
         player?.stop()
         player = nil
-        voice?.stop()
-        voice = nil
         previewing = nil
     }
 

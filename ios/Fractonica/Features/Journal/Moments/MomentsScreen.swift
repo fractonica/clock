@@ -30,6 +30,8 @@ struct MomentsScreen: View {
                     PermissionCard(authorization: moments.authorization) {
                         Task { await moments.requestAuthorization() }
                     }
+                } else if moments.alarmAuthorization == .denied {
+                    AlarmsOffCard()
                 }
                 NextMomentCard(words: words, live: visible)
                 if moments.stats.missedCount > 0 { MissedCalls(words: words) }
@@ -67,6 +69,10 @@ struct MomentsScreen: View {
             launched = true
             if moments.authorization == .notDetermined, moments.settings.enabled, !moments.launch.isPreview {
                 Task { await moments.requestAuthorization() }
+            } else if moments.alarmAuthorization == .notDetermined, moments.settings.enabled, !moments.launch.isPreview,
+                      moments.launch.autoOpen {
+                // notifications were allowed before the calls: the alarms are asked for now
+                Task { await moments.requestAlarms() }
             }
         }
         .onDisappear { visible = false }
@@ -532,6 +538,24 @@ private struct OffCard: View {
     }
 }
 
+/// Alarms refused: calls ring only while the app is in front.
+private struct AlarmsOffCard: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label("Alarms are off", systemImage: "alarm.waves.left.and.right")
+                .font(.headline)
+                .foregroundStyle(Theme.ink)
+            Text("Calls ring only while Fractonica is open, and a notification rings the ringtone once otherwise. To be called with the phone locked, allow Alarms for Fractonica in Settings.")
+                .font(.footnote)
+                .foregroundStyle(Theme.ink2)
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.panel, in: .rect(cornerRadius: 18, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(Theme.line, lineWidth: 1))
+    }
+}
+
 private struct PermissionCard: View {
     let authorization: MomentAuthorization
     let ask: () -> Void
@@ -612,10 +636,9 @@ struct MomentSettingsView: View {
                 Text("A call rings a Flavon before its moment for 11 Flavons, through the silent switch. A tap plays two rings.")
             }
             Section {
-                Toggle("Announce the moment", isOn: $moments.settings.voice)
                 Toggle("Ring in the app", isOn: $moments.settings.autoOpen)
             } footer: {
-                Text("While Fractonica is in front its call screen rings, the moment's name spoken over the ringtone; otherwise an alarm rings it, on the Lock Screen too. With Ring in the app off, the alarm rings even then.")
+                Text("While Fractonica is in front its call screen rings; otherwise an alarm rings it, on the Lock Screen too. With Ring in the app off, the alarm rings even then.")
             }
             Section {
                 LabeledContent("Alarms", value: alarmPermission)

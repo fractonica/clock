@@ -16,7 +16,9 @@ import AppKit
 /// those named), each into a movie file of its own — `back`, `front`, or `camera` (the Mac) — and its sound into one
 /// more, `sound`; a span without an end films until the task is cancelled (an answered call, hung up). `still(_:)` is a
 /// camera's latest frame as a photo; `voice(_:)` lets the microphone into the voice note while the button is held,
-/// every held stretch back to back in one file (`finishVoice()`). The cameras start once, however many ask.
+/// every held stretch back to back in one file (`finishVoice()`). The cameras start once, however many ask. Where the
+/// phone has several back lenses and can run them beside the selfie camera, the back camera is the multi-lens one, on
+/// its wide lens: `nextLens()` moves to the next (1× → 3× → 0.5× …) by its zoom, so a film runs on unbroken.
 @MainActor @Observable
 final class MomentCamera {
     enum Mode: Equatable {
@@ -35,6 +37,9 @@ final class MomentCamera {
     private(set) var previews: [String: AVCaptureVideoPreviewLayer] = [:]
     /// The session hears the microphone: the films have their sound and the voice note comes from it.
     private(set) var hearing = false
+    /// The back camera's lenses, as the phone names them (0.5, 1, 3), and the one in use.
+    private(set) var lenses: [Double] = []
+    private(set) var lens = 0
 
     @ObservationIgnored private let rig = CameraRig()
     @ObservationIgnored private var starting: Task<Void, Never>?
@@ -62,8 +67,17 @@ final class MomentCamera {
         let result = await rig.configure(sound: sound)
         previews = result.previews
         hearing = result.hearing
+        lenses = result.lenses
+        lens = result.lens
         mode = result.previews.isEmpty ? .none : result.previews.count > 1 ? .dual : .single
         #endif
+    }
+
+    /// The back camera's next lens, round to the widest after the longest.
+    func nextLens() {
+        guard lenses.count > 1 else { return }
+        lens = (lens + 1) % lenses.count
+        rig.lens(lens)
     }
 
     func stop() {
@@ -125,7 +139,14 @@ private final class CameraRig: @unchecked Sendable {
     struct Configured: @unchecked Sendable {
         var previews: [String: AVCaptureVideoPreviewLayer]
         var hearing = false
+        /// The back lenses' names (0.5, 1, 3) and the one in use.
+        var lenses: [Double] = []
+        var lens = 0
     }
+
+    /// The back camera when it has several lenses, and each lens's zoom factor on it.
+    private var back: AVCaptureDevice?
+    private var zooms: [CGFloat] = []
 
     func configure(sound: Bool) async -> Configured {
         await withCheckedContinuation { continuation in
@@ -138,7 +159,18 @@ private final class CameraRig: @unchecked Sendable {
     private func build(sound: Bool) -> Configured {
         #if os(iOS)
         if sound { MomentCamera.prepareAudio(recording: true) }
-        if AVCaptureMultiCamSession.isMultiCamSupported, let dual = buildDual(sound: sound) { return dual }
+        if AVCaptureMultiCamSession.isMultiCamSupported {
+            // the back camera with the most lenses that runs beside the selfie camera
+            let types: [AVCaptureDevice.DeviceType] = [.builtInTripleCamera, .builtInDualWideCamera, .builtInDualCamera, .builtInWideAngleCamera]
+            let sets = AVCaptureDevice.DiscoverySession(deviceTypes: types, mediaType: .video, position: .unspecified).supportedMultiCamDeviceSets
+            if let front = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .front) {
+                for type in types {
+                    guard let back = AVCaptureDevice.default(type, for: .video, position: .back),
+                          sets.contains(where: { $0.contains(back) && $0.contains(front) }) else { continue }
+                    if let dual = buildDual(back: back, front: front, sound: sound) { return dual }
+                }
+            }
+        }
         #endif
         return buildSingle(sound: sound)
     }
@@ -179,16 +211,16 @@ private final class CameraRig: @unchecked Sendable {
     /// Back and front cameras in one multi-camera session, each with a video data output and a preview layer
     /// connected by hand (Apple's AVMultiCamPiP pattern), at the fastest frame rate the hardware affords for both.
     /// Nil when the hardware cannot afford both at all.
-    private func buildDual(sound: Bool) -> Configured? {
+    private func buildDual(back: AVCaptureDevice, front: AVCaptureDevice, sound: Bool) -> Configured? {
         let session = AVCaptureMultiCamSession()
         session.automaticallyConfiguresApplicationAudioSession = false
         session.beginConfiguration()
         var previews: [String: AVCaptureVideoPreviewLayer] = [:]
         var made: [FrameTap] = []
         var devices: [AVCaptureDevice] = []
-        for (name, position) in [("back", AVCaptureDevice.Position.back), ("front", .front)] {
-            guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: position),
-                  let input = try? AVCaptureDeviceInput(device: device), session.canAddInput(input) else { continue }
+        for (name, device) in [("back", back), ("front", front)] {
+            let position = device.position
+            guard let input = try? AVCaptureDeviceInput(device: device), session.canAddInput(input) else { continue }
             session.addInputWithNoConnections(input)
             guard let port = input.ports(for: .video, sourceDeviceType: device.deviceType, sourceDevicePosition: position).first else { continue }
             let (output, tap) = videoOutput(name)
@@ -218,18 +250,44 @@ private final class CameraRig: @unchecked Sendable {
             devices.append(device)
         }
         devices.forEach { Self.setFormat($0, frame: MomentReelTiming.subBlink) }
+        // a multi-lens camera opens on its widest lens: on the wide one from the start
+        let lenses = Self.lenses(back)
+        if lenses.zooms.count > 1 { zoom(back, to: lenses.zooms[lenses.wide]) }
         let mic = sound ? addMicrophone(to: session, byHand: true) : nil
         session.commitConfiguration()
         guard made.count == 2, session.hardwareCost <= 1, session.systemPressureCost <= 1 else {
+            momentsLog.info("cameras: \(back.localizedName) and the selfie camera cost too much together")
             return nil
         }
-        momentsLog.info("cameras: back and front a frame each Sub-blink, \(mic == nil ? "no sound" : "with sound")")
+        momentsLog.info("cameras: \(back.localizedName) and front a frame each Sub-blink, lenses \(lenses.names), \(mic == nil ? "no sound" : "with sound")")
         (made + [mic].compactMap { $0 }).forEach { $0.clock = session.synchronizationClock }
         session.startRunning()
         self.session = session
         taps = made
         self.sound = mic
-        return Configured(previews: previews, hearing: mic != nil)
+        if lenses.zooms.count > 1 {
+            self.back = back
+            zooms = lenses.zooms
+        }
+        return Configured(previews: previews, hearing: mic != nil, lenses: lenses.names, lens: lenses.wide)
+    }
+
+    /// A multi-lens camera's lenses, widest first: the zoom factor that brings each in (the first lens at 1, the next
+    /// where the camera switches over to it), their names as the phone gives them (0.5, 1, 3), and the wide one.
+    private static func lenses(_ device: AVCaptureDevice) -> (zooms: [CGFloat], names: [Double], wide: Int) {
+        let switches = device.virtualDeviceSwitchOverVideoZoomFactors.map { CGFloat(truncating: $0) }
+        guard device.isVirtualDevice, !switches.isEmpty, switches.count == device.constituentDevices.count - 1 else { return ([1], [1], 0) }
+        let zooms = [1] + switches
+        let multiplier = Double(device.displayVideoZoomFactorMultiplier)
+        let names = zooms.map { (Double($0) * multiplier * 10).rounded() / 10 }
+        let wide = device.constituentDevices.firstIndex { $0.deviceType == .builtInWideAngleCamera } ?? 0
+        return (zooms, names, wide)
+    }
+
+    private func zoom(_ device: AVCaptureDevice, to factor: CGFloat) {
+        guard (try? device.lockForConfiguration()) != nil else { return }
+        device.videoZoomFactor = min(max(factor, device.minAvailableVideoZoomFactor), device.activeFormat.videoMaxZoomFactor)
+        device.unlockForConfiguration()
     }
 
     /// The device's smallest 8-bit format (multi-camera where `multi`) taking a frame each `frame` seconds whose short
@@ -324,6 +382,8 @@ private final class CameraRig: @unchecked Sendable {
         queue.async {
             if let session = self.session, session.isRunning { session.stopRunning() }
             self.session = nil
+            self.back = nil
+            self.zooms = []
             (self.taps + [self.sound].compactMap { $0 }).forEach { $0.cancel() }
             self.taps = []
             self.sound = nil
@@ -382,6 +442,16 @@ private final class CameraRig: @unchecked Sendable {
 
     func voice(_ on: Bool) {
         queue.async { self.sound?.hold(on) }
+    }
+
+    /// The back camera on lens `index`.
+    func lens(_ index: Int) {
+        #if os(iOS)
+        queue.async {
+            guard let back = self.back, self.zooms.indices.contains(index) else { return }
+            self.zoom(back, to: self.zooms[index])
+        }
+        #endif
     }
 
     func finishVoice() async -> URL? {

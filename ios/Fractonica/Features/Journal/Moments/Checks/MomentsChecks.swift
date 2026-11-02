@@ -5,7 +5,7 @@ import Foundation
 // Moments' logic: the moments (every Helion quarter boundary) against FractonicaKit's own cycles and thresholds, their
 // labels (the longest level with a quarter boundary there) and names, the call a Flavon ahead ringing 11 Flavons, quiet
 // hours, the settings, the streak, the collection and the missed calls, the calls that rang out, the `capture` JSON
-// (with how its call went) and an edit keeping it, the bundled announcements and ringtones, the reel's timing (a span
+// (with how its call went) and an edit keeping it, the bundled ringtones, the reel's timing (a span
 // even or not about the moment) and a reel made from films.
 // Run: ios/scripts/check.sh ios/Fractonica/Features/Journal/Moments/Checks
 
@@ -163,18 +163,15 @@ private func labelChecks() {
     if let m = calendar.upcoming(after: vectorA, count: 200, where: { $0.level == .helion && $0.boundary == .node }).first {
         let helionName = notation.cycleShort(level: 6, cycle: m.cycle)
         check(m.title() == "Helion \(helionName) Descending Node" && helionName.hasSuffix("η"), "a Helion node's name: \(m.title())")
-        check(m.spoken == "Helion descending node" && m.soundName == "moment-helion-node", "a Helion node's announcement")
     }
     if let m = calendar.upcoming(after: vectorA, count: 200, where: { $0.level == .helion && $0.boundary == .start }).first {
         check(m.title() == "Helion \(notation.cycleShort(level: 6, cycle: m.cycle)) Ascending Node", "a Helion start's name: \(m.title())")
-        check(m.spoken == "Helion ascending node" && m.soundName == "moment-helion-start", "a Helion start's announcement")
     }
     if let m = calendar.upcoming(after: vectorA, count: 200, where: { $0.level == .helion && $0.boundary == .peak }).first {
         check(m.title().hasSuffix(" Peak"), "a Helion peak keeps its name: \(m.title())")
     }
     if let m = calendar.upcoming(after: vectorA, count: 2000, scan: 4000, where: { $0.level == .nuclide && $0.boundary == .start }).first {
         check(m.title().hasPrefix("Nuclide ε#") && m.title().hasSuffix(" Start") && m.rarity == .rare, "a Nuclide start's name: \(m.title())")
-        check(m.spoken == "A new Nuclide begins", "a start is announced as a beginning")
     }
     // a moment leads with its Pentad (SPEC §7.5): a Helion start belongs to the Pentad it starts in
     var starts = 0
@@ -228,8 +225,8 @@ private func settingsChecks() {
     let start = list.first { $0.level == .helion && $0.boundary == .start }!
     let nuclideStart = calendar.upcoming(after: vectorA, count: 1, scan: 3000) { $0.level == .nuclide && $0.boundary == .start }.first!
     let nuclidePeak = calendar.upcoming(after: vectorA, count: 1, scan: 3000) { $0.level == .nuclide && $0.boundary == .peak }.first!
-    check(s.enabled && s.helion == .nodes && s.voice && s.quiet.enabled && s.ringtone == .helion,
-          "defaults: on, Helion nodes, voice, quiet hours, the Helion ringtone")
+    check(s.enabled && s.helion == .nodes && s.quiet.enabled && s.ringtone == .helion,
+          "defaults: on, Helion nodes, quiet hours, the Helion ringtone")
     check(s.asks(start) && !s.asks(peak) && s.asks(node) && s.asks(delta),
           "a Helion's two nodes (its start and mid point) are rare moments; Delta and longer always")
     check(s.asks(nuclideStart) && !s.asks(nuclidePeak), "a Nuclide's start is a Helion's start; its peak a Helion's peak")
@@ -247,8 +244,8 @@ private func settingsChecks() {
     t.quiet.start = 22 * 60
     let data = try! JSONEncoder().encode(t)
     check((try? JSONDecoder().decode(MomentSettings.self, from: data)) == t, "settings round-trip")
-    let partial = try? JSONDecoder().decode(MomentSettings.self, from: Data(#"{"helion":"bogus","voice":false,"ringtone":"bell"}"#.utf8))
-    check(partial?.helion == .nodes && partial?.voice == false && partial?.enabled == true && partial?.ringtone == .bell,
+    let partial = try? JSONDecoder().decode(MomentSettings.self, from: Data(#"{"helion":"bogus","autoOpen":false,"ringtone":"bell"}"#.utf8))
+    check(partial?.helion == .nodes && partial?.autoOpen == false && partial?.enabled == true && partial?.ringtone == .bell,
           "unknown values take their defaults")
     // quiet hours stop prompting
     let s2 = MomentSettings()
@@ -386,8 +383,8 @@ private func multiCaptureChecks() {
     }
     check(true, "captures are a Flavon apart, on the millisecond, around the moment")
     // settings saved when there was a count still read (the count is gone)
-    let old = try? JSONDecoder().decode(MomentSettings.self, from: Data(#"{"captures":5,"voice":false}"#.utf8))
-    check(old?.voice == false && old?.enabled == true, "old settings with a capture count still read")
+    let old = try? JSONDecoder().decode(MomentSettings.self, from: Data(#"{"captures":5,"voice":false,"autoOpen":false}"#.utf8))
+    check(old?.autoOpen == false && old?.enabled == true, "old settings with a capture count and a voice still read")
 }
 
 @MainActor private func storeChecks() async {
@@ -450,16 +447,6 @@ private func missedChecks() {
 private func soundChecks() {
     let folder = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
         .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent().appending(path: "Resources/Moments")
-    var missing: [String] = []
-    for level in MomentLevel.allCases {
-        for boundary in MomentBoundary.allCases {
-            let m = Moment(index: 0, time: 0, level: level, boundary: boundary, cycle: 0)
-            let url = folder.appending(path: "\(m.soundName).caf")
-            let size = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
-            if size < 1000 { missing.append(m.soundName) }
-        }
-    }
-    check(missing.isEmpty, "an announcement for every level and boundary in \(folder.path): missing \(missing)")
     // the ringtones: whole rings, under the 30 s a notification's or an alarm's sound may last
     for tone in MomentRingtone.allCases {
         let url = folder.appending(path: tone.fileName)

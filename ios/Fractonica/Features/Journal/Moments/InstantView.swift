@@ -6,8 +6,8 @@ import SwiftUI
 /// selfie's square over the back camera's; a tap on one keeps its frame as a photo), a big countdown in Flavons and
 /// Blinks (and seconds outside pure mode) ticking to the moment itself (a flash and a strong haptic there) — or, muted
 /// after it, MISSED in red — an emoji, a line to write and a microphone to hold for a voice note. When the film ends the
-/// reel is made (a progress bar), the entry saves itself and shows as its card — the reel playing — with its rarity's
-/// frame and the streak.
+/// reel is made (a progress bar), the entry saves itself and the Journal shows it. Only when the reel or a camera went
+/// amiss does the view stay, its card — the reel playing — saying so, with Done.
 struct InstantView: View {
     @Environment(AppSettings.self) private var settings
     @Environment(AppRouter.self) private var router
@@ -61,6 +61,11 @@ struct InstantView: View {
         .onChange(of: model.phase) { _, phase in
             // the keyboard goes when the film ends (the line is saved with the entry)
             if phase == .developing { writing = false }
+            // saved: the Journal shows it (unless something went amiss, which the card says)
+            if case .saved = phase, model.reelFailure == nil, model.filmTrouble == nil {
+                dismiss()
+                router.show(.journal)
+            }
         }
         .animation(.snappy, value: model.phase)
         #if os(macOS)
@@ -216,35 +221,22 @@ struct InstantView: View {
         }
     }
 
-    /// The saved entry as its card, the streak, Edit and Done.
+    /// The saved entry as its card (when something went amiss), the streak and Done.
     private func saved(_ record: HubRecord, _ words: Wording) -> some View {
         ScrollView {
             VStack(spacing: 18) {
                 CaptureCard(record: record, words: words, plays: true)
                     .transition(.scale(scale: 0.92).combined(with: .opacity))
                 StreakLine(stats: moments.stats, rarity: record.rarity)
-                HStack(spacing: 12) {
-                    Button {
-                        let id = record.id
-                        dismiss()
-                        Task {
-                            try? await Task.sleep(for: .milliseconds(650))
-                            router.show(.journal)
-                            JournalUI.shared.edit(id)
-                        }
-                    } label: {
-                        Label("Edit", systemImage: "pencil").frame(maxWidth: .infinity)
-                    }
-                    .glassButtonStyle()
-                    Button {
-                        dismiss()
-                    } label: {
-                        Label("Done", systemImage: "checkmark").frame(maxWidth: .infinity)
-                    }
-                    .glassProminentButtonStyle()
-                    .tint(Theme.teal)
-                    .keyboardShortcut(.defaultAction)
+                Button {
+                    dismiss()
+                    router.show(.journal)
+                } label: {
+                    Label("Done", systemImage: "checkmark").frame(maxWidth: .infinity)
                 }
+                .glassProminentButtonStyle()
+                .tint(Theme.teal)
+                .keyboardShortcut(.defaultAction)
                 .controlSize(.large)
                 .buttonBorderShape(.capsule)
             }

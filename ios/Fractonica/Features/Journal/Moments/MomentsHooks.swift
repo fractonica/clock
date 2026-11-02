@@ -25,6 +25,8 @@ enum MomentsHooks: FeatureHooks {
         // screenshots and checks (-FXMomentsAuto 0): no call, no banner either
         if store.instant != nil || !store.launch.autoOpen { return [.list] }
         if MomentScheduling.isMissed(identifier) { return [.banner, .list, .badge] }
+        // in front, the test call rings by itself
+        if identifier == MomentScheduling.testID { return [.list] }
         if store.opensByItself, let index = MomentScheduling.index(ofIdentifier: identifier),
            let m = store.calendar.moment(index), Date.now.timeIntervalSince1970 < store.calendar.ringEnd(of: m) {
             // in front: the call screen rings instead of the banner — or rang already and was picked up
@@ -39,6 +41,8 @@ enum MomentsHooks: FeatureHooks {
         guard notification.isTap else { return true }
         if MomentScheduling.isMissed(notification.identifier) {
             AppRouter.shared.show(.moments)
+        } else if notification.identifier == MomentScheduling.testID {
+            MomentStore.shared.ringTest()
         } else {
             MomentStore.shared.openFromNotification(index: MomentScheduling.index(ofIdentifier: notification.identifier))
         }
