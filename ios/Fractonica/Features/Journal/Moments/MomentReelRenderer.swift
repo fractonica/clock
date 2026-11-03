@@ -42,17 +42,15 @@ struct MomentReelScript: Sendable {
     let accent: [Double]
     /// Each camera's square, in pixels.
     let side: Int
-    /// The chime at the moment in each pass (none for a film that missed its moment).
+    /// The chime at the moment (none for a film that missed its moment).
     var chimes = true
     /// The chime: Half-Life 2's suit charging (ios/scripts/import-sounds.swift).
     var chime = Bundle.main.url(forResource: "moment-chime", withExtension: "caf")
     /// Filmed after the moment had passed: marked so in red.
     var missed = false
-    /// Played back once it has played forward.
-    var backward = true
 
     init(center: Double, before: Double, after: Double, notation: Notation, accent: [Double], side: Int,
-         chimes: Bool = true, missed: Bool = false, backward: Bool = true) {
+         chimes: Bool = true, missed: Bool = false) {
         self.center = center
         self.before = before
         self.after = after
@@ -61,7 +59,6 @@ struct MomentReelScript: Sendable {
         self.side = side
         self.chimes = chimes
         self.missed = missed
-        self.backward = backward
     }
 
     /// Filmed `half` either side of the moment.
@@ -70,18 +67,17 @@ struct MomentReelScript: Sendable {
     }
 
     var timing: MomentReelTiming {
-        MomentReelTiming(before: before, after: after, frame: frame, backward: backward)
+        MomentReelTiming(before: before, after: after, frame: frame)
     }
 }
 
 /// Makes a moment's reel (MomentReel.swift has its arithmetic) from the cameras' films: first every frame of the back
 /// camera with the front camera's frame of the same instant over it, as squares (the selfie on top), kept as JPEG files;
 /// then the reel a frame each Sub-blink, each frame the filmed one at the instant `MomentReelTiming` says, its date and
-/// its time down to the ξ at the top; its sound the microphone's, along with the picture (backwards going back), the
-/// chime at the moment in each pass.
+/// its time down to the ξ at the top; its sound the microphone's, along with the picture, the chime at the moment.
 /// Without films (the Simulator, a Mac without a camera) a drawn film of the same span stands in, so the whole capture
 /// runs there. Runs off the main thread; `progress` hears 0 … 1. Returns what went amiss in the films (a stretch
-/// without frames), for the saved screen.
+/// without frames), for the saved screen, and how each was read, for the films' archive (`MomentFilmArchive`).
 enum MomentReelRenderer {
     enum Failure: LocalizedError {
         case writer(String)
@@ -97,7 +93,7 @@ enum MomentReelRenderer {
 
     @discardableResult
     static func render(films: [MomentFilm], script: MomentReelScript, to url: URL,
-                       progress: @escaping @Sendable (Double) -> Void) async throws -> [String] {
+                       progress: @escaping @Sendable (Double) -> Void) async throws -> Report {
         try await Task.detached(priority: .userInitiated) {
             let dir = FileManager.default.temporaryDirectory.appending(path: "reel-\(UUID().uuidString)")
             try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -108,7 +104,7 @@ enum MomentReelRenderer {
             if let sound = films.first(where: { $0.camera == "sound" }) { heard = try await samples(of: sound, center: script.center) }
             let developed = try await develop(films: pictures, script: script, dir: dir, context: context) { progress(0.45 * $0) }
             try await write(developed, heard: heard, script: script, dir: dir, to: url, context: context) { progress(0.45 + 0.55 * $0) }
-            return developed.gaps
+            return Report(gaps: developed.gaps, notes: developed.notes)
         }.value
     }
 
@@ -121,6 +117,14 @@ enum MomentReelRenderer {
         var dual: Bool
         /// Stretches a film went without frames ("the back film has no frames for 2.9 s from +0.5 s").
         var gaps: [String] = []
+        /// How each film was read and the frames developed, for the films' archive.
+        var notes: [String] = []
+    }
+
+    /// What went amiss in the films (for the saved screen), and how the reel was made (for the films' archive).
+    struct Report: Sendable {
+        var gaps: [String] = []
+        var notes: [String] = []
     }
 
     private static func develop(films: [MomentFilm], script: MomentReelScript, dir: URL, context: CIContext,
@@ -134,6 +138,7 @@ enum MomentReelRenderer {
         }
         let dual = sources.count > 1
         let side = CGFloat(script.side)
+        let began = Date.now
         let space = CGColorSpace(name: CGColorSpace.sRGB)!
         var main = sources[0]
         var rider: (any ReelSource)? = dual ? sources[1] : nil
@@ -171,6 +176,8 @@ enum MomentReelRenderer {
                                                     options: [kCGImageDestinationLossyCompressionQuality as CIImageRepresentationOption: 0.85])
             }
             times.append(frame.u)
+            // (whatever the context keeps of the pictures it was given)
+            if times.count % 50 == 0 { context.clearCaches() }
             progress(min(1, (frame.u + script.before) / max(script.before + script.after, 0.1)))
         }
         guard !times.isEmpty else { throw Failure.nothing }
@@ -179,13 +186,16 @@ enum MomentReelRenderer {
             guard i < names.count, gap[i].0 > 4 * script.frame else { return nil }
             return String(format: "the %@ film has no frames for %.2f s from %+.2f s", names[i], gap[i].0, gap[i].1)
         }
-        gaps += [main.trouble, rider?.trouble].compactMap { $0 }
         if let end = times.last, end < script.after - 4 * script.frame {
             gaps.append(String(format: "the films were read only to %+.2f s of %+.2f s", end, script.after))
         }
-        for g in gaps { reelLog.error("\(g)") }
-        reelLog.info("developed \(times.count) frames, \(String(format: "%+.2f", times.first ?? 0)) … \(String(format: "%+.2f", times.last ?? 0)) s")
-        return Developed(times: times, dual: dual, gaps: gaps)
+        let notes = [main.report, rider?.report].compactMap { $0 } + [
+            String(format: "developed %d frames, %+.2f … %+.2f s, in %.1f s", times.count, times.first ?? 0, times.last ?? 0,
+                   -began.timeIntervalSinceNow),
+        ]
+        for g in gaps { reelLog.error("\(g, privacy: .public)") }
+        for n in notes { reelLog.info("\(n, privacy: .public)") }
+        return Developed(times: times, dual: dual, gaps: gaps, notes: notes)
     }
 
     /// The centre square of a frame, scaled to `side` and moved to the origin.
@@ -266,7 +276,7 @@ enum MomentReelRenderer {
         for k in 0..<count {
             try Task.checkCancellation()
             let tau = timing.frameTime(k)
-            let u = timing.source(at: tau).u
+            let u = timing.source(at: tau)
             // the filmed frame showing at u, whole: its words are its own Sub-blink's
             let shown = MomentReelFrames.pick(developed.times, u).a
             // in a pool of its own, as each developed frame
@@ -292,6 +302,7 @@ enum MomentReelRenderer {
             }
             feedAudio(until: tau + 0.5)
             adaptor.append(buffer, withPresentationTime: CMTime(seconds: tau, preferredTimescale: 600_000))
+            if k % 50 == 49 { context.clearCaches() }
             progress(Double(k + 1) / Double(count))
         }
         video.markAsFinished()
@@ -349,7 +360,7 @@ enum MomentReelRenderer {
     }
 
     /// The reel's sound, mono at 48 kHz: the heard sound along with the picture (each output sample takes the source
-    /// instant its time shows, between two samples by their nearness: backwards going back), its peak brought to 0.7
+    /// instant its time shows, between two samples by their nearness), its peak brought to 0.7
     /// (by 18 dB at most: the microphone is heard without the system's gain), and `chime` from each moment on.
     private static func soundtrack(_ heard: Heard?, timing: MomentReelTiming, chime: [Float]?) -> [Float] {
         var out = [Float](repeating: 0, count: Int((timing.duration * sampleRate).rounded(.up)) + 1)
@@ -357,7 +368,7 @@ enum MomentReelRenderer {
             let last = heard.samples.count - 1
             heard.samples.withUnsafeBufferPointer { s in
                 for i in out.indices {
-                    let u = timing.source(at: Double(i) / sampleRate).u
+                    let u = timing.source(at: Double(i) / sampleRate)
                     let p = (u - heard.first) * sampleRate
                     guard p >= 0, p < Double(last) else { continue }
                     let j = Int(p)
@@ -371,7 +382,7 @@ enum MomentReelRenderer {
             let gain = min(8, 0.7 / peak)
             for i in out.indices { out[i] *= gain }
         }
-        if let chime { addChimes(&out, chime, at: timing.moments) }
+        if let chime { addChimes(&out, chime, at: [timing.moment]) }
         for i in out.indices { out[i] = min(1, max(-1, out[i])) }
         return out
     }
@@ -428,78 +439,37 @@ enum MomentReelRenderer {
 /// Filmed frames in order: each its time from the clip's centre and its picture.
 private protocol ReelSource {
     mutating func next() -> (u: Double, image: CIImage)?
-    /// What went amiss reading it, for the saved screen.
-    var trouble: String? { get }
+    /// How the reading went, for the films' archive.
+    var report: String { get }
 }
 
-/// A camera's film, read frame by frame. A reader that fails partway is opened again just past the last frame read, up
-/// to three times; what happened is the film's `trouble`.
+/// A camera's film, read frame by frame (`VideoFrameReader`: a few seconds a reader, one that stops short opened again).
 private struct FilmSource: ReelSource {
     let camera: String
-    let asset: AVURLAsset
-    let track: AVAssetTrack
     /// The film's time zero, in seconds from the clip's centre.
     let zero: Double
-    private var reader: AVAssetReader
-    private var output: AVAssetReaderTrackOutput
-    /// The last frame's time in the film: where a reader opened again picks up.
-    private var last: Double?
-    private var reopened = 0
-    private(set) var trouble: String?
+    private var frames: VideoFrameReader
 
     static func open(_ film: MomentFilm, center: Double) async throws -> FilmSource {
-        let asset = AVURLAsset(url: film.url)
-        guard let track = try await asset.loadTracks(withMediaType: .video).first else { throw MomentReelRenderer.Failure.nothing }
-        let (reader, output) = try reading(asset, track, after: nil)
-        return FilmSource(camera: film.camera, asset: asset, track: track, zero: film.start - center, reader: reader, output: output)
-    }
-
-    private static func reading(_ asset: AVAsset, _ track: AVAssetTrack, after t: Double?) throws -> (AVAssetReader, AVAssetReaderTrackOutput) {
-        let reader = try AVAssetReader(asset: asset)
-        if let t { reader.timeRange = CMTimeRange(start: CMTime(seconds: t + 0.001, preferredTimescale: 600_000), end: .positiveInfinity) }
-        let output = AVAssetReaderTrackOutput(track: track, outputSettings: [
-            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_420YpCbCr8BiPlanarFullRange,
-        ])
-        output.alwaysCopiesSampleData = false
-        reader.add(output)
-        guard reader.startReading() else { throw reader.error ?? MomentReelRenderer.Failure.nothing }
-        return (reader, output)
+        guard let frames = try await VideoFrameReader.open(AVURLAsset(url: film.url)) else { throw MomentReelRenderer.Failure.nothing }
+        return FilmSource(camera: film.camera, zero: film.start - center, frames: frames)
     }
 
     mutating func next() -> (u: Double, image: CIImage)? {
-        while true {
-            if let sample = output.copyNextSampleBuffer() {
-                guard let pixels = CMSampleBufferGetImageBuffer(sample) else { continue }
-                let t = CMSampleBufferGetPresentationTimeStamp(sample).seconds
-                // (a reader opened again may hand back frames already read)
-                if let last, t <= last { continue }
-                last = t
-                return (zero + t, CIImage(cvPixelBuffer: pixels))
-            }
-            // the film's end, or a reader that failed
-            guard reader.status == .failed else { return nil }
-            let at = last.map { String(format: "%+.2f s", zero + $0) } ?? "its start"
-            let why = reader.error?.localizedDescription ?? "?"
-            let camera = camera
-            reelLog.error("the \(camera, privacy: .public) film stopped reading after \(at, privacy: .public): \(why, privacy: .public)")
-            guard reopened < 3, let fresh = try? Self.reading(asset, track, after: last) else {
-                trouble = "the \(camera) film could not be read after \(at) (\(why))"
-                return nil
-            }
-            reopened += 1
-            trouble = "the \(camera) film stopped reading after \(at) (\(why)) and was read again from there"
-            (reader, output) = fresh
-        }
+        guard let frame = frames.next() else { return nil }
+        return (zero + frame.time, CIImage(cvPixelBuffer: frame.pixels))
     }
+
+    var report: String { "\(camera): \(frames.report)" }
 }
 
 /// A drawn film where there is no camera: the moment's colours, a hand sweeping a turn a second and a light gliding
-/// across (the back), a ring breathing (the front), so the motion shows (and its going back).
+/// across (the back), a ring breathing (the front), so the motion shows.
 private struct StandIn: ReelSource {
     let camera: String
     let script: MomentReelScript
     private var k = 0
-    var trouble: String? { nil }
+    var report: String { "\(camera): drawn" }
 
     init(camera: String, script: MomentReelScript) {
         self.camera = camera

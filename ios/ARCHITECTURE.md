@@ -269,16 +269,19 @@ film runs on, and its torch), so each choice starts at once, the call's cameras 
 square keeps its frame as a photo, a long press lights the torch, a small countdown to the moment at their foot) and the
 red button to hang up: it films until then (`record(from:to: .infinity)`). `MomentReelRenderer` makes the reel
 (MomentReel.swift has its arithmetic, checked; a check makes one from two films and a sound): the selfie's square over
-the back camera's, the film played forward at real time with a chime at the moment (Half-Life 2's suit charging,
-Resources/Moments/moment-chime.caf), then at once backwards to where it began (the chime again), the sound along with
-it (filmed in the `.measurement` mode, without the gain control the ringtone would have turned down, and brought to a
-steady level); each frame developed in an autorelease pool of its own, and a film reader that fails partway opened
-again where it stopped; its frames last a Sub-blink too, each a whole filmed frame stamped at
+the back camera's, the film played once at real time with a chime at the moment (Half-Life 2's suit charging,
+Resources/Moments/moment-chime.caf), the sound along with it (filmed in the `.measurement` mode, without the gain
+control the ringtone would have turned down, and brought to a steady level); the films read a few seconds a reader
+(`VideoFrameReader`, Journal/Media: on the iPhone one reader for a whole film stopped ~500 frames in, with no error),
+a reader that stops short opened again where it stopped, each frame developed in an autorelease pool of its own;
+its frames last a Sub-blink too, each a whole filmed frame stamped at
 the top with its date ("α6 β4 γ9 δ4 ε1") and its time down to the Sub-blink ("62η 4ι 29λ 4ν 3ξ"); picked up after the
 moment it has no chimes and is stamped MISSED in red; in the Simulator a drawn film stands in for the cameras. **Muted**:
 `MutedView` — the screen dark (its brightness down, given back after) while both cameras film until a Flavon after the
-moment (End stops sooner), made the same way but played once at real time with the chime at the moment. The last
-capture's films stay in Caches/MomentFilms until the next (`MomentFilmArchive`). Saved, the Journal shows either.
+moment (End stops sooner), made the same way. The last capture's films stay in Caches/MomentFilms until the next
+(`MomentFilmArchive`), films.txt saying how each was filmed and read into the reel. Saved, the Journal shows either; a
+reel, as any video in an entry, can be reversed from its menu (press and hold: Reverse — `VideoReversals`,
+`VideoReverser`), the reversed copy (named `reversed`) added after it.
 **Declined**: each camera's photo at the press, Declined, and the app puts itself away as a phone does. **Rung out**: a
 missed call, and the call screen goes. No confirmation screen follows a call, unless saving went amiss.
 Every entry is written right after, before the view

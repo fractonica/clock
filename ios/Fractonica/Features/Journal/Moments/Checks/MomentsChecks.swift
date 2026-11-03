@@ -491,35 +491,22 @@ private func reelChecks() {
     check(true, "a moment's film spans half a Flavon either side of it")
     let timing = MomentReelTiming(before: flavon / 2, after: flavon / 2)
     typealias T = MomentReelTiming
-    check(abs(timing.passDuration - flavon) < 1e-9 && abs(timing.duration - 2 * flavon) < 1e-9
-          && timing.frameCount == Int((timing.duration / timing.frame).rounded()),
-          "a pass lasts the film, at real time; two of them, a frame each Sub-blink")
+    check(abs(timing.duration - flavon) < 1e-9 && timing.frameCount == Int((timing.duration / timing.frame).rounded()),
+          "the reel lasts the film, at real time, a frame each Sub-blink")
     check(abs(T.subBlink - clock.levelInfo(12).meanSeconds / 7) < 1e-9 && abs(T.subBlink - 0.0444) < 0.0005,
           "a Sub-blink, a seventh of a Blink: \(T.subBlink) s")
-    // the passes' landmarks (u: seconds from the moment)
-    func at(_ t: Double) -> (u: Double, backward: Bool) { timing.source(at: t) }
-    check(abs(at(0).u + flavon / 2) < 1e-9 && !at(0).backward, "the reel opens half a Flavon before the moment")
-    check(abs(at(flavon / 2).u) < 1e-9 && !at(flavon / 2).backward, "the forward pass reaches the moment halfway")
-    check(abs(at(flavon).u - flavon / 2) < 1e-9, "the forward pass ends half a Flavon after")
-    check(abs(at(1.5 * flavon).u) < 1e-9 && at(1.5 * flavon).backward, "the backward pass crosses the moment halfway")
-    check(abs(at(timing.duration).u + flavon / 2) < 1e-9 && at(timing.duration).backward, "and ends where the reel began")
-    check(timing.moments.count == 2 && abs(timing.moments[0] - flavon / 2) < 1e-9 && abs(timing.moments[1] - 1.5 * flavon) < 1e-9,
-          "a chime at the moment in each pass: \(timing.moments)")
+    // its landmarks (u: seconds from the moment)
+    check(abs(timing.source(at: 0) + flavon / 2) < 1e-9, "the reel opens half a Flavon before the moment")
+    check(abs(timing.source(at: flavon / 2)) < 1e-9 && abs(timing.moment - flavon / 2) < 1e-9, "it reaches the moment halfway, the chime there")
+    check(abs(timing.source(at: timing.duration) - flavon / 2) < 1e-9, "and ends half a Flavon after")
     check((0..<40).allSatisfy { k in
-        let t = timing.passDuration * Double(k) / 40
-        return abs(at(t).u - (t - flavon / 2)) < 1e-9 && abs(at(timing.duration - t).u - at(t).u) < 1e-9
-    }, "real time forward, the same instants going back")
-    // an answered call's reel: picked up 3 s before the moment, hung up 20 s after; forward, then back
+        let t = timing.duration * Double(k) / 40
+        return abs(timing.source(at: t) - (t - flavon / 2)) < 1e-9
+    }, "every instant where it was filmed, at real time")
+    // an answered call's reel: picked up 3 s before the moment, hung up 20 s after
     let answered = MomentReelTiming(before: 3, after: 20)
-    check(abs(answered.duration - 46) < 1e-9 && answered.moments.count == 2 && abs(answered.moments[0] - 3) < 1e-9
-          && abs(answered.moments[1] - 43) < 1e-9 && abs(answered.source(at: 43).u) < 1e-9 && answered.source(at: 43).backward,
-          "the film there and back, 46 s, its chimes at 3 s and 43 s: \(answered.moments)")
-    // a muted call's: once, at real time throughout
-    let muted = MomentReelTiming(before: 5, after: flavon, backward: false)
-    check(abs(muted.duration - (5 + flavon)) < 1e-6 && muted.moments.count == 1 && abs(muted.moments[0] - 5) < 1e-6,
-          "a muted call's film plays once at real time, its chime at the moment: \(muted.duration) s, \(muted.moments)")
-    check((0..<40).allSatisfy { k in let t = muted.duration * Double(k) / 40; return abs(muted.source(at: t).u - (t - 5)) < 1e-6 && !muted.source(at: t).backward },
-          "and every instant where it was filmed")
+    check(abs(answered.duration - 23) < 1e-9 && abs(answered.moment - 3) < 1e-9 && abs(answered.source(at: 3)) < 1e-9,
+          "an answered call's film once, 23 s, its chime at 3 s")
     // the words: the date without the cycles' marks, the time down to the Sub-blink, one ξ a frame
     let date = MomentReelText.date(at: vectorA, notation: notation)
     check(date == "α6 β4 γ9 δ3 ε5", "the date: \(date)")
@@ -568,8 +555,10 @@ private func reelRenderChecks() async {
     script.chime = soundFolder.appending(path: "moment-chime.caf")
     let out = dir.appending(path: "reel.mov")
     do {
-        let gaps = try await MomentReelRenderer.render(films: films, script: script, to: out) { _ in }
-        check(gaps.isEmpty, "the films read to their ends, without gaps: \(gaps)")
+        let report = try await MomentReelRenderer.render(films: films, script: script, to: out) { _ in }
+        check(report.gaps.isEmpty, "the films read to their ends, without gaps: \(report.gaps)")
+        check(report.notes.count == 3 && report.notes[0].hasPrefix("back: ") && report.notes[0].contains("none without a picture")
+              && !report.notes[0].contains("stopped"), "how each film was read, for the archive: \(report.notes)")
     } catch {
         check(false, "the reel is made from two films: \(error.localizedDescription)")
         return
@@ -584,9 +573,9 @@ private func reelRenderChecks() async {
     let video = try? await asset.loadTracks(withMediaType: .video).first
     let audio = try? await asset.loadTracks(withMediaType: .audio).first
     let size = try? await video?.load(.naturalSize)
-    check(abs(duration - timing.duration) < 0.1, "the reel lasts both passes: \(duration) s of \(timing.duration)")
+    check(abs(duration - timing.duration) < 0.1, "the reel lasts the film: \(duration) s of \(timing.duration)")
     check(size == CGSize(width: 160, height: 320), "two squares, one over the other: \(String(describing: size))")
-    // the heard tone runs under the chimes: at the reel's start, at the moment, and going back
+    // the heard tone runs under the chime: at the reel's start, up to the moment, and on to the end
     let pcm = await samples(of: out)
     func rms(_ x: [Float], _ from: Double, _ to: Double) -> Double {
         let a = max(0, Int(from * 48_000)), b = min(x.count, Int(to * 48_000))
@@ -595,40 +584,89 @@ private func reelRenderChecks() async {
     }
     // (the tone, 0.4 at its peak, brought to 0.7)
     check(audio != nil && abs(rms(pcm, 0.5, 1.5) - 0.7 / 2.squareRoot()) < 0.06, "the heard sound at the start, at a steady level: \(rms(pcm, 0.5, 1.5))")
-    let m = timing.moments[0]
+    let m = timing.moment
     check(rms(pcm, m - 1, m - 0.1) > 0.1, "and up to the moment: \(rms(pcm, m - 1, m - 0.1))")
-    check(rms(pcm, timing.passDuration + 0.5, timing.passDuration + 1.5) > 0.1,
-          "and going back: \(rms(pcm, timing.passDuration + 0.5, timing.passDuration + 1.5))")
-    // each chime from its moment on: what the same reel without chimes lacks there and nowhere before
+    check(rms(pcm, timing.duration - 1.5, timing.duration - 0.2) > 0.1, "and to the end: \(rms(pcm, timing.duration - 1.5, timing.duration - 0.2))")
+    // the chime from the moment on: what the same reel without it lacks there and nowhere before
     var quiet = script
     quiet.chimes = false
     let quietURL = dir.appending(path: "reel-quiet.mov")
     _ = try? await MomentReelRenderer.render(films: films, script: quiet, to: quietURL) { _ in }
     let without = await samples(of: quietURL)
     let chime = zip(pcm, without).map { $0 - $1 }
-    for (pass, t) in timing.moments.enumerated() {
-        let before = rms(chime, t - 0.6, t - 0.05), after = rms(chime, t, t + 0.6)
-        check(!without.isEmpty && after > 0.1 && before < 0.01,
-              "the chime at the moment in pass \(pass + 1): \(after) from it on, \(before) before it")
+    let chimeBefore = rms(chime, m - 0.6, m - 0.05), chimeAfter = rms(chime, m, m + 0.6)
+    check(!without.isEmpty && chimeAfter > 0.1 && chimeBefore < 0.01, "the chime at the moment: \(chimeAfter) from it on, \(chimeBefore) before it")
+
+    // read a few seconds a reader: the same frames as one reader for the whole
+    let whole = await frameSamples(out, stretch: 1000), stretched = await frameSamples(out, stretch: 0.5)
+    check(whole.frames.count == timing.frameCount && whole.readers == 1, "the reel's frames, read whole: \(whole.frames.count) of \(timing.frameCount)")
+    check(stretched.frames.map(\.time) == whole.frames.map(\.time) && stretched.frames.map(\.luma) == whole.frames.map(\.luma)
+          && stretched.readers >= Int(duration / 0.5) - 1,
+          "read half a second a reader, the same frames: \(stretched.frames.count) by \(stretched.readers) readers")
+
+    // reversed: the last frame first, each lasting as long, the sound backwards with the picture
+    let reversedURL = dir.appending(path: "reversed.mov")
+    do {
+        try await VideoReverser.reverse(out, to: reversedURL)
+        let reversed = await frameSamples(reversedURL, stretch: 1000)
+        let length = (try? await AVURLAsset(url: reversedURL).load(.duration).seconds) ?? 0
+        check(abs(length - duration) < 0.05 && reversed.frames.count == whole.frames.count,
+              "the reversed reel: as long, as many frames: \(length) s, \(reversed.frames.count)")
+        let n = whole.frames.count
+        func difference(_ a: [UInt8], _ b: [UInt8]) -> Double {
+            Double(zip(a, b).reduce(0) { $0 + abs(Int($1.0) - Int($1.1)) }) / Double(max(a.count, 1))
+        }
+        let mirrored = (0..<n).map { difference(reversed.frames[$0].luma, whole.frames[n - 1 - $0].luma) }.max() ?? 99
+        let straight = (0..<n).map { difference(reversed.frames[$0].luma, whole.frames[$0].luma) }.reduce(0, +) / Double(max(n, 1))
+        check(mirrored < 4 && straight > 4 * mirrored, "frame k is the reel's frame n − 1 − k: \(mirrored) apart at most (\(straight) in order)")
+        let times = zip(reversed.frames.dropFirst(), reversed.frames).map { $0.time - $1.time }
+        let lengths = zip(whole.frames.dropFirst(), whole.frames).map { $0.time - $1.time }
+        check(zip(times, lengths.reversed()).allSatisfy { abs($0 - $1) < 0.002 }, "each frame lasting as it did, in reverse")
+        let back = await samples(of: reversedURL)
+        let mirror = (forward: rms(pcm, m, m + 0.6), reversed: rms(back, duration - m - 0.6, duration - m))
+        let tone = (forward: rms(pcm, m - 1, m - 0.1), reversed: rms(back, duration - m + 0.1, duration - m + 1))
+        check(abs(mirror.reversed - mirror.forward) < 0.1 * mirror.forward && abs(tone.reversed - tone.forward) < 0.1 * tone.forward,
+              "the sound backwards, the chime ending at the moment's mirror: \(mirror), \(tone)")
+    } catch {
+        check(false, "the reel reversed: \(error.localizedDescription)")
     }
-    // picked up 1.5 s before the moment (the film's earlier frames left out): answered, there and back; muted, once;
-    // and one marked missed without chimes
+
+    // picked up 1.5 s before the moment (the film's earlier frames left out), answered or muted, and one marked missed
+    // without the chime: each once at real time
     for (kind, missed) in [("answered", false), ("muted", false), ("answered", true)] {
-        let answered = kind == "answered"
         var short = MomentReelScript(center: moment, before: 1.5, after: half, notation: notation, accent: [0.3, 0.5, 1],
-                                     side: 160, chimes: !missed, missed: missed, backward: answered)
+                                     side: 160, chimes: !missed, missed: missed)
         short.chime = script.chime
         let url = dir.appending(path: "short-\(kind)-\(missed).mov")
         do {
             try await MomentReelRenderer.render(films: films, script: short, to: url) { _ in }
             let length = try await AVURLAsset(url: url).load(.duration).seconds
-            let expected = answered ? 2 * (1.5 + half) : 1.5 + half
+            let expected = 1.5 + half
             check(abs(length - expected) < 0.1 && short.timing.duration < timing.duration,
                   "\(kind) from 1.5 s before the moment\(missed ? ", marked missed" : ""): \(length) s of \(expected)")
         } catch {
             check(false, "a reel from 1.5 s before the moment: \(error.localizedDescription)")
         }
     }
+}
+
+/// A video's frames as `VideoFrameReader` gives them, `stretch` seconds a reader: each frame's time and its luma on a
+/// 12 × 24 grid; and how many readers it took.
+private func frameSamples(_ url: URL, stretch: Double) async -> (frames: [(time: Double, luma: [UInt8])], readers: Int) {
+    guard var reader = try? await VideoFrameReader.open(AVURLAsset(url: url), stretch: stretch) else { return ([], 0) }
+    var frames: [(time: Double, luma: [UInt8])] = []
+    while let frame = reader.next() {
+        let p = frame.pixels
+        CVPixelBufferLockBaseAddress(p, .readOnly)
+        let w = CVPixelBufferGetWidthOfPlane(p, 0), h = CVPixelBufferGetHeightOfPlane(p, 0)
+        let row = CVPixelBufferGetBytesPerRowOfPlane(p, 0)
+        let base = CVPixelBufferGetBaseAddressOfPlane(p, 0)!.assumingMemoryBound(to: UInt8.self)
+        var luma: [UInt8] = []
+        for y in 0..<24 { for x in 0..<12 { luma.append(base[(h * (2 * y + 1) / 48) * row + w * (2 * x + 1) / 24]) } }
+        CVPixelBufferUnlockBaseAddress(p, .readOnly)
+        frames.append((frame.time, luma))
+    }
+    return (frames, reader.readers)
 }
 
 /// A reel's sound, mono at 48 kHz.

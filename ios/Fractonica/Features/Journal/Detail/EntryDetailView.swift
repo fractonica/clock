@@ -23,8 +23,8 @@ struct JournalRecordView: View {
 }
 
 /// An entry in full: its emoji and title, the moment (Fractonica and Earth), the photos and videos (tap for the full
-/// screen gallery, with zoom and the video player), the voice notes with a scrubber and speeds, and the Markdown
-/// rendered. Edit and delete in the toolbar.
+/// screen gallery, with zoom and the video player; press and hold a video to reverse it into a copy beside it), the
+/// voice notes with a scrubber and speeds, and the Markdown rendered. Edit and delete in the toolbar.
 struct EntryDetailView: View {
     let record: HubRecord
 
@@ -54,7 +54,7 @@ struct EntryDetailView: View {
                     }
                 }
                 if !others.isEmpty {
-                    DetailGallery(visuals: others, words: words, time: record.time) { index in
+                    DetailGallery(visuals: others, words: words, time: record.time, recordID: record.id) { index in
                         gallery = GalleryStart(index: visuals.count - others.count + index)
                     }
                 }
@@ -119,6 +119,9 @@ struct EntryDetailView: View {
         #endif
         .onAppear {
             if !launched, JournalLaunch.flag("FXJournalGallery"), !visuals.isEmpty { gallery = GalleryStart(index: 0) }
+            if !launched, JournalLaunch.flag("FXJournalReverse"), let video = others.first(where: { $0.role == "video" }) {
+                VideoReversals.shared.reverse(video, in: record.id)
+            }
             launched = true
         }
     }
@@ -160,6 +163,21 @@ struct EntryDetailView: View {
     private func zoneSuffix(_ words: Wording) -> String {
         guard let zone = record.zone, zone != (settings.zone ?? TimeZone.current.identifier) else { return "" }
         return " · written in " + (zone.split(separator: "/").last.map { $0.replacingOccurrences(of: "_", with: " ") } ?? zone)
+    }
+}
+
+private extension View {
+    /// A video's menu: Reverse (nothing for a photo).
+    @ViewBuilder
+    func videoMenu(_ blob: BlobRef, reverse: @escaping () -> Void) -> some View {
+        if blob.role == "video" {
+            contextMenu {
+                Button("Reverse", systemImage: "backward.fill", action: reverse)
+                    .disabled(VideoReversals.shared.progress[blob.hash] != nil)
+            }
+        } else {
+            self
+        }
     }
 }
 
@@ -205,32 +223,58 @@ private struct DetailCaptures: View {
     }
 }
 
-/// The detail's photos and videos: one large, or a grid.
+/// The detail's photos and videos: one large, or a grid. A video's menu (press and hold; right-click on the Mac)
+/// reverses it into a copy added after it (`VideoReversals`), its tile showing how far that is.
 private struct DetailGallery: View {
     let visuals: [BlobRef]
     let words: Wording
     let time: Double
+    let recordID: String
     let open: (Int) -> Void
+
+    @State private var reversals = VideoReversals.shared
 
     var body: some View {
         if visuals.count == 1, let blob = visuals.first {
             Button { open(0) } label: {
-                MediaTile(blob: blob, words: words, time: time, cornerRadius: 20)
+                tile(blob, cornerRadius: 20)
                     .aspectRatio(aspect(blob), contentMode: .fit)
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.plain)
+            .videoMenu(blob) { reversals.reverse(blob, in: recordID) }
         } else {
             LazyVGrid(columns: [GridItem(.flexible(), spacing: 6), GridItem(.flexible(), spacing: 6)], spacing: 6) {
                 ForEach(Array(visuals.enumerated()), id: \.element.hash) { i, blob in
                     Button { open(i) } label: {
-                        MediaTile(blob: blob, words: words, time: time, cornerRadius: 16)
+                        tile(blob, cornerRadius: 16)
                             .aspectRatio(1, contentMode: .fit)
                     }
                     .buttonStyle(.plain)
+                    .videoMenu(blob) { reversals.reverse(blob, in: recordID) }
                 }
             }
         }
+    }
+
+    private func tile(_ blob: BlobRef, cornerRadius: CGFloat) -> some View {
+        MediaTile(blob: blob, words: words, time: time, cornerRadius: cornerRadius)
+            .overlay(alignment: .bottom) {
+                if let p = reversals.progress[blob.hash] {
+                    HStack(spacing: 8) {
+                        ProgressView().controlSize(.small).tint(.white)
+                        Text(verbatim: "Reversing \(Int((p * 100).rounded())) %")
+                            .font(.caption.weight(.semibold).monospacedDigit())
+                    }
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(.black.opacity(0.6), in: .capsule)
+                    .padding(10)
+                    .transition(.opacity)
+                }
+            }
+            .animation(.snappy, value: reversals.progress[blob.hash] == nil)
     }
 
     private func aspect(_ blob: BlobRef) -> CGFloat {

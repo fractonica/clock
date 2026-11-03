@@ -155,7 +155,7 @@ Written by the client:
 | `data` | required | Kind-specific JSON object (≤ 1 MB). |
 | `text` | optional | Searchable text, when the kind is not one the hub knows how to read (below). |
 | `tags` | optional | Short strings. |
-| `blobs` | optional | Attached files in display order: `hash` (lowercase hex SHA-256), `type` (MIME), `size`, `role` (`photo`, `video`, `audio`, `poster`, `file`, or kind-specific), optional `name`, `width`, `height`, `duration`, `poster` (hash of a still for a video, itself listed as a blob with role `poster`). |
+| `blobs` | optional | Attached files in display order: `hash` (lowercase hex SHA-256), `type` (MIME), `size`, `role` (`photo`, `video`, `audio`, `poster`, `file`, or kind-specific), optional `name`, `width`, `height`, `duration`, `poster` (hash of a still for a video, itself listed as a blob with role `poster`). A video the apps reverse (its menu: Reverse) is kept right after it as a video named `reversed`. |
 | `created` | required | Producer clock. |
 | `updated` | required | Producer clock, the version for last-writer-wins. |
 | `deleted` | optional | `true` makes the record a tombstone; the hub then stores `data: {}`, `text: null`, `tags: []`, `blobs: []`. |
@@ -207,16 +207,14 @@ a period's end is the next one's `start`), and `rarity` follows from the level: 
 
 - `answered`: picked up; both cameras filmed with the microphone from the pick-up until hung up, made into its
   **reel**: a video, role `video`, `name` `reel`, with its `poster` the frame at the moment: the front camera's square
-  over the back camera's, filmed a frame each Sub-blink (ξ, 44.4 ms), played forward slowing at the moment to two thirds
-  of real time (over the same stretch as ever, a Gaussian of half a Flavon's scale), then backwards the same way, each
-  frame stamped with its date and its time down to the Sub-blink, its sound the moment's own at the picture's pace with
-  a click at the moment. Picked up after the moment had passed (or hung up before it), it slows at its middle without
-  clicks, stamped MISSED in red when the moment had passed. Photos taken while it films follow (role `photo`, `name`
-  `front` or `back`). `title` "Answered", `emoji` 📞. (When the reel cannot be made, the cameras' own videos are kept
-  instead, named `back` and `front`, and their sound as audio named `sound`.)
+  over the back camera's, filmed a frame each Sub-blink (ξ, 44.4 ms), played once at real time, each frame stamped with
+  its date and its time down to the Sub-blink, its sound the moment's own with a chime at the moment. Picked up after
+  the moment had passed (or hung up before it), it has no chime, stamped MISSED in red when the moment had passed.
+  Photos taken while it films follow (role `photo`, `name` `front` or `back`). `title` "Answered", `emoji` 📞. (When
+  the reel cannot be made, the cameras' own videos are kept instead, named `back` and `front`, and their sound as
+  audio named `sound`.)
 - `muted`: both cameras filmed, the screen dark, from the press until a Flavon after the moment (a Flavon from the
-  press when the moment had passed): a video named `reel` as above, played once at real time with a click at the
-  moment. `title` "Muted", `emoji` 🔇.
+  press when the moment had passed): a video named `reel` as above. `title` "Muted", `emoji` 🔇.
 - `declined`: a photo from each camera at the press (role `photo`, `name` `front` and `back`); `title` "Declined",
   `emoji` 📵.
 - `missed`: it rang out unanswered. No media; `title` "Missed", `emoji` 🔴. Its rarity is `common`; it is neither a

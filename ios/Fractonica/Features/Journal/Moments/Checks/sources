@@ -2,6 +2,8 @@
 Fractonica/Features/Journal/Moments/MomentMath.swift
 Fractonica/Features/Journal/Moments/MomentReel.swift
 Fractonica/Features/Journal/Moments/MomentReelRenderer.swift
+Fractonica/Features/Journal/Media/VideoFrames.swift
+Fractonica/Features/Journal/Media/VideoReverser.swift
 Fractonica/Features/Journal/Store/HubRecord.swift
 Fractonica/Features/Journal/Store/RecordSyncing.swift
 Fractonica/Features/Journal/Store/JournalRecords.swift

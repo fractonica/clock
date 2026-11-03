@@ -2,19 +2,16 @@ import FractonicaKit
 import Foundation
 
 // A moment's reel: the film around the moment — both cameras at once with its sound, a frame each Sub-blink (ξ,
-// 44.4 ms) — made into one video, the selfie camera's square over the back camera's. An answered call's reel plays the
-// film (from the pick-up to the hang-up) forward at real time, a chime at the moment (Half-Life 2's suit charging), then
-// at once backwards to where it began, the chime again as it passes the moment. A muted call's plays its film (from the
-// press to a Flavon after the moment) once at real time, the chime at the moment. Picked up after its moment, a film has
-// no moment in it: no chimes, marked missed. Its frames last a Sub-blink too, so each shows the next filmed one and its
-// ξ count rolls over. The sound plays along (backwards on the way back). Each frame wears its date and its time down to
-// the ξ at the top.
-// This file is the reel's arithmetic and words (no AVFoundation: checked by Moments/Checks); MomentReelRenderer makes
-// the video.
+// 44.4 ms) — made into one video, the selfie camera's square over the back camera's, played once at real time with a
+// chime at the moment (Half-Life 2's suit charging): an answered call's from the pick-up to the hang-up, a muted call's
+// from the press to a Flavon after the moment. Picked up after its moment, a film has no moment in it: no chime,
+// marked missed. Its frames last a Sub-blink too, so each shows the next filmed one and its ξ count rolls over. The
+// sound plays along. Each frame wears its date and its time down to the ξ at the top. A reel can be reversed in the
+// entry, as any video (`VideoReverser`), the reversed copy kept beside it. This file is the reel's arithmetic and words
+// (no AVFoundation: checked by Moments/Checks); MomentReelRenderer makes the video.
 //
 // Source time u runs over the filmed seconds around the clip's centre c (the moment), u ∈ [−B, A]: B filmed before it,
-// A after. At output time τ the forward pass shows u = τ − B, a pass lasting P = B + A; the backward pass is the forward
-// one played in reverse, u = (2P − τ) − B.
+// A after. At output time τ the reel shows u = τ − B, for B + A.
 
 /// The reel as a journal entry's media: a video named `reel` (hub/API.md).
 enum MomentReel {
@@ -28,21 +25,15 @@ struct MomentReelTiming: Sendable {
     let after: Double
     /// An output frame's length, in seconds: a Sub-blink.
     let frame: Double
-    /// Played back once it has played forward.
-    let backward: Bool
 
-    init(before: Double, after: Double, frame: Double = MomentReelTiming.subBlink, backward: Bool = true) {
+    init(before: Double, after: Double, frame: Double = MomentReelTiming.subBlink) {
         self.before = max(before, 0)
         self.after = max(after, 0)
         self.frame = max(frame, 1e-3)
-        self.backward = backward
     }
 
-    /// Each pass's length, in output seconds: the film's own.
-    var passDuration: Double { before + after }
-
-    /// The whole reel, its passes, in output seconds.
-    var duration: Double { backward ? 2 * passDuration : passDuration }
+    /// The whole reel, in output seconds: the film's own length.
+    var duration: Double { before + after }
 
     /// A Sub-blink (ξ, 44.4 ms): the film's and the reel's frame.
     static var subBlink: Double { FractonicaClock.shared.levelInfo(13).meanSeconds }
@@ -50,16 +41,11 @@ struct MomentReelTiming: Sendable {
     /// Output frames in the reel.
     var frameCount: Int { max(1, Int((duration / frame).rounded())) }
 
-    /// When the moment shows in each pass (output seconds) — where the chimes start.
-    var moments: [Double] { backward ? [before, duration - before] : [before] }
+    /// When the moment shows (output seconds): where the chime starts.
+    var moment: Double { before }
 
-    /// The source instant u (seconds from the moment) shown at output time τ, and whether it is the backward pass.
-    func source(at tau: Double) -> (u: Double, backward: Bool) {
-        let t = min(max(tau, 0), duration)
-        if t <= passDuration { return (t - before, false) }
-        // going back is going forward, played in reverse
-        return (duration - t - before, true)
-    }
+    /// The source instant u (seconds from the moment) shown at output time τ.
+    func source(at tau: Double) -> Double { min(max(tau, 0), duration) - before }
 
     /// The output frame times, in seconds.
     func frameTime(_ k: Int) -> Double { Double(k) * frame }

@@ -13,13 +13,12 @@ import UIKit
 /// heard with them, a flash and a haptic at the moment itself (`MomentClock.sleep`, the continuous clock, not a tick).
 ///
 /// - **Answered**: until hung up. A tap on a camera's square keeps its frame as a photo (`front`, `back`), a long press
-///   lights the torch. The film becomes the moment's reel (`MomentReelRenderer`: the selfie's square over the back
-///   camera's, at real time with the chime (Half-Life 2's suit charging) at the moment, then backwards to the start,
-///   chiming at it again, the sound following).
-/// - **Muted**: the screen dark, until a Flavon after the moment (`MomentCalendar.captureTime`), played once at real
-///   time with the chime at the moment.
+///   lights the torch.
+/// - **Muted**: the screen dark, until a Flavon after the moment (`MomentCalendar.captureTime`).
 ///
-/// Picked up after the moment (or hung up before it), the film has no moment in it: no chimes, marked missed when the
+/// Either film becomes the moment's reel (`MomentReelRenderer`: the selfie's square over the back camera's, played once
+/// at real time, the sound following, the chime — Half-Life 2's suit charging — at the moment). Picked up after the
+/// moment (or hung up before it), the film has no moment in it: no chime, marked missed when the
 /// moment had passed. Then the entry — time = the moment, `capture` filled
 /// (outcome `answered` or `muted`), the film as a video named `reel` (its poster the moment's frame), the photos — is
 /// written. Closing the view ends the film there; what was filmed is kept.
@@ -212,26 +211,29 @@ final class InstantModel {
         while UIApplication.shared.applicationState == .background { try? await Task.sleep(for: .milliseconds(500)) }
         #endif
         var media: [BlobRef] = []
+        var notes: [String] = []
         if !films.isEmpty || camera.mode == .none {
             let disk = JournalStore.shared.disk
             let url = disk.temporaryFile(ext: "mov")
             let script = reelScript()
             do {
-                let gaps = try await MomentReelRenderer.render(films: films, script: script, to: url) { [weak self] p in
+                let report = try await MomentReelRenderer.render(films: films, script: script, to: url) { [weak self] p in
                     Task { @MainActor in self?.developed = max(self?.developed ?? 0, p) }
                 }
-                if !gaps.isEmpty { filmTrouble = gaps.joined(separator: "; ") }
-                media = try await MomentSaver.adoptReel(url, posterAt: script.chimes ? script.timing.moments[0] : 0)
+                if !report.gaps.isEmpty { filmTrouble = report.gaps.joined(separator: "; ") }
+                notes = report.notes + report.gaps
+                media = try await MomentSaver.adoptReel(url, posterAt: script.chimes ? script.timing.moment : 0)
                 momentsLog.info("reel of \(self.moment.index): \(films.map(\.camera)), \(media.count) blobs")
             } catch {
                 momentsLog.error("could not make the reel: \(error.localizedDescription)")
+                notes = ["no reel: \(error.localizedDescription)"]
                 reelFailure = error.localizedDescription
                 // the films themselves, rather than nothing
                 media = await MomentSaver.adoptFilms(films)
             }
             try? FileManager.default.removeItem(at: url)
         }
-        MomentFilmArchive.keep(films)
+        MomentFilmArchive.keep(films, notes: notes)
         if let worst = films.filter({ $0.camera != "sound" && $0.lost > 0.1 }).max(by: { $0.lost < $1.lost }) {
             filmTrouble = "the \(worst.camera) camera lost \(Int((worst.lost * 100).rounded())) % of its frames"
             momentsLog.error("films: \(films.compactMap(\.report).joined(separator: "; "))")
@@ -251,7 +253,7 @@ final class InstantModel {
         endBackgroundWork()
     }
 
-    /// The film from the press to its end at real time: answered, forward and then back; muted, once.
+    /// The film from the press to its end, once at real time.
     private func reelScript() -> MomentReelScript {
         let rgb = moment.rarity.color.resolve(in: EnvironmentValues())
         let side = JournalPreferences.shared.videoQuality == .hevc720 ? 640 : 960
@@ -261,7 +263,7 @@ final class InstantModel {
         return MomentReelScript(center: center, before: center - filmStart, after: end - center,
                                 notation: AppSettings.shared.wording.notation,
                                 accent: [Double(rgb.red), Double(rgb.green), Double(rgb.blue)], side: side,
-                                chimes: inside, missed: missed, backward: mode == .answered)
+                                chimes: inside, missed: missed)
     }
 
     /// iOS: the film, the reel and the save finish even when the app leaves the front meanwhile.
@@ -421,10 +423,11 @@ enum MomentStill {
     }
 }
 
-/// The last capture's films as filmed, kept in Caches/MomentFilms until the next capture (replacing them): to look into
-/// a reel that came out wrong (`devicectl device copy from` reads them off a phone).
+/// The last capture's films as filmed, kept in Caches/MomentFilms until the next capture (replacing them), with
+/// films.txt saying how each was filmed and read into the reel: to look into a reel that came out wrong
+/// (`devicectl device copy from` reads them off a phone).
 enum MomentFilmArchive {
-    static func keep(_ films: [MomentFilm]) {
+    static func keep(_ films: [MomentFilm], notes: [String] = []) {
         let fm = FileManager.default
         guard let caches = fm.urls(for: .cachesDirectory, in: .userDomainMask).first else {
             films.forEach { try? fm.removeItem(at: $0.url) }
@@ -439,6 +442,7 @@ enum MomentFilmArchive {
             if (try? fm.moveItem(at: film.url, to: target)) == nil { try? fm.removeItem(at: film.url) }
             lines.append("\(film.camera) start \(film.start) lost \(film.lost) \(film.report ?? "")")
         }
+        lines += notes.map { "reel: \($0)" }
         try? lines.joined(separator: "\n").write(to: dir.appending(path: "films.txt"), atomically: true, encoding: .utf8)
     }
 }

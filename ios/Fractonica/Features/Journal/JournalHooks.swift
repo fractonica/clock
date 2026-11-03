@@ -107,6 +107,7 @@ struct ComposerRequest: Identifiable, Hashable, Sendable {
 ///     -FXJournalMoment 1        … with the moment picker open
 ///     -FXJournalDetail <n>      open the n-th entry (0 = newest)
 ///     -FXJournalGallery 1       … and its first photo full screen
+///     -FXJournalReverse 1       … and reverse its first video, as the video's menu does
 ///     -FXJournalSettings 1      open Settings › Journal (with -FXTab settings)
 enum JournalLaunch {
     static func flag(_ key: String) -> Bool {
