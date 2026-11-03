@@ -98,10 +98,10 @@ enum MomentReelRenderer {
             let dir = FileManager.default.temporaryDirectory.appending(path: "reel-\(UUID().uuidString)")
             try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
             defer { try? FileManager.default.removeItem(at: dir) }
-            let context = CIContext(options: [.cacheIntermediates: false])
             let pictures = films.filter { $0.camera != "sound" }
             var heard: Heard?
             if let sound = films.first(where: { $0.camera == "sound" }) { heard = try await samples(of: sound, center: script.center) }
+            let context = CIContext(options: [.cacheIntermediates: false])
             let developed = try await develop(films: pictures, script: script, dir: dir, context: context) { progress(0.45 * $0) }
             try await write(developed, heard: heard, script: script, dir: dir, to: url, context: context) { progress(0.45 + 0.55 * $0) }
             return Report(gaps: developed.gaps, notes: developed.notes)
@@ -152,33 +152,37 @@ enum MomentReelRenderer {
             if let l = last[i], u - l > gap[i].0 { gap[i] = (u - l, l) }
             last[i] = u
         }
-        // each frame in a pool of its own: the loop never waits, so what a frame leaves to be released (its decoded
-        // picture among it) would otherwise pile up until the film's end, and the decoder run short partway
-        while let frame = autoreleasepool(invoking: { main.next() }) {
+        // each frame wholly in a pool of its own: the loop never waits, so what a frame leaves to be released — the
+        // squares and the composite made of its pictures, which hold the decoded pictures — would otherwise pile up
+        // until the film's end. On the iPhone the decoded pictures count against the app (on the Mac they do not):
+        // ~4.7 MB a frame, until the decoder, out of room, stopped giving frames ~500 in, or the system stopped the app
+        // ~660 in
+        var reading = true
+        while reading {
             try Task.checkCancellation()
-            if frame.u < -script.before - 0.05 { continue }
-            if frame.u > script.after + 0.05 { break }
-            note(0, frame.u)
-            // the front camera's latest frame at or before this one
-            while let n = riderNext, n.u <= frame.u + 0.002 {
-                riderNow = n
-                note(1, n.u)
-                riderNext = rider?.next()
-            }
-            var image = square(frame.image, side: side)
-            if dual, let top = riderNow?.image {
-                image = square(top, side: side).transformed(by: CGAffineTransform(translationX: 0, y: side)).composited(over: image)
-            }
-            let file = dir.appending(path: String(format: "f%05d.jpg", times.count))
-            try autoreleasepool {
+            reading = try autoreleasepool {
+                guard let frame = main.next() else { return false }
+                if frame.u < -script.before - 0.05 { return true }
+                if frame.u > script.after + 0.05 { return false }
+                note(0, frame.u)
+                // the front camera's latest frame at or before this one
+                while let n = riderNext, n.u <= frame.u + 0.002 {
+                    riderNow = n
+                    note(1, n.u)
+                    riderNext = rider?.next()
+                }
+                var image = square(frame.image, side: side)
+                if dual, let top = riderNow?.image {
+                    image = square(top, side: side).transformed(by: CGAffineTransform(translationX: 0, y: side)).composited(over: image)
+                }
+                let file = dir.appending(path: String(format: "f%05d.jpg", times.count))
                 try context.writeJPEGRepresentation(of: image.cropped(to: CGRect(x: 0, y: 0, width: side, height: dual ? 2 * side : side)),
                                                     to: file, colorSpace: space,
                                                     options: [kCGImageDestinationLossyCompressionQuality as CIImageRepresentationOption: 0.85])
+                times.append(frame.u)
+                progress(min(1, (frame.u + script.before) / max(script.before + script.after, 0.1)))
+                return true
             }
-            times.append(frame.u)
-            // (whatever the context keeps of the pictures it was given)
-            if times.count % 50 == 0 { context.clearCaches() }
-            progress(min(1, (frame.u + script.before) / max(script.before + script.after, 0.1)))
         }
         guard !times.isEmpty else { throw Failure.nothing }
         let names = films.isEmpty ? ["drawn", "drawn"] : ordered.map(\.camera)
@@ -279,7 +283,7 @@ enum MomentReelRenderer {
             let u = timing.source(at: tau)
             // the filmed frame showing at u, whole: its words are its own Sub-blink's
             let shown = MomentReelFrames.pick(developed.times, u).a
-            // in a pool of its own, as each developed frame
+            // in a pool of its own, as each developed frame (the loop waits only when the writer is busy)
             let buffer: CVPixelBuffer = try autoreleasepool {
                 let image = try frames.image(shown)
                 guard let pool = adaptor.pixelBufferPool else { throw Failure.writer(writer.error?.localizedDescription ?? "no buffers") }
@@ -300,9 +304,10 @@ enum MomentReelRenderer {
                 try await Task.sleep(for: .milliseconds(2))
                 if waited > 30 { throw Failure.writer("the video input stalled at frame \(k) of \(count), \(heard) samples heard") }
             }
-            feedAudio(until: tau + 0.5)
-            adaptor.append(buffer, withPresentationTime: CMTime(seconds: tau, preferredTimescale: 600_000))
-            if k % 50 == 49 { context.clearCaches() }
+            autoreleasepool {
+                feedAudio(until: tau + 0.5)
+                adaptor.append(buffer, withPresentationTime: CMTime(seconds: tau, preferredTimescale: 600_000))
+            }
             progress(Double(k + 1) / Double(count))
         }
         video.markAsFinished()

@@ -271,9 +271,11 @@ red button to hang up: it films until then (`record(from:to: .infinity)`). `Mome
 (MomentReel.swift has its arithmetic, checked; a check makes one from two films and a sound): the selfie's square over
 the back camera's, the film played once at real time with a chime at the moment (Half-Life 2's suit charging,
 Resources/Moments/moment-chime.caf), the sound along with it (filmed in the `.measurement` mode, without the gain
-control the ringtone would have turned down, and brought to a steady level); the films read a few seconds a reader
-(`VideoFrameReader`, Journal/Media: on the iPhone one reader for a whole film stopped ~500 frames in, with no error),
-a reader that stops short opened again where it stopped, each frame developed in an autorelease pool of its own;
+control the ringtone would have turned down, and brought to a steady level); each frame developed wholly in an
+autorelease pool of its own (the loop never waits: without them every frame's pictures were held to the end — on the
+iPhone, where the decoded pictures count against the app, the films stopped being read ~500 frames in, or the app was
+stopped ~660 in), the films read a few seconds a reader (`VideoFrameReader`, Journal/Media), one that stops short
+opened again where it stopped;
 its frames last a Sub-blink too, each a whole filmed frame stamped at
 the top with its date ("α6 β4 γ9 δ4 ε1") and its time down to the Sub-blink ("62η 4ι 29λ 4ν 3ξ"); picked up after the
 moment it has no chimes and is stamped MISSED in red; in the Simulator a drawn film stands in for the cameras. **Muted**:

@@ -2,9 +2,9 @@
 import Foundation
 
 /// A video track's frames in presentation order, read a stretch of a few seconds at a time, each stretch by an
-/// `AVAssetReader` of its own. A reader that stops before its stretch's end (on the iPhone one stopped for good ~500
-/// frames into a long film, with no error) is opened again just past the last frame it gave, up to three times in a
-/// row. With `copies` the pictures are copies, so the decoder never waits for the ones the caller holds a while (not
+/// `AVAssetReader` of its own. A reader that stops before its stretch's end (on the iPhone one did, with no error, when
+/// the app held on to every picture it had been given and the decoder ran out of room) is opened again just past the
+/// last frame it gave, up to three times in a row; what happened is in `report`. With `copies` the pictures are copies, so the decoder never waits for the ones the caller holds a while (not
 /// for Core Image: the copies it is given stay with it). Used by the moments' reels (`MomentReelRenderer`) and
 /// `VideoReverser`.
 ///
