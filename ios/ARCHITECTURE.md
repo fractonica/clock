@@ -140,6 +140,7 @@ settings = settings` inside `body`.
 | `minDepth`, `maxDepth` | 1 … 14, 1 and 10 | Depth range of rings, ladder and timeline lanes |
 | `showLetters` | Bool, false | Watch face period letters |
 | `haptics` | Bool, true | Haptic feedback |
+| `sounds` | Bool, true | The interface's sounds (`InterfaceSound`) |
 
 Test hooks never write saved settings: `settings.override(pure:zone:selectedLevel:minDepth:maxDepth:)` shows values
 for this launch only (validated like any write; the `-FXPure` / `-FXZone` arguments and Ladder's hooks use it).
@@ -212,6 +213,9 @@ it, and both jump boxes read past it (`stripPentad` in parse.js, `PentadLead` in
 - `Haptics.play(.selection | .step | .success | .warning)` honours the Haptics setting (Taptic Engine on iOS, Force
   Touch trackpad on Mac). With `.sensoryFeedback`, gate it yourself: `.sensoryFeedback(.selection, trigger: x) { _, _
   in settings.haptics }`.
+- `InterfaceSound.play(.created)` honours the Sounds setting: the composer's sounds — a new entry or an edit opening,
+  saved, closed without saving, discarded — Half-Life 2's Combine console buttons (scripts/import-sounds.swift into
+  Resources/Sounds), played as system sounds (the silent switch silences them; the audio session is left alone).
 - `toasts.show("Link copied")` / `toasts.show(edge)`: a transient capsule at the top of the main window.
 - Transport (Core/TransportBar.swift, TransportPanel.swift): the moment, Back to live, ◀︎ ▶︎ steps of the selected
   level, play / pause with a direction-and-speed menu, and the time-travel panel (date picker, step by any cycle,
@@ -249,9 +253,10 @@ Moments (Features/Journal/Moments) are BeReal-style captures on the clock: every
 by the longest period with a quarter boundary there (its rarity: rare Helion, epic Delta, legendary Gamma,
 mythic Beta, cosmic Alpha; of the Helion ones its two nodes call, the ascending one at its start and the
 descending one at its mid point, `MomentSettings.asks`). Each is a **call**: it rings a Flavon before the moment for 11
-Flavons (`MomentCalendar.promptTime`, `ringEnd`), its ringtone looping (`MomentRingtone`: four synthesised by
-scripts/make-ringtones.swift into Resources/Moments, whole rings of half a Flavon, chosen in the settings) with a buzz
-each ring. While the app is in front
+Flavons (`MomentCalendar.promptTime`, `ringEnd`), its ringtone looping (`MomentRingtone`, chosen in the settings on a
+page of its own: four synthesised by scripts/make-ringtones.swift into Resources/Moments, whole rings of half a Flavon,
+and 18 alarms from Half-Life 2 by scripts/import-sounds.swift, each repeated whole within 28 s) with a buzz each half
+Flavon. While the app is in front
 its call screen rings (`MomentCallView`, `MomentCallModel`, `MomentRinger`: the period for the caller's name, Mute and
 Decline over slide to answer); otherwise an AlarmKit alarm (iOS 26, `MomentAlarms`: one per call for the next 8, set on
 leaving and in the background refresh, cleared on coming back; asked for on the Moments screen and by Test a Call)
@@ -264,12 +269,13 @@ film runs on, and its torch), so each choice starts at once, the call's cameras 
 square keeps its frame as a photo, a long press lights the torch, a small countdown to the moment at their foot) and the
 red button to hang up: it films until then (`record(from:to: .infinity)`). `MomentReelRenderer` makes the reel
 (MomentReel.swift has its arithmetic, checked; a check makes one from two films and a sound): the selfie's square over
-the back camera's, the film played forward at real time with a click at the moment, then at once backwards to where it
-began (a click again), the sound along with it; its frames last a Sub-blink too, each a whole filmed frame stamped at
+the back camera's, the film played forward at real time with a chime at the moment (Half-Life 2's suit charging,
+Resources/Moments/moment-chime.caf), then at once backwards to where it began (the chime again), the sound along with
+it; its frames last a Sub-blink too, each a whole filmed frame stamped at
 the top with its date ("α6 β4 γ9 δ4 ε1") and its time down to the Sub-blink ("62η 4ι 29λ 4ν 3ξ"); picked up after the
-moment it has no clicks and is stamped MISSED in red; in the Simulator a drawn film stands in for the cameras. **Muted**:
+moment it has no chimes and is stamped MISSED in red; in the Simulator a drawn film stands in for the cameras. **Muted**:
 `MutedView` — the screen dark (its brightness down, given back after) while both cameras film until a Flavon after the
-moment (End stops sooner), made the same way but played once at real time with a click at the moment. The last
+moment (End stops sooner), made the same way but played once at real time with the chime at the moment. The last
 capture's films stay in Caches/MomentFilms until the next (`MomentFilmArchive`). Saved, the Journal shows either.
 **Declined**: each camera's photo at the press, Declined, and the app puts itself away as a phone does. **Rung out**: a
 missed call, and the call screen goes. No confirmation screen follows a call, unless saving went amiss.

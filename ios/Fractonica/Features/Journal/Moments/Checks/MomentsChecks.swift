@@ -5,8 +5,8 @@ import Foundation
 // Moments' logic: the moments (every Helion quarter boundary) against FractonicaKit's own cycles and thresholds, their
 // labels (the longest level with a quarter boundary there) and names, the call a Flavon ahead ringing 11 Flavons, quiet
 // hours, the settings, the streak, the collection and the missed calls, the calls that rang out, the `capture` JSON
-// (with how its call went) and an edit keeping it, the bundled ringtones, the reel's timing (a span
-// even or not about the moment) and a reel made from films.
+// (with how its call went) and an edit keeping it, the bundled ringtones and chime, the reel's timing (a span
+// even or not about the moment) and a reel made from films, chiming at the moment.
 // Run: ios/scripts/check.sh ios/Fractonica/Features/Journal/Moments/Checks
 
 @main @MainActor
@@ -444,20 +444,36 @@ private func missedChecks() {
 
 // MARK: - Sounds
 
+/// Resources/Moments.
+private let soundFolder = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+    .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent().appending(path: "Resources/Moments")
+
 private func soundChecks() {
-    let folder = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
-        .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent().appending(path: "Resources/Moments")
-    // the ringtones: whole rings, under the 30 s a notification's or an alarm's sound may last
+    // the ringtones: the synthesised ones whole rings, the alarms whole repeats of theirs, all under the 30 s a
+    // notification's or an alarm's sound may last
+    check(MomentRingtone.synthesised.count == 4 && MomentRingtone.alarms.count == 18 && MomentRingtone.allCases.first == .helion,
+          "four synthesised ringtones, then 18 alarms")
+    check(Set(MomentRingtone.allCases.map(\.title)).count == MomentRingtone.allCases.count, "each ringtone its own name")
     for tone in MomentRingtone.allCases {
-        let url = folder.appending(path: tone.fileName)
+        let url = soundFolder.appending(path: tone.fileName)
         guard let file = try? AVAudioFile(forReading: url) else {
             check(false, "the ringtone \(tone.fileName) is there")
             continue
         }
         let seconds = Double(file.length) / file.fileFormat.sampleRate
-        check(abs(seconds - Double(MomentRingtone.rings) * MomentRingtone.cycle) < 0.05 && seconds < 30,
-              "\(tone.fileName): \(MomentRingtone.rings) rings, \(String(format: "%.2f", seconds)) s")
+        if tone.isSynthesised {
+            check(abs(seconds - Double(MomentRingtone.rings) * MomentRingtone.cycle) < 0.05 && seconds < 30,
+                  "\(tone.fileName): \(MomentRingtone.rings) rings, \(String(format: "%.2f", seconds)) s")
+        } else {
+            check(seconds > 15 && seconds <= 28.05 && file.fileFormat.channelCount == 1,
+                  "\(tone.fileName) (\(tone.title)): mono, \(String(format: "%.2f", seconds)) s")
+        }
     }
+    // the chime at the moment, from its first sound, at the reel's rate
+    let chime = MomentReelRenderer.chime(soundFolder.appending(path: "moment-chime.caf")) ?? []
+    let onset = chime.prefix(480).map(abs).max() ?? 0
+    check(abs(Double(chime.count) / 48_000 - 1.48) < 0.03 && onset > 0.05,
+          "the chime: \(String(format: "%.2f", Double(chime.count) / 48_000)) s at 48 kHz, sounding from its start (\(onset))")
 }
 
 // MARK: - The reel
@@ -488,7 +504,7 @@ private func reelChecks() {
     check(abs(at(1.5 * flavon).u) < 1e-9 && at(1.5 * flavon).backward, "the backward pass crosses the moment halfway")
     check(abs(at(timing.duration).u + flavon / 2) < 1e-9 && at(timing.duration).backward, "and ends where the reel began")
     check(timing.moments.count == 2 && abs(timing.moments[0] - flavon / 2) < 1e-9 && abs(timing.moments[1] - 1.5 * flavon) < 1e-9,
-          "a click at the moment in each pass: \(timing.moments)")
+          "a chime at the moment in each pass: \(timing.moments)")
     check((0..<40).allSatisfy { k in
         let t = timing.passDuration * Double(k) / 40
         return abs(at(t).u - (t - flavon / 2)) < 1e-9 && abs(at(timing.duration - t).u - at(t).u) < 1e-9
@@ -497,11 +513,11 @@ private func reelChecks() {
     let answered = MomentReelTiming(before: 3, after: 20)
     check(abs(answered.duration - 46) < 1e-9 && answered.moments.count == 2 && abs(answered.moments[0] - 3) < 1e-9
           && abs(answered.moments[1] - 43) < 1e-9 && abs(answered.source(at: 43).u) < 1e-9 && answered.source(at: 43).backward,
-          "the film there and back, 46 s, its clicks at 3 s and 43 s: \(answered.moments)")
+          "the film there and back, 46 s, its chimes at 3 s and 43 s: \(answered.moments)")
     // a muted call's: once, at real time throughout
     let muted = MomentReelTiming(before: 5, after: flavon, backward: false)
     check(abs(muted.duration - (5 + flavon)) < 1e-6 && muted.moments.count == 1 && abs(muted.moments[0] - 5) < 1e-6,
-          "a muted call's film plays once at real time, its click at the moment: \(muted.duration) s, \(muted.moments)")
+          "a muted call's film plays once at real time, its chime at the moment: \(muted.duration) s, \(muted.moments)")
     check((0..<40).allSatisfy { k in let t = muted.duration * Double(k) / 40; return abs(muted.source(at: t).u - (t - 5)) < 1e-6 && !muted.source(at: t).backward },
           "and every instant where it was filmed")
     // the words: the date without the cycles' marks, the time down to the Sub-blink, one ξ a frame
@@ -548,7 +564,8 @@ private func reelRenderChecks() async {
         return
     }
     films.append(MomentFilm(camera: "sound", url: soundURL, start: moment - half))
-    let script = MomentReelScript(center: moment, half: half, notation: notation, accent: [0.3, 0.5, 1], side: 160)
+    var script = MomentReelScript(center: moment, half: half, notation: notation, accent: [0.3, 0.5, 1], side: 160)
+    script.chime = soundFolder.appending(path: "moment-chime.caf")
     let out = dir.appending(path: "reel.mov")
     do {
         try await MomentReelRenderer.render(films: films, script: script, to: out) { _ in }
@@ -568,37 +585,37 @@ private func reelRenderChecks() async {
     let size = try? await video?.load(.naturalSize)
     check(abs(duration - timing.duration) < 0.1, "the reel lasts both passes: \(duration) s of \(timing.duration)")
     check(size == CGSize(width: 160, height: 320), "two squares, one over the other: \(String(describing: size))")
-    check(audio != nil, "with its sound")
-    // the heard tone runs under the clicks: at the reel's start, at the moment, and going back
-    if let audio, let reader = try? AVAssetReader(asset: asset) {
-        let output = AVAssetReaderTrackOutput(track: audio, outputSettings: [
-            AVFormatIDKey: kAudioFormatLinearPCM, AVLinearPCMBitDepthKey: 32, AVLinearPCMIsFloatKey: true,
-            AVLinearPCMIsBigEndianKey: false, AVLinearPCMIsNonInterleaved: false, AVSampleRateKey: 48_000, AVNumberOfChannelsKey: 1,
-        ])
-        reader.add(output)
-        reader.startReading()
-        var pcm: [Float] = []
-        while let buffer = output.copyNextSampleBuffer(), let block = CMSampleBufferGetDataBuffer(buffer) {
-            let n = CMBlockBufferGetDataLength(block)
-            var chunk = [Float](repeating: 0, count: n / 4)
-            chunk.withUnsafeMutableBytes { _ = CMBlockBufferCopyDataBytes(block, atOffset: 0, dataLength: n, destination: $0.baseAddress!) }
-            pcm += chunk
-        }
-        func rms(_ from: Double, _ to: Double) -> Double {
-            let a = max(0, Int(from * 48_000)), b = min(pcm.count, Int(to * 48_000))
-            guard b > a else { return 0 }
-            return (pcm[a..<b].reduce(0) { $0 + Double($1 * $1) } / Double(b - a)).squareRoot()
-        }
-        check(rms(0.5, 1.5) > 0.1, "the heard sound at the start: \(rms(0.5, 1.5))")
-        check(rms(timing.moments[0] - 1, timing.moments[0] - 0.1) > 0.1, "and up to the moment: \(rms(timing.moments[0] - 1, timing.moments[0] - 0.1))")
-        check(rms(timing.passDuration + 0.5, timing.passDuration + 1.5) > 0.1, "and going back: \(rms(timing.passDuration + 0.5, timing.passDuration + 1.5))")
+    // the heard tone runs under the chimes: at the reel's start, at the moment, and going back
+    let pcm = await samples(of: out)
+    func rms(_ x: [Float], _ from: Double, _ to: Double) -> Double {
+        let a = max(0, Int(from * 48_000)), b = min(x.count, Int(to * 48_000))
+        guard b > a else { return 0 }
+        return (x[a..<b].reduce(0) { $0 + Double($1 * $1) } / Double(b - a)).squareRoot()
+    }
+    check(audio != nil && rms(pcm, 0.5, 1.5) > 0.1, "the heard sound at the start: \(rms(pcm, 0.5, 1.5))")
+    let m = timing.moments[0]
+    check(rms(pcm, m - 1, m - 0.1) > 0.1, "and up to the moment: \(rms(pcm, m - 1, m - 0.1))")
+    check(rms(pcm, timing.passDuration + 0.5, timing.passDuration + 1.5) > 0.1,
+          "and going back: \(rms(pcm, timing.passDuration + 0.5, timing.passDuration + 1.5))")
+    // each chime from its moment on: what the same reel without chimes lacks there and nowhere before
+    var quiet = script
+    quiet.chimes = false
+    let quietURL = dir.appending(path: "reel-quiet.mov")
+    _ = try? await MomentReelRenderer.render(films: films, script: quiet, to: quietURL) { _ in }
+    let without = await samples(of: quietURL)
+    let chime = zip(pcm, without).map { $0 - $1 }
+    for (pass, t) in timing.moments.enumerated() {
+        let before = rms(chime, t - 0.6, t - 0.05), after = rms(chime, t, t + 0.6)
+        check(!without.isEmpty && after > 0.1 && before < 0.01,
+              "the chime at the moment in pass \(pass + 1): \(after) from it on, \(before) before it")
     }
     // picked up 1.5 s before the moment (the film's earlier frames left out): answered, there and back; muted, once;
-    // and one marked missed without clicks
+    // and one marked missed without chimes
     for (kind, missed) in [("answered", false), ("muted", false), ("answered", true)] {
         let answered = kind == "answered"
-        let short = MomentReelScript(center: moment, before: 1.5, after: half, notation: notation, accent: [0.3, 0.5, 1],
-                                     side: 160, clicks: !missed, missed: missed, backward: answered)
+        var short = MomentReelScript(center: moment, before: 1.5, after: half, notation: notation, accent: [0.3, 0.5, 1],
+                                     side: 160, chimes: !missed, missed: missed, backward: answered)
+        short.chime = script.chime
         let url = dir.appending(path: "short-\(kind)-\(missed).mov")
         do {
             try await MomentReelRenderer.render(films: films, script: short, to: url) { _ in }
@@ -610,6 +627,26 @@ private func reelRenderChecks() async {
             check(false, "a reel from 1.5 s before the moment: \(error.localizedDescription)")
         }
     }
+}
+
+/// A reel's sound, mono at 48 kHz.
+private func samples(of url: URL) async -> [Float] {
+    let asset = AVURLAsset(url: url)
+    guard let audio = try? await asset.loadTracks(withMediaType: .audio).first, let reader = try? AVAssetReader(asset: asset) else { return [] }
+    let output = AVAssetReaderTrackOutput(track: audio, outputSettings: [
+        AVFormatIDKey: kAudioFormatLinearPCM, AVLinearPCMBitDepthKey: 32, AVLinearPCMIsFloatKey: true,
+        AVLinearPCMIsBigEndianKey: false, AVLinearPCMIsNonInterleaved: false, AVSampleRateKey: 48_000, AVNumberOfChannelsKey: 1,
+    ])
+    reader.add(output)
+    reader.startReading()
+    var pcm: [Float] = []
+    while let buffer = output.copyNextSampleBuffer(), let block = CMSampleBufferGetDataBuffer(buffer) {
+        let n = CMBlockBufferGetDataLength(block)
+        var chunk = [Float](repeating: 0, count: n / 4)
+        chunk.withUnsafeMutableBytes { _ = CMBlockBufferCopyDataBytes(block, atOffset: 0, dataLength: n, destination: $0.baseAddress!) }
+        pcm += chunk
+    }
+    return pcm
 }
 
 /// A steady 440 Hz tone as the microphone's film (AAC).

@@ -94,6 +94,12 @@ final class AppSettings {
         set { update { $0.haptics = newValue } }
     }
 
+    /// The interface's sounds: an entry opening, saved, closed or discarded (`InterfaceSound`).
+    var sounds: Bool {
+        get { values.sounds }
+        set { update { $0.sounds = newValue } }
+    }
+
     /// The zone Earth times are shown in.
     var timeZone: TimeZone {
         values.zone.flatMap(TimeZone.init(identifier:)) ?? .current
@@ -154,6 +160,7 @@ extension AppSettings {
         var maxDepth = 10
         var showLetters = false
         var haptics = true
+        var sounds = true
 
         init() {}
 
@@ -173,6 +180,7 @@ extension AppSettings {
             if let x = read(.maxDepth, Int.self) { v.maxDepth = x }
             if let x = read(.showLetters, Bool.self) { v.showLetters = x }
             if let x = read(.haptics, Bool.self) { v.haptics = x }
+            if let x = read(.sounds, Bool.self) { v.sounds = x }
             self = v.sanitized(keeping: Values())
         }
 

@@ -1,5 +1,6 @@
 # The app files CoreChecks.swift compiles against (relative to ios/).
 Fractonica/Core/AppSettings.swift
+Fractonica/Core/InterfaceSound.swift
 Fractonica/Core/ClockStore.swift
 Fractonica/Core/ClockTimeline.swift
 Fractonica/Core/Formatting.swift

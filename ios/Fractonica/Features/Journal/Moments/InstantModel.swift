@@ -14,12 +14,12 @@ import UIKit
 ///
 /// - **Answered**: until hung up. A tap on a camera's square keeps its frame as a photo (`front`, `back`), a long press
 ///   lights the torch. The film becomes the moment's reel (`MomentReelRenderer`: the selfie's square over the back
-///   camera's, at real time with a click at the moment, then backwards to the start, clicking at it again, the sound
-///   following).
+///   camera's, at real time with the chime (Half-Life 2's suit charging) at the moment, then backwards to the start,
+///   chiming at it again, the sound following).
 /// - **Muted**: the screen dark, until a Flavon after the moment (`MomentCalendar.captureTime`), played once at real
-///   time with a click at the moment.
+///   time with the chime at the moment.
 ///
-/// Picked up after the moment (or hung up before it), the film has no moment in it: no clicks, marked missed when the
+/// Picked up after the moment (or hung up before it), the film has no moment in it: no chimes, marked missed when the
 /// moment had passed. Then the entry — time = the moment, `capture` filled
 /// (outcome `answered` or `muted`), the film as a video named `reel` (its poster the moment's frame), the photos — is
 /// written. Closing the view ends the film there; what was filmed is kept.
@@ -219,7 +219,7 @@ final class InstantModel {
                     Task { @MainActor in self?.developed = max(self?.developed ?? 0, p) }
                 }
                 if let gap = gaps.first { filmTrouble = gap }
-                media = try await MomentSaver.adoptReel(url, posterAt: script.clicks ? script.timing.moments[0] : 0)
+                media = try await MomentSaver.adoptReel(url, posterAt: script.chimes ? script.timing.moments[0] : 0)
                 momentsLog.info("reel of \(self.moment.index): \(films.map(\.camera)), \(media.count) blobs")
             } catch {
                 momentsLog.error("could not make the reel: \(error.localizedDescription)")
@@ -259,7 +259,7 @@ final class InstantModel {
         return MomentReelScript(center: center, before: center - filmStart, after: end - center,
                                 notation: AppSettings.shared.wording.notation,
                                 accent: [Double(rgb.red), Double(rgb.green), Double(rgb.blue)], side: side,
-                                clicks: inside, missed: missed, backward: mode == .answered)
+                                chimes: inside, missed: missed, backward: mode == .answered)
     }
 
     /// iOS: the film, the reel and the save finish even when the app leaves the front meanwhile.

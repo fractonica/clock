@@ -80,6 +80,9 @@ struct SettingsScreen: View {
                 Toggle(isOn: $settings.haptics) {
                     SettingLabel("Haptics", detail: "On steps, turnovers and alerts", systemImage: "hand.tap")
                 }
+                Toggle(isOn: $settings.sounds) {
+                    SettingLabel("Sounds", detail: "When an entry opens, is saved, closed or discarded", systemImage: "speaker.wave.2")
+                }
             }
 
             Section {

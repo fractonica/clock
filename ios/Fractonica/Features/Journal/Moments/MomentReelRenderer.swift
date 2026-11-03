@@ -42,22 +42,24 @@ struct MomentReelScript: Sendable {
     let accent: [Double]
     /// Each camera's square, in pixels.
     let side: Int
-    /// A click at the moment in each pass (none for a film that missed its moment).
-    var clicks = true
+    /// The chime at the moment in each pass (none for a film that missed its moment).
+    var chimes = true
+    /// The chime: Half-Life 2's suit charging (ios/scripts/import-sounds.swift).
+    var chime = Bundle.main.url(forResource: "moment-chime", withExtension: "caf")
     /// Filmed after the moment had passed: marked so in red.
     var missed = false
     /// Played back once it has played forward.
     var backward = true
 
     init(center: Double, before: Double, after: Double, notation: Notation, accent: [Double], side: Int,
-         clicks: Bool = true, missed: Bool = false, backward: Bool = true) {
+         chimes: Bool = true, missed: Bool = false, backward: Bool = true) {
         self.center = center
         self.before = before
         self.after = after
         self.notation = notation
         self.accent = accent
         self.side = side
-        self.clicks = clicks
+        self.chimes = chimes
         self.missed = missed
         self.backward = backward
     }
@@ -75,8 +77,8 @@ struct MomentReelScript: Sendable {
 /// Makes a moment's reel (MomentReel.swift has its arithmetic) from the cameras' films: first every frame of the back
 /// camera with the front camera's frame of the same instant over it, as squares (the selfie on top), kept as JPEG files;
 /// then the reel a frame each Sub-blink, each frame the filmed one at the instant `MomentReelTiming` says, its date and
-/// its time down to the ξ at the top; its sound the microphone's, along with the picture (backwards going back), a
-/// click at the moment in each pass.
+/// its time down to the ξ at the top; its sound the microphone's, along with the picture (backwards going back), the
+/// chime at the moment in each pass.
 /// Without films (the Simulator, a Mac without a camera) a drawn film of the same span stands in, so the whole capture
 /// runs there. Runs off the main thread; `progress` hears 0 … 1. Returns what went amiss in the films (a stretch
 /// without frames), for the saved screen.
@@ -229,7 +231,7 @@ enum MomentReelRenderer {
         guard writer.startWriting() else { throw Failure.writer(writer.error?.localizedDescription ?? "?") }
         writer.startSession(atSourceTime: .zero)
 
-        let sound = soundtrack(heard, timing: timing, clicks: script.clicks)
+        let sound = soundtrack(heard, timing: timing, chime: script.chimes ? chime(script.chime) : nil)
         var heard = 0 // samples appended
         var heardAll = false
         func feedAudio(until seconds: Double) {
@@ -335,9 +337,9 @@ enum MomentReelRenderer {
     }
 
     /// The reel's sound, mono at 48 kHz: the heard sound along with the picture (each output sample takes the source
-    /// instant its time shows, between two samples by their nearness: backwards going back), and a click at each moment
-    /// (`clicks`).
-    private static func soundtrack(_ heard: Heard?, timing: MomentReelTiming, clicks: Bool) -> [Float] {
+    /// instant its time shows, between two samples by their nearness: backwards going back), and `chime` from each
+    /// moment on.
+    private static func soundtrack(_ heard: Heard?, timing: MomentReelTiming, chime: [Float]?) -> [Float] {
         var out = [Float](repeating: 0, count: Int((timing.duration * sampleRate).rounded(.up)) + 1)
         if let heard, heard.samples.count > 1 {
             let last = heard.samples.count - 1
@@ -352,27 +354,36 @@ enum MomentReelRenderer {
                 }
             }
         }
-        if clicks { addClicks(&out, at: timing.moments) }
+        if let chime { addChimes(&out, chime, at: timing.moments) }
         for i in out.indices { out[i] = min(1, max(-1, out[i])) }
         return out
     }
 
-    /// A click at each of `times` (output seconds), over what is there.
-    private static func addClicks(_ out: inout [Float], at times: [Double]) {
-        let length = Int(0.05 * sampleRate)
-        var seed: UInt32 = 0x9E37_79B9
+    /// The chime from each of `times` (output seconds), over what is there.
+    private static func addChimes(_ out: inout [Float], _ chime: [Float], at times: [Double]) {
         for t in times {
-            let start = Int(t * sampleRate)
-            for i in 0..<length where start + i < out.count && start + i >= 0 {
-                let s = Double(i) / sampleRate
-                seed = seed &* 1_664_525 &+ 1_013_904_223
-                let noise = Double(Int32(bitPattern: seed)) / Double(Int32.max)
-                // a soft tick: a short ping over a lower knock, a breath of noise at the strike
-                let ping = 0.5 * sin(2 * .pi * 2000 * s) * exp(-s / 0.003)
-                let knock = 0.4 * sin(2 * .pi * 900 * s) * exp(-s / 0.007)
-                let strike = 0.2 * noise * exp(-s / 0.001)
-                out[start + i] += Float(0.28 * (ping + knock + strike))
+            let start = Int((t * sampleRate).rounded())
+            for (i, s) in chime.enumerated() where start + i >= 0 && start + i < out.count {
+                out[start + i] += 0.7 * s
             }
+        }
+    }
+
+    /// The chime's samples at the reel's rate (its file is made at it: then sample for sample); nil when it cannot be
+    /// read.
+    static func chime(_ url: URL?) -> [Float]? {
+        guard let url, let file = try? AVAudioFile(forReading: url),
+              let buffer = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: AVAudioFrameCount(file.length)),
+              (try? file.read(into: buffer)) != nil, let p = buffer.floatChannelData?[0], buffer.frameLength > 1 else {
+            reelLog.error("no chime at \(url?.path ?? "—", privacy: .public)")
+            return nil
+        }
+        let n = Int(buffer.frameLength)
+        let step = file.processingFormat.sampleRate / sampleRate
+        return (0..<Int(Double(n - 1) / step)).map { i in
+            let x = Double(i) * step
+            let j = Int(x)
+            return p[j] + (p[j + 1] - p[j]) * Float(x - Double(j))
         }
     }
 

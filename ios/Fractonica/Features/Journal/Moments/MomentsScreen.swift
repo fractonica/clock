@@ -585,9 +585,9 @@ private struct PermissionCard: View {
 
 // MARK: - Settings
 
-/// Moments' settings: on or off, which Helion moments call (Delta and longer always do), quiet hours, the ringtone
-/// (each previews on a tap), the spoken name, whether the call rings in the app by itself, and the permissions: alarms
-/// (to ring with the phone locked) and notifications.
+/// Moments' settings: on or off, which Helion moments call (Delta and longer always do), quiet hours, the ringtone (on
+/// a page of its own, each previewing on a tap), whether the call rings in the app by itself, and the permissions:
+/// alarms (to ring with the phone locked) and notifications.
 struct MomentSettingsView: View {
     @Environment(AppSettings.self) private var settings
     @State private var moments = MomentStore.shared
@@ -624,16 +624,13 @@ struct MomentSettingsView: View {
                 Text("Moments in quiet hours do not call and do not break your streak.")
             }
             Section {
-                ForEach(MomentRingtone.allCases, id: \.self) { tone in
-                    RingtoneRow(tone: tone, selected: moments.settings.ringtone == tone) {
-                        moments.settings.ringtone = tone
-                        ringer.preview(tone)
-                    }
+                NavigationLink {
+                    RingtonePicker()
+                } label: {
+                    LabeledContent("Ringtone", value: moments.settings.ringtone.title)
                 }
-            } header: {
-                Text("Ringtone")
             } footer: {
-                Text("A call rings a Flavon before its moment for 11 Flavons, through the silent switch. A tap plays two rings.")
+                Text("A call rings a Flavon before its moment for 11 Flavons, through the silent switch.")
             }
             Section {
                 Toggle("Ring in the app", isOn: $moments.settings.autoOpen)
@@ -701,6 +698,42 @@ struct MomentSettingsView: View {
                 moments.settings.quiet[keyPath: key] = (c.hour ?? 0) * 60 + (c.minute ?? 0)
             }
         )
+    }
+}
+
+/// Settings › Ringtone: the synthesised ringtones, then the alarms; a tap chooses one and plays its first two rings.
+private struct RingtonePicker: View {
+    @State private var moments = MomentStore.shared
+    @State private var ringer = MomentRinger.shared
+
+    var body: some View {
+        Form {
+            Section {
+                rows(MomentRingtone.synthesised)
+            } footer: {
+                Text("A tap plays two rings.")
+            }
+            Section("Alarms") {
+                rows(MomentRingtone.alarms)
+            }
+        }
+        .formStyle(.grouped)
+        .scrollContentBackground(.hidden)
+        .background { Backdrop() }
+        .navigationTitle("Ringtone")
+        #if os(iOS)
+        .navigationBarTitleDisplayMode(.inline)
+        #endif
+        .onDisappear { ringer.stop() }
+    }
+
+    private func rows(_ tones: [MomentRingtone]) -> some View {
+        ForEach(tones, id: \.self) { tone in
+            RingtoneRow(tone: tone, selected: moments.settings.ringtone == tone) {
+                moments.settings.ringtone = tone
+                ringer.preview(tone)
+            }
+        }
     }
 }
 

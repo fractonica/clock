@@ -451,9 +451,10 @@ enum HelionPrompts: String, CaseIterable, Codable, Sendable {
     }
 }
 
-/// A call's ringtone: synthesised by ios/scripts/make-ringtones.swift into Resources/Moments/ring-<name>.caf — IMA4,
-/// whole rings of half a Flavon each, 7 of them (27 s: a notification sound or an alarm's must stay under 30 s), so it
-/// loops seamlessly.
+/// A call's ringtone, bundled as Resources/Moments/ring-<name>.caf (IMA4, under the 30 s a notification's or an alarm's
+/// sound may last, looping seamlessly). The first four are synthesised by ios/scripts/make-ringtones.swift: whole rings
+/// of half a Flavon each, 7 of them (27 s). The alarms are Half-Life 2's (ios/scripts/import-sounds.swift), each
+/// repeated whole while it fits in 28 s.
 enum MomentRingtone: String, CaseIterable, Codable, Sendable {
     /// Two rings of strikes climbing the harmonic ladder 4 : 5 : 7 : 9 (the timer chime's chord).
     case helion
@@ -463,11 +464,42 @@ enum MomentRingtone: String, CaseIterable, Codable, Sendable {
     case marimba
     /// Soft electronic pulses, a major third warbling.
     case pulse
+    // the alarms
+    case alarm, citizen, apc, apcPass, citadel, firebell, citySiren, bank, bankShort, klaxon, manhack, razorTrain,
+         scanner, siren, crossing, trainHorn, distantHorn, warningBell
 
-    var title: String { rawValue.prefix(1).uppercased() + rawValue.dropFirst() }
+    /// Synthesised (the first four), or one of the alarms.
+    var isSynthesised: Bool { Self.synthesised.contains(self) }
+    static let synthesised: [MomentRingtone] = [.helion, .bell, .marimba, .pulse]
+    static var alarms: [MomentRingtone] { allCases.filter { !$0.isSynthesised } }
+
+    var title: String {
+        switch self {
+        case .alarm: "Alarm"
+        case .citizen: "Citizen Alarm"
+        case .apc: "APC Alarm"
+        case .apcPass: "APC Passing"
+        case .citadel: "Citadel Alert"
+        case .firebell: "Fire Bell"
+        case .citySiren: "City Siren"
+        case .bank: "Bank Alarm"
+        case .bankShort: "Bank Alarm, Short"
+        case .klaxon: "Klaxon"
+        case .manhack: "Manhack Alert"
+        case .razorTrain: "Razor Train"
+        case .scanner: "Scanner Alert"
+        case .siren: "Siren"
+        case .crossing: "Crossing Bell"
+        case .trainHorn: "Train Horn"
+        case .distantHorn: "Distant Horn"
+        case .warningBell: "Warning Bell"
+        default: rawValue.prefix(1).uppercased() + rawValue.dropFirst()
+        }
+    }
     /// The bundled sound's name, as `UNNotificationSound` and AlarmKit take it.
     var fileName: String { "ring-\(rawValue).caf" }
-    /// One ring, in seconds: half a mean Flavon. The file holds `rings` of them.
+    /// One ring, in seconds: half a mean Flavon (a buzz each, whatever the sound). A synthesised file holds `rings` of
+    /// them.
     static let cycle = 7.771_5 / 2
     static let rings = 7
 }

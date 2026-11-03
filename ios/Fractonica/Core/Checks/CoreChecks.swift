@@ -1,15 +1,17 @@
+import AVFoundation
 import FractonicaKit
 import Foundation
 import SwiftUI
 
 // The shell's state against the web app's semantics: AppSettings (src/core/store.js validation and persistence),
 // ClockStore (the store's time model and src/main.js stepCycle), ClockTickSchedule (the periodic cadence) and
-// AppLink (URL round trips). Run: ios/scripts/check.sh ios/Fractonica/Core/Checks
+// AppLink (URL round trips); and the interface's bundled sounds. Run: ios/scripts/check.sh ios/Fractonica/Core/Checks
 
 @main @MainActor
 struct CoreChecks {
     static func main() async {
         settingsChecks()
+        interfaceSoundChecks()
         storeChecks()
         await edgeStopChecks()
         scheduleChecks()
@@ -17,6 +19,21 @@ struct CoreChecks {
         wordingChecks()
         pentadChecks()
         Checks.finish()
+    }
+}
+
+/// Each of the interface's sounds bundled (Resources/Sounds), short and mono, as a system sound must be.
+private func interfaceSoundChecks() {
+    let folder = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+        .deletingLastPathComponent().appending(path: "Resources/Sounds")
+    for sound in InterfaceSound.allCases {
+        guard let file = try? AVAudioFile(forReading: folder.appending(path: sound.fileName)) else {
+            check(false, "the sound \(sound.fileName) is there")
+            continue
+        }
+        let seconds = Double(file.length) / file.fileFormat.sampleRate
+        check(seconds > 0.3 && seconds < 2 && file.fileFormat.channelCount == 1,
+              "\(sound.fileName): mono, \(String(format: "%.2f", seconds)) s")
     }
 }
 
@@ -29,8 +46,8 @@ private func settingsChecks() {
     let a = AppSettings(defaults: defaults)
     check(a.values == AppSettings.Values(), "fresh settings are the defaults")
     check(!a.pure && a.zone == nil && a.faceMode == .analog && a.journalUnit == 5 && a.topDepth == 7
-        && a.selectedLevel == 6 && a.minDepth == 1 && a.maxDepth == 10 && !a.showLetters && a.haptics,
-        "the defaults are store.js DEFAULTS: \(a.values)")
+        && a.selectedLevel == 6 && a.minDepth == 1 && a.maxDepth == 10 && !a.showLetters && a.haptics && a.sounds,
+        "the defaults are store.js DEFAULTS (and the app's own: haptics, sounds): \(a.values)")
 
     a.pure = true
     a.zone = "Europe/Moscow"
@@ -42,6 +59,7 @@ private func settingsChecks() {
     a.maxDepth = 12
     a.showLetters = true
     a.haptics = false
+    a.sounds = false
     check(AppSettings(defaults: defaults).values == a.values, "every setting persists")
 
     a.zone = "Mars/Olympus_Mons"
@@ -87,7 +105,7 @@ private func settingsChecks() {
     defaults.set(Data(#"{"pure":"yes","zone":"Nowhere/Land","topDepth":3.5,"selectedLevel":2,"minDepth":9,"maxDepth":4,"faceMode":"cuckoo","haptics":false}"#.utf8), forKey: "settings.v1")
     let g = AppSettings(defaults: defaults)
     check(!g.pure && g.zone == nil && g.topDepth == 7 && g.selectedLevel == 2 && g.minDepth == 1 && g.maxDepth == 4
-        && g.faceMode == .analog && !g.haptics, "stored garbage falls back per field: \(g.values)")
+        && g.faceMode == .analog && !g.haptics && g.sounds, "stored garbage falls back per field: \(g.values)")
     defaults.set(Data(#"{"faceMode":"pendulums"}"#.utf8), forKey: "settings.v1")
     check(AppSettings(defaults: defaults).faceMode == .epicycles, "the pendulums' page reads as the epicycles")
     defaults.set(Data("not json".utf8), forKey: "settings.v1")

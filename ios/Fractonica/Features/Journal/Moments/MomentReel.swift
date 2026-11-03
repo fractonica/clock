@@ -3,11 +3,12 @@ import Foundation
 
 // A moment's reel: the film around the moment — both cameras at once with its sound, a frame each Sub-blink (ξ,
 // 44.4 ms) — made into one video, the selfie camera's square over the back camera's. An answered call's reel plays the
-// film (from the pick-up to the hang-up) forward at real time, a click at the moment, then at once backwards to where it
-// began, a click as it passes the moment again. A muted call's plays its film (from the press to a Flavon after the
-// moment) once at real time, a click at the moment. Picked up after its moment, a film has no moment in it: no clicks,
-// marked missed. Its frames last a Sub-blink too, so each shows the next filmed one and its ξ count rolls over. The
-// sound plays along (backwards on the way back). Each frame wears its date and its time down to the ξ at the top.
+// film (from the pick-up to the hang-up) forward at real time, a chime at the moment (Half-Life 2's suit charging), then
+// at once backwards to where it began, the chime again as it passes the moment. A muted call's plays its film (from the
+// press to a Flavon after the moment) once at real time, the chime at the moment. Picked up after its moment, a film has
+// no moment in it: no chimes, marked missed. Its frames last a Sub-blink too, so each shows the next filmed one and its
+// ξ count rolls over. The sound plays along (backwards on the way back). Each frame wears its date and its time down to
+// the ξ at the top.
 // This file is the reel's arithmetic and words (no AVFoundation: checked by Moments/Checks); MomentReelRenderer makes
 // the video.
 //
@@ -49,7 +50,7 @@ struct MomentReelTiming: Sendable {
     /// Output frames in the reel.
     var frameCount: Int { max(1, Int((duration / frame).rounded())) }
 
-    /// When the moment shows in each pass (output seconds) — where the clicks go.
+    /// When the moment shows in each pass (output seconds) — where the chimes start.
     var moments: [Double] { backward ? [before, duration - before] : [before] }
 
     /// The source instant u (seconds from the moment) shown at output time τ, and whether it is the backward pass.
