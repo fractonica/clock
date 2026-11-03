@@ -252,7 +252,7 @@ JournalHooks) to every record it writes, and `SkyTagging.backfill` retags the en
 Moments (Features/Journal/Moments) are BeReal-style captures on the clock: every Helion quarter boundary is a candidate moment, labelled
 by the longest period with a quarter boundary there (its rarity: rare Helion, epic Delta, legendary Gamma,
 mythic Beta, cosmic Alpha; of the Helion ones its two nodes call, the ascending one at its start and the
-descending one at its mid point, `MomentSettings.asks`). Each is a **call**: it rings a Flavon before the moment for 11
+descending one at its mid point, `MomentSettings.asks`). Each is a **call**: it rings 2 Flavons before the moment for 11
 Flavons (`MomentCalendar.promptTime`, `ringEnd`), its ringtone looping (`MomentRingtone`, chosen in the settings on a
 page of its own: four synthesised by scripts/make-ringtones.swift into Resources/Moments, whole rings of half a Flavon,
 and 18 alarms from Half-Life 2 by scripts/import-sounds.swift, each repeated whole within 28 s) with a buzz each half
@@ -271,7 +271,9 @@ red button to hang up: it films until then (`record(from:to: .infinity)`). `Mome
 (MomentReel.swift has its arithmetic, checked; a check makes one from two films and a sound): the selfie's square over
 the back camera's, the film played forward at real time with a chime at the moment (Half-Life 2's suit charging,
 Resources/Moments/moment-chime.caf), then at once backwards to where it began (the chime again), the sound along with
-it; its frames last a Sub-blink too, each a whole filmed frame stamped at
+it (filmed in the `.measurement` mode, without the gain control the ringtone would have turned down, and brought to a
+steady level); each frame developed in an autorelease pool of its own, and a film reader that fails partway opened
+again where it stopped; its frames last a Sub-blink too, each a whole filmed frame stamped at
 the top with its date ("α6 β4 γ9 δ4 ε1") and its time down to the Sub-blink ("62η 4ι 29λ 4ν 3ξ"); picked up after the
 moment it has no chimes and is stamped MISSED in red; in the Simulator a drawn film stands in for the cameras. **Muted**:
 `MutedView` — the screen dark (its brightness down, given back after) while both cameras film until a Flavon after the

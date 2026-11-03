@@ -8,7 +8,7 @@ import AudioToolbox
 import UIKit
 #endif
 
-/// A moment's call: it rings from a Flavon before the moment for 11 Flavons (the ringtone looping, a buzz each ring),
+/// A moment's call: it rings from 2 Flavons before the moment for 11 Flavons (the ringtone looping, a buzz each ring),
 /// the cameras running from the first ring so whatever is chosen starts at once:
 ///
 /// - **Answered** (slide to answer, or the alarm's Answer): both cameras film until hung up, into the moment's reel —
@@ -56,7 +56,7 @@ final class MomentCallModel {
         start = request.start
         let flavon = FractonicaClock.shared.levelInfo(10).meanSeconds
         if request.demo {
-            // a made-up moment: its call rings a mean Flavon before it
+            // a made-up moment: its call rings the lead's mean Flavons before it
             ringStart = moment.time - Double(MomentCalendar.leadFlavons) * flavon
             ringEnd = ringStart + Double(MomentCalendar.ringFlavons) * flavon
         } else {
@@ -243,7 +243,7 @@ final class MomentRinger {
     func ring(_ tone: MomentRingtone) {
         stop()
         #if os(iOS)
-        MomentCamera.prepareAudio(recording: AVAudioApplication.shared.recordPermission == .granted)
+        MomentCamera.prepareAudio(recording: MomentCamera.mayRecordSound)
         #endif
         guard let player = Self.player(tone) else { return }
         player.numberOfLoops = -1

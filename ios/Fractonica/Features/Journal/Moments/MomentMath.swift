@@ -5,7 +5,7 @@ import Foundation
 // 0 (a Helion's start), 9 (its peak), 18 (its node) and 27 (its valley). Every quarter boundary of a longer period
 // (Nuclide, Delta, Gamma, Beta, Alpha) falls on one of them, so each moment is labelled by the longest level for which
 // it is a start or a quarter boundary; that level gives its rarity (hub/API.md, `journal.entry` `capture`). The app
-// calls 1 Flavon before each moment the settings ask for — a Helion's two nodes, its start (ascending: the wave rising
+// calls 2 Flavons before each moment the settings ask for — a Helion's two nodes, its start (ascending: the wave rising
 // through zero) and its mid point (descending), and every quarter boundary of a Delta or longer
 // (`MomentSettings.asks`) — and rings for 11 Flavons: answered, the back camera films until hung up; muted, both
 // cameras film through the moment into a reel; declined, each camera takes a photo; left ringing, it is a missed call
@@ -231,8 +231,8 @@ extension JSONValue {
 
 /// Every moment of the catalogue, by number or by time.
 struct MomentCalendar: Sendable {
-    /// How long before a moment its call rings: 1 Flavon (≈ 7.8 s).
-    static let leadFlavons = 1
+    /// How long before a moment its call rings: 2 Flavons (≈ 15.5 s).
+    static let leadFlavons = 2
     /// How long a call rings before it is missed: 11 Flavons (≈ 85 s) from its first ring.
     static let ringFlavons = 11
 
@@ -320,7 +320,7 @@ struct MomentCalendar: Sendable {
     /// accepts. Calls are far shorter than the time between moments: there is at most one.
     func ringing(at t: Double, where include: (Moment) -> Bool = { _ in true }) -> Moment? {
         guard let q = index(after: t) else { return nil }
-        // the call of the next moment rings from a Flavon before it; a past moment's for ten Flavons after
+        // the call of the next moment rings from two Flavons before it; a past moment's for nine Flavons after
         for i in [q, q - 1] where i >= 0 {
             guard let m = moment(i), promptTime(of: m) <= t, t < ringEnd(of: m), include(m) else { continue }
             return m

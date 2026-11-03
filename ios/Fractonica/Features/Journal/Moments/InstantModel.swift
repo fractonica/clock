@@ -171,6 +171,8 @@ final class InstantModel {
     // MARK: The film
 
     private func film() async {
+        // the microphone heard as it is from here: the ringtone's gain control would keep it down for half a minute
+        MomentCamera.prepareAudio(recording: MomentCamera.mayRecordSound, filming: true)
         await MomentClock.sleep(until: filmStart - 0.05)
         beginBackgroundWork()
         phase = .filming
@@ -218,7 +220,7 @@ final class InstantModel {
                 let gaps = try await MomentReelRenderer.render(films: films, script: script, to: url) { [weak self] p in
                     Task { @MainActor in self?.developed = max(self?.developed ?? 0, p) }
                 }
-                if let gap = gaps.first { filmTrouble = gap }
+                if !gaps.isEmpty { filmTrouble = gaps.joined(separator: "; ") }
                 media = try await MomentSaver.adoptReel(url, posterAt: script.chimes ? script.timing.moments[0] : 0)
                 momentsLog.info("reel of \(self.moment.index): \(films.map(\.camera)), \(media.count) blobs")
             } catch {

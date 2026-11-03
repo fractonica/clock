@@ -3,7 +3,7 @@ import AVFoundation
 import Foundation
 
 // Moments' logic: the moments (every Helion quarter boundary) against FractonicaKit's own cycles and thresholds, their
-// labels (the longest level with a quarter boundary there) and names, the call a Flavon ahead ringing 11 Flavons, quiet
+// labels (the longest level with a quarter boundary there) and names, the call 2 Flavons ahead ringing 11 Flavons, quiet
 // hours, the settings, the streak, the collection and the missed calls, the calls that rang out, the `capture` JSON
 // (with how its call went) and an edit keeping it, the bundled ringtones and chime, the reel's timing (a span
 // even or not about the moment) and a reel made from films, chiming at the moment.
@@ -190,15 +190,15 @@ private func promptChecks() {
     for m in calendar.upcoming(after: vectorA, count: 50) {
         let p = calendar.promptTime(of: m), end = calendar.ringEnd(of: m)
         let lead = m.time - p
-        if abs(lead - flavon) > 0.05 { check(false, "a Flavon ahead: \(lead) s"); return }
+        if abs(lead - 2 * flavon) > 0.1 { check(false, "2 Flavons ahead: \(lead) s"); return }
         let f = calendar.flavons(from: p, to: m), g = calendar.flavons(from: end, to: m)
-        if abs(f - 1) > 0.001 || abs(g + 10) > 0.001 { check(false, "a Flavon ahead, ten after, by position: \(f), \(g)"); return }
+        if abs(f - 2) > 0.001 || abs(g + 9) > 0.001 { check(false, "2 Flavons ahead, nine after, by position: \(f), \(g)"); return }
         if calendar.ringing(at: p - 0.01)?.index == m.index || calendar.ringing(at: p + 0.01)?.index != m.index
             || calendar.ringing(at: m.time + 5 * flavon)?.index != m.index || calendar.ringing(at: end + 0.01)?.index == m.index {
             check(false, "ringing(at:) over \(m.index)'s call"); return
         }
     }
-    check(true, "every call rings a Flavon before its moment, for 11 Flavons")
+    check(true, "every call rings 2 Flavons before its moment, for 11 Flavons")
     check(calendar.ringing(at: calendar.upcoming(after: vectorA, count: 1)[0].time - 30 * flavon) == nil, "no call between moments")
 }
 
@@ -568,7 +568,8 @@ private func reelRenderChecks() async {
     script.chime = soundFolder.appending(path: "moment-chime.caf")
     let out = dir.appending(path: "reel.mov")
     do {
-        try await MomentReelRenderer.render(films: films, script: script, to: out) { _ in }
+        let gaps = try await MomentReelRenderer.render(films: films, script: script, to: out) { _ in }
+        check(gaps.isEmpty, "the films read to their ends, without gaps: \(gaps)")
     } catch {
         check(false, "the reel is made from two films: \(error.localizedDescription)")
         return
@@ -592,7 +593,8 @@ private func reelRenderChecks() async {
         guard b > a else { return 0 }
         return (x[a..<b].reduce(0) { $0 + Double($1 * $1) } / Double(b - a)).squareRoot()
     }
-    check(audio != nil && rms(pcm, 0.5, 1.5) > 0.1, "the heard sound at the start: \(rms(pcm, 0.5, 1.5))")
+    // (the tone, 0.4 at its peak, brought to 0.7)
+    check(audio != nil && abs(rms(pcm, 0.5, 1.5) - 0.7 / 2.squareRoot()) < 0.06, "the heard sound at the start, at a steady level: \(rms(pcm, 0.5, 1.5))")
     let m = timing.moments[0]
     check(rms(pcm, m - 1, m - 0.1) > 0.1, "and up to the moment: \(rms(pcm, m - 1, m - 0.1))")
     check(rms(pcm, timing.passDuration + 0.5, timing.passDuration + 1.5) > 0.1,

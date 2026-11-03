@@ -89,7 +89,7 @@ struct MomentsScreen: View {
         let captured = journal.entries.filter { $0.capture.map { !$0.missed } ?? false }
         MomentsSection(title: "Recent captures") {
             if captured.isEmpty {
-                Text("Your captures show here: a Flavon before each moment Fractonica calls you. Answer and the back camera films until you hang up; mute and both cameras film through the moment into a reel; decline and each camera takes a photo.")
+                Text("Your captures show here: 2 Flavons before each moment Fractonica calls you. Answer and the back camera films until you hang up; mute and both cameras film through the moment into a reel; decline and each camera takes a photo.")
                     .font(.footnote)
                     .foregroundStyle(Theme.ink3)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -254,7 +254,7 @@ private struct StreakHero: View {
     }
 }
 
-/// Test a Call: a made-up moment's call, to try the ringing and each choice any time — ringing now (its moment a Flavon
+/// Test a Call: a made-up moment's call, to try the ringing and each choice any time — ringing now (its moment 2 Flavons
 /// away), or in 2 Flavons, time to lock the phone and hear it ring as an alarm. Whatever is chosen is saved like a real
 /// call; it never counts for the streak.
 private struct TestMomentRow: View {
@@ -278,7 +278,7 @@ private struct TestMomentRow: View {
             .buttonBorderShape(.capsule)
             .disabled(moments.instant != nil)
             .accessibilityHint("Rings a made-up moment's call now")
-            Text("A made-up moment calls now, a Flavon ahead (hold for one in 2 Flavons: lock the phone to hear it ring as an alarm). Answer, mute or decline it: it is saved like a real call and never counts for the streak.")
+            Text("A made-up moment calls now, 2 Flavons ahead (hold for one in 2 Flavons: lock the phone to hear it ring as an alarm). Answer, mute or decline it: it is saved like a real call and never counts for the streak.")
                 .font(.footnote)
                 .foregroundStyle(Theme.ink3)
         }
@@ -377,7 +377,7 @@ private struct NextMomentCard: View {
                         .font(.footnote)
                         .foregroundStyle(Theme.ink3)
                 }
-                Label("Calls \(MomentCalendar.leadFlavons) Flavon before, rings for \(MomentCalendar.ringFlavons)", systemImage: "phone")
+                Label("Calls \(MomentCalendar.leadFlavons) Flavons before, rings for \(MomentCalendar.ringFlavons)", systemImage: "phone")
                     .font(.footnote)
                     .foregroundStyle(Theme.ink2)
                 if prompt <= t {
@@ -524,7 +524,7 @@ private struct OffCard: View {
             Text("Moments are off")
                 .font(.headline)
                 .foregroundStyle(Theme.ink)
-            Text("Turn them on to be called a Flavon before each moment, and answer, mute or decline to capture it.")
+            Text("Turn them on to be called 2 Flavons before each moment, and answer, mute or decline to capture it.")
                 .font(.footnote)
                 .foregroundStyle(Theme.ink2)
             Button("Turn On", action: turnOn)
@@ -567,7 +567,7 @@ private struct PermissionCard: View {
                 .foregroundStyle(Theme.ink)
             Text(authorization == .denied
                  ? "Moments ring by themselves while the app is in front. To be called when it is not, allow notifications for Fractonica in Settings."
-                 : "Allow notifications (and alarms) to be called a Flavon before each moment, even with the phone locked.")
+                 : "Allow notifications (and alarms) to be called 2 Flavons before each moment, even with the phone locked.")
                 .font(.footnote)
                 .foregroundStyle(Theme.ink2)
             if authorization == .notDetermined {
@@ -630,7 +630,7 @@ struct MomentSettingsView: View {
                     LabeledContent("Ringtone", value: moments.settings.ringtone.title)
                 }
             } footer: {
-                Text("A call rings a Flavon before its moment for 11 Flavons, through the silent switch.")
+                Text("A call rings 2 Flavons before its moment for 11 Flavons, through the silent switch.")
             }
             Section {
                 Toggle("Ring in the app", isOn: $moments.settings.autoOpen)

@@ -12,7 +12,7 @@ let momentsLog = Logger(subsystem: "app.fractonica.clock", category: "moments")
 
 /// Moments' state: the settings (`moments.v1`), the streak, collection and missed calls derived from the journal's
 /// records (their `capture`, so they follow every device through the hub), the next moment, and the call to present
-/// (the Moments screen shows the rest). Every moment the settings ask for is a call: it rings 1 Flavon before the
+/// (the Moments screen shows the rest). Every moment the settings ask for is a call: it rings 2 Flavons before the
 /// moment for 11 Flavons. While the app is in front its call screen rings by itself (unless "Ring in the app" is off or
 /// `-FXMomentsAuto 0` was given: `opensByItself`); otherwise the system's alarm rings it (`MomentAlarms`, kept in step on
 /// leaving and in the background refresh), or without alarms a notification (`MomentScheduling`, a rolling window of
@@ -180,17 +180,17 @@ final class MomentStore {
     /// The missed calls not looked at yet: the badge's number.
     var unseenMissed: Int { stats.missedCount(after: missedSeen) }
 
-    /// Rings a made-up moment a Flavon from now (the Moments screen's Test a Call, `-FXMomentsInstant`): named as the
+    /// Rings a made-up moment 2 Flavons from now (the Moments screen's Test a Call, `-FXMomentsInstant`): named as the
     /// next real moment, or as `level` and `boundary`; answered, muted or declined like a real one and saved the same
     /// way. Its time is no real moment's, so it never counts for the streak.
     func openTest(in seconds: Double? = nil, level: MomentLevel? = nil, boundary: MomentBoundary? = nil) {
         guard instant == nil else { return }
         let lead = Double(MomentCalendar.leadFlavons) * flavon
-        // (a time under a Flavon, from the launch options: a call that has rung a while already)
+        // (a time under the lead, from the launch options: a call that has rung a while already)
         instant = InstantRequest(moment: madeUp(at: now + (seconds ?? lead), level: level, boundary: boundary), demo: true)
     }
 
-    /// Rings a made-up moment's call in `seconds` (its moment a Flavon later): with the phone locked by then, as the
+    /// Rings a made-up moment's call in `seconds` (its moment 2 Flavons later): with the phone locked by then, as the
     /// system's alarm (asked for here when it never was), or as a notification without alarms.
     func scheduleTest(in seconds: Double) {
         let lead = Double(MomentCalendar.leadFlavons) * flavon
@@ -378,12 +378,13 @@ final class MomentStore {
         guard active, settings.enabled || testCall != nil else { return }
         let now = self.now
         if opensByItself, let m = ringingCall(at: now) { openByItself(m) }
-        // a test call's moment is made up: it rings a mean Flavon before it
+        // a test call's moment is made up: it rings the lead's mean Flavons before it, until it would ring out
+        let after = Double(MomentCalendar.ringFlavons - MomentCalendar.leadFlavons) * flavon
         if let test = testCall, test.time - Double(MomentCalendar.leadFlavons) * flavon <= now + 0.2 {
-            if instant == nil, now < test.time + 10 * flavon {
+            if instant == nil, now < test.time + after {
                 clearTest()
                 openCall(test, demo: true)
-            } else if now >= test.time + 10 * flavon {
+            } else if now >= test.time + after {
                 clearTest()
             }
         }
@@ -684,7 +685,7 @@ enum MomentScheduling {
     /// The requests for the next calls whose ring or end is still ahead, soonest first: at most `budget`.
     static func requests(_ input: Input, calendar: MomentCalendar) -> [Request] {
         let flavon = calendar.clock.levelInfo(10).meanSeconds
-        // a call rings on for ten Flavons after its moment: its end may be ahead still
+        // a call rings on for nine Flavons after its moment: its end may be ahead still
         let back = Double(MomentCalendar.ringFlavons - MomentCalendar.leadFlavons) * flavon + 1
         let list = calendar.upcoming(after: input.now - back, count: budget + 2, scan: 800) { input.settings.prompts($0, zone: input.zone) }
         var out: [Request] = []
@@ -809,7 +810,7 @@ enum MomentScheduling {
 ///     -FXMomentsInstant <seconds>   ring a call for a made-up moment that many seconds away (its label is the next
 ///                                   real moment's, or -FXMomentsLevel / -FXMomentsBoundary); answered, muted or
 ///                                   declined it films and saves (in the Simulator a drawn film stands in)
-///     -FXMomentsRang <seconds>      … or one that has rung that long already (its moment past after a Flavon; it
+///     -FXMomentsRang <seconds>      … or one that has rung that long already (its moment past after 2 Flavons; it
 ///                                   rings out 11 Flavons in)
 ///     -FXMomentsTestIn <seconds>    a test call that many seconds from now (Ring in 2 Flavons): away from the app by
 ///                                   then, its alarm rings

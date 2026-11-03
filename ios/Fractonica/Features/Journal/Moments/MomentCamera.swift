@@ -112,17 +112,29 @@ final class MomentCamera {
     /// The audio session a moment's call runs in, through the silent switch: playing and recording at once where the
     /// microphone is allowed (the films' sound, the ringtone over them, the
     /// vibration and the moment's haptic with them), playing only otherwise. The ringtone and the cameras ask for the
-    /// same, so neither interrupts the other.
-    nonisolated static func prepareAudio(recording: Bool) {
+    /// same, so neither interrupts the other. Ringing, the speaker at its loudest (`.videoRecording`); `filming`, the
+    /// microphone as it is, without the system's gain control (`.measurement`): the ringtone and the buzz right by it
+    /// would otherwise turn it down for half a minute after the pick-up.
+    nonisolated static func prepareAudio(recording: Bool, filming: Bool = false) {
         #if os(iOS)
         let audio = AVAudioSession.sharedInstance()
         if recording {
-            try? audio.setCategory(.playAndRecord, mode: .videoRecording, options: [.defaultToSpeaker, .mixWithOthers, .allowBluetoothA2DP])
+            try? audio.setCategory(.playAndRecord, mode: filming ? .measurement : .videoRecording,
+                                   options: [.defaultToSpeaker, .mixWithOthers, .allowBluetoothA2DP])
             try? audio.setAllowHapticsAndSystemSoundsDuringRecording(true)
         } else if audio.category != .playAndRecord {
             try? audio.setCategory(.playback, options: [.mixWithOthers])
         }
         try? audio.setActive(true)
+        #endif
+    }
+
+    /// The microphone is allowed: the films have their sound.
+    nonisolated static var mayRecordSound: Bool {
+        #if os(iOS)
+        AVAudioApplication.shared.recordPermission == .granted
+        #else
+        AVCaptureDevice.authorizationStatus(for: .audio) == .authorized
         #endif
     }
 
@@ -166,7 +178,8 @@ private final class CameraRig: @unchecked Sendable {
 
     private func build(sound: Bool) -> Configured {
         #if os(iOS)
-        if sound { MomentCamera.prepareAudio(recording: true) }
+        // (a call's ringing or its film has set the session up already: kept as it is)
+        if sound, AVAudioSession.sharedInstance().category != .playAndRecord { MomentCamera.prepareAudio(recording: true) }
         if AVCaptureMultiCamSession.isMultiCamSupported {
             // the back camera with the most lenses that runs beside the selfie camera
             let types: [AVCaptureDevice.DeviceType] = [.builtInTripleCamera, .builtInDualWideCamera, .builtInDualCamera, .builtInWideAngleCamera]
