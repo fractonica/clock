@@ -473,71 +473,33 @@ private func reelChecks() {
         }
     }
     check(true, "a moment's film spans half a Flavon either side of it")
-    let timing = MomentReelTiming(half: flavon / 2)
+    let timing = MomentReelTiming(before: flavon / 2, after: flavon / 2)
     typealias T = MomentReelTiming
-    check(abs(T.speed(-1) - 1) < 1e-4 && abs(T.speed(1) - 1) < 1e-4 && abs(T.speed(0) - T.deep) < 1e-12,
-          "real time at the ends, an eighth at the moment")
-    check((-20...20).allSatisfy { k in let x = Double(k) / 20; return abs(T.speed(x) - T.speed(-x)) < 1e-12 },
-          "the slowing is symmetric about the moment")
-    // a pass lasts H·∫dx/s: longer than the clip (it slows), shorter than all of it at the slowest
-    check(timing.passDuration > flavon && timing.passDuration < flavon / T.deep, "a pass: \(timing.passDuration) s for a \(flavon) s Flavon")
-    check(abs(timing.duration - 2 * timing.passDuration) < 1e-9 && timing.frameCount == Int((timing.duration / timing.frame).rounded()),
-          "two passes of equal length, a frame each Sub-blink")
+    check(abs(timing.passDuration - flavon) < 1e-9 && abs(timing.duration - 2 * flavon) < 1e-9
+          && timing.frameCount == Int((timing.duration / timing.frame).rounded()),
+          "a pass lasts the film, at real time; two of them, a frame each Sub-blink")
     check(abs(T.subBlink - clock.levelInfo(12).meanSeconds / 7) < 1e-9 && abs(T.subBlink - 0.0444) < 0.0005,
           "a Sub-blink, a seventh of a Blink: \(T.subBlink) s")
-    // the passes' landmarks
-    // x: the source instant in half Flavons
-    func at(_ t: Double) -> (x: Double, backward: Bool) { let s = timing.source(at: t); return (s.u / timing.half, s.backward) }
-    check(at(0).x == -1 && !at(0).backward, "the reel opens half a Flavon before the moment")
-    check(abs(at(timing.passDuration / 2).x) < 1e-3 && !at(timing.passDuration / 2).backward, "the forward pass reaches the moment halfway")
-    check(abs(at(timing.passDuration).x - 1) < 1e-3, "the forward pass ends half a Flavon after")
-    check(abs(at(timing.passDuration * 1.5).x) < 1e-3 && at(timing.passDuration * 1.5).backward, "the backward pass crosses the moment halfway")
-    check(abs(at(timing.duration).x + 1) < 1e-9 && at(timing.duration).backward, "and ends where the reel began")
-    check(timing.moments.count == 2 && abs(timing.moments[0] - timing.passDuration / 2) < 1e-6
-          && abs(timing.moments[1] - timing.passDuration * 1.5) < 1e-6, "a click at the moment in each pass: \(timing.moments)")
-    // monotonic, and as slow as asked: source seconds per output second near the moment (forward) and the ends (back)
-    var monotonic = true
-    var previous = -2.0
-    for k in 0...timing.frameCount / 2 - 1 {
-        let x = at(timing.frameTime(k)).x
-        if x < previous { monotonic = false }
-        previous = x
-    }
-    check(monotonic, "the forward pass only moves forward")
-    let dt = 0.05
-    func rate(_ t: Double) -> Double { abs(at(t + dt).x - at(t - dt).x) * timing.half / (2 * dt) }
-    check(abs(rate(timing.passDuration / 2) - T.deep) < 0.005, "an eighth of real time at the moment: \(rate(timing.passDuration / 2))")
-    check(abs(rate(timing.passDuration * 1.5) - T.deep) < 0.005, "an eighth going back through it too: \(rate(timing.passDuration * 1.5))")
-    check(abs(rate(timing.passDuration + 0.06) - 1) < 0.01, "real time where the backward pass begins: \(rate(timing.passDuration + 0.06))")
-    check(abs(rate(0.06) - 1) < 0.01, "real time where the reel opens: \(rate(0.06))")
-    check((1..<20).allSatisfy { k in
-        let t = timing.passDuration * Double(k) / 20
-        return abs(at(timing.passDuration + t).x + at(t).x) < 1e-9
-    }, "going back is going forward, mirrored")
-    // muted 2 s before the moment: filmed from then to half a Flavon after
-    let late = MomentReelTiming(before: 2, after: flavon / 2, half: flavon / 2)
-    func lateAt(_ t: Double) -> Double { late.source(at: t).u }
-    check(abs(lateAt(0) + 2) < 1e-9 && abs(lateAt(late.passDuration) - flavon / 2) < 1e-6 && abs(lateAt(late.duration) + 2) < 1e-9,
-          "a short stretch before the moment: from −2 s to half a Flavon after, and back")
-    check(late.passDuration < timing.passDuration && late.passDuration > 2 + flavon / 2, "a shorter pass, still slowed: \(late.passDuration)")
-    check(abs(lateAt(late.moments[0])) < 1e-3 && abs(lateAt(late.moments[1])) < 1e-3 && late.moments[0] < late.passDuration / 2,
-          "the clicks where the moment shows, early in the forward pass: \(late.moments)")
-    check((1..<20).allSatisfy { k in
-        let t = late.passDuration * Double(k) / 20
-        return abs(lateAt(late.duration - t) - lateAt(t)) < 1e-9
-    }, "going back is going forward, played in reverse")
-    let lateRate = abs(late.source(at: late.moments[0] + dt).u - late.source(at: late.moments[0] - dt).u) / (2 * dt)
-    check(abs(lateRate - T.deep) < 0.005, "an eighth at the moment, however much was filmed before it: \(lateRate)")
-    // an answered call's reel: picked up 3 s before the moment, hung up 20 s after; at most a third slower, there and back
-    let answered = MomentReelTiming(before: 3, after: 20, half: flavon / 2, slowest: T.gentle)
-    func answeredRate(_ t: Double) -> Double { abs(answered.source(at: t + dt).u - answered.source(at: t - dt).u) / (2 * dt) }
-    check(abs(T.gentle - 2.0 / 3) < 1e-12 && abs(answeredRate(answered.moments[0]) - T.gentle) < 0.005
-          && abs(answeredRate(answered.moments[1]) - T.gentle) < 0.005, "two thirds of real time at the moment: \(answeredRate(answered.moments[0]))")
-    check(answered.passDuration > 23 && answered.passDuration < 23 / T.gentle && abs(answered.duration - 2 * answered.passDuration) < 1e-9,
-          "a pass a little longer than the film, then back: \(answered.passDuration) s")
-    check(abs(answeredRate(answered.moments[0] + 4) - 1) < 0.01, "real time again a few seconds on: \(answeredRate(answered.moments[0] + 4))")
+    // the passes' landmarks (u: seconds from the moment)
+    func at(_ t: Double) -> (u: Double, backward: Bool) { timing.source(at: t) }
+    check(abs(at(0).u + flavon / 2) < 1e-9 && !at(0).backward, "the reel opens half a Flavon before the moment")
+    check(abs(at(flavon / 2).u) < 1e-9 && !at(flavon / 2).backward, "the forward pass reaches the moment halfway")
+    check(abs(at(flavon).u - flavon / 2) < 1e-9, "the forward pass ends half a Flavon after")
+    check(abs(at(1.5 * flavon).u) < 1e-9 && at(1.5 * flavon).backward, "the backward pass crosses the moment halfway")
+    check(abs(at(timing.duration).u + flavon / 2) < 1e-9 && at(timing.duration).backward, "and ends where the reel began")
+    check(timing.moments.count == 2 && abs(timing.moments[0] - flavon / 2) < 1e-9 && abs(timing.moments[1] - 1.5 * flavon) < 1e-9,
+          "a click at the moment in each pass: \(timing.moments)")
+    check((0..<40).allSatisfy { k in
+        let t = timing.passDuration * Double(k) / 40
+        return abs(at(t).u - (t - flavon / 2)) < 1e-9 && abs(at(timing.duration - t).u - at(t).u) < 1e-9
+    }, "real time forward, the same instants going back")
+    // an answered call's reel: picked up 3 s before the moment, hung up 20 s after; forward, then back
+    let answered = MomentReelTiming(before: 3, after: 20)
+    check(abs(answered.duration - 46) < 1e-9 && answered.moments.count == 2 && abs(answered.moments[0] - 3) < 1e-9
+          && abs(answered.moments[1] - 43) < 1e-9 && abs(answered.source(at: 43).u) < 1e-9 && answered.source(at: 43).backward,
+          "the film there and back, 46 s, its clicks at 3 s and 43 s: \(answered.moments)")
     // a muted call's: once, at real time throughout
-    let muted = MomentReelTiming(before: 5, after: flavon, half: flavon / 2, slowest: 1, backward: false)
+    let muted = MomentReelTiming(before: 5, after: flavon, backward: false)
     check(abs(muted.duration - (5 + flavon)) < 1e-6 && muted.moments.count == 1 && abs(muted.moments[0] - 5) < 1e-6,
           "a muted call's film plays once at real time, its click at the moment: \(muted.duration) s, \(muted.moments)")
     check((0..<40).allSatisfy { k in let t = muted.duration * Double(k) / 40; return abs(muted.source(at: t).u - (t - 5)) < 1e-6 && !muted.source(at: t).backward },
@@ -607,7 +569,7 @@ private func reelRenderChecks() async {
     check(abs(duration - timing.duration) < 0.1, "the reel lasts both passes: \(duration) s of \(timing.duration)")
     check(size == CGSize(width: 160, height: 320), "two squares, one over the other: \(String(describing: size))")
     check(audio != nil, "with its sound")
-    // the heard tone runs under the clicks: loud at the reel's start (real time), still there through the slowing
+    // the heard tone runs under the clicks: at the reel's start, at the moment, and going back
     if let audio, let reader = try? AVAssetReader(asset: asset) {
         let output = AVAssetReaderTrackOutput(track: audio, outputSettings: [
             AVFormatIDKey: kAudioFormatLinearPCM, AVLinearPCMBitDepthKey: 32, AVLinearPCMIsFloatKey: true,
@@ -628,21 +590,20 @@ private func reelRenderChecks() async {
             return (pcm[a..<b].reduce(0) { $0 + Double($1 * $1) } / Double(b - a)).squareRoot()
         }
         check(rms(0.5, 1.5) > 0.1, "the heard sound at the start: \(rms(0.5, 1.5))")
-        check(rms(timing.passDuration / 2 - 1, timing.passDuration / 2 - 0.1) > 0.05, "and through the slowing: \(rms(timing.passDuration / 2 - 1, timing.passDuration / 2 - 0.1))")
+        check(rms(timing.moments[0] - 1, timing.moments[0] - 0.1) > 0.1, "and up to the moment: \(rms(timing.moments[0] - 1, timing.moments[0] - 0.1))")
         check(rms(timing.passDuration + 0.5, timing.passDuration + 1.5) > 0.1, "and going back: \(rms(timing.passDuration + 0.5, timing.passDuration + 1.5))")
     }
-    // picked up 1.5 s before the moment (the film's earlier frames left out): answered, slowing gently there and back;
-    // muted, once at real time; and one marked missed without clicks
+    // picked up 1.5 s before the moment (the film's earlier frames left out): answered, there and back; muted, once;
+    // and one marked missed without clicks
     for (kind, missed) in [("answered", false), ("muted", false), ("answered", true)] {
         let answered = kind == "answered"
-        let short = MomentReelScript(center: moment, before: 1.5, after: half, half: half, notation: notation, accent: [0.3, 0.5, 1],
-                                     side: 160, clicks: !missed, missed: missed, slowest: answered ? MomentReelTiming.gentle : 1,
-                                     backward: answered)
+        let short = MomentReelScript(center: moment, before: 1.5, after: half, notation: notation, accent: [0.3, 0.5, 1],
+                                     side: 160, clicks: !missed, missed: missed, backward: answered)
         let url = dir.appending(path: "short-\(kind)-\(missed).mov")
         do {
             try await MomentReelRenderer.render(films: films, script: short, to: url) { _ in }
             let length = try await AVURLAsset(url: url).load(.duration).seconds
-            let expected = answered ? short.timing.duration : 1.5 + half
+            let expected = answered ? 2 * (1.5 + half) : 1.5 + half
             check(abs(length - expected) < 0.1 && short.timing.duration < timing.duration,
                   "\(kind) from 1.5 s before the moment\(missed ? ", marked missed" : ""): \(length) s of \(expected)")
         } catch {

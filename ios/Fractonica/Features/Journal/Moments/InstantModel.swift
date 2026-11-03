@@ -14,13 +14,13 @@ import UIKit
 ///
 /// - **Answered**: until hung up. A tap on a camera's square keeps its frame as a photo (`front`, `back`), a long press
 ///   lights the torch. The film becomes the moment's reel (`MomentReelRenderer`: the selfie's square over the back
-///   camera's, slowing at the moment — at most a third, over the same stretch as ever — with a click, then back the
-///   same way, the sound following).
+///   camera's, at real time with a click at the moment, then backwards to the start, clicking at it again, the sound
+///   following).
 /// - **Muted**: the screen dark, until a Flavon after the moment (`MomentCalendar.captureTime`), played once at real
 ///   time with a click at the moment.
 ///
-/// Picked up after the moment (or hung up before it), the film has no moment in it: an answered one slows at its middle,
-/// without clicks, marked missed when the moment had passed. Then the entry — time = the moment, `capture` filled
+/// Picked up after the moment (or hung up before it), the film has no moment in it: no clicks, marked missed when the
+/// moment had passed. Then the entry — time = the moment, `capture` filled
 /// (outcome `answered` or `muted`), the film as a video named `reel` (its poster the moment's frame), the photos — is
 /// written. Closing the view ends the film there; what was filmed is kept.
 @MainActor @Observable
@@ -139,7 +139,7 @@ final class InstantModel {
         max(0, (moment.time - t) / flavonSeconds)
     }
 
-    /// Where the reel slows: the moment, or (none in the film) its middle.
+    /// The reel's centre: the moment, or (none in the film) its middle.
     private func center(end: Double) -> Double {
         moment.time > filmStart && moment.time < end ? moment.time : (filmStart + end) / 2
     }
@@ -249,19 +249,17 @@ final class InstantModel {
         endBackgroundWork()
     }
 
-    /// The film from the press to its end: answered, slowing gently at the moment and back again; muted, once at real
-    /// time.
+    /// The film from the press to its end at real time: answered, forward and then back; muted, once.
     private func reelScript() -> MomentReelScript {
         let rgb = moment.rarity.color.resolve(in: EnvironmentValues())
         let side = JournalPreferences.shared.videoQuality == .hevc720 ? 640 : 960
         let end = max(filmEnd, filmStart + 0.1)
         let center = center(end: end)
         let inside = center == moment.time
-        return MomentReelScript(center: center, before: center - filmStart, after: end - center, half: flavonSeconds / 2,
+        return MomentReelScript(center: center, before: center - filmStart, after: end - center,
                                 notation: AppSettings.shared.wording.notation,
                                 accent: [Double(rgb.red), Double(rgb.green), Double(rgb.blue)], side: side,
-                                clicks: inside, missed: missed,
-                                slowest: mode == .answered ? MomentReelTiming.gentle : 1, backward: mode == .answered)
+                                clicks: inside, missed: missed, backward: mode == .answered)
     }
 
     /// iOS: the film, the reel and the save finish even when the app leaves the front meanwhile.

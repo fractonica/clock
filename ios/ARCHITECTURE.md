@@ -264,11 +264,10 @@ film runs on, and its torch), so each choice starts at once, the call's cameras 
 square keeps its frame as a photo, a long press lights the torch, a small countdown to the moment at their foot) and the
 red button to hang up: it films until then (`record(from:to: .infinity)`). `MomentReelRenderer` makes the reel
 (MomentReel.swift has its arithmetic, checked; a check makes one from two films and a sound): the selfie's square over
-the back camera's, the film played forward slowing to two thirds at the moment (a Gaussian of half a Flavon's scale
-about it, whatever was filmed before it) with a click there, then at once backwards the same way (a click again), the
-sound read at the picture's pace; its frames last a Sub-blink too, each a whole filmed frame stamped at the top with its
-date ("α6 β4 γ9 δ4 ε1") and its time down to the Sub-blink ("62η 4ι 29λ 4ν 3ξ"); picked up after the moment it slows at
-its middle without clicks, stamped MISSED in red; in the Simulator a drawn film stands in for the cameras. **Muted**:
+the back camera's, the film played forward at real time with a click at the moment, then at once backwards to where it
+began (a click again), the sound along with it; its frames last a Sub-blink too, each a whole filmed frame stamped at
+the top with its date ("α6 β4 γ9 δ4 ε1") and its time down to the Sub-blink ("62η 4ι 29λ 4ν 3ξ"); picked up after the
+moment it has no clicks and is stamped MISSED in red; in the Simulator a drawn film stands in for the cameras. **Muted**:
 `MutedView` — the screen dark (its brightness down, given back after) while both cameras film until a Flavon after the
 moment (End stops sooner), made the same way but played once at real time with a click at the moment. The last
 capture's films stay in Caches/MomentFilms until the next (`MomentFilmArchive`). Saved, the Journal shows either.

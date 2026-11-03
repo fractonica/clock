@@ -30,13 +30,11 @@ struct MomentFilm: Sendable {
 
 /// What a reel shows besides the film: the clip's centre and half-length, its frame, the words, the colours.
 struct MomentReelScript: Sendable {
-    /// The clip's centre (the moment; a late film's middle): the slowest frame.
+    /// The clip's centre: the moment (a late film's middle).
     let center: Double
     /// Seconds filmed before the centre and after it.
     let before: Double
     let after: Double
-    /// The slowing's scale: half a Flavon.
-    let half: Double
     /// A frame's length, filmed and shown: a Sub-blink.
     var frame = MomentReelTiming.subBlink
     let notation: Notation
@@ -48,40 +46,37 @@ struct MomentReelScript: Sendable {
     var clicks = true
     /// Filmed after the moment had passed: marked so in red.
     var missed = false
-    /// The speed at the moment (1: played at real time throughout), and whether it then plays back.
-    var slowest = MomentReelTiming.deep
+    /// Played back once it has played forward.
     var backward = true
 
-    init(center: Double, before: Double, after: Double, half: Double, notation: Notation, accent: [Double], side: Int,
-         clicks: Bool = true, missed: Bool = false, slowest: Double = MomentReelTiming.deep, backward: Bool = true) {
+    init(center: Double, before: Double, after: Double, notation: Notation, accent: [Double], side: Int,
+         clicks: Bool = true, missed: Bool = false, backward: Bool = true) {
         self.center = center
         self.before = before
         self.after = after
-        self.half = half
         self.notation = notation
         self.accent = accent
         self.side = side
         self.clicks = clicks
         self.missed = missed
-        self.slowest = slowest
         self.backward = backward
     }
 
     /// Filmed `half` either side of the moment.
     init(center: Double, half: Double, notation: Notation, accent: [Double], side: Int) {
-        self.init(center: center, before: half, after: half, half: half, notation: notation, accent: accent, side: side)
+        self.init(center: center, before: half, after: half, notation: notation, accent: accent, side: side)
     }
 
     var timing: MomentReelTiming {
-        MomentReelTiming(before: before, after: after, half: half, frame: frame, slowest: slowest, backward: backward)
+        MomentReelTiming(before: before, after: after, frame: frame, backward: backward)
     }
 }
 
 /// Makes a moment's reel (MomentReel.swift has its arithmetic) from the cameras' films: first every frame of the back
 /// camera with the front camera's frame of the same instant over it, as squares (the selfie on top), kept as JPEG files;
-/// then the reel a frame each Sub-blink, each frame the filmed one at the instant `MomentReelTiming` says (held where
-/// the slowing shows it for several), its date and its time down to the ξ at the top; its sound the microphone's,
-/// played at the picture's speed (lower as it slows, backwards going back), a click at the moment in each pass.
+/// then the reel a frame each Sub-blink, each frame the filmed one at the instant `MomentReelTiming` says, its date and
+/// its time down to the ξ at the top; its sound the microphone's, along with the picture (backwards going back), a
+/// click at the moment in each pass.
 /// Without films (the Simulator, a Mac without a camera) a drawn film of the same span stands in, so the whole capture
 /// runs there. Runs off the main thread; `progress` hears 0 … 1. Returns what went amiss in the films (a stretch
 /// without frames), for the saved screen.
@@ -339,9 +334,9 @@ enum MomentReelRenderer {
         return Heard(first: film.start - center + (first ?? 0), samples: samples)
     }
 
-    /// The reel's sound, mono at 48 kHz: the heard sound read at the picture's pace (each output sample takes the
-    /// source instant its time shows, between two samples by their nearness: lower and slower as the picture slows,
-    /// backwards going back), and a click at each moment (`clicks`).
+    /// The reel's sound, mono at 48 kHz: the heard sound along with the picture (each output sample takes the source
+    /// instant its time shows, between two samples by their nearness: backwards going back), and a click at each moment
+    /// (`clicks`).
     private static func soundtrack(_ heard: Heard?, timing: MomentReelTiming, clicks: Bool) -> [Float] {
         var out = [Float](repeating: 0, count: Int((timing.duration * sampleRate).rounded(.up)) + 1)
         if let heard, heard.samples.count > 1 {
@@ -438,7 +433,7 @@ private struct FilmSource: ReelSource {
 }
 
 /// A drawn film where there is no camera: the moment's colours, a hand sweeping a turn a second and a light gliding
-/// across (the back), a ring breathing (the front), so the slowing shows.
+/// across (the back), a ring breathing (the front), so the motion shows (and its going back).
 private struct StandIn: ReelSource {
     let camera: String
     let script: MomentReelScript
