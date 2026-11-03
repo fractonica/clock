@@ -15,9 +15,16 @@ to every device, and searches them by meaning. The contract every client follows
 ## Run
 
 ```sh
-npm run hub                                   # from the repo root, = node hub/bin/hub.mjs serve
+hub/start.sh                                  # the hub and its embedding worker; Ctrl-C stops both
+npm run hub                                   # the hub alone, from the repo root (= node hub/bin/hub.mjs serve)
 node hub/bin/hub.mjs serve --port 8787 --host 0.0.0.0 --data hub/data
 ```
+
+`hub/start.sh` passes its flags to `serve` (`--no-worker` leaves the worker out) and marks each line `hub │` or
+`worker │`. The worker needs no pairing: it takes the token `fx-worker login` saved when this hub knows it, else one the
+hub makes on the first run and keeps in `hub/data/worker-token` (`node hub/bin/hub.mjs worker-token`). When a hub
+already answers on the port only the worker starts, and nothing does when a worker is connected to it already. When the
+worker stops, the hub runs on.
 
 It prints the local and LAN addresses and, on the first start, a one-time setup link:
 
@@ -56,7 +63,8 @@ Node accept connections).
 
 ## Run the worker
 
-Semantic search needs the embedding worker; see [`worker/README.md`](worker/README.md). In short:
+Semantic search needs the embedding worker; see [`worker/README.md`](worker/README.md). `hub/start.sh` runs one beside
+the hub (above). To run one yourself (on another machine, say), in short:
 
 ```sh
 node hub/bin/hub.mjs pair --name "GPU box" --kind worker                 # prints a code

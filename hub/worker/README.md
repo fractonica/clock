@@ -23,10 +23,11 @@ first start downloads them; when they are, the worker runs offline (`HF_HUB_OFFL
 
 ## Pair
 
-On the hub, make a pairing code for a worker (or use the web UI):
+On the hub's own machine `hub/start.sh` starts the hub and the worker together with no pairing (`hub/README.md`).
+Elsewhere, make a pairing code for a worker on the hub (or use the web UI):
 
 ```sh
-node hub/bin/hub.mjs pair --name "Studio worker" --kind worker --scopes worker,read
+node hub/bin/hub.mjs pair --name "Studio worker" --kind worker
 ```
 
 Then, on the worker's machine:
@@ -37,7 +38,7 @@ uv run fx-worker login --hub http://192.168.1.20:8787 --code K7QF-2MXD
 
 This redeems the code (`POST /v1/pair`, kind `worker`) and saves the hub and token to
 `~/.config/fractonica-hub/worker.json` (mode 0600). Pairing again from the same machine replaces the token of the
-same client (the file keeps a stable install id). The `read` scope is needed to download the blobs it embeds.
+same client (the file keeps a stable install id). The `worker` scope alone downloads the blobs it embeds.
 
 ## Run
 

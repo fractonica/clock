@@ -1,6 +1,8 @@
 #!/usr/bin/env node
-// Fractonica Hub command line: serve, pair, clients, revoke. See hub/README.md.
+// Fractonica Hub command line: serve, pair, clients, revoke, worker-token. See hub/README.md.
 import { parseArgs } from 'node:util';
+import { readFileSync, writeFileSync } from 'node:fs';
+import { arch, homedir, hostname, release, type } from 'node:os';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { startHub } from '../lib/server.js';
@@ -16,6 +18,7 @@ const USAGE = `Fractonica Hub
               [--ttl 600] [--token]      --token: make the client now and print its token instead of a code
   hub clients
   hub revoke  CLIENT_ID
+  hub worker-token                       the token of this machine's own worker (hub/start.sh), made on first use
 
   all commands take --data DIR (default: hub/data next to this script)`;
 
@@ -132,9 +135,54 @@ function revoke() {
   }
 }
 
+/** A file's text, or undefined when it cannot be read. */
+function readText(file) {
+  try {
+    return readFileSync(file, 'utf8');
+  } catch {
+    return undefined;
+  }
+}
+
+/** The token `fx-worker login` saved (FX_WORKER_CONFIG, else ~/.config/fractonica-hub/worker.json), if any. */
+function savedWorkerToken() {
+  const base = process.env.XDG_CONFIG_HOME || join(homedir(), '.config');
+  const file = process.env.FX_WORKER_CONFIG || join(base, 'fractonica-hub', 'worker.json');
+  try {
+    return JSON.parse(readText(file)).token;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Prints the token for this machine's own worker: the one `fx-worker login` saved or the one kept in the data folder,
+ * whichever this hub takes with the worker scope; failing both, a new worker client's, kept in the folder. */
+function workerToken() {
+  const kept = join(dataDir, 'worker-token');
+  const hub = openHub(dataDir);
+  try {
+    const works = (t) => {
+      const c = hub.authenticate(t);
+      return c && hub.has(c, 'worker');
+    };
+    let token = [savedWorkerToken(), readText(kept)?.trim()].find(works);
+    if (!token) {
+      ({ token } = hub.createClient({
+        name: `fx-worker on ${hostname().split('.')[0]}`, kind: 'worker', platform: `${type()} ${release()} (${arch()})`,
+        scopes: ['worker'],
+      }));
+      writeFileSync(kept, token + '\n', { mode: 0o600 });
+    }
+    console.log(token);
+  } finally {
+    hub.close();
+  }
+}
+
 if (o.help || !cmd || cmd === '--help' || cmd === '-h' || cmd === 'help') console.log(USAGE);
 else if (cmd === 'serve') await serve();
 else if (cmd === 'pair') pair();
 else if (cmd === 'clients') clients();
 else if (cmd === 'revoke') revoke();
+else if (cmd === 'worker-token') workerToken();
 else die(`unknown command ${cmd}\n\n${USAGE}`);
