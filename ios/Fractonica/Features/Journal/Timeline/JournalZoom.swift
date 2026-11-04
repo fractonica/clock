@@ -1,13 +1,13 @@
 import FractonicaKit
 import Foundation
 
-// The stack's zoom: entries by Helion (the journal's day), and pinched out, blocks of whole periods — Deltas, then
-// Gammas, then Betas — each with its entry count, a few emoji and pictures of its entries. Pure logic (grouping, the
+// The stack's zoom: entries by Helion (the journal's day), and pinched out, blocks of whole periods — Nuclides (ε, 77
+// Helions), then Deltas, Gammas, Betas — each with its entry count, a few emoji and pictures of its entries. Pure logic (grouping, the
 // pinch's steps, the blocks' words), checked by Timeline/Checks.
 
 /// How far the stack is zoomed out: the period its rows stand for.
 enum JournalZoom: String, CaseIterable, Identifiable, Sendable, Comparable {
-    case helion, delta, gamma, beta
+    case helion, nuclide, delta, gamma, beta
 
     var id: String { rawValue }
 
@@ -15,13 +15,14 @@ enum JournalZoom: String, CaseIterable, Identifiable, Sendable, Comparable {
     var level: Int {
         switch self {
         case .helion: 6
+        case .nuclide: 4
         case .delta: 3
         case .gamma: 2
         case .beta: 1
         }
     }
 
-    /// 0 for the finest (Helions) … 3 for the coarsest (Betas).
+    /// 0 for the finest (Helions) … 4 for the coarsest (Betas).
     var rank: Int { Self.allCases.firstIndex(of: self) ?? 0 }
 
     /// One step out (bigger periods), or nil at Betas.
@@ -34,25 +35,28 @@ enum JournalZoom: String, CaseIterable, Identifiable, Sendable, Comparable {
     var title: String {
         switch self {
         case .helion: "Helions"
+        case .nuclide: "Nuclides"
         case .delta: "Deltas"
         case .gamma: "Gammas"
         case .beta: "Betas"
         }
     }
 
-    /// "η", "δ" …
+    /// "η", "ε", "δ" …
     var symbol: String { Fractonica.periodName(level).text }
 
-    /// The level whose periods head the blocks' sections (a Delta's Gamma …); nil for the Helion stack, whose days
+    /// The level whose periods head the blocks' sections (a Nuclide's Delta, a Delta's Gamma …); nil for the Helion stack, whose days
     /// carry their own headers.
     var sectionLevel: Int? { self == .helion ? nil : level - 1 }
 
     static func < (a: JournalZoom, b: JournalZoom) -> Bool { a.rank < b.rank }
 
-    /// A launch argument's zoom: "helion" / "eta" / "η" / "day", "delta" / "δ", "gamma" / "γ", "beta" / "β".
+    /// A launch argument's zoom: "helion" / "eta" / "η" / "day", "nuclide" / "epsilon" / "ε", "delta" / "δ", "gamma" / "γ",
+    /// "beta" / "β".
     init?(launch text: String) {
         switch text.lowercased() {
         case "helion", "helions", "eta", "η", "day", "days", "stack": self = .helion
+        case "nuclide", "nuclides", "epsilon", "epsilons", "ε": self = .nuclide
         case "delta", "deltas", "δ": self = .delta
         case "gamma", "gammas", "γ": self = .gamma
         case "beta", "betas", "β": self = .beta
@@ -95,7 +99,7 @@ struct JournalPeriod: Identifiable, Hashable, Sendable {
     static func id(level: Int, cycle: Int64) -> String { "p\(level).\(cycle)" }
 }
 
-/// A section of blocks under their parent period (Deltas under their Gamma …).
+/// A section of blocks under their parent period (Nuclides under their Delta, Deltas under their Gamma …).
 struct JournalPeriodSection: Identifiable, Hashable, Sendable {
     let id: String
     let level: Int

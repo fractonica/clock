@@ -14,7 +14,7 @@
 //   common/wpn_*.wav           the interface's sounds (`InterfaceSound`): Resources/Sounds/ui-<event>.caf
 //
 // Each mixed to mono and normalised (the alarms to a peak of 0.9 as the synthesised ringtones, the marks to 0.9, the
-// interface's to 0.5: system sounds have no volume of their own), IMA4 in a CAF (afconvert), a format notification
+// interface's to 0.25: system sounds have no volume of their own), IMA4 in a CAF (afconvert), a format notification
 // sounds, AlarmKit and system sounds all take. The synthesised ringtones are ios/scripts/make-ringtones.swift's.
 import AVFoundation
 import Foundation
@@ -164,5 +164,5 @@ for (file, name) in marks {
 }
 for (file, name) in buttons {
     let (sound, rate) = try read(source.appendingPathComponent("\(file).wav"))
-    try write(normalised(sound, peak: 0.5), rate: rate, to: resources.appendingPathComponent("Sounds/ui-\(name).caf"))
+    try write(normalised(sound, peak: 0.25), rate: rate, to: resources.appendingPathComponent("Sounds/ui-\(name).caf"))
 }

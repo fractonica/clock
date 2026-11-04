@@ -46,14 +46,16 @@ private func record(_ id: String, _ time: Double, emoji: String? = nil, photos: 
 // MARK: - Zoom levels
 
 private func zoomChecks() {
-    check(JournalZoom.allCases.map(\.level) == [6, 3, 2, 1], "Helions, Deltas, Gammas, Betas are levels 6 3 2 1")
-    check(JournalZoom.helion.coarser == .delta && JournalZoom.delta.coarser == .gamma && JournalZoom.gamma.coarser == .beta && JournalZoom.beta.coarser == nil,
-          "zooming out goes Helion → Delta → Gamma → Beta and stops")
+    check(JournalZoom.allCases.map(\.level) == [6, 4, 3, 2, 1], "Helions, Nuclides, Deltas, Gammas, Betas are levels 6 4 3 2 1")
+    check(JournalZoom.helion.coarser == .nuclide && JournalZoom.nuclide.coarser == .delta && JournalZoom.delta.coarser == .gamma
+          && JournalZoom.gamma.coarser == .beta && JournalZoom.beta.coarser == nil,
+          "zooming out goes Helion → Nuclide → Delta → Gamma → Beta and stops")
     check(JournalZoom.beta.finer == .gamma && JournalZoom.helion.finer == nil, "zooming in goes back and stops at Helions")
-    check(JournalZoom.allCases.map(\.symbol) == ["η", "δ", "γ", "β"], "symbols: \(JournalZoom.allCases.map(\.symbol))")
-    check(JournalZoom.delta.sectionLevel == 2 && JournalZoom.beta.sectionLevel == 0 && JournalZoom.helion.sectionLevel == nil,
+    check(JournalZoom.allCases.map(\.symbol) == ["η", "ε", "δ", "γ", "β"], "symbols: \(JournalZoom.allCases.map(\.symbol))")
+    check(JournalZoom.nuclide.sectionLevel == 3 && JournalZoom.delta.sectionLevel == 2 && JournalZoom.beta.sectionLevel == 0
+          && JournalZoom.helion.sectionLevel == nil,
           "blocks sit under their parent period")
-    check(JournalZoom(launch: "delta") == .delta && JournalZoom(launch: "γ") == .gamma && JournalZoom(launch: "Betas") == .beta
+    check(JournalZoom(launch: "delta") == .delta && JournalZoom(launch: "epsilon") == .nuclide && JournalZoom(launch: "γ") == .gamma && JournalZoom(launch: "Betas") == .beta
           && JournalZoom(launch: "day") == .helion && JournalZoom(launch: "year") == nil, "launch words")
     check(JournalZoom.helion < .beta, "zooms order from fine to coarse")
 }
@@ -171,7 +173,7 @@ private func pinchChecks() {
     check(pinch.step(0.3844 * 1.4) == 0 && pinch.step(0.3844 * 1.55) == -1, "opening the fingers steps back in")
     let lean = JournalPinch().lean(0.5)
     check(lean >= 0.9 && lean < 1 && JournalPinch().lean(3) <= 1.08 && JournalPinch().lean(1) == 1, "the page leans into the pinch, a little: \(lean)")
-    check(JournalPinch.apply(1, to: .helion) == .delta && JournalPinch.apply(1, to: .beta) == nil && JournalPinch.apply(-1, to: .gamma) == .delta
+    check(JournalPinch.apply(1, to: .helion) == .nuclide && JournalPinch.apply(1, to: .beta) == nil && JournalPinch.apply(-1, to: .gamma) == .delta
           && JournalPinch.apply(0, to: .gamma) == nil, "steps between zooms")
 }
 
