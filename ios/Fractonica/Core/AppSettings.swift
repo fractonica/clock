@@ -94,7 +94,7 @@ final class AppSettings {
         set { update { $0.haptics = newValue } }
     }
 
-    /// The interface's sounds: an entry opening, saved, closed or discarded (`InterfaceSound`).
+    /// The interface's sounds: into a page and back, a window closed, a tab switched (`InterfaceSound`).
     var sounds: Bool {
         get { values.sounds }
         set { update { $0.sounds = newValue } }

@@ -25,6 +25,7 @@ enum MomentsHooks: FeatureHooks {
         // screenshots and checks (-FXMomentsAuto 0): no call, no banner either
         if store.instant != nil || !store.launch.autoOpen { return [.list] }
         if MomentScheduling.isMissed(identifier) { return [.banner, .list, .badge] }
+        if MomentScheduling.isNotice(identifier) { return [.banner, .list, .sound] }
         // in front, the test call rings by itself
         if identifier == MomentScheduling.testID { return [.list] }
         if store.opensByItself, let index = MomentScheduling.index(ofIdentifier: identifier),
@@ -39,7 +40,7 @@ enum MomentsHooks: FeatureHooks {
     static func open(_ notification: NotificationResponse) -> Bool {
         guard notification.identifier.hasPrefix(MomentScheduling.prefix) else { return false }
         guard notification.isTap else { return true }
-        if MomentScheduling.isMissed(notification.identifier) {
+        if MomentScheduling.isMissed(notification.identifier) || MomentScheduling.isNotice(notification.identifier) {
             AppRouter.shared.show(.moments)
         } else if notification.identifier == MomentScheduling.testID {
             MomentStore.shared.ringTest()

@@ -7,11 +7,13 @@
 //                              the sound repeated whole while it fits in 28 s (a notification's or an alarm's sound must
 //                              stay under 30 s), so the file loops as the sound does; one longer than that cut to 28 s,
 //                              its end crossfaded into its start
-//   items/suitchargeok1.wav    the chime at the moment in a moment's reel (`MomentReelRenderer`):
-//                              Resources/Moments/moment-chime.caf, from its first sound, at the reel's 48 kHz
-//   buttons/combine_*.wav      the interface's sounds (`InterfaceSound`): Resources/Sounds/ui-<event>.caf
+//   common/bugreporter_succeeded.wav, items/battery_pickup.wav
+//                              the mark at the moment in a moment's reel (`MomentReelRenderer`): a rare moment's and an
+//                              epic one's or rarer, Resources/Moments/mark-<rarity>.caf, from their first sound, at the
+//                              reel's 48 kHz
+//   common/wpn_*.wav           the interface's sounds (`InterfaceSound`): Resources/Sounds/ui-<event>.caf
 //
-// Each mixed to mono and normalised (the alarms to a peak of 0.9 as the synthesised ringtones, the chime to 0.9, the
+// Each mixed to mono and normalised (the alarms to a peak of 0.9 as the synthesised ringtones, the marks to 0.9, the
 // interface's to 0.5: system sounds have no volume of their own), IMA4 in a CAF (afconvert), a format notification
 // sounds, AlarmKit and system sounds all take. The synthesised ringtones are ios/scripts/make-ringtones.swift's.
 import AVFoundation
@@ -47,14 +49,17 @@ let alarms: [(file: String, name: String)] = [
     ("warningbell1", "warningBell"),
 ]
 
-/// The interface's sounds: `InterfaceSound`'s case for each Combine button.
+/// The marks at the moment: by rarity, rare and epic (or rarer).
+let marks: [(file: String, name: String)] = [
+    ("common/bugreporter_succeeded", "rare"),
+    ("items/battery_pickup", "epic"),
+]
+
+/// The interface's sounds: `InterfaceSound`'s case for each.
 let buttons: [(file: String, name: String)] = [
-    ("combine_button1", "compose"),
-    ("combine_button7", "edit"),
-    ("combine_button3", "created"),
-    ("combine_button5", "changed"),
-    ("combine_button2", "closed"),
-    ("combine_button_locked", "discarded"),
+    ("common/wpn_select", "open"),
+    ("common/wpn_hudoff", "back"),
+    ("common/wpn_moveselect", "tab"),
 ]
 
 /// The longest a ringtone may last.
@@ -152,10 +157,12 @@ for (file, name) in alarms {
     try write(normalised(ringtone(sound, rate: rate), peak: 0.9), rate: rate,
               to: resources.appendingPathComponent("Moments/ring-\(name).caf"))
 }
-let (chime, chimeRate) = try read(source.appendingPathComponent("items/suitchargeok1.wav"))
-try write(normalised(trimmedStart(chime), peak: 0.9), rate: chimeRate,
-          to: resources.appendingPathComponent("Moments/moment-chime.caf"), at: 48_000)
+for (file, name) in marks {
+    let (sound, rate) = try read(source.appendingPathComponent("\(file).wav"))
+    try write(normalised(trimmedStart(sound), peak: 0.9), rate: rate,
+              to: resources.appendingPathComponent("Moments/mark-\(name).caf"), at: 48_000)
+}
 for (file, name) in buttons {
-    let (sound, rate) = try read(source.appendingPathComponent("buttons/\(file).wav"))
+    let (sound, rate) = try read(source.appendingPathComponent("\(file).wav"))
     try write(normalised(sound, peak: 0.5), rate: rate, to: resources.appendingPathComponent("Sounds/ui-\(name).caf"))
 }

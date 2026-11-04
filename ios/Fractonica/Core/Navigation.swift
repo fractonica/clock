@@ -13,8 +13,11 @@ import SwiftUI
 final class AppRouter {
     static let shared = AppRouter()
 
-    /// The screen in the content area: a sidebar item on iPad and Mac, a tab (and its segment) on iPhone.
-    var selection: Screen = .now
+    /// The screen in the content area: a sidebar item on iPad and Mac, a tab (and its segment) on iPhone. Another one
+    /// sounds `.tab`.
+    var selection: Screen = .now {
+        didSet { if selection != oldValue { InterfaceSound.play(.tab) } }
+    }
     /// The screen each iPhone group shows when its tab is selected.
     private(set) var groupSelection: [ScreenGroup: Screen] = [.cycles: .rings, .journal: .journal, .clock: .timer]
     /// The iPhone layout (tabs with groups) is showing; the root view sets it through `setCompact(_:)`.

@@ -33,6 +33,8 @@ final class MomentCallModel {
 
     let moment: Moment
     let demo: Bool
+    /// The call's emoji, any of them (as a contact's picture): on its screen, then the entry's.
+    let emoji: String
     /// The first ring and when it rings out (Unix seconds).
     let ringStart: Double
     let ringEnd: Double
@@ -54,6 +56,7 @@ final class MomentCallModel {
         moment = request.moment
         demo = request.demo
         start = request.start
+        emoji = request.emoji ?? JournalLaunch.string("FXJournalEmojiPick") ?? EmojiCatalog.random()
         let flavon = FractonicaClock.shared.levelInfo(10).meanSeconds
         if request.demo {
             // a made-up moment: its call rings the lead's mean Flavons before it
@@ -126,7 +129,7 @@ final class MomentCallModel {
         stopRinging()
         MomentStore.shared.callPicked(moment, mode == .answered ? .answered : .muted, demo: demo)
         Haptics.play(.selection)
-        instant = InstantModel(request: InstantRequest(moment: moment, demo: demo), mode: mode, camera: camera)
+        instant = InstantModel(request: InstantRequest(moment: moment, demo: demo, emoji: emoji), mode: mode, camera: camera)
         phase = .filming
     }
 
@@ -200,7 +203,7 @@ final class MomentCallModel {
         camera.stop()
         let media = await MomentSaver.adopt(shots)
         do {
-            _ = try await MomentSaver.save(moment: moment, emoji: MomentOutcome.declined.emoji, text: "", media: media, outcome: .declined)
+            _ = try await MomentSaver.save(moment: moment, emoji: emoji, text: "", media: media, outcome: .declined)
             Haptics.play(.success)
             finished = .declined
         } catch {

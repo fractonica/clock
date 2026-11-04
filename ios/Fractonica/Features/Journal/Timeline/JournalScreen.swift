@@ -49,7 +49,7 @@ struct JournalScreen: View {
             .navigationDestination(item: $opened) { route in
                 JournalRecordView(id: route.id)
             }
-            .sheet(item: $ui.composer, onDismiss: ui.composerGone) { request in
+            .sheet(item: $ui.composer) { request in
                 ComposerSheet(request: request)
             }
             .confirmationDialog("Delete this entry?", isPresented: deletingBinding, titleVisibility: .visible, presenting: deleting) { record in

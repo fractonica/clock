@@ -585,7 +585,7 @@ private struct PermissionCard: View {
 
 // MARK: - Settings
 
-/// Moments' settings: on or off, which Helion moments call (Delta and longer always do), quiet hours, the ringtone (on
+/// Moments' settings: on or off, which Helion moments call (Nuclide and longer always do), quiet hours, the ringtone (on
 /// a page of its own, each previewing on a tap), whether the call rings in the app by itself, and the permissions:
 /// alarms (to ring with the phone locked) and notifications.
 struct MomentSettingsView: View {
@@ -606,7 +606,7 @@ struct MomentSettingsView: View {
                 }
                 .disabled(!moments.settings.enabled)
             } footer: {
-                Text("A Helion's rare moments are its two nodes: ascending at its start (Preon 0), descending at its mid point (Preon 18). The start, peak, node and valley of a Delta, Gamma, Beta or Alpha always call: they are rarer still.")
+                Text("A Helion's rare moments are its two nodes: ascending at its start (Preon 0), descending at its mid point (Preon 18). The start, peak, node and valley of a Nuclide, Delta, Gamma, Beta or Alpha always call — they are epic and rarer — each with a notice a Helion before.")
             }
             Section {
                 Toggle("Quiet hours", isOn: $moments.settings.quiet.enabled)

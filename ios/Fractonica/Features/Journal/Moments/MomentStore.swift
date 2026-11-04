@@ -620,6 +620,8 @@ struct InstantRequest: Identifiable, Hashable {
     let moment: Moment
     var demo = false
     var start = CallStart.ringing
+    /// The call's emoji (nil: one at random).
+    var emoji: String?
 }
 
 /// How a call's screen opens: ringing, or picked up already from its alarm — answered, or declined at that instant.
@@ -639,12 +641,14 @@ enum MomentAuthorization: String, Sendable {
 
 /// The `moment.` notification requests: a rolling window of the next calls — each one's ring (`moment.<n>`, its
 /// ringtone once, time-sensitive; only where alarms do not ring them) and its "Missed Call" when it rings out
-/// (`moment.missed.<n>`, numbering the app's badge). The system holds 64 requests for every feature together: Alerts
+/// (`moment.missed.<n>`, numbering the app's badge) — and a Helion before each of the next epic moments or rarer, a
+/// notice that it is coming (`moment.soon.<n>`; silent when that falls in quiet hours). The system holds 64 requests for every feature together: Alerts
 /// keeps at most 50, Timer one, Moments at most `budget`. Off the main actor: UserNotifications answers over
 /// synchronous XPC.
 enum MomentScheduling {
     static let prefix = "moment."
     static let missedPrefix = "moment.missed."
+    static let soonPrefix = "moment.soon."
     /// A test call's ring (where alarms do not ring it).
     static let testID = "moment.test"
     static let budget = 12
@@ -677,8 +681,10 @@ enum MomentScheduling {
         var sound: String?
         var badge: Int?
         var urgent = true
+        /// No sound at all (not even the default).
+        var silent = false
         var fingerprint: String {
-            [title, subtitle, body, sound ?? "-", badge.map(String.init) ?? "-", String(Int(fire))].joined(separator: "|")
+            [title, subtitle, body, sound ?? "-", badge.map(String.init) ?? "-", String(Int(fire)), silent ? "silent" : ""].joined(separator: "|")
         }
     }
 
@@ -691,7 +697,8 @@ enum MomentScheduling {
         var out: [Request] = []
         var badge = input.unseen
         if !input.alarms, let test = input.test, test.fire > input.now + 1 {
-            out.append(Request(id: testID, index: -1, fire: test.fire, title: test.title, subtitle: "Test call · in 1 Flavon",
+            out.append(Request(id: testID, index: -1, fire: test.fire, title: test.title,
+                               subtitle: "Test call · in \(MomentCalendar.leadFlavons) Flavons",
                                body: "Answer, mute or decline it.", sound: input.settings.ringtone.fileName))
         }
         for m in list where input.settings.enabled && !input.covered.contains(m.index) {
@@ -702,7 +709,30 @@ enum MomentScheduling {
                 out.append(missed(m, fire: end, badge: badge))
             }
         }
+        // the next epic moments or rarer, each noticed a Helion before (exactly: four moments back)
+        let epics = calendar.upcoming(after: input.now, count: 2, scan: 800) { $0.rarity >= .epic && input.settings.prompts($0, zone: input.zone) }
+        for m in epics where input.settings.enabled && !input.covered.contains(m.index) {
+            guard let fire = calendar.time(of: m.index - 4), fire > input.now + 1 else { continue }
+            out.append(notice(for: m, fire: fire, input: input))
+        }
         return Array(out.sorted { $0.fire < $1.fire }.prefix(budget))
+    }
+
+    /// An epic moment's notice (or rarer's), a Helion before it: what is coming, and when (Earth time unless pure).
+    static func notice(for m: Moment, fire: Double, input: Input) -> Request {
+        let when: String
+        if input.pure {
+            when = "It calls \(MomentCalendar.leadFlavons) Flavons before it."
+        } else {
+            let format = DateFormatter()
+            format.timeZone = input.zone
+            format.timeStyle = .short
+            format.dateStyle = .none
+            when = "At \(format.string(from: Date(timeIntervalSince1970: m.time))); it calls \(MomentCalendar.leadFlavons) Flavons before."
+        }
+        return Request(id: "\(soonPrefix)\(m.index)", index: m.index, fire: fire, title: m.ledTitle(),
+                       subtitle: "\(m.rarity.title) moment · in 1 Helion", body: when, sound: nil, urgent: false,
+                       silent: input.settings.quiet.contains(fire, zone: input.zone))
     }
 
     /// A call's ring: the moment for the caller, its ringtone.
@@ -712,8 +742,8 @@ enum MomentScheduling {
             index: m.index,
             fire: fire,
             title: m.ledTitle(),
-            subtitle: "\(m.rarity.title) moment calling · in \(MomentCalendar.leadFlavons) Flavon",
-            body: "Answer to film it with the back camera, mute to film both cameras through it, or decline for a photo from each.",
+            subtitle: "\(m.rarity.title) moment calling · in \(MomentCalendar.leadFlavons) Flavons",
+            body: "Answer and both cameras film until you hang up, mute to film them through it, or decline for a photo from each.",
             sound: ringtone.fileName
         )
     }
@@ -746,8 +776,8 @@ enum MomentScheduling {
             content.subtitle = r.subtitle
             content.body = r.body
             content.threadIdentifier = "moments"
-            content.interruptionLevel = r.urgent ? .timeSensitive : .active
-            content.sound = r.sound.map { UNNotificationSound(named: UNNotificationSoundName($0)) } ?? (r.badge == nil ? .default : nil)
+            content.interruptionLevel = r.urgent ? .timeSensitive : r.silent ? .passive : .active
+            content.sound = r.silent ? nil : r.sound.map { UNNotificationSound(named: UNNotificationSoundName($0)) } ?? (r.badge == nil ? .default : nil)
             content.badge = r.badge.map { NSNumber(value: $0) }
             var info: [AnyHashable: Any] = AppLink(screen: .moments).userInfo
             info[indexKey] = NSNumber(value: r.index)
@@ -792,15 +822,19 @@ enum MomentScheduling {
         (userInfo[indexKey] as? NSNumber)?.int64Value
     }
 
-    /// The moment number of a `moment.` or `moment.missed.` request.
+    /// The moment number of a `moment.` or `moment.missed.` request (a notice's is not a call's).
     static func index(ofIdentifier identifier: String) -> Int64? {
         if identifier.hasPrefix(missedPrefix) { return Int64(identifier.dropFirst(missedPrefix.count)) }
+        if isNotice(identifier) { return nil }
         guard identifier.hasPrefix(prefix) else { return nil }
         return Int64(identifier.dropFirst(prefix.count))
     }
 
     /// Whether a request says a call was missed.
     static func isMissed(_ identifier: String) -> Bool { identifier.hasPrefix(missedPrefix) }
+
+    /// Whether a request is an epic moment's notice.
+    static func isNotice(_ identifier: String) -> Bool { identifier.hasPrefix(soonPrefix) }
 }
 
 // MARK: - Launch options

@@ -60,26 +60,12 @@ final class JournalUI {
 
     /// The composer to present.
     var composer: ComposerRequest?
-    /// The composer's going had its sound already (saved, discarded, closed by a button).
-    @ObservationIgnored var composerSounded = false
 
     /// A new entry (or the autosaved one in progress).
-    func compose() { open(ComposerRequest(key: JournalDraft.newKey), sound: .compose) }
+    func compose() { composer = ComposerRequest(key: JournalDraft.newKey) }
 
     /// Edit an entry.
-    func edit(_ id: String) { open(ComposerRequest(key: id), sound: .edit) }
-
-    /// The composer has gone, whichever way (a swipe too): closing's sound, unless its going sounded already.
-    func composerGone() {
-        if !composerSounded { InterfaceSound.play(.closed) }
-    }
-
-    private func open(_ request: ComposerRequest, sound: InterfaceSound) {
-        guard composer != request else { return }
-        composer = request
-        composerSounded = false
-        InterfaceSound.play(sound)
-    }
+    func edit(_ id: String) { composer = ComposerRequest(key: id) }
 }
 
 /// The composer to open: "new", or the id of the entry to edit (also the key of its autosaved draft).

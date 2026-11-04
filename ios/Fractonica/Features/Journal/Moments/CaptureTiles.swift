@@ -141,7 +141,7 @@ struct CaptureCard: View {
     }
 }
 
-/// A moment's reel in a card, two squares high: playing and looping (with its chimes, as the silent switch allows),
+/// A moment's reel in a card, two squares high: playing and looping (with its mark, as the silent switch allows),
 /// or its poster — the moment's frame — with its length.
 struct ReelTile: View {
     let blob: BlobRef
@@ -186,7 +186,7 @@ struct ReelTile: View {
         if url == nil, let fetch = JournalHooks.fetchBlob { url = try? await fetch(blob.hash) }
         guard let url else { return }
         #if os(iOS)
-        // the silent switch silences the chimes, as it does the announcement
+        // the silent switch silences the mark, as it does the announcement
         try? AVAudioSession.sharedInstance().setCategory(.ambient, options: [.mixWithOthers])
         try? AVAudioSession.sharedInstance().setActive(true)
         #endif

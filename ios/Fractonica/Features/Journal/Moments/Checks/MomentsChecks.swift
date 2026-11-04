@@ -5,7 +5,7 @@ import Foundation
 // Moments' logic: the moments (every Helion quarter boundary) against FractonicaKit's own cycles and thresholds, their
 // labels (the longest level with a quarter boundary there) and names, the call 2 Flavons ahead ringing 11 Flavons, quiet
 // hours, the settings, the streak, the collection and the missed calls, the calls that rang out, the `capture` JSON
-// (with how its call went) and an edit keeping it, the bundled ringtones and chime, the reel's timing (a span
+// (with how its call went) and an edit keeping it, the bundled ringtones and marks, the reel's timing (a span
 // even or not about the moment) and a reel made from films, chiming at the moment.
 // Run: ios/scripts/check.sh ios/Fractonica/Features/Journal/Moments/Checks
 
@@ -171,7 +171,7 @@ private func labelChecks() {
         check(m.title().hasSuffix(" Peak"), "a Helion peak keeps its name: \(m.title())")
     }
     if let m = calendar.upcoming(after: vectorA, count: 2000, scan: 4000, where: { $0.level == .nuclide && $0.boundary == .start }).first {
-        check(m.title().hasPrefix("Nuclide ε#") && m.title().hasSuffix(" Start") && m.rarity == .rare, "a Nuclide start's name: \(m.title())")
+        check(m.title().hasPrefix("Nuclide ε#") && m.title().hasSuffix(" Start") && m.rarity == .epic, "a Nuclide start's name, an epic moment: \(m.title())")
     }
     // a moment leads with its Pentad (SPEC §7.5): a Helion start belongs to the Pentad it starts in
     var starts = 0
@@ -229,13 +229,15 @@ private func settingsChecks() {
           "defaults: on, Helion nodes, quiet hours, the Helion ringtone")
     check(s.asks(start) && !s.asks(peak) && s.asks(node) && s.asks(delta),
           "a Helion's two nodes (its start and mid point) are rare moments; Delta and longer always")
-    check(s.asks(nuclideStart) && !s.asks(nuclidePeak), "a Nuclide's start is a Helion's start; its peak a Helion's peak")
-    // twice a Helion: over a Nuclide, its 77 starts and 77 nodes (a Delta's boundaries among them)
+    check(s.asks(nuclideStart) && s.asks(nuclidePeak) && nuclidePeak.rarity == .epic,
+          "a Nuclide calls at all four quarter boundaries, its peak too: epic moments")
+    // twice a Helion, and the Nuclide's peak and valley: over a Nuclide, its 77 starts and 77 nodes and 2 more
     let nuclide = calendar.next(atLeast: .nuclide, after: vectorA)!
     let asked = calendar.upcoming(after: nuclide.time - 1, count: 10_000, scan: 77 * 4) { s.asks($0) }
-    check(asked.count == 2 * 77, "two moments a Helion: \(asked.count) in a Nuclide")
+    check(asked.count == 2 * 77 + 2 && asked.filter { $0.rarity >= .epic }.count == 4,
+          "two moments a Helion and the Nuclide's four: \(asked.count) in a Nuclide, \(asked.filter { $0.rarity >= .epic }.count) epic")
     s.helion = .none
-    check(!s.asks(node) && !s.asks(start) && s.asks(delta), "Delta and longer are always asked for")
+    check(!s.asks(node) && !s.asks(start) && s.asks(delta) && s.asks(nuclidePeak), "Nuclide and longer are always asked for")
     s.enabled = false
     check(!s.asks(delta), "off: nothing")
     // persistence, lenient
@@ -334,7 +336,7 @@ private func captureChecks() {
     let cleared = JournalEntry(markdown: "x").data.keepingFields(of: JournalEntry(emoji: "🌙", title: "t", markdown: "y").data)
     check(cleared["emoji"] == nil && cleared["title"] == nil, "an edit may still clear the emoji and the title")
     check(MomentRarity.allCases.sorted() == MomentRarity.allCases && MomentRarity.cosmic > .mythic, "rarities are ordered")
-    check(MomentLevel.allCases.map(\.rarity) == [.rare, .rare, .epic, .legendary, .mythic, .cosmic], "levels give rarities")
+    check(MomentLevel.allCases.map(\.rarity) == [.rare, .epic, .epic, .legendary, .mythic, .cosmic], "levels give rarities")
 }
 
 /// Several photo captures of a moment (as the app made them before its reels): their offsets, times and photo names
@@ -469,11 +471,13 @@ private func soundChecks() {
                   "\(tone.fileName) (\(tone.title)): mono, \(String(format: "%.2f", seconds)) s")
         }
     }
-    // the chime at the moment, from its first sound, at the reel's rate
-    let chime = MomentReelRenderer.chime(soundFolder.appending(path: "moment-chime.caf")) ?? []
-    let onset = chime.prefix(480).map(abs).max() ?? 0
-    check(abs(Double(chime.count) / 48_000 - 1.48) < 0.03 && onset > 0.05,
-          "the chime: \(String(format: "%.2f", Double(chime.count) / 48_000)) s at 48 kHz, sounding from its start (\(onset))")
+    // the marks at the moment, from their first sound, at the reel's rate: a rare moment's, an epic one's or rarer's
+    for (name, seconds) in [("rare", 0.2), ("epic", 0.61)] {
+        let mark = MomentReelRenderer.mark(soundFolder.appending(path: "mark-\(name).caf")) ?? []
+        let onset = mark.prefix(480).map(abs).max() ?? 0
+        check(abs(Double(mark.count) / 48_000 - seconds) < 0.03 && onset > 0.05,
+              "the \(name) mark: \(String(format: "%.2f", Double(mark.count) / 48_000)) s at 48 kHz, sounding from its start (\(onset))")
+    }
 }
 
 // MARK: - The reel
@@ -497,7 +501,7 @@ private func reelChecks() {
           "a Sub-blink, a seventh of a Blink: \(T.subBlink) s")
     // its landmarks (u: seconds from the moment)
     check(abs(timing.source(at: 0) + flavon / 2) < 1e-9, "the reel opens half a Flavon before the moment")
-    check(abs(timing.source(at: flavon / 2)) < 1e-9 && abs(timing.moment - flavon / 2) < 1e-9, "it reaches the moment halfway, the chime there")
+    check(abs(timing.source(at: flavon / 2)) < 1e-9 && abs(timing.moment - flavon / 2) < 1e-9, "it reaches the moment halfway, the mark there")
     check(abs(timing.source(at: timing.duration) - flavon / 2) < 1e-9, "and ends half a Flavon after")
     check((0..<40).allSatisfy { k in
         let t = timing.duration * Double(k) / 40
@@ -506,7 +510,7 @@ private func reelChecks() {
     // an answered call's reel: picked up 3 s before the moment, hung up 20 s after
     let answered = MomentReelTiming(before: 3, after: 20)
     check(abs(answered.duration - 23) < 1e-9 && abs(answered.moment - 3) < 1e-9 && abs(answered.source(at: 3)) < 1e-9,
-          "an answered call's film once, 23 s, its chime at 3 s")
+          "an answered call's film once, 23 s, its mark at 3 s")
     // the words: the date without the cycles' marks, the time down to the Sub-blink, one ξ a frame
     let date = MomentReelText.date(at: vectorA, notation: notation)
     check(date == "α6 β4 γ9 δ3 ε5", "the date: \(date)")
@@ -552,7 +556,7 @@ private func reelRenderChecks() async {
     }
     films.append(MomentFilm(camera: "sound", url: soundURL, start: moment - half))
     var script = MomentReelScript(center: moment, half: half, notation: notation, accent: [0.3, 0.5, 1], side: 160)
-    script.chime = soundFolder.appending(path: "moment-chime.caf")
+    script.mark = soundFolder.appending(path: "mark-epic.caf")
     let out = dir.appending(path: "reel.mov")
     do {
         let report = try await MomentReelRenderer.render(films: films, script: script, to: out) { _ in }
@@ -575,7 +579,7 @@ private func reelRenderChecks() async {
     let size = try? await video?.load(.naturalSize)
     check(abs(duration - timing.duration) < 0.1, "the reel lasts the film: \(duration) s of \(timing.duration)")
     check(size == CGSize(width: 160, height: 320), "two squares, one over the other: \(String(describing: size))")
-    // the heard tone runs under the chime: at the reel's start, up to the moment, and on to the end
+    // the heard tone runs under the mark: at the reel's start, up to the moment, and on to the end
     let pcm = await samples(of: out)
     func rms(_ x: [Float], _ from: Double, _ to: Double) -> Double {
         let a = max(0, Int(from * 48_000)), b = min(x.count, Int(to * 48_000))
@@ -587,15 +591,15 @@ private func reelRenderChecks() async {
     let m = timing.moment
     check(rms(pcm, m - 1, m - 0.1) > 0.1, "and up to the moment: \(rms(pcm, m - 1, m - 0.1))")
     check(rms(pcm, timing.duration - 1.5, timing.duration - 0.2) > 0.1, "and to the end: \(rms(pcm, timing.duration - 1.5, timing.duration - 0.2))")
-    // the chime from the moment on: what the same reel without it lacks there and nowhere before
+    // the mark from the moment on: what the same reel without it lacks there and nowhere before
     var quiet = script
-    quiet.chimes = false
+    quiet.marked = false
     let quietURL = dir.appending(path: "reel-quiet.mov")
     _ = try? await MomentReelRenderer.render(films: films, script: quiet, to: quietURL) { _ in }
     let without = await samples(of: quietURL)
-    let chime = zip(pcm, without).map { $0 - $1 }
-    let chimeBefore = rms(chime, m - 0.6, m - 0.05), chimeAfter = rms(chime, m, m + 0.6)
-    check(!without.isEmpty && chimeAfter > 0.1 && chimeBefore < 0.01, "the chime at the moment: \(chimeAfter) from it on, \(chimeBefore) before it")
+    let mark = zip(pcm, without).map { $0 - $1 }
+    let markBefore = rms(mark, m - 0.6, m - 0.05), markAfter = rms(mark, m, m + 0.3)
+    check(!without.isEmpty && markAfter > 0.1 && markBefore < 0.01, "the mark at the moment: \(markAfter) from it on, \(markBefore) before it")
 
     // read a few seconds a reader: the same frames as one reader for the whole
     let whole = await frameSamples(out, stretch: 1000), stretched = await frameSamples(out, stretch: 0.5)
@@ -626,17 +630,16 @@ private func reelRenderChecks() async {
         let mirror = (forward: rms(pcm, m, m + 0.6), reversed: rms(back, duration - m - 0.6, duration - m))
         let tone = (forward: rms(pcm, m - 1, m - 0.1), reversed: rms(back, duration - m + 0.1, duration - m + 1))
         check(abs(mirror.reversed - mirror.forward) < 0.1 * mirror.forward && abs(tone.reversed - tone.forward) < 0.1 * tone.forward,
-              "the sound backwards, the chime ending at the moment's mirror: \(mirror), \(tone)")
+              "the sound backwards, the mark ending at the moment's mirror: \(mirror), \(tone)")
     } catch {
         check(false, "the reel reversed: \(error.localizedDescription)")
     }
 
     // picked up 1.5 s before the moment (the film's earlier frames left out), answered or muted, and one marked missed
-    // without the chime: each once at real time
+    // without the mark: each once at real time
     for (kind, missed) in [("answered", false), ("muted", false), ("answered", true)] {
-        var short = MomentReelScript(center: moment, before: 1.5, after: half, notation: notation, accent: [0.3, 0.5, 1],
-                                     side: 160, chimes: !missed, missed: missed)
-        short.chime = script.chime
+        let short = MomentReelScript(center: moment, before: 1.5, after: half, notation: notation, accent: [0.3, 0.5, 1],
+                                     side: 160, marked: !missed, missed: missed, mark: script.mark)
         let url = dir.appending(path: "short-\(kind)-\(missed).mov")
         do {
             try await MomentReelRenderer.render(films: films, script: short, to: url) { _ in }

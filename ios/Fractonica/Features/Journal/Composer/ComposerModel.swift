@@ -115,7 +115,6 @@ final class ComposerModel {
         closed = true
         let record = store.saveEntry(draft)
         Haptics.play(.success)
-        sound(isNew ? .created : .changed)
         saved = record
         return record
     }
@@ -131,19 +130,12 @@ final class ComposerModel {
         cancelAllPending()
         guard !closed else { return }
         closed = true
-        sound(.closed)
         if hasChanges || store.draft(draft.key) != nil { store.saveDraft(draft) }
-    }
-
-    /// Closing with nothing changed: a kept draft stays kept, an untouched edit leaves nothing behind.
-    func close() {
-        sound(.closed)
     }
 
     /// Throws the changes away: a new entry's draft and its media; an edit's unsaved changes.
     func discard() {
         autosave?.cancel()
-        sound(hasContent ? .discarded : .closed)
         cancelAllPending()
         closed = true
         recorder.cancel()
@@ -154,12 +146,6 @@ final class ComposerModel {
         autosave?.cancel()
         guard !closed else { return }
         if hasChanges { store.saveDraft(draft) }
-    }
-
-    /// The composer's sound: the sheet's going needs none of its own then.
-    private func sound(_ sound: InterfaceSound) {
-        InterfaceSound.play(sound)
-        JournalUI.shared.composerSounded = true
     }
 
     private func scheduleAutosave() {

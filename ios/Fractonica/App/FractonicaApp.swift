@@ -21,6 +21,7 @@ struct FractonicaApp: App {
     private let toasts = ToastCenter.shared
 
     init() {
+        InterfaceSound.launch()
         LaunchOptions.current().apply(store: store, settings: settings, router: router)
     }
 

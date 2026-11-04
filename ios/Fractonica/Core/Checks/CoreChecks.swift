@@ -32,7 +32,7 @@ private func interfaceSoundChecks() {
             continue
         }
         let seconds = Double(file.length) / file.fileFormat.sampleRate
-        check(seconds > 0.3 && seconds < 2 && file.fileFormat.channelCount == 1,
+        check(seconds > 0.05 && seconds < 2 && file.fileFormat.channelCount == 1,
               "\(sound.fileName): mono, \(String(format: "%.2f", seconds)) s")
     }
 }

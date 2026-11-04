@@ -202,21 +202,25 @@ ringing for 11 Flavons) also has
 `at` is the boundary's exact time (the record's `time` is the same), `level` the longest period with a quarter boundary
 there (`helion`, `nuclide`, `delta`, `gamma`, `beta`, `alpha`), `boundary` which one (`start`, `peak`, `node`, `valley`;
 a period's end is the next one's `start`), and `rarity` follows from the level: `rare` (a Helion's nodes, blue),
-`epic` (Delta, purple), `legendary` (Gamma, yellow), `mythic` (Beta, red), `cosmic` (Alpha, rainbow). An entry without
+`epic` (Nuclide or Delta, purple; a Nuclide's were `rare` before), `legendary` (Gamma, yellow), `mythic` (Beta, red),
+`cosmic` (Alpha, rainbow). A Helion calls at its two nodes (start and mid point); an epic or rarer period at all four of
+its quarter boundaries, with a notice a Helion before that it is coming. An entry without
 `capture` is `common` (grey). `outcome` says how the moment's call went; entries captured before the calls have none.
+An answered, muted or declined call's entry has the call's own `emoji`, one at random shown on its screen as it rang
+(entries from before had 📞, 🔇 and 📵).
 
-- `answered`: picked up; both cameras filmed with the microphone from the pick-up until hung up, made into its
+- `answered`: picked up; both cameras filmed with the microphone from a second after the pick-up until hung up, made into its
   **reel**: a video, role `video`, `name` `reel`, with its `poster` the frame at the moment: the front camera's square
   over the back camera's, filmed a frame each Sub-blink (ξ, 44.4 ms), played once at real time, each frame stamped with
-  its date and its time down to the Sub-blink, its sound the moment's own with a chime at the moment. Picked up after
-  the moment had passed (or hung up before it), it has no chime, stamped MISSED in red when the moment had passed.
-  Photos taken while it films follow (role `photo`, `name` `front` or `back`). `title` "Answered", `emoji` 📞. (When
+  its date and its time down to the Sub-blink, its sound the moment's own with a mark at the moment (a short sound,
+  one for `rare` moments and another for `epic` and rarer). Picked up after the moment had passed (or hung up before
+  it), it has no mark, stamped MISSED in red when the moment had passed. Photos taken while it films follow (role
+  `photo`, `name` `front` or `back`). `title` "Answered". (When
   the reel cannot be made, the cameras' own videos are kept instead, named `back` and `front`, and their sound as
   audio named `sound`.)
-- `muted`: both cameras filmed, the screen dark, from the press until a Flavon after the moment (a Flavon from the
-  press when the moment had passed): a video named `reel` as above. `title` "Muted", `emoji` 🔇.
-- `declined`: a photo from each camera at the press (role `photo`, `name` `front` and `back`); `title` "Declined",
-  `emoji` 📵.
+- `muted`: both cameras filmed, the screen dark, from a second after the press until a Flavon after the moment (a
+  Flavon from then when the moment had passed): a video named `reel` as above. `title` "Muted".
+- `declined`: a photo from each camera at the press (role `photo`, `name` `front` and `back`); `title` "Declined".
 - `missed`: it rang out unanswered. No media; `title` "Missed", `emoji` 🔴. Its rarity is `common`; it is neither a
   capture of the moment nor part of the collection, and the apps count it as a missed call (unless another entry
   captured the same moment). One device writes them (the iPhone).

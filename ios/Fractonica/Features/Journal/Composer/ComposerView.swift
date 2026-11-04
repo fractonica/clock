@@ -300,7 +300,6 @@ struct ComposerView: View {
                     confirmCancel = true
                 } else {
                     // unchanged: a kept draft stays kept, an untouched edit leaves nothing behind
-                    model.close()
                     dismiss()
                 }
             }

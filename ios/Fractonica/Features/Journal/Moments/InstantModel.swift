@@ -17,8 +17,8 @@ import UIKit
 /// - **Muted**: the screen dark, until a Flavon after the moment (`MomentCalendar.captureTime`).
 ///
 /// Either film becomes the moment's reel (`MomentReelRenderer`: the selfie's square over the back camera's, played once
-/// at real time, the sound following, the chime — Half-Life 2's suit charging — at the moment). Picked up after the
-/// moment (or hung up before it), the film has no moment in it: no chime, marked missed when the
+/// at real time, the sound following, the moment's mark at the moment: its rarity's sound). Picked up after the
+/// moment (or hung up before it), the film has no moment in it: no mark, marked missed when the
 /// moment had passed. Then the entry — time = the moment, `capture` filled
 /// (outcome `answered` or `muted`), the film as a video named `reel` (its poster the moment's frame), the photos — is
 /// written. Closing the view ends the film there; what was filmed is kept.
@@ -44,6 +44,8 @@ final class InstantModel {
     let moment: Moment
     let demo: Bool
     let mode: Mode
+    /// The call's emoji (shown while it rang): the entry's.
+    let emoji: String
     /// The film's start (Unix seconds): the press.
     let filmStart: Double
     /// Its end: a Flavon after the moment (muted), the hang-up (answered: no end until then).
@@ -76,16 +78,20 @@ final class InstantModel {
     #endif
 
     /// `camera`: the call's cameras, running already (new ones otherwise).
+    /// How long after the pick-up the film starts.
+    static let settle = 1.0
+
     init(request: InstantRequest, mode: Mode, camera: MomentCamera? = nil, now: Double = Date.now.timeIntervalSince1970) {
         let m = request.moment
         moment = m
         demo = request.demo
+        emoji = request.emoji ?? EmojiCatalog.random()
         self.mode = mode
         self.camera = camera ?? MomentCamera()
         let flavon = FractonicaClock.shared.level(at: m.time - 1, 10)?.duration ?? FractonicaClock.shared.levelInfo(10).meanSeconds
         flavonSeconds = flavon
-        // filming at once (a moment's cameras run from its first ring)
-        filmStart = now + 0.1
+        // filming a second after the pick-up (the phone settled in the hand; the cameras run from the first ring)
+        filmStart = now + Self.settle
         missed = m.time <= filmStart + 0.05
         switch mode {
         case .answered:
@@ -222,7 +228,7 @@ final class InstantModel {
                 }
                 if !report.gaps.isEmpty { filmTrouble = report.gaps.joined(separator: "; ") }
                 notes = report.notes + report.gaps
-                media = try await MomentSaver.adoptReel(url, posterAt: script.chimes ? script.timing.moment : 0)
+                media = try await MomentSaver.adoptReel(url, posterAt: script.marked ? script.timing.moment : 0)
                 momentsLog.info("reel of \(self.moment.index): \(films.map(\.camera)), \(media.count) blobs")
             } catch {
                 momentsLog.error("could not make the reel: \(error.localizedDescription)")
@@ -242,7 +248,7 @@ final class InstantModel {
         phase = .saving
         let outcome: MomentOutcome = mode == .answered ? .answered : .muted
         do {
-            let record = try await MomentSaver.save(moment: moment, emoji: outcome.emoji, text: "", media: media, outcome: outcome)
+            let record = try await MomentSaver.save(moment: moment, emoji: emoji, text: "", media: media, outcome: outcome)
             phase = .saved(record.id)
             Haptics.play(.success)
             momentsLog.info("captured \(self.moment.title()) at \(self.moment.time), \(outcome.rawValue): \(media.count) blobs")
@@ -263,7 +269,7 @@ final class InstantModel {
         return MomentReelScript(center: center, before: center - filmStart, after: end - center,
                                 notation: AppSettings.shared.wording.notation,
                                 accent: [Double(rgb.red), Double(rgb.green), Double(rgb.blue)], side: side,
-                                chimes: inside, missed: missed)
+                                marked: inside, missed: missed, mark: MomentReelScript.mark(for: moment.rarity))
     }
 
     /// iOS: the film, the reel and the save finish even when the app leaves the front meanwhile.

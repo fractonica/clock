@@ -213,9 +213,11 @@ it, and both jump boxes read past it (`stripPentad` in parse.js, `PentadLead` in
 - `Haptics.play(.selection | .step | .success | .warning)` honours the Haptics setting (Taptic Engine on iOS, Force
   Touch trackpad on Mac). With `.sensoryFeedback`, gate it yourself: `.sensoryFeedback(.selection, trigger: x) { _, _
   in settings.haptics }`.
-- `InterfaceSound.play(.created)` honours the Sounds setting: the composer's sounds — a new entry or an edit opening,
-  saved, closed without saving, discarded — Half-Life 2's Combine console buttons (scripts/import-sounds.swift into
-  Resources/Sounds), played as system sounds (the silent switch silences them; the audio session is left alone).
+- `InterfaceSound.play(.tab)` honours the Sounds setting: Half-Life 2's weapon selection (scripts/import-sounds.swift
+  into Resources/Sounds), played as system sounds (the silent switch silences them; the audio session is left alone) —
+  `.tab` as `AppRouter.selection` changes, and on iOS `.open` as a page is pushed and `.back` as one is popped or a
+  window dismissed: `InterfaceSound.launch()` exchanges UINavigationController's push and pops and
+  UIPresentationController's dismissal (what SwiftUI's stacks and sheets run on) for versions that sound first.
 - `toasts.show("Link copied")` / `toasts.show(edge)`: a transient capsule at the top of the main window.
 - Transport (Core/TransportBar.swift, TransportPanel.swift): the moment, Back to live, ◀︎ ▶︎ steps of the selected
   level, play / pause with a direction-and-speed menu, and the time-travel panel (date picker, step by any cycle,
@@ -250,14 +252,16 @@ Helion of the entry (hub/API.md): the store applies `JournalStore.normalise` (`S
 JournalHooks) to every record it writes, and `SkyTagging.backfill` retags the entries on the device once per
 `SkyTags.version` (a migration recorded in state.json, the changed records pending). Keyword search reads the tags.
 Moments (Features/Journal/Moments) are BeReal-style captures on the clock: every Helion quarter boundary is a candidate moment, labelled
-by the longest period with a quarter boundary there (its rarity: rare Helion, epic Delta, legendary Gamma,
+by the longest period with a quarter boundary there (its rarity: rare Helion, epic Nuclide or Delta, legendary Gamma,
 mythic Beta, cosmic Alpha; of the Helion ones its two nodes call, the ascending one at its start and the
-descending one at its mid point, `MomentSettings.asks`). Each is a **call**: it rings 2 Flavons before the moment for 11
+descending one at its mid point, and an epic period's or rarer all four, each with a notice a Helion before —
+`moment.soon.<n>`, silent in quiet hours — `MomentSettings.asks`, `MomentScheduling`). Each is a **call**: it rings 2 Flavons before the moment for 11
 Flavons (`MomentCalendar.promptTime`, `ringEnd`), its ringtone looping (`MomentRingtone`, chosen in the settings on a
 page of its own: four synthesised by scripts/make-ringtones.swift into Resources/Moments, whole rings of half a Flavon,
 and 18 alarms from Half-Life 2 by scripts/import-sounds.swift, each repeated whole within 28 s) with a buzz each half
 Flavon. While the app is in front
-its call screen rings (`MomentCallView`, `MomentCallModel`, `MomentRinger`: the period for the caller's name, Mute and
+its call screen rings (`MomentCallView`, `MomentCallModel`, `MomentRinger`: an emoji at random for the caller's picture
+— the entry's too — the period for the caller's name, Mute and
 Decline over slide to answer); otherwise an AlarmKit alarm (iOS 26, `MomentAlarms`: one per call for the next 8, set on
 leaving and in the background refresh, cleared on coming back; asked for on the Moments screen and by Test a Call)
 rings it on the Lock Screen — its Answer (`AnswerMomentCallIntent`) opens the app on the call picked up, its Stop
@@ -267,10 +271,11 @@ into one more; the back camera the multi-lens one where it runs beside the selfi
 film runs on, and its torch), so each choice starts at once, the call's cameras handed to the instant view
 (`InstantModel`). **Answered**: `InstantView` — nothing but the cameras live as the reel will show them (a tap on a
 square keeps its frame as a photo, a long press lights the torch, a small countdown to the moment at their foot) and the
-red button to hang up: it films until then (`record(from:to: .infinity)`). `MomentReelRenderer` makes the reel
+red button to hang up: it films from a second after the pick-up until then (`record(from:to: .infinity)`). `MomentReelRenderer` makes the reel
 (MomentReel.swift has its arithmetic, checked; a check makes one from two films and a sound): the selfie's square over
-the back camera's, the film played once at real time with a chime at the moment (Half-Life 2's suit charging,
-Resources/Moments/moment-chime.caf), the sound along with it (filmed in the `.measurement` mode, without the gain
+the back camera's, the film played once at real time with a mark at the moment (Half-Life 2's bug report sent for a
+rare moment, its battery picked up for an epic one or rarer: Resources/Moments/mark-<rarity>.caf), the sound along with
+it (filmed in the `.measurement` mode, without the gain
 control the ringtone would have turned down, and brought to a steady level); each frame developed wholly in an
 autorelease pool of its own (the loop never waits: without them every frame's pictures were held to the end — on the
 iPhone, where the decoded pictures count against the app, the films stopped being read ~500 frames in, or the app was
@@ -278,7 +283,7 @@ stopped ~660 in), the films read a few seconds a reader (`VideoFrameReader`, Jou
 opened again where it stopped;
 its frames last a Sub-blink too, each a whole filmed frame stamped at
 the top with its date ("α6 β4 γ9 δ4 ε1") and its time down to the Sub-blink ("62η 4ι 29λ 4ν 3ξ"); picked up after the
-moment it has no chimes and is stamped MISSED in red; in the Simulator a drawn film stands in for the cameras. **Muted**:
+moment it has no mark and is stamped MISSED in red; in the Simulator a drawn film stands in for the cameras. **Muted**:
 `MutedView` — the screen dark (its brightness down, given back after) while both cameras film until a Flavon after the
 moment (End stops sooner), made the same way. The last capture's films stay in Caches/MomentFilms until the next
 (`MomentFilmArchive`), films.txt saying how each was filmed and read into the reel. Saved, the Journal shows either; a

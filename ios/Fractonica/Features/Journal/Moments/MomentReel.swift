@@ -3,8 +3,9 @@ import Foundation
 
 // A moment's reel: the film around the moment — both cameras at once with its sound, a frame each Sub-blink (ξ,
 // 44.4 ms) — made into one video, the selfie camera's square over the back camera's, played once at real time with a
-// chime at the moment (Half-Life 2's suit charging): an answered call's from the pick-up to the hang-up, a muted call's
-// from the press to a Flavon after the moment. Picked up after its moment, a film has no moment in it: no chime,
+// mark at the moment (a short sound: a rare moment's, an epic one's or rarer's): an answered call's from the pick-up to
+// the hang-up, a muted call's from the press to a Flavon after the moment. Picked up after its moment, a film has no
+// moment in it: no mark,
 // marked missed. Its frames last a Sub-blink too, so each shows the next filmed one and its ξ count rolls over. The
 // sound plays along. Each frame wears its date and its time down to the ξ at the top. A reel can be reversed in the
 // entry, as any video (`VideoReverser`), the reversed copy kept beside it. This file is the reel's arithmetic and words
@@ -41,7 +42,7 @@ struct MomentReelTiming: Sendable {
     /// Output frames in the reel.
     var frameCount: Int { max(1, Int((duration / frame).rounded())) }
 
-    /// When the moment shows (output seconds): where the chime starts.
+    /// When the moment shows (output seconds): where the mark starts.
     var moment: Double { before }
 
     /// The source instant u (seconds from the moment) shown at output time τ.

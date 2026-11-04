@@ -42,28 +42,35 @@ struct MomentReelScript: Sendable {
     let accent: [Double]
     /// Each camera's square, in pixels.
     let side: Int
-    /// The chime at the moment (none for a film that missed its moment).
-    var chimes = true
-    /// The chime: Half-Life 2's suit charging (ios/scripts/import-sounds.swift).
-    var chime = Bundle.main.url(forResource: "moment-chime", withExtension: "caf")
+    /// A mark at the moment (none for a film that missed its moment).
+    var marked = true
+    /// The mark: its rarity's (`mark(for:)`).
+    var mark: URL?
     /// Filmed after the moment had passed: marked so in red.
     var missed = false
 
     init(center: Double, before: Double, after: Double, notation: Notation, accent: [Double], side: Int,
-         chimes: Bool = true, missed: Bool = false) {
+         marked: Bool = true, missed: Bool = false, mark: URL? = MomentReelScript.mark(for: .rare)) {
         self.center = center
         self.before = before
         self.after = after
         self.notation = notation
         self.accent = accent
         self.side = side
-        self.chimes = chimes
+        self.marked = marked
+        self.mark = mark
         self.missed = missed
     }
 
     /// Filmed `half` either side of the moment.
     init(center: Double, half: Double, notation: Notation, accent: [Double], side: Int) {
         self.init(center: center, before: half, after: half, notation: notation, accent: accent, side: side)
+    }
+
+    /// The mark at a moment of this rarity (ios/scripts/import-sounds.swift): Half-Life 2's bug report sent for a rare
+    /// one, its battery picked up for an epic one or rarer.
+    static func mark(for rarity: MomentRarity) -> URL? {
+        Bundle.main.url(forResource: rarity >= .epic ? "mark-epic" : "mark-rare", withExtension: "caf")
     }
 
     var timing: MomentReelTiming {
@@ -74,7 +81,7 @@ struct MomentReelScript: Sendable {
 /// Makes a moment's reel (MomentReel.swift has its arithmetic) from the cameras' films: first every frame of the back
 /// camera with the front camera's frame of the same instant over it, as squares (the selfie on top), kept as JPEG files;
 /// then the reel a frame each Sub-blink, each frame the filmed one at the instant `MomentReelTiming` says, its date and
-/// its time down to the ξ at the top; its sound the microphone's, along with the picture, the chime at the moment.
+/// its time down to the ξ at the top; its sound the microphone's, along with the picture, the mark at the moment.
 /// Without films (the Simulator, a Mac without a camera) a drawn film of the same span stands in, so the whole capture
 /// runs there. Runs off the main thread; `progress` hears 0 … 1. Returns what went amiss in the films (a stretch
 /// without frames), for the saved screen, and how each was read, for the films' archive (`MomentFilmArchive`).
@@ -253,7 +260,7 @@ enum MomentReelRenderer {
         guard writer.startWriting() else { throw Failure.writer(writer.error?.localizedDescription ?? "?") }
         writer.startSession(atSourceTime: .zero)
 
-        let sound = soundtrack(heard, timing: timing, chime: script.chimes ? chime(script.chime) : nil)
+        let sound = soundtrack(heard, timing: timing, mark: script.marked ? mark(script.mark) : nil)
         var heard = 0 // samples appended
         var heardAll = false
         func feedAudio(until seconds: Double) {
@@ -366,8 +373,8 @@ enum MomentReelRenderer {
 
     /// The reel's sound, mono at 48 kHz: the heard sound along with the picture (each output sample takes the source
     /// instant its time shows, between two samples by their nearness), its peak brought to 0.7
-    /// (by 18 dB at most: the microphone is heard without the system's gain), and `chime` from each moment on.
-    private static func soundtrack(_ heard: Heard?, timing: MomentReelTiming, chime: [Float]?) -> [Float] {
+    /// (by 18 dB at most: the microphone is heard without the system's gain), and `mark` from the moment on.
+    private static func soundtrack(_ heard: Heard?, timing: MomentReelTiming, mark: [Float]?) -> [Float] {
         var out = [Float](repeating: 0, count: Int((timing.duration * sampleRate).rounded(.up)) + 1)
         if let heard, heard.samples.count > 1 {
             let last = heard.samples.count - 1
@@ -387,28 +394,26 @@ enum MomentReelRenderer {
             let gain = min(8, 0.7 / peak)
             for i in out.indices { out[i] *= gain }
         }
-        if let chime { addChimes(&out, chime, at: [timing.moment]) }
+        if let mark { addMark(&out, mark, at: timing.moment) }
         for i in out.indices { out[i] = min(1, max(-1, out[i])) }
         return out
     }
 
-    /// The chime from each of `times` (output seconds), over what is there.
-    private static func addChimes(_ out: inout [Float], _ chime: [Float], at times: [Double]) {
-        for t in times {
-            let start = Int((t * sampleRate).rounded())
-            for (i, s) in chime.enumerated() where start + i >= 0 && start + i < out.count {
-                out[start + i] += 0.7 * s
-            }
+    /// The mark from `t` (output seconds) on, over what is there.
+    private static func addMark(_ out: inout [Float], _ mark: [Float], at t: Double) {
+        let start = Int((t * sampleRate).rounded())
+        for (i, s) in mark.enumerated() where start + i >= 0 && start + i < out.count {
+            out[start + i] += 0.7 * s
         }
     }
 
-    /// The chime's samples at the reel's rate (its file is made at it: then sample for sample); nil when it cannot be
+    /// A mark's samples at the reel's rate (its file is made at it: then sample for sample); nil when it cannot be
     /// read.
-    static func chime(_ url: URL?) -> [Float]? {
+    static func mark(_ url: URL?) -> [Float]? {
         guard let url, let file = try? AVAudioFile(forReading: url),
               let buffer = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: AVAudioFrameCount(file.length)),
               (try? file.read(into: buffer)) != nil, let p = buffer.floatChannelData?[0], buffer.frameLength > 1 else {
-            reelLog.error("no chime at \(url?.path ?? "—", privacy: .public)")
+            reelLog.error("no mark at \(url?.path ?? "—", privacy: .public)")
             return nil
         }
         let n = Int(buffer.frameLength)

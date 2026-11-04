@@ -6,8 +6,9 @@ import Foundation
 // (Nuclide, Delta, Gamma, Beta, Alpha) falls on one of them, so each moment is labelled by the longest level for which
 // it is a start or a quarter boundary; that level gives its rarity (hub/API.md, `journal.entry` `capture`). The app
 // calls 2 Flavons before each moment the settings ask for — a Helion's two nodes, its start (ascending: the wave rising
-// through zero) and its mid point (descending), and every quarter boundary of a Delta or longer
-// (`MomentSettings.asks`) — and rings for 11 Flavons: answered, the back camera films until hung up; muted, both
+// through zero) and its mid point (descending), and every quarter boundary of a Nuclide or longer, the epic moments and
+// rarer (`MomentSettings.asks`), each of those with a notice a Helion before (`MomentScheduling`) — and rings for 11
+// Flavons: answered, the back camera films until hung up; muted, both
 // cameras film through the moment into a reel; declined, each camera takes a photo; left ringing, it is a missed call
 // (`MomentOutcome`).
 //
@@ -35,8 +36,8 @@ enum MomentLevel: String, CaseIterable, Codable, Sendable {
 
     var rarity: MomentRarity {
         switch self {
-        case .helion, .nuclide: .rare
-        case .delta: .epic
+        case .helion: .rare
+        case .nuclide, .delta: .epic
         case .gamma: .legendary
         case .beta: .mythic
         case .alpha: .cosmic
@@ -154,7 +155,8 @@ enum MomentOutcome: String, CaseIterable, Codable, Sendable {
         }
     }
 
-    /// The entry's emoji.
+    /// The emoji an entry had for it before the calls' own (one at random, chosen as the call rings); still a missed
+    /// call's, which never rang on a screen.
     var emoji: String {
         switch self {
         case .answered: "📞"
@@ -426,20 +428,20 @@ struct MomentQuietHours: Hashable, Codable, Sendable {
     }
 }
 
-/// Which Helion moments are announced; Delta and longer always are. A Helion's two nodes are its rare moments: the
-/// ascending one at its start (Preon 0) and the descending one at its mid point (Preon 18); its peak and valley are not
-/// announced and do not count for the streak (unless a Delta or longer has a quarter boundary there). A Nuclide's
-/// boundaries fall on the same boundary of a Helion (77 ≡ 1 mod 4), so its start and node are announced with them.
+/// Which Helion moments are announced; the epic ones and rarer — every quarter boundary of a Nuclide or longer — always
+/// are. A Helion's two nodes are its rare moments: the ascending one at its start (Preon 0) and the descending one at its
+/// mid point (Preon 18); its peak and valley are not announced and do not count for the streak (unless a Nuclide or
+/// longer has a quarter boundary there).
 enum HelionPrompts: String, CaseIterable, Codable, Sendable {
     /// Both nodes of every Helion (about every 2.5 hours).
     case nodes
-    /// None: only Delta and longer.
+    /// None: only Nuclide and longer.
     case none
 
     var title: String {
         switch self {
         case .nodes: "Ascending and descending nodes"
-        case .none: "Delta and longer only"
+        case .none: "Nuclide and longer only"
         }
     }
 
@@ -532,7 +534,7 @@ struct MomentSettings: Hashable, Codable, Sendable {
     func asks(_ m: Moment) -> Bool {
         guard enabled else { return false }
         switch m.level {
-        case .helion, .nuclide: return helion.includes(m.boundary)
+        case .helion: return helion.includes(m.boundary)
         default: return true
         }
     }

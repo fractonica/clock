@@ -6,7 +6,8 @@ import UIKit
 import AppKit
 #endif
 
-/// A moment's call, full screen (a sheet on the Mac), as a phone shows one: the moment's period for the caller's name,
+/// A moment's call, full screen (a sheet on the Mac), as a phone shows one: its emoji for the caller's picture (one at
+/// random, the entry's too), the moment's period for the caller's name,
 /// its boundary under it, and how far the moment is. Ringing: Mute and Decline over slide to answer. Answered, the
 /// instant view takes its place; muted, the dark recording screen (`MutedView`). Declined or missed: Declined or Missed
 /// Call (in red) while the entry is written, then the screen goes — a declined call leaves the app as a phone does, a
@@ -77,10 +78,17 @@ struct MomentCallView: View {
 
     // MARK: Parts
 
-    /// The caller: what calls, the period, its boundary, how far the moment is.
+    /// The caller: its emoji (as a contact's picture), what calls, the period, its boundary, how far the moment is.
     private func header(_ words: Wording) -> some View {
         let m = model.moment
         return VStack(spacing: 6) {
+            Text(verbatim: model.emoji)
+                .font(.system(size: 64))
+                .frame(width: 116, height: 116)
+                .background(.white.opacity(0.1), in: .circle)
+                .overlay(Circle().stroke(model.phase == .ended(.missed) ? Theme.danger : m.rarity.color, lineWidth: 2))
+                .padding(.bottom, 10)
+                .accessibilityHidden(true)
             Text(verbatim: caption)
                 .font(.subheadline.weight(.medium))
                 .foregroundStyle(model.phase == .ended(.missed) ? Theme.danger : .white.opacity(0.7))
