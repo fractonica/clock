@@ -53,6 +53,9 @@ length, a solar anchor), in a `static let` or a long-lived object; see "The refe
 | `EarthFormatter`, `EarthTime` | Earth time in a zone, exactly as src/core/format.js prints it (`date`, `time`, `long`, `short`, `label`, `tag`, `iso`, `parseInput`, `duration`, `countdown`) |
 | `GlyphState`, `GlyphGeometry` | The CBT phase glyphs: state facts and the library's path geometry (`cgPath(index:strokes:)`) |
 | `Fractonica` | Constants: `sequence`, `maxLevel` (13, the deepest level the UI shows), `supportedLevels`, `periodName(_:)`, `quarterNames` |
+| `SarosCatalogue`, `SarosSeries`, `SarosEclipse` | The 40 ongoing solar series (117 … 156) and their 2 887 eclipses (Unix ms by the library's conversion, type, greatest point, central duration, Sun's altitude, `pathRecord` into the app's geo-<n>.bin); `series.solarAnchor` (first Alpha from 1972), `neighbours(of:)`, `kinds` |
+| `SarosDrift` | `series.drift(at:)`: seconds a sync now (−10.081 s for 141), the lap walking the real intervals (`lap`, `lapEnd`; nil where the series ends first, `lapAtPresentRate` instead), `alpha` (4 mean Saros), `lapPastAlpha` (≈ +17 y), `lifetimePerSync` |
+| `SarosReference` | The stored reference series (app group, 141 by default, `-FXSaros <n>` for a run), `choose(_:)`; the app goes through `ReferenceSaros` |
 
 Cost (release, Apple silicon): 14 levels + 14 odometers ≈ 25 µs per frame; `upcomingEnds` and wide `boundaries`
 queries are much heavier — compute them on change or at ≤ 4 Hz, never per frame.
@@ -103,6 +106,31 @@ series (`Pentads.at`, `FractonicaClockFacts.standard`). Text that names the seri
 catalogue's extent `clock.daySpan` / `clock.yearSpan()` (Shared/Notation+Standard.swift), never "141" or "1613".
 `-FXSaros <n>` starts on Saros n; `-FXSarosSwitch <n>` runs the whole switch onto it two seconds after launch, for that
 run only (nothing stored).
+
+### The Saros catalogue (Features/Saros)
+
+Settings › Saros series (`SarosCatalogueScreen`): the 40 series with their drift a sync, lap and lap past an Alpha
+(`SarosDrift`), sortable, the reference ticked, each with its next eclipse's thumbnail. A series
+(`SarosSeriesScreen`) shows its figures, switches the clock onto it after a confirmation (`ReferenceSaros.choose`) and
+lists its eclipses; an eclipse opens `EclipseMapScreen` (drag, pinch, double-tap to fit; gnomonic, stereographic or
+globe; borders and graticule; the eclipse's figures). Words: `SarosWords` (UTC dates; pure mode stamps on the reference
+clock, drift in Blinks, laps in Fractonica units).
+
+- Data: `SarosPaths` decodes saros-geo's Resources/Saros/geo-<n>.bin (1582 … 2500; central paths as areas, a partial
+  eclipse's limits as lines); `WorldMap` reads the FXMP layers (Natural Earth 1:110m land for thumbnails and while a
+  finger moves the map, 1:50m land, lakes and borders otherwise). Both are made by ios/scripts/make-saros.mjs.
+- Maps (`SphereMap.swift`): `MapProjection` is an azimuthal perspective from r radii behind the centre (gnomonicube's
+  projection R: 0 gnomonic, −1 stereographic, −3 the globe), north up. `MapClipper` clips on the sphere to a cap just
+  beyond the view (short of the horizon) before projecting: lines are cut at its rim, counterclockwise areas closed along
+  it to the next entry counterclockwise (Weiler–Atherton against a cap), a ring that surrounds the view by its winding
+  seen from the antipode. Areas fill even-odd. `Vec3` is a plain struct: SIMD3's operators are calls in Debug builds.
+- `EclipseShape` (an eclipse's rings, centre and extent; `fit(in:)` a gnomonic view of the path) and `EclipseArt` (the
+  clipped, projected paths a Canvas draws) are kept per eclipse; `EclipseThumbnail` makes its art off the main thread.
+- Launch: `-FXTab settings` with `-FXSarosCatalogue 1`, `-FXSarosSeries <n>`, and `-FXSarosEclipse <ordinal>` for its
+  map straight away; `-FXSarosProjection gnomonic|stereographic|globe`.
+- Checks (Features/Saros/Checks): the path files against saros_geo.js's figures and SarosData's records, the layers,
+  the projection's round trip, and small circles filled on 180 random views compared point by point with the exact
+  answer.
 
 ### ClockTimeline — the only way to redraw with the clock
 

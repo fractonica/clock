@@ -243,6 +243,13 @@ The library function is `clock.solarSync({anchor, level, cycles, days, daySecond
 - **Equivalent statements:** 171 depth-8 ticks ≈ 4 days, and 171 depth-9 ticks ≈ 1 day. Since 171 · T9 = 19 · T7 / 4 exactly, these are the same drift, about −2.52 s per day.
 - **Lap:** the accumulated drift first passes −86,400 s at the sync of 2067-02-01 15:01:58 UTC, 93.11 years after the anchor. At that point the sync time of day has gone once around the clock back to the anchor's 15:02 UTC.
 
+**Other series.** Any Saros series can carry the clock in place of 141; its eclipses become the catalogue (§14) and the
+sync keeps L = 6, N = 19, D = 4. The native apps anchor it at the series' first Alpha in the UTC era: the first ordinal
+A ≡ 0 (mod 4) whose eclipse falls on or after 1972-01-01 (for 141 that is A = 20, as above; for 145, A = 20, 1999-08-11).
+The per-sync offset and the lap differ by series (§7.4): among the 40 series running in 2026 (117 … 156) the offset runs
+from −8.34 s (152) to −13.42 s (147) and the lap, walking each series' intervals from 2026, from 70.0 to 113.7 years,
+89.3 on average — an Alpha (4 Saros, 72.1 years) and about 17 years more.
+
 ### 7.3 Display of the sync
 
 - **Odometer:** show the phase as k glyphs of d strokes, `digits = floor(phase · q^k)` split as in §5.
