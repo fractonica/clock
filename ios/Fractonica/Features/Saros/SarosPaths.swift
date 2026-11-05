@@ -54,10 +54,13 @@ enum SarosPaths {
         let header = 4 + 4 * (count + 1)
         guard bytes.count >= header else { throw DecodeError.badHeader }
         func u32(_ at: Int) -> Int { Int(bytes[at]) | Int(bytes[at + 1]) << 8 | Int(bytes[at + 2]) << 16 | Int(bytes[at + 3]) << 24 }
-        let payload = Array(bytes[header...])
-        return try (0..<count).map { i in
-            var reader = BitReader(bytes: payload, bit: u32(4 + 4 * i))
-            return try reader.eclipse()
+        // eight bytes of slack, so every field is one unaligned 64-bit load
+        let payload = Array(bytes[header...]) + [UInt8](repeating: 0, count: 8)
+        return try payload.withUnsafeBytes { raw in
+            try (0..<count).map { i in
+                var reader = BitReader(bytes: raw, end: (payload.count - 8) * 8, bit: u32(4 + 4 * i))
+                return try reader.eclipse()
+            }
         }
     }
 
@@ -81,25 +84,20 @@ enum SarosPaths {
     private static let cache = Mutex<[Int: [EclipsePath]]>([:])
 }
 
-/// saros_geo.js `BitReader`: MSB-first fields.
+/// saros_geo.js `BitReader`: MSB-first fields, each read with one big-endian 64-bit load (fields are at most 35 bits,
+/// and a field starts at most 7 bits into its first byte).
 private struct BitReader {
-    let bytes: [UInt8]
+    let bytes: UnsafeRawBufferPointer
+    /// The payload's length in bits (the buffer has 8 more bytes of slack).
+    let end: Int
     var bit: Int
 
     mutating func uint(_ bits: Int) throws -> Int {
-        var value = 0
-        var remaining = bits
-        while remaining > 0 {
-            let index = bit >> 3
-            guard index < bytes.count else { throw SarosPaths.DecodeError.truncated }
-            let can = 8 - (bit & 7)
-            let take = min(can, remaining)
-            let chunk = (Int(bytes[index]) >> (can - take)) & ((1 << take) - 1)
-            value = value << take | chunk
-            bit += take
-            remaining -= take
-        }
-        return value
+        guard bit + bits <= end else { throw SarosPaths.DecodeError.truncated }
+        let word = bytes.loadUnaligned(fromByteOffset: bit >> 3, as: UInt64.self).bigEndian
+        let value = (word << UInt64(bit & 7)) >> UInt64(64 - bits)
+        bit += bits
+        return Int(value)
     }
 
     mutating func int(_ bits: Int) throws -> Int {

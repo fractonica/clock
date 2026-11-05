@@ -27,6 +27,20 @@ struct SettingsScreen: View {
                 Text("Reading")
             }
 
+            Section {
+                NavigationLink {
+                    SarosCatalogueScreen()
+                } label: {
+                    LabeledContent {
+                        Text("Saros \(ReferenceSaros.shared.series)")
+                    } label: {
+                        SettingLabel("Saros series", detail: "The eclipses the clock runs on: the 40 series, their paths, drift and laps", systemImage: "circle.lefthalf.filled")
+                    }
+                }
+            } header: {
+                Text("Clock")
+            }
+
             Section("Clock face") {
                 Picker("Face", selection: $settings.faceMode) {
                     ForEach(AppSettings.FaceMode.allCases, id: \.self) { mode in
@@ -105,10 +119,19 @@ struct SettingsScreen: View {
         .background { Backdrop() }
         .navigationTitle(Screen.settings.title)
         .navigationDestination(isPresented: $showsJournal) { JournalSettingsScreen() }
+        .navigationDestination(isPresented: $showsSaros) { SarosCatalogueScreen() }
+        .navigationDestination(item: $launchedEclipse) { e in
+            if let series = SarosCatalogue.series(e.series) { EclipseMapScreen(series: series, ordinal: e.ordinal) }
+        }
     }
 
     /// Settings › Journal, open at launch with -FXJournalSettings 1.
     @State private var showsJournal = JournalLaunch.flag("FXJournalSettings")
+    /// Settings › Saros series, open at launch with -FXSarosCatalogue 1 (or a series with -FXSarosSeries <n>; with
+    /// -FXSarosEclipse <ordinal> too, that eclipse's map straight away).
+    @State private var showsSaros = JournalLaunch.int("FXSarosEclipse") == nil
+        && (JournalLaunch.flag("FXSarosCatalogue") || JournalLaunch.int("FXSarosSeries") != nil)
+    @State private var launchedEclipse = SarosLaunch.eclipse
 
     private var zoneName: String {
         guard let zone = settings.zone else { return "System" }
@@ -127,7 +150,7 @@ struct SettingsScreen: View {
         if words.pure { return words.notation.catalogueText() }
         let utc = EarthFormatter(timeZone: .gmt)
         let clock = FractonicaClock.shared
-        return "Saros 141 · \(utc.parts(clock.tMin).year)–\(utc.parts(clock.tMax).year)"
+        return "Saros \(clock.series) · \(utc.parts(clock.tMin).year)–\(utc.parts(clock.tMax).year)"
     }
 
     private var version: String {

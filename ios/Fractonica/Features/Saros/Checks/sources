@@ -1,0 +1,3 @@
+# The app files SarosChecks.swift compiles against (relative to ios/).
+Fractonica/Features/Saros/SarosPaths.swift
+Fractonica/Features/Saros/SphereMap.swift
