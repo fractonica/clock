@@ -81,7 +81,7 @@ struct TimelineReadout: View {
             }
         } else {
             ContentUnavailableView("Outside the catalogue", systemImage: "circle.dashed",
-                                   description: Text("This cycle does not exist in the Saros 141 catalogue."))
+                                   description: Text("This cycle does not exist in the \(clock.sarosName) catalogue."))
         }
     }
 
@@ -335,7 +335,7 @@ struct TimelineReadout: View {
             VStack(alignment: .leading, spacing: 3) {
                 Text("Eclipse \(Notation.eclipseName(k))")
                     .font(.title3.weight(.semibold))
-                Text("Greatest eclipse of Saros 141 · one of \(clock.catalogue.count)")
+                Text(verbatim: "Greatest eclipse of \(clock.sarosName) · one of \(clock.catalogue.count)")
                     .font(.subheadline)
                     .foregroundStyle(Theme.ink2)
             }

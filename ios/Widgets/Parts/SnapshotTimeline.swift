@@ -21,6 +21,7 @@ enum SnapshotTimeline {
         snapshot: (Double) -> Snapshot?,
         relevance: (Snapshot, Double) -> TimelineEntryRelevance? = { _, _ in nil }
     ) -> Timeline<SnapshotEntry<Snapshot>> {
+        followReference()
         let start = now.timeIntervalSince1970
         let clock = FractonicaClock.shared
         guard clock.inRange(start) else {
@@ -46,6 +47,15 @@ enum SnapshotTimeline {
 
     /// A single entry now (placeholders, the widget gallery).
     static func entry<Snapshot: Sendable>(now: Date = .now, snapshot: (Double) -> Snapshot?) -> SnapshotEntry<Snapshot> {
-        SnapshotEntry(date: now, snapshot: snapshot(now.timeIntervalSince1970))
+        followReference()
+        return SnapshotEntry(date: now, snapshot: snapshot(now.timeIntervalSince1970))
+    }
+
+    /// Puts the clock on the Saros series the app chose (`SarosReference`, the app group). `FractonicaClock.shared`
+    /// reads it once per process, and the extension may live on between reloads: when the person picks another series
+    /// the app reloads every timeline, and each reads the choice again here before it reads the clock.
+    static func followReference() {
+        let stored = SarosReference.stored
+        if FractonicaClock.shared.series != stored { FractonicaClock.use(series: stored) }
     }
 }

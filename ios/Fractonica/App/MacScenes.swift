@@ -12,6 +12,8 @@ import SwiftUI
 struct FocusWindow: View {
     var body: some View {
         FocusScreen()
+            // made anew on another Saros series, like the main window's screens (RootView)
+            .id(ReferenceSaros.shared.series)
             .environment(\.isImmersive, true)
             .frame(minWidth: 480, minHeight: 320)
             .background { Backdrop() }

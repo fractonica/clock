@@ -128,7 +128,7 @@ private struct UpNextContent: View {
                     symbol: "clock.badge.xmark",
                     text: words.pure
                         ? "Outside the catalogue (\(words.notation.catalogueText())): there are no turnovers to count down to."
-                        : "Outside the Saros 141 catalogue (\(words.earth.date(clock.tMin)) to \(words.earth.date(clock.tMax))): there are no turnovers to count down to."
+                        : "Outside the \(clock.sarosName) catalogue (\(words.earth.date(clock.tMin)) to \(words.earth.date(clock.tMax))): there are no turnovers to count down to."
                 )
             } else if let first = turnovers.first {
                 TurnoverHero(turnover: first, importance: importance, maxLevel: maxLevel, words: words, navigator: navigator, glow: glow, cadence: cadence)

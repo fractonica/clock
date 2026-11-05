@@ -722,7 +722,7 @@ struct TimelinePainter {
             let lab = f.pure ? "\(Notation.eclipseName(next)) ▸" : "\(f.words.earth.date(e[next])) ▸"
             chip(cg, td, lab, x: px1 - 8, cy: base, right: true, color: P.teal, action: .reveal(e[next], right: true))
         }
-        let msg = "Saros 141 · time base of the clock"
+        let msg = "\(clock.sarosName) · time base of the clock"
         let style = font(.ui(10, 500))
         if h >= 32, L.plotWidth > text.width(msg, style) + 300 {
             td.draw(msg, x: (px0 + px1) / 2, y: labelY, style, P.mutedText, align: .center)
@@ -766,7 +766,7 @@ struct TimelinePainter {
         }
         if b <= px0 || a >= px1 {
             let cx = (px0 + px1) / 2, cy = (top + bottom) / 2
-            td.draw("Outside the Saros 141 catalogue", x: cx, y: cy - 9, font(.ui(13, 600)), P.ink(0.9), align: .center)
+            td.draw("Outside the \(clock.sarosName) catalogue", x: cx, y: cy - 9, font(.ui(13, 600)), P.ink(0.9), align: .center)
             td.draw(f.words.catalogueRange, x: cx, y: cy + 10, font(.mono(11)), P.ink2(0.9), align: .center)
             let back = b <= px0 ? "◂ back to the catalogue" : "back to the catalogue ▸"
             chip(cg, td, back, x: cx, cy: cy + 34, right: nil, color: P.teal,
@@ -824,7 +824,7 @@ struct TimelinePainter {
         if spans.isEmpty {
             // zoomed out past every calendar unit: name the catalogue itself over its extent
             let a = max(px0, X(clock.tMin)), b = min(px1, X(clock.tMax))
-            let variants = ["Saros 141 catalogue · \(f.words.catalogueRange)", f.words.catalogueRange, "Saros 141 catalogue"]
+            let variants = ["\(clock.sarosName) catalogue · \(f.words.catalogueRange)", f.words.catalogueRange, "\(clock.sarosName) catalogue"]
             if b > a, let lab = text.fit(variants, ctxStyle, room: b - a - 12) {
                 td.draw(lab, x: (a + b) / 2, y: ay + L.ctxH / 2, ctxStyle, P.ink2(0.9), align: .center)
             }
@@ -1049,8 +1049,9 @@ struct TimelinePainter {
         }
         let eh = L.eclipseH
         if eh >= 32 {
-            td.draw(L.compact ? "Saros" : "Saros 141", x: L.compact ? 8 : 10, y: L.eclipseY + eh * 0.34, title, P.teal)
-            td.draw(L.compact ? "70" : "70 eclipses", x: L.compact ? 8 : 10, y: L.eclipseY + eh * 0.68, small, P.mutedText)
+            let count = String(clock.catalogue.count)
+            td.draw(L.compact ? "Saros" : clock.sarosName, x: L.compact ? 8 : 10, y: L.eclipseY + eh * 0.34, title, P.teal)
+            td.draw(L.compact ? count : "\(count) eclipses", x: L.compact ? 8 : 10, y: L.eclipseY + eh * 0.68, small, P.mutedText)
         } else {
             td.draw("Saros", x: 8, y: L.eclipseY + eh / 2, title, P.teal)
         }

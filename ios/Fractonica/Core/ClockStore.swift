@@ -52,8 +52,9 @@ final class ClockStore {
         func t(atReal real: Double) -> Double { t0 + rate * (real - real0) }
     }
 
-    /// The engine every reading goes through.
-    @ObservationIgnored let clock: FractonicaClock
+    /// The engine every reading goes through: the reference series' clock, which `adopt(_:)` replaces when the person
+    /// picks another series.
+    private(set) var clock: FractonicaClock
 
     private(set) var mode: Mode = .live
     /// Displayed seconds per real second: 1 while live, 0 while paused.
@@ -96,6 +97,20 @@ final class ClockStore {
         rate = 1
         base = .live
         changed(.live)
+    }
+
+    /// Runs on another clock (the reference series changed, `ReferenceSaros`): live stays live; a moment shown stays
+    /// shown, clamped into the new catalogue, with its rate (a time-lapse runs on and stops at the new catalogue's
+    /// edge). Bumps `revision` (`.jump`, or `.live`) so audio and animations resynchronise.
+    func adopt(_ newClock: FractonicaClock) {
+        guard newClock !== clock else { return }
+        let shown = time()
+        clock = newClock
+        if mode == .live {
+            changed(.live)
+        } else {
+            travel(to: shown, rate: rate, change: .jump)
+        }
     }
 
     /// Show the moment `t` (clamped to the catalogue). `rate` nil keeps the running rate when already travelling and

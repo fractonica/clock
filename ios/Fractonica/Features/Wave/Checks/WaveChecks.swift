@@ -271,9 +271,31 @@ private func cameraChecks(_ root: [String: Any]) {
 @MainActor
 private func solarChecks(_ root: [String: Any], _ engine: WaveEngine) {
     let s = dict(root["solar"])
-    let grid = WaveSolar.Grid(p6: engine.prefix(WaveSolar.syncLevel))
+    let grid = engine.solarGrid
     let gv = arr(s["grid"])
     check(near(grid.p6, dbl(gv[0])) && near(grid.anchor, dbl(gv[1])) && near(grid.length, dbl(gv[2])), "the sync grid")
+    // another series' grid counts its syncs from that series' solar anchor: its sync numbers are the engine's
+    for series in [145, 117] {
+        guard let other = FractonicaClock.on(series: series) else {
+            check(false, "Saros \(series) has a clock")
+            continue
+        }
+        let g = WaveEngine(clock: other).solarGrid
+        check(near(g.anchor, Double(other.solarAnchor) * g.p6 / 4), "Saros \(series): the grid's anchor is A = \(other.solarAnchor)")
+        var wrong: [Double] = []
+        var t = other.tMin + 40 * 86_400
+        while t < other.tMax - 40 * 86_400 {
+            if let solar = other.solar(at: t), let pos = other.position(at: t) {
+                // the grid is linear in position, the engine's phase in time: they part by a hair where a sync
+                // straddles an eclipse
+                let a = g.at(pos)
+                let edge = min(a.phase, 1 - a.phase) < 1e-3
+                if (a.sync != solar.sync && !edge) || (a.sync == solar.sync && abs(a.phase - solar.phase) > 1e-3) { wrong.append(t) }
+            }
+            t += 7_654_321.5
+        }
+        check(wrong.isEmpty, "Saros \(series): the grid's sync and phase are the engine's (\(wrong.count) differ, first at \(wrong.first ?? 0))")
+    }
     for e in arr(s["at"]) {
         let v = arr(e)
         let a = grid.at(dbl(v[0]))

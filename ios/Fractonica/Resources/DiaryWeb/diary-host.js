@@ -39,6 +39,8 @@ const send = (msg) => {
 addEventListener('error', (e) => send({ type: 'error', token: null, message: String(e.message ?? e) }));
 addEventListener('unhandledrejection', (e) => send({ type: 'error', token: null, message: String(e.reason?.message ?? e.reason) }));
 
+// the app's reference series: Saros 141 unless the native side set globalThis.FractonicaReference before this module
+// ran (DiaryWebEngine, DiaryReference); a page serves one series, a switch makes another
 const model = createModel();
 const pure = createPure(model);
 const caches = { eventCache: createEventCache(), skyCache: createSkyCache(), eclipseCache: createEclipseCache() };

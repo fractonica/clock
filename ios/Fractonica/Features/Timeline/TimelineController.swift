@@ -11,10 +11,12 @@ struct TimelineReadoutItem: Identifiable, Equatable {
 }
 
 /// Turns input from the platform layers (touch, trackpad, mouse, keys, buttons) into moves of the window, the clock
-/// and the read-out. One per app, like the viewport.
+/// and the read-out. One per app (per reference series), like the viewport.
 @MainActor @Observable
 final class TimelineController {
-    static let shared = TimelineController()
+    /// One per reference series, on that series' viewport and data.
+    static var shared: TimelineController { scoped.value }
+    private static let scoped = ClockScoped { TimelineController() }
 
     let viewport: TimelineViewport
     let data: TimelineData

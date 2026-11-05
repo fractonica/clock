@@ -153,12 +153,12 @@ struct TimelineWords: Sendable {
                     : (parts.prefix(2).joined(separator: " "), parts.dropFirst(2).joined(separator: " "))
     }
 
-    /// The catalogue's extent: "1613-05-19 – 2857-06-13" · pure "α#1 – α#18".
+    /// The catalogue's extent: "1613-05-19 – 2857-06-13" · pure "α#1 – α#18" (Saros 141).
     var catalogueRange: String {
         pure ? notation.catalogueText() : "\(earth.date(clock.tMin)) – \(earth.date(clock.tMax))"
     }
 
-    /// The catalogue's years for the map's head: "1613–2857" · pure "α#1 – α#18".
+    /// The catalogue's years for the map's head: "1613–2857" · pure "α#1 – α#18" (Saros 141).
     var catalogueYears: String {
         pure ? notation.catalogueText() : "\(earth.parts(clock.tMin).year)–\(earth.parts(clock.tMax).year)"
     }
@@ -280,8 +280,8 @@ struct TimelineWords: Sendable {
     /// The catalogue map's head.
     var mapTip: String {
         pure
-            ? "The whole Saros 141 catalogue (\(catalogueRange)); the numbers are eclipse numbers, like the position (\(Notation.eclipseName(10)) sits at pos 10). The teal frame is what the timeline shows. Drag it, or tap to jump there."
-            : "The whole Saros 141 catalogue. The teal frame is what the timeline shows. Drag it, or tap to jump there."
+            ? "The whole \(clock.sarosName) catalogue (\(catalogueRange)); the numbers are eclipse numbers, like the position (\(Notation.eclipseName(10)) sits at pos 10). The teal frame is what the timeline shows. Drag it, or tap to jump there."
+            : "The whole \(clock.sarosName) catalogue. The teal frame is what the timeline shows. Drag it, or tap to jump there."
     }
 
     /// The Earth axis's head: the zone its days and hours are in.

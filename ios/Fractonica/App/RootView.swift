@@ -20,6 +20,9 @@ struct RootView: View {
 
     var body: some View {
         layout
+            // every screen anew when the clock moves onto another Saros series: what their state read from the old
+            // clock goes with it (the sheets over them, Settings among them, stay)
+            .id(ReferenceSaros.shared.series)
             .toastOverlay()
             .modifier(Presentations())
             .modifier(HubPresentations())

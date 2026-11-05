@@ -1,11 +1,11 @@
 import FractonicaKit
 import SwiftUI
 
-/// Timeline: the zoomable, pannable multi-scale timeline from the whole catalogue (70 eclipses) down to seconds, one
-/// lane per depth (src/ui/timeline.js, docs/design/40-timeline.md).
+/// Timeline: the zoomable, pannable multi-scale timeline from the whole catalogue (the reference series' eclipses,
+/// Saros 141's 70) down to seconds, one lane per depth (src/ui/timeline.js, docs/design/40-timeline.md).
 ///
 /// Top to bottom: the catalogue map, the axis (Gregorian in the zone, or the pure ruler of units), one lane per depth
-/// with its cycles as blocks, and the Saros 141 eclipse lane; under it a Liquid Glass bar with zoom, presets, "fit the
+/// with its cycles as blocks, and the series' eclipse lane; under it a Liquid Glass bar with zoom, presets, "fit the
 /// selected cycle" and Follow. The canvas is drawn by `TimelinePainter` in one Core Graphics pass, culled to the
 /// window; input comes through `TimelineInputSurface` (UIKit / AppKit recognisers) into `TimelineController`.
 ///
@@ -218,7 +218,7 @@ struct TimelineScreen: View {
             out.append("Shows \(words.earth.date(w.t0)) to \(words.earth.date(w.t1)), \(EarthTime.duration(w.span)) across.")
         }
         guard clock.inRange(t) else {
-            out.append("The cursor is outside the Saros 141 catalogue.")
+            out.append("The cursor is outside the \(clock.sarosName) catalogue.")
             return out.joined(separator: " ")
         }
         let state = store.isLive ? ", live" : store.isPlaying ? ", in time-lapse" : ""

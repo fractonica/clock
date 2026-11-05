@@ -37,12 +37,17 @@ pre-build phase), for the Diary's WKWebView: `Bundle.main.url(forResource: "web"
 ## The engine: FractonicaKit
 
 `import FractonicaKit`. Times are Unix seconds (`Double`), levels zero-based (depth = level + 1, η is level 6). Readings
-are `nil` outside the catalogue (1613 … 2857, `clock.tMin … clock.tMax`) and never extrapolated. See
+are `nil` outside the catalogue (`clock.tMin … clock.tMax`: 1613 … 2857 on Saros 141) and never extrapolated. See
 FractonicaKit/README.md for what is ported from which JavaScript and the numerics.
+
+The clock runs on the reference Saros series: Saros 141 unless the person picks another of the 40 ongoing ones
+(`SarosReference`, kept in the app group; `-FXSaros <n>` for one run). `FractonicaClock.shared` is that series' clock
+and changes when the series does, so never keep it, or anything read from it (a `Notation`, a catalogue, a mean
+length, a solar anchor), in a `static let` or a long-lived object; see "The reference series" below.
 
 | API | Use |
 |---|---|
-| `FractonicaClock.shared` | The one clock (thread-safe, cached). `level(at:_:strokes:)` → `LevelReading` (cycle, local, phase, progress, quarter, glyph index, start/end/remaining, `next` threshold, five `thresholds`); `odometer(at:_:strokes:digits:)`; `solar(at:)`, `solarSync(number:)`; `levelInfo(_:)` (letter, factor, siblings, `meanSeconds`); `cycle(level:index:)`, `cycle(at:level:)` → `CycleFacts` with `events`; `boundaries(level:from:to:limit:)`; `upcomingEnds(after:fromLevel:toLevel:count:)`; `stateOccurrences(…)`; `address(at:)`, `pathToCycle`, `cycleToPath`; `position(at:)`, `time(atPosition:)`; `tMin`, `tMax`, `clamp`, `inRange`, `catalogue` (eclipse times) |
+| `FractonicaClock.shared` | The reference series' clock (thread-safe, cached; `series`, `solarAnchor`; `FractonicaClock.on(series:)` for another series'). `level(at:_:strokes:)` → `LevelReading` (cycle, local, phase, progress, quarter, glyph index, start/end/remaining, `next` threshold, five `thresholds`); `odometer(at:_:strokes:digits:)`; `solar(at:)`, `solarSync(number:)`; `levelInfo(_:)` (letter, factor, siblings, `meanSeconds`); `cycle(level:index:)`, `cycle(at:level:)` → `CycleFacts` with `events`; `boundaries(level:from:to:limit:)`; `upcomingEnds(after:fromLevel:toLevel:count:)`; `stateOccurrences(…)`; `address(at:)`, `pathToCycle`, `cycleToPath`; `position(at:)`, `time(atPosition:)`; `tMin`, `tMax`, `clamp`, `inRange`, `catalogue` (eclipse times) |
 | `Notation` (`Notation.standard`) | Pure-mode words (SPEC §15): `dateText`, `clockText`, `stamp`, `cycleName`, `nameAt`, `duration`, `countdown`, `between`, `cycleLength`, `rates`, `rateLabel`, `blinks`, `units`, `levelKind`, `Notation.pair(_:)` (the 256-state phase pair) |
 | `Journal` | The journal face reading (`Journal.reading(at:unit:)`), `arcPoint`, `ordinal` |
 | `EarthFormatter`, `EarthTime` | Earth time in a zone, exactly as src/core/format.js prints it (`date`, `time`, `long`, `short`, `label`, `tag`, `iso`, `parseInput`, `duration`, `countdown`) |
@@ -82,6 +87,22 @@ exactly at the edge it runs into (`lastChange == .edge`; the root shows a toast)
 
 Real-world features (timers, stopwatch, notifications, Focus sessions) run on the **device** clock (`Date.now`), never
 on the displayed time; they may *read* the clock at real now (`clock.level(at: Date.now.timeIntervalSince1970, …)`).
+
+### The reference series
+
+`ReferenceSaros.shared.choose(n)` (Core/ReferenceSaros.swift, main actor, observable `series`) moves everything onto
+Saros n, in this order: the kit's clock and the stored choice (`SarosReference.choose`); `ClockStore.adopt` (live stays
+live, a moment shown stays shown inside the new catalogue, `revision` bumps); every feature's
+`FeatureHooks.referenceChanged(from:)` (Alerts re-sanitize their rules and refill, Moments take a new calendar and drop
+what they kept by moment number, Timer and Stopwatch re-word their notification and Live Activities, Sound rebuilds its
+renderer, the converter drops a typed address); then `series` changes, and RootView gives the screens a new identity
+(`.id(series)`), so every screen's `@State` is made again (the sheets over them stay); last the widgets reload and
+`ReferenceSaros.changed` is posted. A long-lived model that reads the clock once is kept per series with
+`ClockScoped` (the Timeline's, the Month's, the Diary's, the journal wave's); a process-wide cache keys its entries by
+series (`Pentads.at`, `FractonicaClockFacts.standard`). Text that names the series says `clock.sarosName`, and the
+catalogue's extent `clock.daySpan` / `clock.yearSpan()` (Shared/Notation+Standard.swift), never "141" or "1613".
+`-FXSaros <n>` starts on Saros n; `-FXSarosSwitch <n>` runs the whole switch onto it two seconds after launch, for that
+run only (nothing stored).
 
 ### ClockTimeline — the only way to redraw with the clock
 
@@ -416,12 +437,14 @@ URLs (`.onOpenURL` → `router.open`). Unknown or empty screens open Now; `t` tr
 ### Lifecycle hooks: FeatureHooks (App/FeatureHooks.swift)
 
 Features that act outside their screens implement the hooks enum already in their folder (`AlertsHooks`,
-`TimerHooks`, `SoundHooks`, `FocusHooks`, `MomentsHooks`; listed in `AppHooks.all`), all `@MainActor`, all optional:
+`TimerHooks`, `SoundHooks`, `FocusHooks`, `MomentsHooks`, `CalendarHooks`; listed in `AppHooks.all`), all
+`@MainActor`, all optional:
 
 | Hook | When |
 |---|---|
 | `launch()` | Once, after launch, before any window appears |
 | `becameActive()` / `enteredBackground()` | Each time the app comes to the front / leaves it |
+| `referenceChanged(from:)` | The clock moved onto another Saros series (`ClockStore` already runs on it): drop what was read from the old one and plan again (see "The reference series") |
 | `presentation(ofNotification identifier:) -> UNNotificationPresentationOptions?` | A notification arrives while the app is in front; return options for your own identifiers, nil for others. Unclaimed ones show as banner + sound |
 | `open(_ notification: NotificationResponse) -> Bool` | The user tapped a notification or chose an action; return true when handled. Unhandled taps open the notification's `AppLink` |
 
@@ -457,7 +480,8 @@ Make the calls from a nonisolated async function, a detached task or a serial qu
   and Settings. On iOS the Now toolbar has Sound (iPhone always, iPad while it plays), Focus and Settings; the Sound
   button and sidebar item show `waveform.circle.fill` while the sound plays.
 - The app is sandboxed (user-selected files read-write, printing); widgets are sandboxed too. Dark appearance
-  everywhere. No App Group: widgets configure themselves through their own App Intents, not the app's settings.
+  everywhere. Widgets configure themselves through their own App Intents, not the app's settings; the app group only
+  carries the reference Saros series to them.
 
 ## Widgets and App Shortcuts
 
@@ -479,8 +503,9 @@ identify the widgets people have placed):
 
 On iOS the extension also hosts the timer's Live Activity (Lock Screen and Dynamic Island; its attributes and views
 are in Shared/TimerActivity.swift, shared with the app). Widgets configure themselves through their own App Intents
-(Widgets/Intents: pure mode, the level …), not the app's settings (there is no App Group), and open the app with
-`AppLink`s. Their timelines are pure logic, checked by `Widgets/Checks`; `Widgets/Checks/Render/render.sh OUT_DIR
+(Widgets/Intents: pure mode, the level …), not the app's settings, and open the app with `AppLink`s. They share one
+thing with the app through the app group: the reference Saros series (`SarosReference`), read again before every
+timeline (`SnapshotTimeline.followReference`); the app reloads every timeline when it changes. Their timelines are pure logic, checked by `Widgets/Checks`; `Widgets/Checks/Render/render.sh OUT_DIR
 [unix time [zone]]` renders every family of every widget at its exact size into contact sheets on the Mac (no Home
 Screen needed), the way to look at a widget change.
 
@@ -545,7 +570,9 @@ iOS app: `UIBackgroundModes` audio + fetch, `BGTaskSchedulerPermittedIdentifiers
 app.fractonica.clock.hubsync],
 `NSSupportsLiveActivities`, `CADisableMinimumFrameDurationOnPhone` (120 Hz on ProMotion iPhones), `CFBundleURLTypes`
 (fractonica), dark `UIUserInterfaceStyle`, all orientations on iPad, portrait + landscape on iPhone; entitlement
-`com.apple.developer.usernotifications.time-sensitive`. macOS app: `CFBundleURLTypes`; entitlements app-sandbox,
+`com.apple.developer.usernotifications.time-sensitive`, and the app group `group.app.fractonica.clock` (the iOS widget
+extension too) for the reference Saros series (`SarosReference.suiteName`). macOS app: `CFBundleURLTypes`; entitlements
+app-sandbox, the app group `$(TeamIdentifierPrefix)app.fractonica.clock` (the Mac widget extension too),
 files.user-selected.read-write, print, `network.client` (the sandboxed WebContent process of any WKWebView dies at
 launch without it, even for a custom-scheme page such as the Diary's), time-sensitive notifications. Both apps, for the journal's hub (Features/Journal/Hub):
 `NSLocalNetworkUsageDescription`, `NSBonjourServices` [_fractonica-hub._tcp] (finding hubs on the network with

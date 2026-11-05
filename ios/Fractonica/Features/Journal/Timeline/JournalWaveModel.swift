@@ -3,14 +3,16 @@ import Observation
 import SwiftUI
 
 /// The wave's view state and input: which stretch of time it shows (`JournalWaveFrame`), how that is moving (an eased
-/// zoom, a flick coasting to a stop), and what taps on it do. One for the app, so the wave keeps its place between
-/// visits; its zoom is remembered (`JournalBrowsing.waveScale`).
+/// zoom, a flick coasting to a stop), and what taps on it do. One for the app (per reference series), so the wave keeps
+/// its place between visits; its zoom is remembered (`JournalBrowsing.waveScale`).
 ///
 /// Motion is a pure function of the real instant: `frame(at:)` computes the frame for any display frame without writing
 /// anything, so drawing never changes state; state changes on input and when a motion ends.
 @MainActor @Observable
 final class JournalWaveModel {
-    static let shared = JournalWaveModel()
+    /// One per reference series (its limits and arcs are that clock's).
+    static var shared: JournalWaveModel { scoped.value }
+    private static let scoped = ClockScoped { JournalWaveModel() }
 
     enum Motion: Equatable {
         /// An eased move between two frames, the moment at height `anchorY` gliding between them.

@@ -33,6 +33,13 @@ enum TimerHooks: FeatureHooks {
         StopwatchStore.shared.enteredBackground()
     }
 
+    /// Another Saros series: both count on its clock from now on (a running timer keeps its end), and the timer's
+    /// notification and the Live Activities are worded again.
+    static func referenceChanged(from old: Int) {
+        TimerStore.shared.referenceChanged()
+        StopwatchStore.shared.referenceChanged()
+    }
+
     /// In front, the app rings the timer itself: on the Timer screen with its alert (so the banner stays away), elsewhere
     /// with the banner (the chime has already played, so the banner is silent; tapping it opens the Timer).
     static func presentation(ofNotification identifier: String) -> UNNotificationPresentationOptions? {

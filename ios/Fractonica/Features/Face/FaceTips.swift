@@ -77,7 +77,7 @@ enum FaceTips {
         guard let s = clock.solar(at: t) else {
             let line = words.pure
                 ? "The sync around this instant runs past the catalogue, so it is not defined here."
-                : "The 4-day sync around this instant runs past the Saros 141 catalogue, so it is not defined here."
+                : "The 4-day sync around this instant runs past the \(clock.sarosName) catalogue, so it is not defined here."
             return RowTip(title: "Solar sync", aside: "", lines: [line])
         }
         let title = "Solar sync #\(FaceWords.integer(s.sync))"

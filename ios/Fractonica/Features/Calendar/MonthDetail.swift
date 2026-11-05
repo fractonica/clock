@@ -79,7 +79,7 @@ struct CalDayDetailView: View {
                 pentads(start, end, earth)
                 running(ref, earth)
             } else {
-                Label("This day lies outside the catalogue (19 May 1613 … 13 June 2857 UTC): no cycles are counted there.", systemImage: "moon.zzz")
+                Label("This day lies outside the catalogue (\(store.clock.daySpan) UTC): no cycles are counted there.", systemImage: "moon.zzz")
                     .font(.subheadline)
                     .foregroundStyle(Theme.ink2)
             }

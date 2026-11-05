@@ -163,7 +163,7 @@ final class WaveStage {
     }
 
     init() {
-        grid = WaveSolar.Grid(p6: engine.prefix(WaveSolar.syncLevel))
+        grid = engine.solarGrid
     }
 
     static var now: Double { ProcessInfo.processInfo.systemUptime }

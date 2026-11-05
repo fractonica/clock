@@ -28,6 +28,19 @@ func pentadChecks() {
     check(mismatches == 0, "the cached Pentad is the engine's (\(mismatches) mismatches)")
     check(indices == [0, 1, 2, 3], "eight days pass through every Pentad")
 
+    // the cache keeps each reading with its series: another series' Pentad at the same moment is its own engine's
+    if let other = FractonicaClock.on(series: 145) {
+        var crossed = 0
+        var u = a
+        while u < a + 2 * 86_400 {
+            _ = Pentads.at(u) // the reference series' reading, cached
+            if Pentads.at(u, clock: other) != other.pentad(at: u) || Pentads.at(u) != clock.pentad(at: u) { crossed += 1 }
+            u += 1_003
+        }
+        check(crossed == 0, "readings of two series at the same moments never mix (\(crossed) mixed)")
+        check(other.pentad(at: a) != clock.pentad(at: a), "Saros 145's Pentad at vector A is not Saros 141's")
+    }
+
     // the next Pentad starts where the running one ends, one index on
     if let p, let next = Pentads.next(after: a) {
         check(next.index == 2 && next.start == p.end, "after Pentad II comes Pentad III at its end")

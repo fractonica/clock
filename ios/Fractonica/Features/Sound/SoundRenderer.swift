@@ -807,18 +807,30 @@ final class SoundRenderer: @unchecked Sendable {
     }
 }
 
-/// The clock facts the audio thread needs, copied once: the catalogue, and per voice its prefix and mean cycle.
+/// The clock facts the audio thread needs, copied once per renderer: the catalogue, and per voice its prefix and mean
+/// cycle. A renderer keeps the facts it was made with: when the reference series changes, the engine makes another
+/// (`SoundEngine.referenceChanged`).
 struct FractonicaClockFacts: Sendable {
     let catalogue: [Double]
     let prefixes: [Double]
     let means: [Double]
 
-    static let standard: FractonicaClockFacts = {
+    init(clock: FractonicaClock) {
+        catalogue = clock.catalogue
+        prefixes = (0..<SoundTuning.levelCount).map { clock.levelInfo($0).prefixDouble }
+        means = (0..<SoundTuning.levelCount).map { clock.levelInfo($0).meanSeconds }
+    }
+
+    /// The facts of the reference series' clock, read once per series.
+    static var standard: FractonicaClockFacts {
         let clock = FractonicaClock.shared
-        return FractonicaClockFacts(
-            catalogue: clock.catalogue,
-            prefixes: (0..<SoundTuning.levelCount).map { clock.levelInfo($0).prefixDouble },
-            means: (0..<SoundTuning.levelCount).map { clock.levelInfo($0).meanSeconds }
-        )
-    }()
+        return kept.withLock { kept in
+            if let kept, kept.series == clock.series { return kept.facts }
+            let facts = FractonicaClockFacts(clock: clock)
+            kept = (clock.series, facts)
+            return facts
+        }
+    }
+
+    private static let kept = Mutex<(series: Int, facts: FractonicaClockFacts)?>(nil)
 }

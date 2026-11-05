@@ -44,7 +44,8 @@ struct ConverterPositionCard: View {
     }
 }
 
-/// The 70 eclipses of the catalogue as ticks and the position on them; drag to scrub (it pins the converter).
+/// The eclipses of the catalogue (Saros 141's 70) as ticks and the position on them; drag to scrub (it pins the
+/// converter).
 private struct SarosRuler: View {
     let position: Double
     let extent: Int

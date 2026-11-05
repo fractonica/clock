@@ -232,7 +232,7 @@ private struct LadderHeader: View {
             Label {
                 Text(verbatim: words.pure
                     ? "Outside the catalogue (\(words.notation.catalogueText()))."
-                    : "Outside the Saros 141 catalogue (\(words.earth.parts(clock.tMin).year)–\(words.earth.parts(clock.tMax).year)).")
+                    : "Outside the \(clock.sarosName) catalogue (\(words.earth.parts(clock.tMin).year)–\(words.earth.parts(clock.tMax).year)).")
             } icon: {
                 Image(systemName: "clock.badge.xmark")
             }

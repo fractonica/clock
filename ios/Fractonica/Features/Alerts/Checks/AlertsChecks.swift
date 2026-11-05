@@ -365,4 +365,28 @@ func persistenceChecks() {
           && decoded?.rules[1].ordinal == nil && decoded?.quiet.start == 1435, "lenient, sanitized decoding: \(String(describing: decoded))")
     let twice = AlertsConfig(rules: [config.rules[0], config.rules[0]])
     check(twice.sanitized().rules.count == 1, "a rule id appears once")
+    referenceChecks()
+}
+
+/// The rules after the clock moves onto another Saros series (`AlertsConfig.following`).
+func referenceChecks() {
+    let eclipse = AlertPreset.eclipse.rule(pure: false)
+    check(eclipse.name == "Next eclipse of Saros 141" && eclipse.title == "Saros 141 eclipse {name}", "the preset names the reference series")
+    let lastAlpha = rule(.level(0), [.begin], ordinal: Int(clock.count(0)))
+    let named = AlertRule(name: "My Saros 141 alpha", subject: .level(0), events: [.begin], title: "Saros 141 {event}")
+    let config = AlertsConfig(rules: [eclipse, lastAlpha, named])
+    check(config.following(from: 141, to: 141, clock: clock) == config.sanitized(), "the same series changes nothing")
+    let series = SarosCatalogue.ongoing.compactMap { FractonicaClock.on(series: $0) }
+    guard let fewer = series.first(where: { $0.count(0) < clock.count(0) }),
+          let more = series.first(where: { $0.count(0) > clock.count(0) }) else {
+        check(false, "some series have fewer Alphas than Saros 141, some more")
+        return
+    }
+    let moved = config.following(from: 141, to: fewer.series, clock: fewer)
+    check(moved.rules[0].name == "Next eclipse of Saros \(fewer.series)" && moved.rules[0].title == "Saros \(fewer.series) eclipse {name}",
+          "an eclipse rule says the new series: \(moved.rules[0].name) · \(moved.rules[0].title)")
+    check(moved.rules[1].ordinal == nil, "Alpha #\(clock.count(0)) goes on Saros \(fewer.series), which has \(fewer.count(0))")
+    check(moved.rules[2].name == named.name && moved.rules[2].title == named.title, "only eclipse rules are renamed")
+    let kept = config.following(from: 141, to: more.series, clock: more)
+    check(kept.rules[1].ordinal == Int(clock.count(0)), "Alpha #\(clock.count(0)) stays on Saros \(more.series), which has \(more.count(0))")
 }

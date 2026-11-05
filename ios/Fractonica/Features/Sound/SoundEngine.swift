@@ -476,6 +476,13 @@ final class SoundEngine {
         #endif
     }
 
+    /// The clock moved onto another Saros series (`SoundHooks`): the renderer holds the old catalogue and the old mean
+    /// cycles (`FractonicaClockFacts`), so the graph is built again with the new ones and a sound that played carries on,
+    /// anchored on the new clock.
+    func referenceChanged() {
+        configurationChanged()
+    }
+
     /// The output device or its format changed (macOS: another device; iOS: a new route at another rate): rebuild the
     /// graph at the new rate and carry on.
     private func configurationChanged() {

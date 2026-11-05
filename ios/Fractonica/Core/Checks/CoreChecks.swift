@@ -14,6 +14,7 @@ struct CoreChecks {
         interfaceSoundChecks()
         storeChecks()
         await edgeStopChecks()
+        await adoptChecks()
         scheduleChecks()
         linkChecks()
         wordingChecks()
@@ -179,6 +180,40 @@ private func edgeStopChecks() async {
     s.setRate(-100)
     try? await Task.sleep(for: .seconds(0.5))
     check(s.isPaused && s.time() == clock.tMin && s.lastChange == .edge, "a backward time-lapse stops at the start")
+}
+
+/// Another reference series (`ClockStore.adopt`): live stays live, a moment shown stays shown inside the new catalogue,
+/// and a running time-lapse stops at the new catalogue's edge.
+@MainActor
+private func adoptChecks() async {
+    let clock = FractonicaClock.shared
+    guard let other = FractonicaClock.on(series: 145) else {
+        check(false, "Saros 145 has a clock")
+        return
+    }
+    let s = ClockStore(clock: clock)
+    var revision = s.revision
+    s.adopt(other)
+    check(s.isLive && s.clock === other && s.revision == revision + 1 && s.lastChange == .live,
+          "live stays live on the new series")
+    let a = 1_791_460_800.0 // SPEC vector A, inside every ongoing series
+    s.travel(to: a)
+    revision = s.revision
+    s.adopt(clock)
+    check(s.isPaused && s.time() == a && s.revision == revision + 1 && s.lastChange == .jump, "a moment shown stays shown")
+    revision = s.revision
+    s.adopt(clock)
+    check(s.revision == revision, "the same clock changes nothing")
+    s.travel(to: clock.tMax)
+    s.adopt(other)
+    check(s.isPaused && s.time() == other.clamp(clock.tMax) && s.catalogue == other.tMin...other.tMax,
+          "a moment outside the new catalogue is clamped into it (\(s.time()) on \(other.tMin)…\(other.tMax))")
+    s.travel(to: other.tMax - 30)
+    s.setRate(100)
+    s.adopt(clock.tMax > other.tMax ? clock : other)
+    s.adopt(other)
+    try? await Task.sleep(for: .seconds(0.6))
+    check(s.isPaused && s.time() == other.tMax && s.lastChange == .edge, "a time-lapse carried over stops at the new edge")
 }
 
 private func scheduleChecks() {

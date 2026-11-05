@@ -259,6 +259,15 @@ final class TimerStore {
         changed(save: false)
     }
 
+    /// The clock moved onto another Saros series: real time is read on its clock from now on. A running timer keeps its
+    /// end (a device date); a paused one resumes with the Blinks it had left. The notification and the Live Activity
+    /// are worded again. A screenshot state keeps the clock it was given.
+    func referenceChanged() {
+        guard !isDemo else { return }
+        clock = RealClock(offset: clock.offset)
+        changed(save: false)
+    }
+
     // MARK: Effects
 
     private func changed(save shouldSave: Bool = true) {
