@@ -51,7 +51,7 @@ struct SarosWords {
     /// When the lap completes: "Jan 2116" · pure its Fractonica date.
     func lapEnd(_ d: SarosDrift) -> String? {
         guard let end = d.lapEnd else { return nil }
-        if pure { return FractonicaClock.shared.inRange(end) ? words.notation.dateText(at: end, upTo: "delta") : nil }
+        if pure { return FractonicaClock.shared.inRange(end) ? words.notation.stamp(at: end, upTo: "delta") : nil }
         let p = utc.parts(end)
         return "\(EarthTime.monthsShort[p.month - 1]) \(p.year)"
     }
@@ -61,11 +61,12 @@ struct SarosWords {
         pure ? nil : "\(utc.parts(s.start).year) – \(utc.parts(s.end).year)"
     }
 
-    /// "2017-08-21 18:25 UTC" · pure the eclipse's date on the reference clock, when it falls inside its catalogue.
+    /// "2017-08-21 18:25 UTC" · pure the eclipse's stamp on the reference clock ("α#6 β#1 γ#1 δ#1 ε#1 1η"), when it falls
+    /// inside its catalogue.
     func date(_ e: SarosEclipse) -> String {
         if pure {
             let clock = FractonicaClock.shared
-            return clock.inRange(e.time) ? words.notation.dateText(at: e.time, upTo: "eta") : "outside the clock's catalogue"
+            return clock.inRange(e.time) ? words.notation.stamp(at: e.time, upTo: "eta") : "outside the clock's catalogue"
         }
         return "\(utc.date(e.time)) \(utc.time(e.time, seconds: false)) UTC"
     }
