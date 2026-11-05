@@ -77,4 +77,27 @@ import Testing
         #expect(laps.first { $0.series == 117 }?.lap == nil)
         #expect(abs(d141.lapPastAlpha / (365.2425 * 86_400) - 17.1) < 0.1)
     }
+
+    /// No series takes the exact arithmetic past 128 bits (Ratio traps on overflow): every level 0 … 20, odometers, the
+    /// solar sync and exact landings, at each series' edges and through its catalogue, on the longest (127, 82
+    /// eclipses) and earliest (117, from 792) series too.
+    @Test func everySeriesStaysInRange() throws {
+        for series in SarosCatalogue.all {
+            let clock = try #require(FractonicaClock.on(series: series.number))
+            let span = clock.tMax - clock.tMin
+            // (the first and last instants themselves can read nil, as in the web model: rounded to the millisecond, F.number's
+            // double of one may fall a hair outside the catalogue)
+            let times = [clock.tMin + 0.002, clock.tMax - 0.002] + (1..<12).map { clock.tMin + span * Double($0) / 12 + 0.123 }
+            for t in times {
+                for level in Fractonica.supportedLevels {
+                    let reading = clock.level(at: t, level)
+                    #expect(reading != nil, "Saros \(series.number) L\(level) at \(t)")
+                }
+                #expect(clock.odometer(at: t, 13, strokes: 3, digits: 3) != nil)
+                _ = clock.solar(at: t)
+                _ = clock.pentad(at: t)
+            }
+            #expect(clock.time(atPositionNumerator: Int128(clock.extent) * 1_000_003 - 1, denominator: 1_000_003) != nil)
+        }
+    }
 }
