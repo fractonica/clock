@@ -16,6 +16,7 @@ struct SarosChecks {
         worldChecks()
         projectionChecks()
         clipChecks()
+        helionDialChecks()
         Checks.finish()
     }
 }
@@ -174,6 +175,61 @@ private func clipChecks() {
         _ = MapClipper(MapProjection(center: GeoPoint(lon: lon, lat: 20), r: -1, scale: 120, size: CGSize(width: 400, height: 800))).areas(land.rings)
     }
     print("12 views of the 1:50m land in \(String(format: "%.0f", Date().timeIntervalSince(started) * 1000)) ms")
+}
+
+private func helionDialChecks() {
+    let utc = EarthFormatter(timeZone: .gmt)
+    let vectorA = 1_791_460_800.0 // 2026-10-08 12:00 UTC
+    for series in [141, 145, 117] {
+        guard let clock = FractonicaClock.on(series: series), let dial = HelionDial(clock: clock, at: vectorA, earth: utc) else {
+            check(false, "Saros \(series): a dial at vector A")
+            continue
+        }
+        check(dial.helions.count == 19, "Saros \(series): 19 Helions in the sync: \(dial.helions.count)")
+        check(zip(dial.helions, dial.helions.dropFirst()).allSatisfy { abs($0.end - $1.start) < 0.001 && $1.cycle == $0.cycle + 1 },
+              "Saros \(series): the Helions run on from each other")
+        check(dial.helions.map(\.pentad) == [0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 3, 3, 3, 3], "Saros \(series): Pentads 5, 5, 5, 4")
+        if let sync = clock.solar(at: vectorA), let info = clock.solarSync(number: sync.sync) {
+            check(dial.sync == sync.sync, "Saros \(series): the engine's sync: \(dial.sync) vs \(sync.sync)")
+            check(abs(dial.start - info.start) < 0.001 && abs(dial.end - info.end) < 0.001, "Saros \(series): the sync's start and end")
+        }
+        for helion in dial.helions {
+            let middle = (helion.start + helion.node) / 2
+            if let p = clock.pentad(at: middle) {
+                check(p.index == helion.pentad && p.helion == helion.place, "Saros \(series): \(helion.label) is in Pentad \(p.index) at \(p.helion)")
+            }
+            if let c = Notation(clock: clock).clock(at: middle) {
+                check("\(c.eta)η" == helion.label, "Saros \(series): \(helion.label) is the pure clock's \(c.eta)η")
+            }
+            check(abs((helion.node - helion.start) * 2 - (helion.end - helion.start)) < 0.01, "the descending node is half way")
+        }
+        // a Pentad later the nodes come a quarter Helion later in the day; a sync later, the drift earlier
+        let h = dial.helions
+        let day = { (t: Double) in dial.dayFraction(t) * 86_400 }
+        var shift = day(h[5].start) - day(h[0].start)
+        if shift < 0 { shift += 86_400 }
+        // exactly 5η − 1 day (4¾ Helions fall a few seconds short of a day, so a little under a quarter Helion)
+        let fiveHelions = h[5].start - h[0].start
+        check(abs(shift - (fiveHelions - 86_400)) < 0.01 && abs(shift - (h[0].end - h[0].start) / 4) < 5,
+              "Saros \(series): Pentad II begins 5η − 1 day later in the day: \(shift) s")
+        if let next = HelionDial(clock: clock, at: vectorA, earth: utc, sync: 1), let drift = SarosCatalogue.series(series)?.drift(at: vectorA) {
+            var back = day(next.start) - day(dial.start)
+            if back > 43_200 { back -= 86_400 }
+            check(abs(back - drift.perSync) < 0.05, "Saros \(series): the next sync begins \(back) s off in the day, its drift \(drift.perSync)")
+            check(next.sync == dial.sync + 1 && abs(next.start - dial.end) < 0.001, "the next sync follows on")
+        }
+        let nodes = HelionDial.nodes(clock: clock, after: vectorA, count: 50, earth: utc)
+        check(nodes.count == 50 && nodes.first!.time > vectorA && zip(nodes, nodes.dropFirst()).allSatisfy { $0.time < $1.time },
+              "Saros \(series): 50 nodes after t, in order, running into the next sync")
+        check(nodes.filter(\.ascending).count == 25, "ascending and descending in turn")
+    }
+    // the dial's angles: noon is the bottom of a 24-hour dial and the top of a 12-hour one
+    let dial = HelionDial(clock: FractonicaClock.on(series: 141)!, at: vectorA, earth: utc)!
+    check(abs(dial.dayFraction(vectorA) - 0.5) < 1e-9, "12:00 UTC is half the day")
+    check(abs(dial.angle(vectorA, hours: 24) - .pi) < 1e-9 && abs(dial.angle(vectorA, hours: 12)) < 1e-9, "noon on both dials")
+    check(abs(dial.angle(vectorA + 3 * 3600, hours: 12) - .pi / 2) < 1e-9, "15:00 at three o'clock")
+    let tokyo = HelionDial(clock: FractonicaClock.on(series: 141)!, at: vectorA, earth: EarthFormatter(zone: "Asia/Tokyo"))!
+    check(abs(tokyo.dayFraction(vectorA) - 21.0 / 24) < 1e-9, "the dial reads the zone's time of day: 21:00 in Tokyo")
 }
 
 /// A seeded generator, so the checks draw the same cases every run.

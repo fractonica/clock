@@ -120,6 +120,11 @@ struct SettingsScreen: View {
         .navigationTitle(Screen.settings.title)
         .navigationDestination(isPresented: $showsJournal) { JournalSettingsScreen() }
         .navigationDestination(isPresented: $showsSaros) { SarosCatalogueScreen() }
+        .navigationDestination(isPresented: $showsHelions) {
+            if let series = SarosCatalogue.series(JournalLaunch.int("FXSarosSeries") ?? ReferenceSaros.shared.series) {
+                HelionDialScreen(series: series)
+            }
+        }
         .navigationDestination(item: $launchedEclipse) { e in
             if let series = SarosCatalogue.series(e.series) { EclipseMapScreen(series: series, ordinal: e.ordinal) }
         }
@@ -129,8 +134,10 @@ struct SettingsScreen: View {
     @State private var showsJournal = JournalLaunch.flag("FXJournalSettings")
     /// Settings › Saros series, open at launch with -FXSarosCatalogue 1 (or a series with -FXSarosSeries <n>; with
     /// -FXSarosEclipse <ordinal> too, that eclipse's map straight away).
-    @State private var showsSaros = JournalLaunch.int("FXSarosEclipse") == nil
+    @State private var showsSaros = JournalLaunch.int("FXSarosEclipse") == nil && !JournalLaunch.flag("FXSarosHelions")
         && (JournalLaunch.flag("FXSarosCatalogue") || JournalLaunch.int("FXSarosSeries") != nil)
+    /// The Helion dial at launch: -FXSarosHelions 1 (of -FXSarosSeries <n>, else of the reference series).
+    @State private var showsHelions = JournalLaunch.flag("FXSarosHelions")
     @State private var launchedEclipse = SarosLaunch.eclipse
 
     private var zoneName: String {

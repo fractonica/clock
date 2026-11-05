@@ -126,8 +126,15 @@ clock, drift in Blinks, laps in Fractonica units).
   seen from the antipode. Areas fill even-odd. `Vec3` is a plain struct: SIMD3's operators are calls in Debug builds.
 - `EclipseShape` (an eclipse's rings, centre and extent; `fit(in:)` a gnomonic view of the path) and `EclipseArt` (the
   clipped, projected paths a Canvas draws) are kept per eclipse; `EclipseThumbnail` makes its art off the main thread.
+- Helions on the clock (`HelionDial`, `HelionDialView`, `HelionDialScreen`): the solar sync's 19 Helions on a 24- or
+  12-hour dial in local time (the app's zone), a spiral from the sync's start outwards, one turn a day — each Helion's
+  ascending (●, its start) and descending (○, half way) node, a gold bar and mark where a Pentad begins, the now hand —
+  and the next nodes with their times of day. Follows the displayed time; a compact dial on each series' page, the
+  reference series' from the top of the catalogue. Pure mode puts the Sun at noon and the Moon at midnight in place of
+  hours.
 - Launch: `-FXTab settings` with `-FXSarosCatalogue 1`, `-FXSarosSeries <n>`, and `-FXSarosEclipse <ordinal>` for its
-  map straight away; `-FXSarosProjection gnomonic|stereographic|globe`.
+  map straight away; `-FXSarosProjection gnomonic|stereographic|globe`; `-FXSarosHelions 1` for the Helion dial (of
+  `-FXSarosSeries <n>` or the reference series).
 - Checks (Features/Saros/Checks): the path files against saros_geo.js's figures and SarosData's records, the layers,
   the projection's round trip, and small circles filled on 180 random views compared point by point with the exact
   answer.

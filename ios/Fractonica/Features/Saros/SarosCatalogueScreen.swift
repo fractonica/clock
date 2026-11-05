@@ -28,6 +28,24 @@ struct SarosCatalogueScreen: View {
         let reference = ReferenceSaros.shared.series
         let rows = SarosCatalogue.all.compactMap { s in s.drift(at: now).map { (series: s, drift: $0) } }
         List {
+            if let series = SarosCatalogue.series(reference) {
+                Section {
+                    NavigationLink {
+                        HelionDialScreen(series: series)
+                    } label: {
+                        Label {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Helions on the clock")
+                                Text("When Saros \(reference)'s Helion nodes come on a 24-hour dial, by Pentad")
+                                    .font(.caption)
+                                    .foregroundStyle(Theme.ink3)
+                            }
+                        } icon: {
+                            Image(systemName: "clock.arrow.circlepath").foregroundStyle(Theme.teal)
+                        }
+                    }
+                }
+            }
             Section {
                 ForEach(sorted(rows, now: now), id: \.series.number) { row in
                     NavigationLink {
