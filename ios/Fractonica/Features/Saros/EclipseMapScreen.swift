@@ -23,6 +23,9 @@ struct EclipseMapScreen: View {
     init(series: SarosSeries, ordinal: Int) {
         self.series = series
         _ordinal = State(initialValue: ordinal)
+        // -FXSarosProjection gnomonic | stereographic | globe: open with that projection
+        let named = ["gnomonic": 0.0, "stereographic": -1.0, "globe": -3.0]
+        _projectionR = State(initialValue: JournalLaunch.string("FXSarosProjection").flatMap { named[$0] } ?? 0)
     }
 
     private var eclipse: SarosEclipse { series.eclipses[ordinal] }
@@ -50,7 +53,7 @@ struct EclipseMapScreen: View {
             EclipseFigures(eclipse: eclipse, path: shape.path, words: words)
         }
         .background { Backdrop() }
-        .navigationTitle("Saros \(series.number) · \(SarosWords.ordinal(eclipse))")
+        .navigationTitle("Saros \(series.number) · #\(eclipse.ordinal)")
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
         #endif
