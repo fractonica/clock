@@ -1,5 +1,6 @@
 /// The solar sync (SPEC §7): runs of 19 depth-7 cycles compared with 4 civil days, counted from the anchor eclipse
-/// (ordinal 20, 1973-12-24). Ports model.js `solarAt` / `solarSyncByNumber` over the library's `solarSync()`.
+/// (`solarAnchor`; Saros 141's ordinal 20, 1973-12-24). Ports model.js `solarAt` / `solarSyncByNumber` over the
+/// library's `solarSync()`.
 extension FractonicaClock {
     /// The sync running at t (model.js `solarAt`). Nil outside the catalogue and inside the first and last partial
     /// syncs (about 2.5 days at each end), whose start or end falls outside it.

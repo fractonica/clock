@@ -263,12 +263,9 @@ enum JumpMaths {
 
     // MARK: - Solar syncs
 
-    private static let sharedSyncRange = Mutex<(first: Int, last: Int)?>(nil)
-
     /// The first and last sync number that lies completely inside the catalogue.
     static func syncRange(_ clock: FractonicaClock) -> (first: Int, last: Int) {
-        let shared = clock === FractonicaClock.shared
-        if shared, let hit = sharedSyncRange.withLock({ $0 }) { return hit }
+        if let hit = clock.memo.withLock({ $0.syncRange }) { return hit }
         var lo = clock.solar(at: clock.tMin + 6 * 86_400)?.sync ?? 0
         var hi = clock.solar(at: clock.tMax - 6 * 86_400)?.sync ?? 0
         while clock.solarSync(number: lo - 1) != nil { lo -= 1 }
@@ -276,7 +273,7 @@ enum JumpMaths {
         while clock.solarSync(number: hi + 1) != nil { hi += 1 }
         while clock.solarSync(number: hi) == nil { hi -= 1 }
         let r = (lo, hi)
-        if shared { sharedSyncRange.withLock { $0 = r } }
+        clock.memo.withLock { $0.syncRange = r }
         return r
     }
 

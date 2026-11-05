@@ -11,8 +11,12 @@
  * - level = zero-based harmonic level; depth = level + 1 (user-facing).
  * - Cycle indices at a level are returned as Number (exact up to level 13;
  *   the library keeps BigInt, `cycleBig` is also given when exactness matters).
- * - Out of catalogue (before 1613-05-19 or after 2857-06-13) the model never
- *   extrapolates: `frame.inRange === false` and level()/solar() return null.
+ * - Out of catalogue (Saros 141: before 1613-05-19 or after 2857-06-13) the model
+ *   never extrapolates: `frame.inRange === false` and level()/solar() return null.
+ * - The catalogue is Saros 141's (F.defaults.unixTimestamps) with the solar sync
+ *   anchored at its ordinal 20, unless `createModel` is given another series'
+ *   Unix timestamps and anchor, or the page set `globalThis.FractonicaReference`
+ *   to { series, timestamps, anchor } before creating it (the iOS Diary does).
  */
 
 const F = globalThis.Fractonica;
@@ -32,14 +36,24 @@ const ms = (t) => Math.round(t * 1000) / 1000;
 const EDGE = 0.001;
 const bigToNumber = (b) => Number(b);
 
-export function createModel() {
-  const clock = F.create({ timeScale: 'unix' });
+/**
+ * @param {{ series?: number, timestamps?: (string|number)[], anchor?: number }} [reference]
+ *   Another Saros series to run on: its greatest eclipses in Unix seconds (decimal strings keep the milliseconds
+ *   exact) and the ordinal its solar sync counts from (a multiple of 4).
+ */
+export function createModel(reference = globalThis.FractonicaReference) {
+  const clock = reference?.timestamps
+    ? F.create({ timeScale: 'unix', timestamps: reference.timestamps })
+    : F.create({ timeScale: 'unix' });
+  const series = reference?.timestamps ? reference.series ?? null : 141;
+  const anchor = reference?.timestamps ? reference.anchor ?? 20 : 20;
+  const anchorBig = BigInt(anchor);
   const sequence = [...F.defaults.sequence];
   const E = clock.timestamps.map((r) => num(r)); // Unix seconds, Float64
   const extent = Number(clock.extent);
   const tMin = E[0];
   const tMax = E[extent];
-  const solarSync = clock.solarSync(); // anchor 20 / level 6 / 19 cycles / 4 days
+  const solarSync = clock.solarSync({ anchor }); // anchor (141: 20) / level 6 / 19 cycles / 4 days
   const calendar = F.createCycleCalendar(clock);
 
   // ---- static level table -------------------------------------------------
@@ -247,7 +261,7 @@ export function createModel() {
   }
   /** Start/end/nominal of sync number n (any integer), or null outside the catalogue. */
   function solarSyncByNumber(n) {
-    const a = 20n * clock.prefix(6) / 4n; // anchor cycle at level 6
+    const a = anchorBig * clock.prefix(6) / 4n; // anchor cycle at level 6
     const p = clock.prefix(6);
     const pos = (k) => R((a + 19n * BigInt(k)) * 4n, p);
     const lo = pos(n), hi = pos(n + 1);
@@ -271,7 +285,7 @@ export function createModel() {
   function pentadAt(t) {
     const l = levelAt(t, 6);
     if (!l) return null;
-    const a = 20n * clock.prefix(6) / 4n; // the sync anchor's Helion
+    const a = anchorBig * clock.prefix(6) / 4n; // the sync anchor's Helion
     const k = l.cycleBig - a;
     const sync = k >= 0n ? k / 19n : -((-k + 18n) / 19n);
     const within = Number(k - sync * 19n); // 0..18
@@ -282,7 +296,7 @@ export function createModel() {
   }
   /** Start and end of Pentad `index` (0..3) of sync `n`, or null where it runs outside the catalogue. */
   function pentadByNumber(n, index) {
-    const a = 20n * clock.prefix(6) / 4n;
+    const a = anchorBig * clock.prefix(6) / 4n;
     const p = clock.prefix(6);
     const first = a + 19n * BigInt(n) + 5n * BigInt(index);
     const last = first + (index === 3 ? 4n : 5n);
@@ -479,6 +493,9 @@ export function createModel() {
   return Object.freeze({
     F,
     clock,
+    /** The Saros series the clock runs on (141 by default; null for an unnamed catalogue) and its sync anchor. */
+    series,
+    anchor,
     calendar,
     sequence,
     extent,

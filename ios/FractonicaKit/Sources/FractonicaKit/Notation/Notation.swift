@@ -18,10 +18,15 @@ public struct Notation: Sendable {
     public let model: FractonicaClock
     let tables: Tables
 
-    /// The notation of `clock` (pure.js `createPure(model)`); its per-clock tables are built once and shared.
+    /// The notation of `clock` (pure.js `createPure(model)`); its per-clock tables are built once and kept by the clock.
     public init(clock: FractonicaClock = .shared) {
         model = clock
-        tables = clock === FractonicaClock.shared ? Tables.shared : Tables(model: clock)
+        tables = clock.memo.withLock { memo in
+            if let tables = memo.tables { return tables }
+            let tables = Tables(model: clock)
+            memo.tables = tables
+            return tables
+        }
     }
 
     // MARK: - Names
@@ -161,8 +166,6 @@ public struct FUnit: Hashable, Sendable {
 extension Notation {
     /// Per-clock constants derived once: unit lengths, the Blink and the time-lapse presets.
     struct Tables: Sendable {
-        static let shared = Tables(model: .shared)
-
         /// `unitPos` of every unit, longest first.
         let lengths: [Double]
         let blinkSeconds: Double
