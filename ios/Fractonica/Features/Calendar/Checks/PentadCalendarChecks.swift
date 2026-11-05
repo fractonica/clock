@@ -21,6 +21,38 @@ func pentadCalendarChecks() {
         t += 9_876_543.21
     }
     check(bad == 0, "a Helion's Pentad is the engine's across the catalogue (\(bad) differ)")
+
+    // on another reference series the Pentads count from that series' solar anchor (Saros 145: not 20)
+    for series in [145, 117] {
+        guard let other = FractonicaClock.on(series: series) else {
+            check(false, "Saros \(series) has a clock")
+            continue
+        }
+        let otherAnchor = CalPentads.anchorHelion(other)
+        check(otherAnchor == Int64(Int128(other.solarAnchor) * other.levelInfo(6).prefix / 4),
+              "Saros \(series): the anchor's Helion is A · P(6) / 4 with A = \(other.solarAnchor)")
+        var wrong = 0
+        var u = other.tMin + 1000
+        while u < other.tMax {
+            if let h = other.level(at: u, 6), let p = other.pentad(at: u) {
+                let place = CalPentads.place(ofHelion: h.cycle, anchor: otherAnchor)
+                if place.sync != p.sync || place.index != p.index || place.helion != p.helion { wrong += 1 }
+            }
+            u += 9_876_543.21
+        }
+        check(wrong == 0, "Saros \(series): a Helion's Pentad is its engine's (\(wrong) differ)")
+    }
+    // the month view's months and the shared anchor follow the reference series (for this process only)
+    if let other = FractonicaClock.on(series: 145) {
+        FractonicaClock.use(series: 145)
+        check(CalPentads.anchor == CalPentads.anchorHelion(other), "the shared anchor is Saros 145's once it is the reference")
+        check(CalMath.yearMonth(CalMath.firstMonth) == (other.firstYear, 1)
+              && CalMath.yearMonth(CalMath.lastMonth) == (other.lastYear, 12),
+              "the months run from January \(other.firstYear) to December \(other.lastYear) on Saros 145")
+        FractonicaClock.use(series: clock.series)
+        check(CalMath.yearMonth(CalMath.firstMonth) == (1613, 1) && CalMath.yearMonth(CalMath.lastMonth) == (2857, 12)
+              && CalPentads.anchor == anchor, "back on Saros 141: January 1613 … December 2857")
+    }
     if let h = clock.level(at: a, 6) {
         let place = CalPentads.place(ofHelion: h.cycle, anchor: anchor)
         check(place == CalPentads.Place(sync: 4820, index: 1, helion: 2), "vector A: Pentad II, 2nd Helion, sync 4820")

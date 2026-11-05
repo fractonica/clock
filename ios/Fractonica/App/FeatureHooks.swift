@@ -7,6 +7,8 @@ import UserNotifications
 ///     launch()             once, when the app has finished launching (before any window appears)
 ///     becameActive()       whenever the app comes to the foreground (and after launch)
 ///     enteredBackground()  whenever the app leaves the foreground
+///     referenceChanged(from:)  the clock moved onto another Saros series (`ReferenceSaros.choose`): `ClockStore`
+///                              runs on the new clock already; drop what was read from the old one and plan again
 ///
 ///     presentation(ofNotification:)  a notification arrives while the app is in front: how to show it
 ///     open(_:)                       the user tapped a notification (or one of its actions)
@@ -18,6 +20,8 @@ protocol FeatureHooks {
     static func launch()
     static func becameActive()
     static func enteredBackground()
+    /// The reference series changed from Saros `old` to `FractonicaClock.shared.series`.
+    static func referenceChanged(from old: Int)
 
     /// How a notification this feature posted shows while the app is in front, or nil when it is not this
     /// feature's. Features recognise their notifications by the request identifier's prefix ("timer.", "alert.").
@@ -33,6 +37,7 @@ extension FeatureHooks {
     static func launch() {}
     static func becameActive() {}
     static func enteredBackground() {}
+    static func referenceChanged(from old: Int) {}
     static func presentation(ofNotification identifier: String) -> UNNotificationPresentationOptions? { nil }
     static func open(_ notification: NotificationResponse) -> Bool { false }
 }
@@ -41,12 +46,14 @@ extension FeatureHooks {
 @MainActor
 enum AppHooks {
     static var all: [any FeatureHooks.Type] {
-        [AlertsHooks.self, TimerHooks.self, SoundHooks.self, FocusHooks.self, HubSyncHooks.self, JournalHooks.self, MomentsHooks.self]
+        [AlertsHooks.self, TimerHooks.self, SoundHooks.self, FocusHooks.self, HubSyncHooks.self, JournalHooks.self, MomentsHooks.self,
+         CalendarHooks.self]
     }
 
     static func launch() { for hooks in all { hooks.launch() } }
     static func becameActive() { for hooks in all { hooks.becameActive() } }
     static func enteredBackground() { for hooks in all { hooks.enteredBackground() } }
+    static func referenceChanged(from old: Int) { for hooks in all { hooks.referenceChanged(from: old) } }
 
     /// The first feature's answer, else a banner with sound (in the list, too).
     static func presentation(ofNotification identifier: String) -> UNNotificationPresentationOptions {

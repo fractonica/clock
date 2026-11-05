@@ -19,6 +19,10 @@ enum MomentsHooks: FeatureHooks {
         MomentStore.shared.enteredBackground()
     }
 
+    static func referenceChanged(from old: Int) {
+        MomentStore.shared.referenceChanged()
+    }
+
     static func presentation(ofNotification identifier: String) -> UNNotificationPresentationOptions? {
         guard identifier.hasPrefix(MomentScheduling.prefix) else { return nil }
         let store = MomentStore.shared

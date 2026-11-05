@@ -204,7 +204,7 @@ private struct PureSarosCard: View {
 
     var body: some View {
         let spans = CalPureMath.eclipseSpans(store.clock, at: t)
-        CalCard("Saros 141 around it", systemImage: "circle.lefthalf.filled") {
+        CalCard("\(store.clock.sarosName) around it", systemImage: "circle.lefthalf.filled") {
             ForEach([spans.previous.map { ($0.k, $0.text, true) }, spans.next.map { ($0.k, $0.text, false) }].compactMap { $0 }, id: \.0) { k, text, before in
                 Button {
                     model.set(store.clock.catalogue[k], from: .eclipse)
@@ -306,7 +306,7 @@ private struct PureOutOfRange: View {
             Label(before ? "Before the catalogue begins" : "After the catalogue ends", systemImage: "moon.zzz")
                 .font(.headline)
                 .foregroundStyle(Theme.ink)
-            Text("The clock runs on the eclipses of Saros 141, \(Notation.standard.catalogueText()), and says nothing outside them.")
+            Text("The clock runs on the eclipses of \(store.clock.sarosName), \(Notation.standard.catalogueText()), and says nothing outside them.")
                 .font(.subheadline)
                 .foregroundStyle(Theme.ink2)
                 .fixedSize(horizontal: false, vertical: true)

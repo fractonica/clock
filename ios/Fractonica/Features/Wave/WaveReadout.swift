@@ -12,7 +12,7 @@ struct WaveReadout: Equatable, Sendable {
     var level: Int
     /// "η", or "∿" for the catalogue.
     var badge: String
-    /// "half-arc −2" · "Saros 141".
+    /// "half-arc −2" · "Saros 141" (the reference series).
     var title: String
     /// "trough" / "crest" · "35 α half-arcs · 69 intervals".
     var note: String
@@ -51,7 +51,7 @@ struct WaveReadout: Equatable, Sendable {
         let engine = words.engine
         let clock = engine.clock
         guard let cur = engine.readHalves(t) else {
-            // "Outside the Saros 141 catalogue." becomes the title, the rest the explanation
+            // "Outside the Saros 141 catalogue." (the reference series') becomes the title, the rest the explanation
             let message = words.outOfRange(t)
             let parts = message.split(separator: ". ", maxSplits: 1).map(String.init)
             return WaveReadout(kind: .outOfRange, level: 0, badge: "∿", title: parts.first ?? message, note: "", fast: nil, span: "",
@@ -65,7 +65,7 @@ struct WaveReadout: Equatable, Sendable {
             let secondary: WaveShare = words.isMajor(0) ? .quarter(words.quarter(d, local: h.local))
                 : words.share(WaveNav.throughOf(d, local: h.local, t: t, tMax: clock.tMax))
             return WaveReadout(
-                kind: .overview, level: 0, badge: "∿", title: "Saros 141",
+                kind: .overview, level: 0, badge: "∿", title: clock.sarosName,
                 note: "\(engine.halfCount(0)) α half-arcs", fast: nil,
                 span: words.catalogueSpan(), loop: nil, cycle: "Now in the \(words.cycle(d))",
                 primary: words.share(pos, decimals: 1), primaryWhat: "of the catalogue", progress: pos,
@@ -189,7 +189,7 @@ struct WaveSolarReadout: Equatable, Sendable {
         let engine = words.engine
         guard engine.clock.inRange(t), let pos = engine.clock.position(at: t) else { return nil }
         guard let s = engine.clock.solar(at: t) else {
-            let grid = WaveSolar.Grid(p6: engine.prefix(WaveSolar.syncLevel)).at(pos)
+            let grid = engine.solarGrid.at(pos)
             return WaveSolarReadout(number: words.sunNumber(grid.sync), phase: grid.phase, quarter: WaveSolar.quarterOf(grid.phase),
                                     share: words.share(grid.phase), next: "", drift: "", edge: words.sunEdge(),
                                     spoken: words.sunAccessibility(nil, t: t), start: 0, end: 0, sync: grid.sync)

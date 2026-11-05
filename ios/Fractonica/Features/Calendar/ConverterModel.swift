@@ -71,6 +71,13 @@ final class ConverterModel {
         isPinned = true
     }
 
+    /// The clock moved onto another Saros series: a typed address (and a glyph picker open on it) named a cycle of the
+    /// old catalogue; the pinned moment stays.
+    func forgetAddress() {
+        editedPath = nil
+        pickLevel = nil
+    }
+
     /// Follow the displayed time again.
     func unpin() {
         isPinned = false

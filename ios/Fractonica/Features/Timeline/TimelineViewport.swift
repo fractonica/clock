@@ -3,7 +3,8 @@ import Foundation
 import Observation
 
 /// The timeline's view state: which window it shows, how that window is moving and whether it follows the cursor
-/// (src/ui/timeline.js, its closure state). One instance for the app, so the view keeps its window between visits.
+/// (src/ui/timeline.js, its closure state). One instance for the app (per reference series), so the view keeps its
+/// window between visits.
 ///
 /// Motion (a preset transition, a coasting pan) is a pure function of the real instant: `window(at:cursor:)` computes
 /// the window for any frame without mutating anything, so drawing never writes state. The state only changes on input
@@ -11,7 +12,9 @@ import Observation
 /// live or in a time-lapse; dragging turns it off.
 @MainActor @Observable
 final class TimelineViewport {
-    static let shared = TimelineViewport()
+    /// One per reference series (its limits are the catalogue's).
+    static var shared: TimelineViewport { scoped.value }
+    private static let scoped = ClockScoped { TimelineViewport() }
 
     enum Motion: Equatable {
         /// An eased transition between two windows (≈ 250 ms).

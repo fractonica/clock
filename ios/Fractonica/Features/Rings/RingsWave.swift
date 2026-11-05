@@ -216,7 +216,7 @@ enum RingsWaveRenderer {
 
         switch s.state {
         case .outside:
-            notice(&g, L, "Outside the Saros 141 catalogue", "no cycle to draw", tint: nil)
+            notice(&g, L, "Outside the \(FractonicaClock.shared.sarosName) catalogue", "no cycle to draw", tint: nil)
             return
         case .blurred:
             notice(&g, L, "This cycle is too fast to follow at this speed", "slow the time-lapse down to see its wave", tint: col(0.08, 0.64))

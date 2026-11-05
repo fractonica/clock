@@ -90,7 +90,7 @@ struct TimelineInspector: View {
                     explanation(title: Text("Calendar"), body: words.zoneTip(at: frame.window.c), hint: nil)
                 }
             case .eclipse:
-                explanation(title: Text("Saros 141").foregroundStyle(Theme.teal), body: words.sarosTip, hint: nil)
+                explanation(title: Text(verbatim: clock.sarosName).foregroundStyle(Theme.teal), body: words.sarosTip, hint: nil)
             case .overview:
                 explanation(title: Text("Catalogue map"), body: words.mapTip, hint: nil)
             default:
@@ -135,7 +135,7 @@ struct TimelineInspector: View {
         let inside = clock.inRange(t)
         let head: String
         if words.pure {
-            head = inside ? words.notation.dateText(at: t, form: "full", upTo: "delta") : "Outside the Saros 141 catalogue"
+            head = inside ? words.notation.dateText(at: t, form: "full", upTo: "delta") : "Outside the \(clock.sarosName) catalogue"
         } else {
             head = words.earth.date(t)
         }
@@ -173,7 +173,7 @@ struct TimelineInspector: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             let starts = words.pure ? " · starts \(Notation.periodName(level: 0, ordinal: k / 4 + 1))" : " · starts α cycle \(k / 4 + 1)"
-            Text("Greatest eclipse of Saros 141" + (words.pure ? "" : " · position \(k)") + (alpha ? starts : ""))
+            Text("Greatest eclipse of \(clock.sarosName)" + (words.pure ? "" : " · position \(k)") + (alpha ? starts : ""))
                 .font(ui(12))
                 .foregroundStyle(Theme.ink2)
                 .fixedSize(horizontal: false, vertical: true)
@@ -197,7 +197,7 @@ struct TimelineInspector: View {
                 .fixedSize(horizontal: false, vertical: true)
             if !inRange {
                 Text(words.pure ? "The catalogue spans \(words.catalogueRange); the clock is not extrapolated."
-                                : "Outside the Saros 141 catalogue (\(words.catalogueRange)). The clock is not extrapolated.")
+                                : "Outside the \(clock.sarosName) catalogue (\(words.catalogueRange)). The clock is not extrapolated.")
                     .font(ui(12))
                     .foregroundStyle(Theme.ink2)
                     .fixedSize(horizontal: false, vertical: true)
@@ -235,7 +235,7 @@ struct TimelineInspector: View {
     /// finer than the ticks (over major ticks every major period with its quarter).
     private func head(_ t: Double) -> String {
         if words.pure {
-            guard clock.inRange(t) else { return "Outside the Saros 141 catalogue" }
+            guard clock.inRange(t) else { return "Outside the \(clock.sarosName) catalogue" }
             let tick = frame.rulerUnit
             let units = data.ruler.units
             let upTo = units[min(units.count - 1, max(TimelineRuler.delta, tick + 2))].id

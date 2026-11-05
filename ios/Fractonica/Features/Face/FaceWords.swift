@@ -188,10 +188,10 @@ enum FaceWords {
     static func outOfRange(words: Wording) -> (title: [String], range: [String]) {
         if words.pure {
             let ends = words.notation.catalogueText().components(separatedBy: " – ")
-            return (["outside the", "catalogue"], ["from \(ends.first ?? "α#1")", "to \(ends.last ?? "α#18")"])
+            return (["outside the", "catalogue"], ["from \(ends.first ?? "")", "to \(ends.last ?? "")"])
         }
         let clock = words.notation.model
-        return (["outside Saros 141", "catalogue"], ["from \(words.earth.date(clock.tMin))", "to \(words.earth.date(clock.tMax))"])
+        return (["outside \(clock.sarosName)", "catalogue"], ["from \(words.earth.date(clock.tMin))", "to \(words.earth.date(clock.tMax))"])
     }
 
     /// Where the solar sync is not defined (within about one sync of the catalogue's ends).

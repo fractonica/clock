@@ -6,13 +6,14 @@ import Foundation
 /// out, each day carries the Pentads that begin on it. Pure logic, built once per page or day (never per tick), checked
 /// by Checks/CalendarChecks.swift against the engine's `pentad(at:)`.
 enum CalPentads {
-    /// The global index of the sync anchor's Helion, A · P(6) / 4 (SPEC §7.1, §7.5): Pentads count whole Helions from it.
+    /// The global index of the sync anchor's Helion, A · P(6) / 4 (SPEC §7.1, §7.5), A the clock's solar anchor (20 for
+    /// Saros 141): Pentads count whole Helions from it.
     static func anchorHelion(_ clock: FractonicaClock) -> Int64 {
-        Int64(20 * clock.levelInfo(6).prefix / 4)
+        Int64(Int128(clock.solarAnchor) * clock.levelInfo(6).prefix / 4)
     }
 
-    /// The anchor's Helion on the shared clock.
-    static let anchor = anchorHelion(.shared)
+    /// The anchor's Helion on the shared clock (the reference series').
+    static var anchor: Int64 { anchorHelion(.shared) }
 
     /// Where a Helion (global η index) stands among the Pentads: its sync, its Pentad (0 … 3, 3 the Hypopentad) and its
     /// place in it (1 … 5, 1 … 4 in the Hypopentad).

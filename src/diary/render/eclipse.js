@@ -219,7 +219,8 @@ export function renderSaros(svg, cx, fr, page) {
     { text: `Saros ${sar.saros}`, size: 5, weight: 600, fill: pal.ink },
     { text: `${sar.count} ${solar ? 'solar' : 'lunar'} eclipses · this is ${sar.member}`, size: SIZE.small, fill: pal.ink3, gap: 2 },
   ], { maxW: fr.cw });
-  const own = solar && sar.saros === 141;
+  // the clock's own series: the model's (141 unless the page runs on another reference series)
+  const own = solar && sar.saros === (cx.env?.model ? cx.env.model.series : 141);
   const sub = own
     ? 'The clock’s own series: its eclipses are the catalogue the Fractonica clock counts from (eclipse #k at pos k).'
     : solar

@@ -173,7 +173,8 @@ final class FocusRenderer {
             return FocusGPULevel(
                 motion: .zero,
                 color: SIMD4(rgb, Self.weights[level]),
-                info: SIMD4(Float(info.siblings ?? 18), Float(info.factor), 0, 0),
+                // α has no parent: the catalogue's Alphas stand in for its siblings (18 for Saros 141)
+                info: SIMD4(Float(info.siblings ?? Int(clock.count(0))), Float(info.factor), 0, 0),
                 trig: SIMD4(1, 0, 0, 0),
                 place: .zero
             )

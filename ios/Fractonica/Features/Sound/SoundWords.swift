@@ -512,7 +512,9 @@ struct SoundWords: Sendable {
     /// "Sound is on · 48 kHz · 12 voices" · pure "Sound is on · 12 voices"; out of range or off as sentences.
     func status(on: Bool, inRange: Bool, sampleRate: Double, voices: Int, interrupted: Bool) -> String {
         if !inRange {
-            return pure ? "Outside the catalogue (\(notation.catalogueText())): silent" : "Outside the Saros 141 catalogue (1613–2857): silent"
+            let clock = notation.model
+            return pure ? "Outside the catalogue (\(notation.catalogueText())): silent"
+                : "Outside the \(clock.sarosName) catalogue (\(clock.yearSpan())): silent"
         }
         if interrupted { return "Paused by the system" }
         guard on else { return "Sound is off" }

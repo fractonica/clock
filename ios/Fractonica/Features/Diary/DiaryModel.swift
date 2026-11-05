@@ -3,13 +3,17 @@ import Observation
 import WebKit
 
 /// The Diary's state: the chosen Delta, the options, the page on show, the plan the web host made and the export.
-/// One instance for the app (`shared`), so leaving the screen keeps the planned book and its web view.
+/// One instance for the app (`shared`, per reference series), so leaving the screen keeps the planned book and its web
+/// view.
 ///
 /// Planning happens only when the Delta, the options, the mode or the zone change (debounced), never per frame.
 /// Options persist under `diary.options.v1` (the web app's options JSON), the screen's own state under `diary.ui.v1`.
 @MainActor @Observable
 final class DiaryModel {
-    static let shared = DiaryModel()
+    /// One per reference series: its web host runs the web app's model on that series' catalogue
+    /// (`DiaryWebEngine`), and its range of Deltas is that clock's.
+    static var shared: DiaryModel { scoped.value }
+    private static let scoped = ClockScoped { DiaryModel() }
 
     enum Layout: String, Codable, Sendable { case page, spread }
 

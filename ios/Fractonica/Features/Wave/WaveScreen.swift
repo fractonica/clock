@@ -10,7 +10,7 @@ import UIKit
 /// like epicycles. The stage focuses on the half-arc of the chosen depth that holds the displayed time, with its
 /// children and grandchildren, and puts one marker per level on its own arc joined by tethers. Pinch or the depth bar
 /// changes the depth (the camera glides between them), drag along the bright arc travels in time, tap a loop to jump
-/// to it or a dot to focus its depth; the catalogue (∿) shows the whole Saros 141 wave, and the solar wave adds the
+/// to it or a dot to focus its depth; the catalogue (∿) shows the series' whole wave, and the solar wave adds the
 /// 19-Helion sync as a yellow ripple.
 struct WaveScreen: View {
     @Environment(ClockStore.self) private var store

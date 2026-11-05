@@ -84,6 +84,14 @@ final class StopwatchStore {
         syncActivity()
     }
 
+    /// The clock moved onto another Saros series: its Blinks are counted on that clock from now on, and the Live
+    /// Activity is worded again. A screenshot state keeps the clock it was given.
+    func referenceChanged() {
+        guard !isDemo else { return }
+        clock = RealClock(offset: clock.offset)
+        syncActivity()
+    }
+
     private func changed() {
         guard !isDemo else { return }
         if let data = try? JSONEncoder().encode(run) { defaults.set(data, forKey: Self.storageKey) }

@@ -27,6 +27,11 @@ enum AlertsHooks: FeatureHooks {
         #endif
     }
 
+    /// Another Saros series: the rules are made valid on its clock and everything is planned again.
+    static func referenceChanged(from old: Int) {
+        AlertStore.shared.referenceChanged(from: old)
+    }
+
     static func presentation(ofNotification identifier: String) -> UNNotificationPresentationOptions? {
         guard identifier.hasPrefix(AlertPlanner.prefix) else { return nil }
         AlertStore.shared.alertArrived()

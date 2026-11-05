@@ -8,7 +8,10 @@ import Observation
 /// keeps the page; the bands and the week start persist under `calendar.`.
 @MainActor @Observable
 final class MonthModel {
-    static let shared = MonthModel()
+    /// One per reference series (its grids, pages and sync range are that clock's); the bands and the week start are
+    /// read back from the defaults.
+    static var shared: MonthModel { scoped.value }
+    private static let scoped = ClockScoped { MonthModel() }
 
     // MARK: Earth: the month
 

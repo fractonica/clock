@@ -160,10 +160,10 @@ struct AlertText: Sendable {
         return Notation.unit(level: level)?.name ?? Fractonica.periodName(level).text
     }
 
-    /// What a subject is called in lists: "Helion", "ζ 6", "Solar sync", "Saros 141 eclipses".
+    /// What a subject is called in lists: "Helion", "ζ 6", "Solar sync", "Saros 141 eclipses" (the reference series').
     func subjectName(_ s: AlertSubject) -> String {
         switch s {
-        case .eclipse: "Saros 141 eclipses"
+        case .eclipse: "Saros \(clock.series) eclipses"
         case .solar: "Solar sync"
         case .level(let level): Notation.isUnitLevel(level) ? Self.unitName(level) : words.levelChip(level)
         }

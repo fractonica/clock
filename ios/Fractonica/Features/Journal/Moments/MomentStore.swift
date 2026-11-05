@@ -50,7 +50,8 @@ final class MomentStore {
     /// A choice made on an alarm for the call whose screen is up already: that screen makes it.
     private(set) var pick: CallPick?
 
-    let calendar = MomentCalendar()
+    /// The moments of the reference series' catalogue (made again when the series changes: `referenceChanged`).
+    private(set) var calendar = MomentCalendar()
     let launch = MomentLaunchOptions.current()
 
     @ObservationIgnored private let defaults = UserDefaults.standard
@@ -133,6 +134,26 @@ final class MomentStore {
         sweepMissed()
         refreshStats()
         scheduleWake()
+    }
+
+    /// The clock moved onto another Saros series (`MomentsHooks`): moments are numbered on its catalogue from now on.
+    /// What became of each call was kept by moment number, and the test call is named after a moment: both meant the
+    /// old series' moments, so they go. Missed calls are written only for calls from now on (the new series' past
+    /// calls never rang). Then the stats, the notifications, the alarms and the wake follow the new calendar.
+    func referenceChanged() {
+        calendar = MomentCalendar()
+        marks = [:]
+        defaults.removeObject(forKey: Self.marksKey)
+        callsSince = now
+        defaults.set(callsSince, forKey: Self.sinceKey)
+        if testCall != nil {
+            testCall = nil
+            defaults.removeObject(forKey: Self.testKey)
+        }
+        guard started else { return }
+        refreshStats()
+        scheduleWake()
+        refillSoon()
     }
 
     func enteredBackground() {

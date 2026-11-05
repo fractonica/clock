@@ -157,7 +157,7 @@ struct WaveOverviewArc: Sendable {
     var arc: WaveArc
 }
 
-/// The whole Saros 141 wave: the α arcs wrapped into rows, with their β and γ loops.
+/// The whole wave of the reference series: the α arcs wrapped into rows, with their β and γ loops.
 final class WaveOverviewScene {
     let layout: WaveRowLayout
     /// Arcs of levels 0, 1 and 2.
@@ -240,6 +240,8 @@ final class WaveEngine {
 
     func factor(_ level: Int) -> Int { factors[level] }
     func prefix(_ level: Int) -> Double { prefixes[level] }
+    /// The solar sync's grid on this clock (its η prefix and solar anchor).
+    var solarGrid: WaveSolar.Grid { WaveSolar.Grid(p6: prefix(WaveSolar.syncLevel), syncAnchor: clock.solarAnchor) }
     func exactPrefix(_ level: Int) -> Int128 { exactPrefixes[level] }
     /// Half-arcs of a level in the catalogue, the clipped last one included (`clock.count(level, 'half')`).
     func halfCount(_ level: Int) -> Int64 { halfCounts[level] }

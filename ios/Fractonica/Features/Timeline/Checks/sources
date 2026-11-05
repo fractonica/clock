@@ -8,3 +8,4 @@ Fractonica/Features/Timeline/TimelineViewport.swift
 Fractonica/Core/ClockStore.swift
 Shared/Notation+Standard.swift
 Shared/Pentads.swift
+Fractonica/Core/ClockScoped.swift

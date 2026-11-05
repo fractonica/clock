@@ -95,6 +95,9 @@ targets:
       properties:
         # timer notifications break through Focus (.timeSensitive)
         com.apple.developer.usernotifications.time-sensitive: true
+        # the reference Saros series the widgets read (SarosReference.suiteName)
+        com.apple.security.application-groups:
+          - group.app.fractonica.clock
     settings:
       base:
         PRODUCT_NAME: Fractonica
@@ -160,6 +163,9 @@ targets:
         # timer notifications break through Focus (.timeSensitive); needs a provisioning profile, so
         # scripts/build.sh drops com.apple.developer.* keys from its ad-hoc signed builds
         com.apple.developer.usernotifications.time-sensitive: true
+        # the reference Saros series the widgets read (SarosReference.suiteName, "G23G724G3D.app.fractonica.clock")
+        com.apple.security.application-groups:
+          - $(TeamIdentifierPrefix)app.fractonica.clock
     settings:
       base:
         PRODUCT_NAME: Fractonica
@@ -189,6 +195,12 @@ targets:
         CFBundleDisplayName: Fractonica
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    entitlements:
+      path: Support/FractonicaWidgets.entitlements
+      properties:
+        # the reference Saros series the app chose (SarosReference.suiteName)
+        com.apple.security.application-groups:
+          - group.app.fractonica.clock
     settings:
       base:
         PRODUCT_NAME: FractonicaWidgets
@@ -221,6 +233,9 @@ targets:
       path: Support/FractonicaWidgetsMac.entitlements
       properties:
         com.apple.security.app-sandbox: true
+        # the reference Saros series the app chose (SarosReference.suiteName)
+        com.apple.security.application-groups:
+          - $(TeamIdentifierPrefix)app.fractonica.clock
     settings:
       base:
         PRODUCT_NAME: FractonicaWidgets

@@ -4,8 +4,9 @@ import Foundation
 //
 // A solar sync is 19 η cycles (SPEC §7). Its boundaries are η cycle boundaries, so in Saros position units the sync
 // grid is exact: sync n starts at (anchor + 19 n) · 4 / P6, with P6 the prefix of level 6 and anchor = A · P6 / 4
-// (A = 20, the first eclipse of Alpha 6). 19 is no factor of the hierarchy, so a sync is not one more level of nested
-// arcs: it is drawn as a ripple riding the focused arc whose wavelength is one sync,
+// (A the clock's solar anchor, `FractonicaClock.solarAnchor`: 20 for Saros 141, the first eclipse of Alpha 6). 19 is
+// no factor of the hierarchy, so a sync is not one more level of nested arcs: it is drawn as a ripple riding the
+// focused arc whose wavelength is one sync,
 //
 //     displacement(p) = amp · sin(2π · syncPhase(position(p)))      (outward positive)
 //
@@ -14,7 +15,6 @@ import Foundation
 enum WaveSolar {
     static let syncLevel = 6
     static let syncCycles = 19.0
-    static let syncAnchor = 20.0
     static let quarters = ["peak", "node", "valley", "end"]
     /// A ripple needs at least this many syncs on the focused arc …
     static let minSyncs = 1.5
@@ -26,16 +26,17 @@ enum WaveSolar {
     static let ampMin = 3.0
     static let ampMax = 20.0
 
-    /// The sync grid for the prefix `p6` of level 6 (125125 for Saros 141).
+    /// The sync grid for the prefix `p6` of level 6 (125125) and the clock's solar anchor, the ordinal its syncs count
+    /// from (20 for Saros 141).
     struct Grid: Equatable, Sendable {
         var p6: Double
         var anchor: Double
         /// One sync in Saros position units.
         var length: Double
 
-        init(p6: Double) {
+        init(p6: Double, syncAnchor: Int) {
             self.p6 = p6
-            anchor = WaveSolar.syncAnchor * p6 / 4
+            anchor = Double(syncAnchor) * p6 / 4
             length = WaveSolar.syncCycles * 4 / p6
         }
 
