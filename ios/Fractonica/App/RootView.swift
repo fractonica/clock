@@ -20,6 +20,9 @@ struct RootView: View {
 
     var body: some View {
         layout
+            // every screen anew when the clock moves onto another Saros series: what their state read from the old
+            // clock goes with it (the sheets over them, Settings among them, stay)
+            .id(ReferenceSaros.shared.series)
             .toastOverlay()
             .modifier(Presentations())
             .modifier(HubPresentations())
@@ -83,9 +86,13 @@ private struct CompactRoot: View {
     @Environment(AppRouter.self) private var router
 
     init() {
-        // The navigation bar's segmented controls size each segment by its title rather than all by the widest: the
-        // Cycles tab's four fit between the Jump button and a screen's own button ("Timeline" was cut off).
-        UISegmentedControl.appearance(whenContainedInInstancesOf: [UINavigationBar.self]).apportionsSegmentWidthsByContent = true
+        // The navigation bar's segmented controls size each segment by its title rather than all by the widest, in a
+        // smaller type than the bar's own: the Cycles tab's five fit between the Jump button and a screen's own button
+        // ("Timeline" was cut off with four at the bar's size).
+        let segments = UISegmentedControl.appearance(whenContainedInInstancesOf: [UINavigationBar.self])
+        segments.apportionsSegmentWidthsByContent = true
+        segments.setTitleTextAttributes([.font: UIFont.systemFont(ofSize: 13, weight: .medium)], for: .normal)
+        segments.setTitleTextAttributes([.font: UIFont.systemFont(ofSize: 13, weight: .semibold)], for: .selected)
     }
 
     var body: some View {
@@ -256,6 +263,7 @@ private struct SidebarRoot: View {
                 tab(.ladder)
                 tab(.wave)
                 tab(.timeline)
+                tab(.saros)
             }
             Tab(Screen.sound.title, systemImage: SoundIndicator.systemImage, value: Screen.sound) {
                 ScreenStack(screen: .sound)
@@ -333,6 +341,7 @@ struct ScreenContent: View {
         case .ladder: LadderScreen()
         case .wave: WaveScreen()
         case .timeline: TimelineScreen()
+        case .saros: SarosScreen()
         case .converter: ConverterScreen()
         case .month: MonthScreen()
         case .diary: DiaryScreen()

@@ -1,0 +1,16 @@
+# The app files SarosChecks.swift compiles against (relative to ios/).
+Fractonica/Features/Saros/SarosPaths.swift
+Fractonica/Features/Saros/SphereMap.swift
+Fractonica/Features/Saros/HelionDial.swift
+Fractonica/Features/Saros/SarosSearch.swift
+Fractonica/Features/Saros/Dates/SavedDate.swift
+Fractonica/Features/Journal/Moments/MomentMath.swift
+Fractonica/Features/Journal/Store/HubRecord.swift
+Fractonica/Features/Journal/Store/RecordSyncing.swift
+Fractonica/Features/Journal/Store/JournalRecords.swift
+Fractonica/Features/Journal/Store/JournalDisk.swift
+Fractonica/Features/Journal/Store/JournalStore.swift
+Fractonica/Features/Alerts/AlertRule.swift
+Fractonica/Features/Alerts/AlertPlanner.swift
+Shared/Notation+Standard.swift
+Shared/Pentads.swift

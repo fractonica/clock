@@ -298,9 +298,9 @@ struct WaveWords {
         if pure {
             let positions = gap / notation.secondsPerPosition(at: before ? clock.tMin : clock.tMax)
             let far = pureSpan(positions.isNaN ? 0 : positions)
-            return "Outside the Saros 141 catalogue. The wave exists only between the first eclipse (\(Notation.eclipseName(0))) and the last (\(Notation.eclipseName(clock.extent))); the displayed time is \(far) \(side), so the catalogue is shown greyed."
+            return "Outside the \(clock.sarosName) catalogue. The wave exists only between the first eclipse (\(Notation.eclipseName(0))) and the last (\(Notation.eclipseName(clock.extent))); the displayed time is \(far) \(side), so the catalogue is shown greyed."
         }
-        return "Outside the Saros 141 catalogue. The wave exists only between the first eclipse (\(earth.date(clock.tMin))) and the last (\(earth.date(clock.tMax))); the displayed time is \(EarthTime.duration(gap)) \(side), so the catalogue is shown greyed."
+        return "Outside the \(clock.sarosName) catalogue. The wave exists only between the first eclipse (\(earth.date(clock.tMin))) and the last (\(earth.date(clock.tMax))); the displayed time is \(EarthTime.duration(gap)) \(side), so the catalogue is shown greyed."
     }
 
     /// The edges of the catalogue as the out-of-range buttons name them.
@@ -344,8 +344,8 @@ struct WaveWords {
     func catalogueTitle() -> String {
         let n = engine.halfCount(0)
         return pure
-            ? "Catalogue: the whole Saros 141 wave, \(n) α half-arcs, \(notation.catalogueText())"
-            : "Catalogue: the whole Saros 141 wave, \(n) α half-arcs from 1613 to 2857"
+            ? "Catalogue: the whole \(clock.sarosName) wave, \(n) α half-arcs, \(notation.catalogueText())"
+            : "Catalogue: the whole \(clock.sarosName) wave, \(n) α half-arcs from \(clock.firstYear) to \(clock.lastYear)"
     }
 
     // MARK: Spoken

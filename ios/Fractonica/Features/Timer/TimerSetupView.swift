@@ -215,14 +215,9 @@ struct TimerSetupView: View {
         }
     }
 
-    /// "1613–2857": the catalogue's first and last years.
-    private var catalogueYears: String {
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = .gmt
-        let clock = store.clock.clock
-        func year(_ t: Double) -> Int { calendar.component(.year, from: Date(timeIntervalSince1970: t)) }
-        return "\(year(clock.tMin))–\(year(clock.tMax))"
-    }
+    /// "1613–2857" for Saros 141: the catalogue's first and last years (UTC, proleptic Gregorian like every catalogue
+    /// date, which matters for the series that began before 1582).
+    private var catalogueYears: String { store.clock.clock.yearSpan() }
 
     private func notice(systemImage: String, text: String) -> some View {
         Label(text, systemImage: systemImage)

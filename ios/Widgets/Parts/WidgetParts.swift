@@ -356,7 +356,8 @@ enum RenderClock {
 }
 #endif
 
-/// What every widget shows outside the catalogue (1613 … 2857): it never extrapolates.
+/// What every widget shows outside the catalogue (the reference series', 1613 … 2857 for Saros 141): it never
+/// extrapolates.
 struct OutOfRangeView: View {
     var compact = false
 

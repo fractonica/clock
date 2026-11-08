@@ -198,7 +198,8 @@ private struct MomentButton: View {
             } else if let failure = engine.failure {
                 toasts.show("Audio could not start: \(failure)")
             } else {
-                toasts.show(words.pure ? "Outside the catalogue: no chord to play" : "Outside the Saros 141 catalogue: no chord to play")
+                toasts.show(words.pure ? "Outside the catalogue: no chord to play"
+                    : "Outside the \(store.clock.sarosName) catalogue: no chord to play")
             }
         } label: {
             HStack(spacing: 10) {

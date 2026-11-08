@@ -1,9 +1,11 @@
 import Foundation
+import FractonicaKit
 import WebKit
 
 /// The web diary renderer in a WKWebView: loads diary-host.html through `DiarySchemeHandler` (so the web app's ES
 /// modules import from the bundle with their proper MIME types), forwards the host's messages and wraps its
-/// `window.fxDiary` API. One engine lives as long as the app; its web view is both the planner and the page preview.
+/// `window.fxDiary` API. One engine lives as long as the app (one per reference series); its web view is both the
+/// planner and the page preview.
 @MainActor
 final class DiaryWebEngine: NSObject {
     let webView: WKWebView
@@ -19,8 +21,14 @@ final class DiaryWebEngine: NSObject {
     private var layoutScript: String?
     private var terminations: [Date] = []
 
-    override init() {
+    /// A host on `clock`'s catalogue: for a series other than Saros 141 the page is told which before its modules run
+    /// (`DiaryReference`). An engine stays on the series it was made for (`DiaryModel` keeps one per series).
+    init(clock: FractonicaClock = .shared) {
         let config = WKWebViewConfiguration()
+        if let reference = DiaryReference.script(for: clock) {
+            config.userContentController.addUserScript(
+                WKUserScript(source: reference, injectionTime: .atDocumentStart, forMainFrameOnly: true))
+        }
         config.setURLSchemeHandler(DiarySchemeHandler(), forURLScheme: DiaryResources.scheme)
         config.websiteDataStore = .nonPersistent()
         #if os(iOS)

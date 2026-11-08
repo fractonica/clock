@@ -59,8 +59,10 @@ final class TimelineData {
             }
     }
 
-    /// The one cache the app uses (the timeline keeps its window between visits, as the web view's closure does).
-    static let shared = TimelineData()
+    /// The one cache the app uses (the timeline keeps its window between visits, as the web view's closure does), one
+    /// per reference series.
+    static var shared: TimelineData { scoped.value }
+    private static let scoped = ClockScoped { TimelineData() }
 
     // MARK: Lanes
 

@@ -186,15 +186,20 @@ func planChecks() {
     check(plan.alerts.contains { $0.ruleID == eclipse.id }, "the fast Flavon rule cannot starve the eclipse")
     check(plan.alerts.contains { $0.ruleID == nuclide.id }, "… nor the Nuclide")
     let byRule = Dictionary(grouping: plan.alerts, by: \.ruleID).mapValues(\.count)
-    check((byRule[flavon.id] ?? 0) >= 20 && byRule[nuclide.id] == 2 && byRule[eclipse.id] == 2,
+    let rest = AlertPlanner.budget - 4 // after the slow rules' two each
+    check((byRule[flavon.id] ?? 0) >= rest / 2 && (byRule[helion.id] ?? 0) >= rest / 2 && byRule[nuclide.id] == 2 && byRule[eclipse.id] == 2,
           "slow rules take their next two, fast ones share the rest: \(byRule.values.sorted())")
     for rule in [helion, flavon] {
         let mine = plan.alerts.filter { $0.ruleID == rule.id }.map(\.fire)
         let all = planner.occurrences(of: rule, after: vectorA, limit: 60).map(\.fire)
         check(mine == Array(all.prefix(mine.count)) || rule.id == flavon.id, "soonest first within a share")
     }
-    // A Nuclide turnover is a Helion turnover too: told once, by the Nuclide, the Helion folded in.
-    let both = planner.plan(rules: [helion, nuclide], quiet: QuietHours(), zone: utc, now: vectorA)
+    // A Nuclide turnover is a Helion turnover too: told once, by the Nuclide, the Helion folded in (with room for the
+    // Helions up to it: 77 of them at most)
+    var roomy = planner
+    roomy.budget = 90
+    roomy.perRule = 90
+    let both = roomy.plan(rules: [helion, nuclide], quiet: QuietHours(), zone: utc, now: vectorA)
     let turn = both.alerts.first { $0.ruleID == nuclide.id }!
     check(turn.also.count == 1 && turn.also[0].ruleID == helion.id, "the Helion beginning folds into the Nuclide's")
     check(!both.alerts.contains { $0.ruleID == helion.id && abs($0.fire - turn.fire) < 0.5 }, "… and is not told twice")
@@ -365,4 +370,28 @@ func persistenceChecks() {
           && decoded?.rules[1].ordinal == nil && decoded?.quiet.start == 1435, "lenient, sanitized decoding: \(String(describing: decoded))")
     let twice = AlertsConfig(rules: [config.rules[0], config.rules[0]])
     check(twice.sanitized().rules.count == 1, "a rule id appears once")
+    referenceChecks()
+}
+
+/// The rules after the clock moves onto another Saros series (`AlertsConfig.following`).
+func referenceChecks() {
+    let eclipse = AlertPreset.eclipse.rule(pure: false)
+    check(eclipse.name == "Next eclipse of Saros 141" && eclipse.title == "Saros 141 eclipse {name}", "the preset names the reference series")
+    let lastAlpha = rule(.level(0), [.begin], ordinal: Int(clock.count(0)))
+    let named = AlertRule(name: "My Saros 141 alpha", subject: .level(0), events: [.begin], title: "Saros 141 {event}")
+    let config = AlertsConfig(rules: [eclipse, lastAlpha, named])
+    check(config.following(from: 141, to: 141, clock: clock) == config.sanitized(), "the same series changes nothing")
+    let series = SarosCatalogue.ongoing.compactMap { FractonicaClock.on(series: $0) }
+    guard let fewer = series.first(where: { $0.count(0) < clock.count(0) }),
+          let more = series.first(where: { $0.count(0) > clock.count(0) }) else {
+        check(false, "some series have fewer Alphas than Saros 141, some more")
+        return
+    }
+    let moved = config.following(from: 141, to: fewer.series, clock: fewer)
+    check(moved.rules[0].name == "Next eclipse of Saros \(fewer.series)" && moved.rules[0].title == "Saros \(fewer.series) eclipse {name}",
+          "an eclipse rule says the new series: \(moved.rules[0].name) · \(moved.rules[0].title)")
+    check(moved.rules[1].ordinal == nil, "Alpha #\(clock.count(0)) goes on Saros \(fewer.series), which has \(fewer.count(0))")
+    check(moved.rules[2].name == named.name && moved.rules[2].title == named.title, "only eclipse rules are renamed")
+    let kept = config.following(from: 141, to: more.series, clock: more)
+    check(kept.rules[1].ordinal == Int(clock.count(0)), "Alpha #\(clock.count(0)) stays on Saros \(more.series), which has \(more.count(0))")
 }

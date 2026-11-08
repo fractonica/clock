@@ -230,6 +230,22 @@ answered films a video named `call` (the back camera alone), and entries from be
 `front` and `back`; a moment captured several times (Flavons around it) names them `front@-1`, `back@-1`, `front@0`,
 `back@0`, `front@1`, … with the capture's offset from the moment in Flavons.
 
+`journal.date` — a date the person keeps (a birthday, a wedding, a launch), shown on the apps' Saros screen with the
+eclipse nearest it, and sending **echoes** when it comes round again. `time` is the moment; a whole day (`allDay`) is
+kept as its noon in `zone`, the zone it is read in.
+```json
+{ "emoji": "🎂", "title": "Birthday", "text": "the description", "allDay": true,
+  "echoes": { "solarDay": true, "at": 540, "periods": [3, 4] },
+  "saros": 139, "rarity": "rare" }
+```
+`echoes`: `solarDay` notifies every year on the date's day (a 29 February on the 28th otherwise) at `at` minutes after
+midnight in the device's zone; `periods` are clock levels (0 α … 6 η) whose every later cycle notifies when the clock
+of the app's reference series is back at the date's phase in it. Each device schedules the echoes for itself.
+`saros` and `rarity` are written alongside for other clients and may be stale: the apps derive them from `time` — the
+series of the eclipse nearest the date (of all 180 solar Saros series) and how near it is, in Helions of that series
+(4 / 125 125 of a Saros): within 1 `cosmic`, 11 `legendary`, 77 (a Nuclide) `epic`, 385 (a Delta) `rare`, else
+`common`. Being `journal.*`, any device may edit or delete a date; the hub searches it by `emoji title` and `text`.
+
 Sky events near an entry are **tags** `sky:<event>` with the event names of the printable diary's astronomy
 (`src/diary/astro/index.js` `EVENT_INFO`: `sky:full-moon`, `sky:solar-eclipse`, `sky:june-solstice`, …): the apps add
 one for every event within one Helion (before or after) of the entry's `time`, and keep them current when the time

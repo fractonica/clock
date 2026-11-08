@@ -3,6 +3,7 @@
 ///     launch()             restores the preferences; never starts the audio (that takes a user action)
 ///     enteredBackground()  iOS: fades the sound out when "Play in the background" is off (and remembers to resume)
 ///     becameActive()       resumes a sound the background stopped
+///     referenceChanged()   another Saros series: the renderer is made again on its catalogue
 enum SoundHooks: FeatureHooks {
     static func launch() {
         SoundEngine.shared.applyLaunchOptions()
@@ -14,5 +15,9 @@ enum SoundHooks: FeatureHooks {
 
     static func enteredBackground() {
         SoundEngine.shared.enteredBackground()
+    }
+
+    static func referenceChanged(from old: Int) {
+        SoundEngine.shared.referenceChanged()
     }
 }

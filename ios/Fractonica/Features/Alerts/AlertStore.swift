@@ -136,6 +136,19 @@ final class AlertStore {
         refillSoon()
     }
 
+    /// The clock moved onto another Saros series (from Saros `old`): the rules are made valid on its clock (an Alpha
+    /// ordinal it lacks is dropped), an eclipse rule's "Saros <old>" in its name and title becomes the new series', and
+    /// everything is planned again.
+    func referenceChanged(from old: Int) {
+        let next = config.following(from: old, to: FractonicaClock.shared.series)
+        if next != config {
+            config = next
+            changed()
+        } else {
+            refillSoon()
+        }
+    }
+
     // MARK: - What is scheduled
 
     /// The planned alerts the system holds, soonest first (in a preview, the plan as if it were held).

@@ -10,7 +10,7 @@ enum AlertSubject: Hashable, Sendable, Codable {
     case level(Int)
     /// The solar sync (SPEC §7): 19 Helions, about 4 days, with its quarters about a day apart.
     case solar
-    /// The catalogue's eclipses: the greatest eclipses of Saros 141 (#0 … #69).
+    /// The catalogue's eclipses: the greatest eclipses of the reference series (Saros 141's #0 … #69).
     case eclipse
 
     /// The level of a level subject.
@@ -178,7 +178,7 @@ struct AlertRule: Identifiable, Hashable, Codable, Sendable {
 
     static let leadCounts = AlertLead.counts
 
-    /// How many places a level's cycles have in their parent (Alpha: the catalogue's 18 Alphas).
+    /// How many places a level's cycles have in their parent (Alpha: the catalogue's Alphas, 18 for Saros 141).
     static func places(level: Int, clock: FractonicaClock = .shared) -> Int {
         clock.levelInfo(level).siblings ?? Int(clock.count(0))
     }
@@ -287,10 +287,22 @@ struct AlertsConfig: Hashable, Codable, Sendable {
         if let data = try? JSONEncoder().encode(self) { defaults.set(data, forKey: Self.key) }
     }
 
-    func sanitized() -> AlertsConfig {
+    func sanitized(clock: FractonicaClock = .shared) -> AlertsConfig {
         var seen = Set<UUID>()
-        let rules = rules.filter { seen.insert($0.id).inserted }.prefix(Self.maxRules).map { $0.sanitized() }
+        let rules = rules.filter { seen.insert($0.id).inserted }.prefix(Self.maxRules).map { $0.sanitized(clock: clock) }
         return AlertsConfig(rules: Array(rules), quiet: quiet.sanitized())
+    }
+
+    /// The rules after the clock moved from Saros `old` onto Saros `new` (`clock`, the new series' clock): made valid on
+    /// it, and an eclipse rule's name and title saying "Saros <old>" (as the preset writes them) say the new series.
+    func following(from old: Int, to new: Int, clock: FractonicaClock = .shared) -> AlertsConfig {
+        var next = sanitized(clock: clock)
+        let was = "Saros \(old)", now = "Saros \(new)"
+        for i in next.rules.indices where next.rules[i].subject == .eclipse {
+            next.rules[i].name = next.rules[i].name.replacingOccurrences(of: was, with: now)
+            next.rules[i].title = next.rules[i].title.replacingOccurrences(of: was, with: now)
+        }
+        return next
     }
 }
 
@@ -359,7 +371,7 @@ enum AlertPreset: String, CaseIterable, Identifiable, Sendable {
         case .deltaQuarters: "Delta quarters"
         case .solarQuarters: "Solar sync quarters"
         case .majors: "Gamma, Beta and Alpha turns"
-        case .eclipse: "Next eclipse of Saros 141"
+        case .eclipse: "Next eclipse of Saros \(FractonicaClock.shared.series)"
         }
     }
 
@@ -405,7 +417,8 @@ enum AlertPreset: String, CaseIterable, Identifiable, Sendable {
         case .eclipse:
             AlertRule(name: title, subject: subject, events: [.begin],
                       lead: pure ? AlertLead(count: 5, unit: .helion) : AlertLead(count: 1, unit: .day),
-                      title: "Saros 141 eclipse {name}", body: "Greatest eclipse {when} · {time}", ignoresQuietHours: true)
+                      title: "Saros \(FractonicaClock.shared.series) eclipse {name}", body: "Greatest eclipse {when} · {time}",
+                      ignoresQuietHours: true)
         }
     }
 }

@@ -5,6 +5,7 @@ import SwiftUI
 /// glossary. A sheet on iOS, the Settings window on macOS.
 struct SettingsScreen: View {
     @Environment(AppSettings.self) private var settings
+    @Environment(AppRouter.self) private var router
 
     var body: some View {
         @Bindable var settings = settings
@@ -25,6 +26,28 @@ struct SettingsScreen: View {
                 }
             } header: {
                 Text("Reading")
+            }
+
+            Section {
+                // the catalogue lives in Cycles › Saros, where the series is chosen
+                Button {
+                    router.isSettingsPresented = false
+                    router.show(.saros)
+                } label: {
+                    LabeledContent {
+                        HStack(spacing: 6) {
+                            Text("Saros \(ReferenceSaros.shared.series)")
+                            Image(systemName: "arrow.up.forward.square")
+                                .font(.caption)
+                                .foregroundStyle(Theme.ink3)
+                        }
+                    } label: {
+                        SettingLabel("Saros series", detail: "The eclipses the clock runs on, chosen in Cycles › Saros", systemImage: "circle.lefthalf.filled")
+                    }
+                }
+                .foregroundStyle(Theme.ink)
+            } header: {
+                Text("Clock")
             }
 
             Section("Clock face") {
@@ -127,7 +150,7 @@ struct SettingsScreen: View {
         if words.pure { return words.notation.catalogueText() }
         let utc = EarthFormatter(timeZone: .gmt)
         let clock = FractonicaClock.shared
-        return "Saros 141 · \(utc.parts(clock.tMin).year)–\(utc.parts(clock.tMax).year)"
+        return "Saros \(clock.series) · \(utc.parts(clock.tMin).year)–\(utc.parts(clock.tMax).year)"
     }
 
     private var version: String {

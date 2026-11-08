@@ -1,13 +1,14 @@
 import Synchronization
 
-/// The Fractonica clock on the Saros 141 Unix catalogue: a Swift port of the web app's `src/core/model.js` and,
-/// through it, of the reference library `fractonica.js` 2.0.0 (SPEC §2–§7).
+/// The Fractonica clock on a Saros series' Unix catalogue — Saros 141 unless the person picks another
+/// (`SarosReference`) — a Swift port of the web app's `src/core/model.js` and, through it, of the reference library
+/// `fractonica.js` 2.0.0 (SPEC §2–§7).
 ///
 /// Conventions, as in model.js
 /// - Time is Unix seconds as `Double` (UTC, 86 400 s days, SPEC §2.1). Every query is rounded to 1 ms first.
 /// - `level` is zero-based; depth = level + 1 is the user-facing number.
-/// - Outside the catalogue (before 1613-05-19 or after 2857-06-13) nothing is extrapolated: readings are `nil`.
-///   The catalogue's closing instant belongs to its last cycle (queried 1 ms inside it, the EDGE rule).
+/// - Outside the catalogue (for Saros 141 before 1613-05-19 or after 2857-06-13) nothing is extrapolated: readings
+///   are `nil`. The catalogue's closing instant belongs to its last cycle (queried 1 ms inside it, the EDGE rule).
 ///
 /// Numerics. The library works in exact rationals; so does this port. The catalogue is held in whole milliseconds
 /// and a position is the exact fraction k + (t − E[k]) / (E[k+1] − E[k]) on 64/128-bit integers, so cycle indices,
@@ -17,17 +18,55 @@ import Synchronization
 /// agree with the web app's (the golden tests check every reading, and the catalogue, positions and exact
 /// timestamps bit for bit).
 ///
-/// The clock is immutable apart from an internal, lock-protected cache of cycle facts, so one shared instance
-/// serves the app, its widgets and background work alike.
+/// Each clock is immutable apart from an internal, lock-protected cache of cycle facts, so one instance per series
+/// (`on(series:)`) serves the app, its widgets and background work alike.
 public final class FractonicaClock: Sendable {
-    /// Saros 141 Unix catalogue, default sequence, ascending family, solar sync anchor 20 / level 6 / 19 cycles / 4 days.
-    public static let shared = FractonicaClock()
+    /// The clock on the reference series (`SarosReference`: Saros 141 unless the person chose another), default
+    /// sequence, ascending family, solar sync of 19 depth-7 cycles in 4 days from the series' `solarAnchor`.
+    /// `use(series:)` puts another series in its place; code that keeps a clock or something read from it across that
+    /// must read this again.
+    public static var shared: FractonicaClock { reference.withLock { $0 } }
+
+    /// The clock on Saros `series` (one instance a series, made on first use); nil for a series `SarosCatalogue` lacks.
+    public static func on(series: Int) -> FractonicaClock? {
+        clocks.withLock { clocks in
+            if let clock = clocks[series] { return clock }
+            let clock: FractonicaClock
+            if series == SarosReference.standard {
+                clock = FractonicaClock(series: series, milliseconds: Fractonica.saros141UnixMilliseconds, anchor: 20)
+            } else {
+                guard let s = SarosCatalogue.series(series) else { return nil }
+                clock = FractonicaClock(series: series, milliseconds: s.unixMilliseconds, anchor: s.solarAnchor)
+            }
+            clocks[series] = clock
+            return clock
+        }
+    }
+
+    /// Makes `series` the reference `shared` reads, for this process (`SarosReference.choose` also stores it for the
+    /// app's next launch and its widgets). False, and nothing changes, for a series the catalogue lacks.
+    @discardableResult
+    public static func use(series: Int) -> Bool {
+        guard let clock = on(series: series) else { return false }
+        reference.withLock { $0 = clock }
+        return true
+    }
+
+    private static let clocks = Mutex<[Int: FractonicaClock]>([:])
+    private static let reference = Mutex<FractonicaClock>(
+        FractonicaClock.on(series: SarosReference.stored) ?? FractonicaClock.on(series: SarosReference.standard)!
+    )
+
+    /// The Saros series the clock runs on (141 for the standard clock).
+    public let series: Int
+    /// The ordinal of the eclipse the solar sync counts from (SPEC §7.1; Saros 141's is 20, `SarosSeries.solarAnchor`).
+    public let solarAnchor: Int
 
     /// Catalogue instants as the web model holds them (Unix seconds, converted with the library's `F.number`).
     public let catalogue: [Double]
-    /// Highest ordinal (69): positions run from 0 to `extent`.
+    /// Highest ordinal (Saros 141: 69): positions run from 0 to `extent`.
     public let extent: Int
-    /// The catalogue's first and last eclipse (1613-05-19, 2857-06-13): readings exist from `tMin` to `tMax`.
+    /// The catalogue's first and last eclipse (Saros 141: 1613-05-19, 2857-06-13): readings exist from `tMin` to `tMax`.
     public let tMin: Double
     public let tMax: Double
     /// Mean Saros length in seconds, (tMax − tMin) / extent. For estimates only (SPEC §7.4).
@@ -44,12 +83,15 @@ public final class FractonicaClock: Sendable {
     let solarSync: SolarSyncConstants
     /// Recently computed cycle facts (model.js `cycleCache`).
     let factsCache = Mutex<[FactsKey: CycleFacts]>([:])
+    /// Facts derived from the clock once, on first use: the notation's tables, the whole syncs' range.
+    let memo = Mutex<Memo>(Memo())
 
     /// model.js `EDGE`: the closing instant is queried 1 ms inside the last cycle.
     static let edgeSeconds = 0.001
 
-    private init() {
-        let ms = Fractonica.saros141UnixMilliseconds
+    private init(series: Int, milliseconds ms: [Int64], anchor: Int) {
+        self.series = series
+        solarAnchor = anchor
         catalogueMs = ms
         intervalsMs = zip(ms.dropFirst(), ms).map { $0 - $1 }
         extent = ms.count - 1
@@ -83,9 +125,10 @@ public final class FractonicaClock: Sendable {
         }
         edge = QueryTime(seconds: catalogue[extent] - Self.edgeSeconds)
         solarSync = SolarSyncConstants(
-            anchorCycle: Int128(SolarSyncConstants.anchor) * prefixes[SolarSyncConstants.level] / 4,
-            anchorTime: Ratio(Int128(ms[SolarSyncConstants.anchor]), 1000),
-            anchorSeconds: catalogue[SolarSyncConstants.anchor]
+            anchor: anchor,
+            anchorCycle: Int128(anchor) * prefixes[SolarSyncConstants.level] / 4,
+            anchorTime: Ratio(Int128(ms[anchor]), 1000),
+            anchorSeconds: catalogue[anchor]
         )
     }
 
@@ -168,14 +211,15 @@ public final class FractonicaClock: Sendable {
     }
 }
 
-/// Constants of the reference solar sync (SPEC §7.2): anchor ordinal 20, level 6, 19 cycles ≈ 4 days.
+/// Constants of the solar sync (SPEC §7.1–§7.2): level 6, 19 cycles ≈ 4 days, from the anchor ordinal (Saros 141: 20).
 struct SolarSyncConstants: Sendable {
-    static let anchor = 20
     static let level = 6
     static let cycles: Int128 = 19
     static let days: Int128 = 4
     static let daySeconds: Int128 = 86_400
 
+    /// The anchor eclipse's ordinal A, a multiple of 4.
+    let anchor: Int
     /// Level-6 cycle index of the anchor eclipse, A · P(L) / 4.
     let anchorCycle: Int128
     /// Anchor eclipse time, exact and as the model's double.
@@ -191,6 +235,12 @@ struct CycleState: Sendable {
 
     /// 0 … 3, the quarter the phase is in (computed from the rounded phase, as the web app does).
     var quarter: Int { min(3, Int((phase * 4).rounded(.down))) }
+}
+
+/// What a clock derives once (`FractonicaClock.memo`).
+struct Memo: Sendable {
+    var tables: Notation.Tables?
+    var syncRange: (first: Int, last: Int)?
 }
 
 /// Key of the cycle facts cache.

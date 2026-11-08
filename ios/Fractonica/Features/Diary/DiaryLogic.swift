@@ -180,3 +180,24 @@ enum DiaryPrint {
     /// The paper of a PDF page in PostScript points.
     static func points(_ mm: Double) -> Double { mm * 72 / 25.4 }
 }
+
+/// The series the web host's model runs on. The web app's `createModel` reads `globalThis.FractonicaReference`
+/// (src/core/model.js): the page is given it before its modules run whenever the reference series is not Saros 141, the
+/// web app's own catalogue, so the diary is planned on the same eclipses and solar anchor as the app's clock.
+enum DiaryReference {
+    /// The script that sets the reference for `clock`'s series; nil for Saros 141 (the model's default) and for a
+    /// series the catalogue lacks.
+    static func script(for clock: FractonicaClock) -> String? {
+        guard clock.series != SarosReference.standard, let series = SarosCatalogue.series(clock.series) else { return nil }
+        let timestamps = series.unixMilliseconds.map { "\"\(decimal($0))\"" }.joined(separator: ",")
+        return "globalThis.FractonicaReference = {series: \(clock.series), anchor: \(clock.solarAnchor), "
+            + "timestamps: [\(timestamps)]};"
+    }
+
+    /// Unix milliseconds as a decimal string of seconds that keeps them exact: −11253795000123 → "-11253795000.123".
+    static func decimal(_ ms: Int64) -> String {
+        let a = ms.magnitude
+        let fraction = String(a % 1000)
+        return "\(ms < 0 ? "-" : "")\(a / 1000).\(String(repeating: "0", count: 3 - fraction.count))\(fraction)"
+    }
+}

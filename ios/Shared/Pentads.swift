@@ -22,19 +22,20 @@ enum Pentads {
     static func dayOffset(_ index: Int) -> Double { Double(index) / 4 }
 
     /// The Pentad running at t; nil outside the catalogue. The readings of the last few Helions asked about are kept
-    /// (the most recently used first), so the displayed time asks the engine about once a Helion even while a screen
-    /// reads the Pentads of many other moments.
+    /// (the most recently used first, each with the series it was read on), so the displayed time asks the engine about
+    /// once a Helion even while a screen reads the Pentads of many other moments.
     static func at(_ t: Double, clock: FractonicaClock = .shared) -> PentadReading? {
         guard t.isFinite else { return nil }
+        let series = clock.series
         let hit = cache.withLock { entries -> PentadReading? in
-            guard let i = entries.firstIndex(where: { $0.from <= t && t < $0.to }) else { return nil }
+            guard let i = entries.firstIndex(where: { $0.series == series && $0.from <= t && t < $0.to }) else { return nil }
             if i > 0 { entries.insert(entries.remove(at: i), at: 0) }
             return entries[0].reading
         }
         if let hit { return hit }
         guard let reading = clock.pentad(at: t) else { return nil }
         let helion = clock.level(at: t, 6) // the Helion (η), the sync's level
-        let entry = Entry(reading: reading, from: max(helion?.start ?? reading.start, reading.start),
+        let entry = Entry(series: series, reading: reading, from: max(helion?.start ?? reading.start, reading.start),
                           to: min(helion?.end ?? reading.end, reading.end))
         cache.withLock { entries in
             entries.insert(entry, at: 0)
@@ -63,6 +64,7 @@ enum Pentads {
     }
 
     private struct Entry: Sendable {
+        let series: Int
         let reading: PentadReading
         let from: Double
         let to: Double

@@ -298,7 +298,7 @@ struct AlertsScreen: View {
                 Label("Outside the catalogue", systemImage: "circle.dashed")
                     .font(.headline)
                     .foregroundStyle(Theme.ink)
-                Text("The device's clock reads a moment outside Saros 141's catalogue (\(settings.pure ? text.notation.catalogueText() : "1613 – 2857, " + text.notation.catalogueText())). There are no cycles to alert about, so nothing is queued.")
+                Text("The device's clock reads a moment outside \(text.clock.sarosName)'s catalogue (\(settings.pure ? text.notation.catalogueText() : text.clock.yearSpan(" – ") + ", " + text.notation.catalogueText())). There are no cycles to alert about, so nothing is queued.")
                     .font(.subheadline)
                     .foregroundStyle(Theme.ink2)
             }

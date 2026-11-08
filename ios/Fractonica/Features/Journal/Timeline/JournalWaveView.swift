@@ -20,8 +20,16 @@ struct JournalWaveView: View {
     @Environment(ClockStore.self) private var store
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityVoiceOverEnabled) private var voiceOver
-    @State private var model = JournalWaveModel.shared
+    @State private var model: JournalWaveModel
     @State private var cache = JournalWaveCache()
+
+    /// `model`: the journal's (`JournalWaveModel.shared`) or another wave's, such as the kept dates'.
+    init(records: [HubRecord], revision: Int, model: JournalWaveModel = .shared, open: @escaping (String) -> Void) {
+        self.records = records
+        self.revision = revision
+        self.open = open
+        _model = State(initialValue: model)
+    }
 
     var body: some View {
         // only the canvas follows the frame: this body runs when the records, the mode or a dialog change

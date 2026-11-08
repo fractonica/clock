@@ -387,9 +387,10 @@ enum CalMath {
         return hi
     }
 
-    /// Months the month view can show: January 1613 … December 2857, as one index (year · 12 + month − 1).
-    static let firstMonth = 1613 * 12
-    static let lastMonth = 2857 * 12 + 11
+    /// Months the month view can show: January of the catalogue's first year … December of its last (Saros 141: January
+    /// 1613 … December 2857), as one index (year · 12 + month − 1).
+    static var firstMonth: Int { monthIndex(year: FractonicaClock.shared.firstYear, month: 1) }
+    static var lastMonth: Int { monthIndex(year: FractonicaClock.shared.lastYear, month: 12) }
 
     static func monthIndex(year: Int, month: Int) -> Int { year * 12 + month - 1 }
     static func yearMonth(_ index: Int) -> (year: Int, month: Int) {

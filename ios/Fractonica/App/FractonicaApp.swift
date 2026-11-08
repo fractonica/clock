@@ -23,6 +23,7 @@ struct FractonicaApp: App {
     init() {
         InterfaceSound.launch()
         LaunchOptions.current().apply(store: store, settings: settings, router: router)
+        ReferenceSaros.shared.applyLaunchOptions()
     }
 
     var body: some Scene {

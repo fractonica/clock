@@ -19,6 +19,7 @@ struct DiaryChecks {
         planChecks(fixture)
         resourceChecks()
         decodingChecks()
+        referenceChecks()
         Checks.finish()
     }
 }
@@ -251,4 +252,60 @@ private enum DiaryModelFileName {
         let cleaned = String(title.map { "/\\:?*\"<>|".contains($0) ? "-" : $0 })
         return cleaned == title && String("a/b:c".map { "/\\:?*\"<>|".contains($0) ? "-" : $0 }) == "a-b-c"
     }
+}
+
+/// The web host on another reference series (`DiaryReference`): the script the page is given before its modules run
+/// makes the web app's own model (src/core/model.js, run here in Node) read exactly as the app's clock on that series.
+private func referenceChecks() {
+    check(DiaryReference.decimal(-11_253_795_000_123) == "-11253795000.123" && DiaryReference.decimal(5) == "0.005"
+          && DiaryReference.decimal(-5) == "-0.005" && DiaryReference.decimal(1_791_460_800_000) == "1791460800.000",
+          "milliseconds as exact decimal seconds")
+    guard let standard = FractonicaClock.on(series: 141), let other = FractonicaClock.on(series: 145),
+          let script = DiaryReference.script(for: other) else {
+        check(false, "Saros 145 has a clock and a reference script")
+        return
+    }
+    check(DiaryReference.script(for: standard) == nil, "Saros 141 is the web model's own catalogue: nothing to set")
+    let a = 1_791_460_800.0
+    let here = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+    let root = here.appendingPathComponent("../../../../..").standardized
+    let program = """
+    await import('./fractonica.js');
+    \(script)
+    const { createModel } = await import('./src/core/model.js');
+    const { deltaRange } = await import('./src/diary/plan.js');
+    const m = createModel();
+    const s = m.solarAt(\(a)), h = m.levelAt(\(a), 6);
+    console.log(JSON.stringify({ series: m.series, anchor: m.anchor, n: m.catalogue.length, tMin: m.tMin, tMax: m.tMax,
+      sync: s?.sync ?? null, helion: h ? Number(h.cycle) : null, lastDelta: deltaRange(m).last }));
+    """
+    let process = Process()
+    process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+    process.arguments = ["node", "--input-type=module"]
+    process.currentDirectoryURL = root
+    let input = Pipe(), output = Pipe()
+    process.standardInput = input
+    process.standardOutput = output
+    process.standardError = FileHandle.nullDevice
+    do {
+        try process.run()
+        input.fileHandleForWriting.write(Data(program.utf8))
+        try input.fileHandleForWriting.close()
+    } catch {
+        check(false, "node runs the web model (\(error.localizedDescription))")
+        return
+    }
+    let data = output.fileHandleForReading.readDataToEndOfFile()
+    process.waitUntilExit()
+    guard process.terminationStatus == 0, let js = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
+        check(false, "node runs the web model on Saros 145 (status \(process.terminationStatus))")
+        return
+    }
+    let number = { (key: String) in (js[key] as? NSNumber)?.doubleValue }
+    check(number("series") == 145 && number("anchor") == Double(other.solarAnchor) && number("n") == Double(other.catalogue.count),
+          "the web model runs on Saros 145's \(other.catalogue.count) eclipses from anchor \(other.solarAnchor): \(js)")
+    check(number("tMin") == other.tMin && number("tMax") == other.tMax, "its catalogue's ends are the app's, to the millisecond")
+    check(number("sync") == other.solar(at: a).map { Double($0.sync) } && number("helion") == other.level(at: a, 6).map { Double($0.cycle) },
+          "at vector A its solar sync and Helion are the app's (\(js))")
+    check(number("lastDelta") == Double(DiaryDelta.range(clock: other).upperBound), "its diaries are the app's Deltas")
 }

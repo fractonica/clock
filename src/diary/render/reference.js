@@ -21,6 +21,13 @@ function pageTitle(svg, cx, fr, text, aside) {
   ], { maxW: fr.cw });
 }
 
+/** The series the clock runs on, by name: "Saros 141" (the model's, so another reference series says its own), or
+ *  "the catalogue" for an unnamed one. */
+function sarosName(cx) {
+  const series = cx.env?.model ? cx.env.model.series : 141;
+  return series ? `Saros ${series}` : 'the catalogue';
+}
+
 // ---- the period ladder --------------------------------------------------------------------------------------------
 
 export function renderLadder(svg, cx, fr) {
@@ -35,7 +42,7 @@ export function renderLadder(svg, cx, fr) {
   const S = nb('S = 5, 13, 5, 5, 7, 11, 9, 4');
   const round = groupBig(4504500);
   const head =
-    `Alpha (level 0) spans 4 Saros: four intervals between eclipses of ${pureMode ? 'the catalogue' : 'Saros 141'}. Each level below splits ` +
+    `Alpha (level 0) spans 4 Saros: four intervals between eclipses of ${pureMode ? 'the catalogue' : sarosName(cx)}. Each level below splits ` +
     `its parent by the next factor of the sequence ${S}, which repeats every 8 levels (each round multiplies by ${round}; rounds are ` +
     `banded). Level L has P(L) cycles per Alpha, ${nb('P(0) = 1')} and ${nb('P(L) = P(L−1) · S[(L−1) mod 8]')}, and one cycle lasts ` +
     `${nb('4 Saros / P(L)')}. Letters run α … ω, then α1, β1 ….`;
@@ -154,7 +161,7 @@ export function renderMilestones(svg, cx, fr) {
   pageTitle(svg, cx, fr, 'Milestones', `${M.alpha.name}, its Betas and Gammas`);
   svg.runs(fr.x0, fr.y0 + 9.4, [
     { text: '●', size: 1.9, fill: pal.eclipse },
-    { text: pureMode ? 'an eclipse of the catalogue, #k at pos k' : 'a greatest eclipse of Saros 141', size: 1.9, fill: pal.ink3, gap: 0.8 },
+    { text: pureMode ? 'an eclipse of the catalogue, #k at pos k' : `a greatest eclipse of ${sarosName(cx)}`, size: 1.9, fill: pal.ink3, gap: 0.8 },
     { text: '▸', size: 1.9, fill: pal.level(3), gap: 2.4 },
     { text: 'this diary', size: 1.9, fill: pal.ink3, gap: 0.8 },
     { text: pureMode ? '· positions in Saros (pos)' : '', size: 1.9, fill: pal.ink3, gap: 1.4 },

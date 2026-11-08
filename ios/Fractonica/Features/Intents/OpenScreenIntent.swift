@@ -47,7 +47,7 @@ struct OpenScreenIntent: AppIntent {
 
 /// The screens a shortcut can open (`Screen` without Settings, which opens from inside the app).
 enum OpenScreenOption: String, AppEnum {
-    case now, journal, moments, rings, ladder, wave, timeline, converter, month, diary, sound, timer, stopwatch, alerts,
+    case now, journal, moments, rings, ladder, wave, timeline, saros, converter, month, diary, sound, timer, stopwatch, alerts,
         focus, jump
 
     var screen: Screen { Screen(rawValue: rawValue) ?? .now }
@@ -62,6 +62,7 @@ enum OpenScreenOption: String, AppEnum {
         .ladder: DisplayRepresentation(title: "Ladder", image: .init(systemName: "chart.bar.doc.horizontal")),
         .wave: DisplayRepresentation(title: "Wave", image: .init(systemName: "water.waves")),
         .timeline: DisplayRepresentation(title: "Timeline", image: .init(systemName: "calendar.day.timeline.left")),
+        .saros: DisplayRepresentation(title: "Saros", image: .init(systemName: "circle.lefthalf.filled")),
         .converter: DisplayRepresentation(title: "Converter", image: .init(systemName: "arrow.left.arrow.right")),
         .month: DisplayRepresentation(title: "Month", image: .init(systemName: "calendar")),
         .diary: DisplayRepresentation(title: "Diary", image: .init(systemName: "book.closed")),

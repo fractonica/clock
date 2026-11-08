@@ -19,7 +19,7 @@ struct AnalogBalance: View {
     @Environment(\.displayScale) private var displayScale
 
     /// The μ cycle's mean length, displayed seconds.
-    static let period = FractonicaClock.shared.levelInfo(11).meanSeconds
+    static var period: Double { FractonicaClock.shared.levelInfo(11).meanSeconds }
     /// A swing shorter than this in real seconds would only flicker: blur it.
     static let shortest = 0.14
 

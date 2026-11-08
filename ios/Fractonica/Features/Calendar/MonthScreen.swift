@@ -645,6 +645,9 @@ private struct CalMonthPicker: View {
     @State private var month = 1
     @State private var year = 2026
 
+    /// The catalogue's years (Saros 141: 1613 … 2857).
+    private var years: ClosedRange<Int> { FractonicaClock.shared.firstYear...FractonicaClock.shared.lastYear }
+
     var body: some View {
         VStack(spacing: 14) {
             HStack(spacing: 0) {
@@ -657,12 +660,12 @@ private struct CalMonthPicker: View {
                 .frame(minWidth: 150)
                 #if os(iOS)
                 Picker("Year", selection: $year) {
-                    ForEach(1613...2857, id: \.self) { Text(String($0)).tag($0) }
+                    ForEach(years, id: \.self) { Text(String($0)).tag($0) }
                 }
                 .pickerStyle(.wheel)
                 .frame(width: 110)
                 #else
-                Stepper(value: $year, in: 1613...2857) {
+                Stepper(value: $year, in: years) {
                     TextField("Year", value: $year, format: .number.grouping(.never))
                         .frame(width: 64)
                 }
@@ -672,7 +675,7 @@ private struct CalMonthPicker: View {
                 Button("Cancel", role: .cancel) { dismiss() }
                 Spacer()
                 Button("Show") {
-                    model.show(month: CalMath.monthIndex(year: min(2857, max(1613, year)), month: month))
+                    model.show(month: CalMath.monthIndex(year: min(years.upperBound, max(years.lowerBound, year)), month: month))
                     Haptics.play(.selection)
                     dismiss()
                 }
@@ -701,7 +704,7 @@ private struct CalMonthFootnote: View {
         VStack(alignment: .leading, spacing: 4) {
             Text("Each band is a cycle; a white tick is where the next one begins, at its exact time of day. Tap a day for its boundaries.")
             if outside > 0 {
-                Label("\(outside) day\(outside == 1 ? "" : "s") of this month lie\(outside == 1 ? "s" : "") outside the catalogue (19 May 1613 … 13 June 2857): no cycles there.", systemImage: "moon.zzz")
+                Label("\(outside) day\(outside == 1 ? "" : "s") of this month lie\(outside == 1 ? "s" : "") outside the catalogue (\(FractonicaClock.shared.daySpan)): no cycles there.", systemImage: "moon.zzz")
                     .foregroundStyle(Theme.ink2)
             }
         }

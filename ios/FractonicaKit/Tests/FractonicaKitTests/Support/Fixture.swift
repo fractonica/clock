@@ -88,6 +88,7 @@ enum Fixtures {
     static let format = load("format")
     /// The independent fuzz fixture of ios/scripts/make-fuzz-fixtures.mjs.
     static let fuzz = load("fuzz")
+    static let series = load("series")
 
     private static func load(_ name: String) -> JSON {
         guard let url = Bundle.module.url(forResource: name, withExtension: "json", subdirectory: "Fixtures") else {

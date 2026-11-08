@@ -499,7 +499,7 @@ private struct CalSarosCard: View {
 
     var body: some View {
         let around = CalMath.eclipses(store.clock, around: t)
-        CalCard("Saros 141 around it", systemImage: "circle.lefthalf.filled") {
+        CalCard("\(store.clock.sarosName) around it", systemImage: "circle.lefthalf.filled") {
             ForEach([around.previous, around.next].compactMap { $0 }, id: \.self) { k in
                 let e = store.clock.catalogue[k]
                 Button {
@@ -541,7 +541,7 @@ private struct CalOutOfRangeCard: View {
                 Label(before ? "Before the catalogue starts" : "After the catalogue ends", systemImage: "moon.zzz")
                     .font(.headline)
                     .foregroundStyle(Theme.ink)
-                Text("The clock runs on the 70 eclipses of Saros 141, \(utc.date(store.clock.tMin)) … \(utc.date(store.clock.tMax)) UTC, and is never extrapolated. This moment lies \(EarthTime.duration(abs(before ? store.clock.tMin - t : t - store.clock.tMax))) \(before ? "before its first" : "after its last") eclipse.")
+                Text("The clock runs on the \(String(store.clock.catalogue.count)) eclipses of \(store.clock.sarosName), \(utc.date(store.clock.tMin)) … \(utc.date(store.clock.tMax)) UTC, and is never extrapolated. This moment lies \(EarthTime.duration(abs(before ? store.clock.tMin - t : t - store.clock.tMax))) \(before ? "before its first" : "after its last") eclipse.")
                     .font(.subheadline)
                     .foregroundStyle(Theme.ink2)
                     .fixedSize(horizontal: false, vertical: true)

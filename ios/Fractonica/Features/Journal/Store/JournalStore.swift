@@ -100,10 +100,14 @@ final class JournalStore: RecordSyncing {
         records.values.filter { !$0.isDeleted && $0.kind == JournalEntry.kind }.sorted(by: Self.newestFirst)
     }
 
-    /// Live records of other kinds (from other hub clients), newest first.
+    /// Live records of other kinds (from other hub clients), newest first. Kept dates (`journal.date`, the Saros
+    /// screen's) are not among them: they have a home of their own.
     var otherRecords: [HubRecord] {
-        records.values.filter { !$0.isDeleted && $0.kind != JournalEntry.kind }.sorted(by: Self.newestFirst)
+        records.values.filter { !$0.isDeleted && $0.kind != JournalEntry.kind && $0.kind != Self.dateKind }.sorted(by: Self.newestFirst)
     }
+
+    /// The kind of the kept dates (`SavedDate.kind`).
+    nonisolated static let dateKind = "journal.date"
 
     /// A live record by id.
     func record(_ id: String) -> HubRecord? {

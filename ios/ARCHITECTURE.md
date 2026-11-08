@@ -37,17 +37,25 @@ pre-build phase), for the Diary's WKWebView: `Bundle.main.url(forResource: "web"
 ## The engine: FractonicaKit
 
 `import FractonicaKit`. Times are Unix seconds (`Double`), levels zero-based (depth = level + 1, η is level 6). Readings
-are `nil` outside the catalogue (1613 … 2857, `clock.tMin … clock.tMax`) and never extrapolated. See
+are `nil` outside the catalogue (`clock.tMin … clock.tMax`: 1613 … 2857 on Saros 141) and never extrapolated. See
 FractonicaKit/README.md for what is ported from which JavaScript and the numerics.
+
+The clock runs on the reference Saros series: Saros 141 unless the person picks another of the 40 ongoing ones
+(`SarosReference`, kept in the app group; `-FXSaros <n>` for one run). `FractonicaClock.shared` is that series' clock
+and changes when the series does, so never keep it, or anything read from it (a `Notation`, a catalogue, a mean
+length, a solar anchor), in a `static let` or a long-lived object; see "The reference series" below.
 
 | API | Use |
 |---|---|
-| `FractonicaClock.shared` | The one clock (thread-safe, cached). `level(at:_:strokes:)` → `LevelReading` (cycle, local, phase, progress, quarter, glyph index, start/end/remaining, `next` threshold, five `thresholds`); `odometer(at:_:strokes:digits:)`; `solar(at:)`, `solarSync(number:)`; `levelInfo(_:)` (letter, factor, siblings, `meanSeconds`); `cycle(level:index:)`, `cycle(at:level:)` → `CycleFacts` with `events`; `boundaries(level:from:to:limit:)`; `upcomingEnds(after:fromLevel:toLevel:count:)`; `stateOccurrences(…)`; `address(at:)`, `pathToCycle`, `cycleToPath`; `position(at:)`, `time(atPosition:)`; `tMin`, `tMax`, `clamp`, `inRange`, `catalogue` (eclipse times) |
+| `FractonicaClock.shared` | The reference series' clock (thread-safe, cached; `series`, `solarAnchor`; `FractonicaClock.on(series:)` for another series'). `level(at:_:strokes:)` → `LevelReading` (cycle, local, phase, progress, quarter, glyph index, start/end/remaining, `next` threshold, five `thresholds`); `odometer(at:_:strokes:digits:)`; `solar(at:)`, `solarSync(number:)`; `levelInfo(_:)` (letter, factor, siblings, `meanSeconds`); `cycle(level:index:)`, `cycle(at:level:)` → `CycleFacts` with `events`; `boundaries(level:from:to:limit:)`; `upcomingEnds(after:fromLevel:toLevel:count:)`; `stateOccurrences(…)`; `address(at:)`, `pathToCycle`, `cycleToPath`; `position(at:)`, `time(atPosition:)`; `tMin`, `tMax`, `clamp`, `inRange`, `catalogue` (eclipse times) |
 | `Notation` (`Notation.standard`) | Pure-mode words (SPEC §15): `dateText`, `clockText`, `stamp`, `cycleName`, `nameAt`, `duration`, `countdown`, `between`, `cycleLength`, `rates`, `rateLabel`, `blinks`, `units`, `levelKind`, `Notation.pair(_:)` (the 256-state phase pair) |
 | `Journal` | The journal face reading (`Journal.reading(at:unit:)`), `arcPoint`, `ordinal` |
 | `EarthFormatter`, `EarthTime` | Earth time in a zone, exactly as src/core/format.js prints it (`date`, `time`, `long`, `short`, `label`, `tag`, `iso`, `parseInput`, `duration`, `countdown`) |
 | `GlyphState`, `GlyphGeometry` | The CBT phase glyphs: state facts and the library's path geometry (`cgPath(index:strokes:)`) |
 | `Fractonica` | Constants: `sequence`, `maxLevel` (13, the deepest level the UI shows), `supportedLevels`, `periodName(_:)`, `quarterNames` |
+| `SarosCatalogue`, `SarosSeries`, `SarosEclipse` | The 40 ongoing solar series (117 … 156) and their 2 887 eclipses (Unix ms by the library's conversion, type, greatest point, central duration, Sun's altitude, `pathRecord` into the app's geo-<n>.bin); `series.solarAnchor` (first Alpha from 1972), `neighbours(of:)`, `kinds` |
+| `SarosDrift` | `series.drift(at:)`: seconds a sync now (−10.081 s for 141), the lap walking the real intervals (`lap`, `lapEnd`; nil where the series ends first, `lapAtPresentRate` instead), `alpha` (4 mean Saros), `lapPastAlpha` (≈ +17 y), `lifetimePerSync` |
+| `SarosReference` | The stored reference series (app group, 141 by default, `-FXSaros <n>` for a run), `choose(_:)`; the app goes through `ReferenceSaros` |
 
 Cost (release, Apple silicon): 14 levels + 14 odometers ≈ 25 µs per frame; `upcomingEnds` and wide `boundaries`
 queries are much heavier — compute them on change or at ≤ 4 Hz, never per frame.
@@ -82,6 +90,88 @@ exactly at the edge it runs into (`lastChange == .edge`; the root shows a toast)
 
 Real-world features (timers, stopwatch, notifications, Focus sessions) run on the **device** clock (`Date.now`), never
 on the displayed time; they may *read* the clock at real now (`clock.level(at: Date.now.timeIntervalSince1970, …)`).
+
+### The reference series
+
+`ReferenceSaros.shared.choose(n)` (Core/ReferenceSaros.swift, main actor, observable `series`) moves everything onto
+Saros n, in this order: the kit's clock and the stored choice (`SarosReference.choose`); `ClockStore.adopt` (live stays
+live, a moment shown stays shown inside the new catalogue, `revision` bumps); every feature's
+`FeatureHooks.referenceChanged(from:)` (Alerts re-sanitize their rules and refill, Moments take a new calendar and drop
+what they kept by moment number, Timer and Stopwatch re-word their notification and Live Activities, Sound rebuilds its
+renderer, the converter drops a typed address); then `series` changes, and RootView gives the screens a new identity
+(`.id(series)`), so every screen's `@State` is made again (the sheets over them stay); last the widgets reload and
+`ReferenceSaros.changed` is posted. A long-lived model that reads the clock once is kept per series with
+`ClockScoped` (the Timeline's, the Month's, the Diary's, the journal wave's); a process-wide cache keys its entries by
+series (`Pentads.at`, `FractonicaClockFacts.standard`). Text that names the series says `clock.sarosName`, and the
+catalogue's extent `clock.daySpan` / `clock.yearSpan()` (Shared/Notation+Standard.swift), never "141" or "1613".
+`-FXSaros <n>` starts on Saros n; `-FXSarosSwitch <n>` runs the whole switch onto it two seconds after launch, for that
+run only (nothing stored).
+
+### Saros (Features/Saros)
+
+Cycles › Saros (`SarosScreen`, the fifth screen of the Cycles group; a sidebar screen on iPad and Mac). From the top:
+
+- **Search a date** (`SarosSearchScreen`; logic in `SarosSearch.swift`): a day (or a moment, with a time of day) in the
+  app's zone, and the three eclipses nearest it of all 180 series (`SarosCatalogue.nearest`, a binary search of the
+  13 206 eclipses in `SarosCatalogue.timeline`), nearest first; a whole day is measured from its midnights, an eclipse
+  during it at 0. The day's rarity is its nearest eclipse's, in Helions of that eclipse's own series (the Saros between
+  them × 4 / 125 125, `SarosSeries.helion(near:after:)`): within 1 Helion cosmic, 11 (a ζ) legendary, 77 (a Nuclide)
+  epic, 385 (a Delta) rare, else common (`SarosProximity`; Moments' `MomentRarity` and its frames and badges, never
+  mythic). A timeline of the day among the three (each eclipse's map, the rarity bands round it, the reference clock's
+  δ ticks) and a close-up of the nearest with its bands named; each eclipse opens its map. Dates from 1583 to 2999
+  (Foundation's Gregorian calendar is Julian before 1582). Keep this date opens the editor.
+- **Dates** (Dates/): moments or whole days the person keeps, with an emoji, a title and a description
+  (`SavedDate`), each badged with its nearest eclipse's series and rarity. They are `journal.date` records in the
+  journal's store (hub/API.md), so the hub sync uploads and pulls them with the entries and any device can edit them;
+  `DateBook` reads and writes them (observable through the store's revision), and the journal's timeline leaves them
+  out of its other records. A whole day is kept as its noon in its zone. `DatesScreen` lists them (searchable, swipe to
+  delete) or puts them on the wave (`JournalWaveView` with `JournalWaveModel.dates`, a second model with a zoom of its
+  own, a Gamma and a half at first); `DateDetailScreen` shows one: its header in its rarity's frame, its reading on the
+  clock, its three nearest eclipses, its echoes; `DateEditor` (a sheet) makes and edits them.
+- **Echoes** (`DateEchoPlanner`, `DateEchoes`): notifications when a date comes round again — every year on its solar
+  day (a 29 February on the 28th otherwise) at a time of day in the app's zone, and for each period chosen (α … η) every
+  later cycle at the date's phase in it: the same position within the cycle, so the reference clock reads the same
+  below it (a Delta's echo of ε#2 75η 26ι is ε#2 75η 26ι of each later Delta). A date's echoes at one moment are one,
+  under the longest period. The soonest 8 of all (`echo.` requests; each date's soonest of each kind first) are kept
+  pending, refilled on launch, coming to the front, the background refresh, every change to the store and a switch of
+  the reference series; silent in Alerts' quiet hours; a tap opens the date (`DatesHooks`). Permission is asked when the
+  first echo of a date is turned on.
+- **Helions on the clock** for the reference series, then the catalogue: the 40 running series with their drift a
+  sync, lap and lap past an Alpha (`SarosDrift`), sortable from the section's header, the reference ticked, each with
+  its next eclipse's thumbnail. Settings › Clock › Saros series shows the reference series and leads here.
+
+A series (`SarosSeriesScreen`) shows its figures, switches the clock onto it after a confirmation
+(`ReferenceSaros.choose`) and lists its eclipses; an eclipse opens `EclipseMapScreen` (drag, pinch, double-tap to fit;
+gnomonic, stereographic or globe; borders and graticule; the eclipse's figures). Words: `SarosWords` (UTC dates; pure
+mode stamps on the reference clock, drift in Blinks, laps in Fractonica units), `SarosSearchWords`, `DateWords`.
+
+- Data: `SarosCatalogue` (FractonicaKit) holds every eclipse of the 180 series; `SarosPaths` decodes saros-geo's
+  Resources/Saros/geo-<n>.bin (series 101 … 173, eclipses of 1582 … 2500; central paths as areas, a partial
+  eclipse's limits as lines); `WorldMap` reads the FXMP layers (Natural Earth 1:110m land for thumbnails and while a
+  finger moves the map, 1:50m land, lakes and borders otherwise). Both are made by ios/scripts/make-saros.mjs.
+- Maps (`SphereMap.swift`): `MapProjection` is an azimuthal perspective from r radii behind the centre (gnomonicube's
+  projection R: 0 gnomonic, −1 stereographic, −3 the globe), north up. `MapClipper` clips on the sphere to a cap just
+  beyond the view (short of the horizon) before projecting: lines are cut at its rim, counterclockwise areas closed along
+  it to the next entry counterclockwise (Weiler–Atherton against a cap), a ring that surrounds the view by its winding
+  seen from the antipode. Areas fill even-odd. `Vec3` is a plain struct: SIMD3's operators are calls in Debug builds.
+- `EclipseShape` (an eclipse's rings, centre and extent; `fit(in:)` a gnomonic view of the path) and `EclipseArt` (the
+  clipped, projected paths a Canvas draws) are kept per eclipse; `EclipseThumbnail` makes its art off the main thread.
+- Helions on the clock (`HelionDial`, `HelionDialView`, `HelionDialScreen`): the solar sync's 19 Helions on a 24- or
+  12-hour dial in local time (the app's zone), a spiral from the sync's start outwards, one turn a day — each Helion's
+  ascending (●, its start) and descending (○, half way) node, a gold bar and mark where a Pentad begins, the now hand —
+  and the next nodes with their times of day. Follows the displayed time; a compact dial on each series' page, the
+  reference series' from the top of the catalogue. Pure mode puts the Sun at noon and the Moon at midnight in place of
+  hours.
+- Launch (with `-FXTab saros`): `-FXSarosSeries <n>`, and `-FXSarosEclipse <ordinal>` for its map straight away;
+  `-FXSarosProjection gnomonic|stereographic|globe`; `-FXSarosHelions 1` for the Helion dial (of `-FXSarosSeries <n>`
+  or the reference series); `-FXSarosSearch <yyyy-mm-dd[Thh:mm]>` the search on that day (or moment); `-FXSarosDates
+  list|wave`; `-FXSarosDate <n>` the n-th date, oldest first; `-FXSarosAddDate 1` the editor; `-FXDatesSeed 1` adds
+  five sample dates (some with echoes) to a store without any.
+- Checks (Features/Saros/Checks): the path files against saros_geo.js's figures and SarosData's records, the layers,
+  the projection's round trip, and small circles filled on 180 random views compared point by point with the exact
+  answer; the Helion dial against the engine; the search against every eclipse and the series' own clocks, its rarities
+  and whole days (zones, 23-hour days); dates and their records; echoes on the date's phase at every level, solar days
+  and leap days, merging and the budget. FractonicaKit's SarosCatalogueTests check the whole catalogue and `nearest`.
 
 ### ClockTimeline — the only way to redraw with the clock
 
@@ -230,8 +320,8 @@ it, and both jump boxes read past it (`stripPentad` in parse.js, `PentadLead` in
 ### Screens and navigation
 
 `Screen` (Shared/Screen.swift) lists every screen; its raw value is the id used in links and `-FXTab`:
-`now journal moments rings ladder wave timeline converter month diary sound timer stopwatch alerts focus jump settings`.
-`ScreenGroup` bundles `cycles` (rings ladder wave timeline), `journal` (journal month converter) and `clock` (timer
+`now journal moments rings ladder wave timeline saros converter month diary sound timer stopwatch alerts focus jump settings`.
+`ScreenGroup` bundles `cycles` (rings ladder wave timeline saros), `journal` (journal month converter) and `clock` (timer
 stopwatch alerts). The printable Diary is a sheet over the Journal on iPhone and a sidebar screen in the Journal section
 on iPad and Mac. The Journal (Features/Journal: local store, composer, timeline; hooks for the hub sync in
 JournalHooks.swift) keeps its records and media under Application Support/Journal. Its timeline (Journal/Timeline) is a
@@ -349,7 +439,8 @@ closes it, and `setCompact` moves Jump between the two forms when the layout cha
 in every layout (under the title; the window toolbar on the Mac); its text and focus live in `JumpSearch.shared`
 (Core/JumpSearch.swift), so the sheet keeps the text, and ⌘K and the Cycles tab's button set
 `JumpSearch.shared.isFocused`, which focuses the field even while Jump already shows. The navigation bar's segmented
-controls size their segments by title on iPhone, so the Cycles tab's four fit beside the Jump button.
+controls size their segments by title on iPhone, in 13-point type, so the Cycles tab's five fit between the Jump button
+and a screen's own button (keep a Cycles screen to one toolbar button on iPhone).
 
 The shell gives every screen (`ScreenContent` in App/RootView.swift) its own `NavigationStack`, the backdrop, full
 size and the shared toolbar items. A screen therefore:
@@ -416,12 +507,14 @@ URLs (`.onOpenURL` → `router.open`). Unknown or empty screens open Now; `t` tr
 ### Lifecycle hooks: FeatureHooks (App/FeatureHooks.swift)
 
 Features that act outside their screens implement the hooks enum already in their folder (`AlertsHooks`,
-`TimerHooks`, `SoundHooks`, `FocusHooks`, `MomentsHooks`; listed in `AppHooks.all`), all `@MainActor`, all optional:
+`TimerHooks`, `SoundHooks`, `FocusHooks`, `MomentsHooks`, `CalendarHooks`; listed in `AppHooks.all`), all
+`@MainActor`, all optional:
 
 | Hook | When |
 |---|---|
 | `launch()` | Once, after launch, before any window appears |
 | `becameActive()` / `enteredBackground()` | Each time the app comes to the front / leaves it |
+| `referenceChanged(from:)` | The clock moved onto another Saros series (`ClockStore` already runs on it): drop what was read from the old one and plan again (see "The reference series") |
 | `presentation(ofNotification identifier:) -> UNNotificationPresentationOptions?` | A notification arrives while the app is in front; return options for your own identifiers, nil for others. Unclaimed ones show as banner + sound |
 | `open(_ notification: NotificationResponse) -> Bool` | The user tapped a notification or chose an action; return true when handled. Unhandled taps open the notification's `AppLink` |
 
@@ -435,7 +528,8 @@ requires; Alerts registers its `BGAppRefreshTask` (`app.fractonica.clock.refresh
 platforms. Features never set the delegate. They post with identifier prefixes — `timer.` (Timer and Stopwatch),
 `alert.` (Alerts), `moment.` (Moments: a call's ring, and `moment.missed.` when it rings out) — attach an `AppLink`,
 request authorization themselves at a moment of intent, and share the system's budget of 64 pending requests: Alerts
-keeps at most 50 `alert.` requests pending and Moments at most 12 `moment.` ones, so Timer always has room. Alerts'
+keeps at most 42 `alert.` requests pending, Moments at most 12 `moment.` ones and the dates at most 8 `echo.` ones, so
+Timer always has room. Alerts'
 background refresh refills the moments (and their alarms) too.
 Never call `UNUserNotificationCenter` on the main thread (except `NotificationRouter.install()`, which must set the
 delegate there before launch finishes): it answers over synchronous XPC, and a slow daemon freezes the interface.
@@ -457,7 +551,8 @@ Make the calls from a nonisolated async function, a detached task or a serial qu
   and Settings. On iOS the Now toolbar has Sound (iPhone always, iPad while it plays), Focus and Settings; the Sound
   button and sidebar item show `waveform.circle.fill` while the sound plays.
 - The app is sandboxed (user-selected files read-write, printing); widgets are sandboxed too. Dark appearance
-  everywhere. No App Group: widgets configure themselves through their own App Intents, not the app's settings.
+  everywhere. Widgets configure themselves through their own App Intents, not the app's settings; the app group only
+  carries the reference Saros series to them.
 
 ## Widgets and App Shortcuts
 
@@ -479,8 +574,9 @@ identify the widgets people have placed):
 
 On iOS the extension also hosts the timer's Live Activity (Lock Screen and Dynamic Island; its attributes and views
 are in Shared/TimerActivity.swift, shared with the app). Widgets configure themselves through their own App Intents
-(Widgets/Intents: pure mode, the level …), not the app's settings (there is no App Group), and open the app with
-`AppLink`s. Their timelines are pure logic, checked by `Widgets/Checks`; `Widgets/Checks/Render/render.sh OUT_DIR
+(Widgets/Intents: pure mode, the level …), not the app's settings, and open the app with `AppLink`s. They share one
+thing with the app through the app group: the reference Saros series (`SarosReference`), read again before every
+timeline (`SnapshotTimeline.followReference`); the app reloads every timeline when it changes. Their timelines are pure logic, checked by `Widgets/Checks`; `Widgets/Checks/Render/render.sh OUT_DIR
 [unix time [zone]]` renders every family of every widget at its exact size into contact sheets on the Mac (no Home
 Screen needed), the way to look at a widget change.
 
@@ -545,7 +641,9 @@ iOS app: `UIBackgroundModes` audio + fetch, `BGTaskSchedulerPermittedIdentifiers
 app.fractonica.clock.hubsync],
 `NSSupportsLiveActivities`, `CADisableMinimumFrameDurationOnPhone` (120 Hz on ProMotion iPhones), `CFBundleURLTypes`
 (fractonica), dark `UIUserInterfaceStyle`, all orientations on iPad, portrait + landscape on iPhone; entitlement
-`com.apple.developer.usernotifications.time-sensitive`. macOS app: `CFBundleURLTypes`; entitlements app-sandbox,
+`com.apple.developer.usernotifications.time-sensitive`, and the app group `group.app.fractonica.clock` (the iOS widget
+extension too) for the reference Saros series (`SarosReference.suiteName`). macOS app: `CFBundleURLTypes`; entitlements
+app-sandbox, the app group `$(TeamIdentifierPrefix)app.fractonica.clock` (the Mac widget extension too),
 files.user-selected.read-write, print, `network.client` (the sandboxed WebContent process of any WKWebView dies at
 launch without it, even for a custom-scheme page such as the Diary's), time-sensitive notifications. Both apps, for the journal's hub (Features/Journal/Hub):
 `NSLocalNetworkUsageDescription`, `NSBonjourServices` [_fractonica-hub._tcp] (finding hubs on the network with
