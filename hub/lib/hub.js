@@ -203,6 +203,28 @@ export function openHub(dir, opts = {}) {
     return { code: showCode(code), expires: t + ttl, link: pairLink(code) };
   }
 
+  /** Prefixes of the kinds a non-admin client may hand to a service it pairs (`createDelegatedPairing`). */
+  const DELEGABLE = ['dispatch.'];
+
+  /**
+   * A pairing code made by a client without `admin` (the app pairing its dispatch, `POST /v1/pairings`): for a
+   * `service` only, with at most the maker's `read` and `write`, its kinds all under a delegable prefix (`dispatch.*`),
+   * for an hour at most. Needs `write`.
+   */
+  function createDelegatedPairing(client, body = {}) {
+    need(client, 'write');
+    if (!isObj(body)) throw bad('body must be an object');
+    const kind = body.kind ?? 'service';
+    if (kind !== 'service') throw forbidden('without admin, only a service can be paired');
+    const kinds = body.kinds === undefined ? ['dispatch.*'] : checkKinds(body.kinds);
+    if (!kinds.every((k) => DELEGABLE.some((p) => k.startsWith(p)))) throw forbidden(`without admin, only kinds under ${DELEGABLE.map((p) => `${p}*`).join(', ')}`);
+    const scopes = body.scopes === undefined ? ['read', 'write'] : checkScopes(body.scopes);
+    if (!scopes.every((s) => (s === 'read' || s === 'write') && has(client, s))) throw forbidden('without admin, only read and write the maker has');
+    const ttl = body.ttl === undefined ? 1800 : Number(body.ttl);
+    if (!(ttl >= 30 && ttl <= 3600)) throw bad('ttl must be 30 s … 1 hour');
+    return createPairing({ name: body.name ?? 'Fractonica Dispatch', kind, scopes, kinds, ttl });
+  }
+
   const failures = new Map(); // address -> [times]
   function redeem(body, address = '?') {
     const t = clock();
@@ -903,7 +925,7 @@ export function openHub(dir, opts = {}) {
   return {
     db, events, getMeta, setMeta, info, hubInfo, close,
     authenticate, has, need, listClients, getClient, patchClient, revokeClient, createClient,
-    createPairing, redeem, setupCode,
+    createPairing, createDelegatedPairing, redeem, setupCode,
     putRecord, batch, deleteRecord, getRecord, listRecords, changes, kinds, maxRev,
     missingBlobs, blobAdded, blobAccess, collectBlobs,
     vectorsFeed, takeJobs, hasQueuedJobs, finishJob, heartbeat, workerStatus, workerConnected, retryParked,

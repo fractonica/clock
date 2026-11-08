@@ -77,6 +77,12 @@ Defaults: scopes `["read","write","search"]`, kinds `["*"]`, ttl 600 s. An optio
 `23456789ABCDEFGHJKMNPQRSTVWXYZ` shown as `XXXX-XXXX`; input is case-insensitive and ignores `-` and spaces. The `link`
 uses the hub's LAN address so a phone can reach it, and is what the web UI shows as a QR code.
 
+**Delegated pairing.** A client without `admin` may make one kind of code: for a `service` with at most its own `read`
+and `write` on kinds under `dispatch.` only — how the app pairs its dispatch (fractonica-dispatch, dispatch/README.md),
+with a code the person runs on a computer. Needs `write`; `kind` must be `service` (the default), `kinds` all
+`dispatch.…` (default `["dispatch.*"]`), `scopes` within `read`, `write` (default both), `ttl` 30 s … 1 hour (default
+1800). Anything else is `403 forbidden` (`400` for a bad ttl).
+
 `POST /v1/pair` (no auth) — redeem a code
 ```json
 { "code": "k7qf2mxd", "name": "iPhone 17 Pro", "kind": "device", "platform": "iOS 26.1",
@@ -245,6 +251,30 @@ of the app's reference series is back at the date's phase in it. Each device sch
 series of the eclipse nearest the date (of all 180 solar Saros series) and how near it is, in Helions of that series
 (4 / 125 125 of a Saros): within 1 `cosmic`, 11 `legendary`, 77 (a Nuclide) `epic`, 385 (a Delta) `rare`, else
 `common`. Being `journal.*`, any device may edit or delete a date; the hub searches it by `emoji title` and `text`.
+
+`dispatch.calls` — a phone's calls for its dispatch (Moments' calls by dispatch; id `dispatch.calls.<install>`, written
+by the phone, read by the dispatch). `time` is when it was first written.
+```json
+{ "enabled": true, "name": "iPhone 17 Pro", "team": "G23G724G3D",
+  "push": { "token": "hex VoIP token", "environment": "development", "topic": "app.fractonica.clock.voip" },
+  "calls": [ { "id": "m2869450", "kind": "moment", "at": 1794166146.93, "until": 1794166232.43, "moment": 1794166162.47,
+               "index": 2869450, "test": false, "title": "Helion 31η Descending Node", "rarity": "rare",
+               "level": "helion", "boundary": "node" } ] }
+```
+`enabled: false` is the app's alert mode: nothing is pushed, the pairing stays. Each call is pushed once at `at` as an
+APNs VoIP push expiring at `until`; its `fx` is the call as listed (the dispatch adds `kind`). The phone lists its
+calls for the next few days, and anew whenever a call wakes it.
+
+`dispatch.status` — a dispatch's state (id `dispatch.status.<its client id>`, written by the dispatch on start, after
+each call and every `heartbeat` seconds; the app shows it).
+```json
+{ "name": "studio", "version": "1.0.0", "started": 1794165991.4, "seen": 1794166147.0, "heartbeat": 600,
+  "apns": "ready", "devices": [ { "id": "dispatch.calls.…", "name": "iPhone 17 Pro", "enabled": true, "calls": 26 } ],
+  "next": { "device": "iPhone 17 Pro", "at": 1794201562.1, "title": "Helion 32η Ascending Node" },
+  "last": { "at": 1794166146.9, "device": "iPhone 17 Pro", "call": "m2869450", "title": "…", "status": 200, "reason": null, "late": 0.015 },
+  "sent": 1 }
+```
+`apns` is `ready`, or why nothing can be pushed (`no APNs key`, `APNs key: …`).
 
 Sky events near an entry are **tags** `sky:<event>` with the event names of the printable diary's astronomy
 (`src/diary/astro/index.js` `EVENT_INFO`: `sky:full-moon`, `sky:solar-eclipse`, `sky:june-solstice`, …): the apps add

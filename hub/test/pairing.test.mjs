@@ -66,7 +66,9 @@ test('clients: admin only, list with counts, rename, revoke', async (t) => {
   t.after(h.close);
   const dev = await pairClient(h, { name: 'Mac' });
   assert.equal((await dev.get('/v1/clients')).status, 403);
-  assert.equal((await dev.post('/v1/pairings', {})).status, 403);
+  // without admin, only a dispatch service can be paired (below), nothing else
+  assert.equal((await dev.post('/v1/pairings', { kinds: ['*'] })).status, 403);
+  assert.equal((await dev.post('/v1/pairings', { kind: 'device' })).status, 403);
   await dev.put('/v1/records/a', rec());
   await dev.put('/v1/records/b', rec());
   const list = await h.admin.get('/v1/clients');
@@ -108,4 +110,43 @@ test('scopes and kinds: writes outside kinds are 403, reads leave them out', asy
   const k = kinds.body.kinds.find((x) => x.kind === 'sensor.temperature');
   assert.equal(k.count, 1);
   assert.deepEqual(k.sources, [{ id: sensor.client.id, name: 'Thermo', count: 1 }]);
+});
+
+test('delegated pairing: a device pairs its dispatch, a service limited to dispatch.* records', async (t) => {
+  const h = await testHub();
+  t.after(h.close);
+  const phone = await pairClient(h, { name: 'iPhone' });
+  const p = await phone.post('/v1/pairings', { name: 'Fractonica Dispatch' });
+  assert.equal(p.status, 201);
+  assert.match(p.body.code, /^[2-9A-HJKMNP-TV-Z]{4}-[2-9A-HJKMNP-TV-Z]{4}$/);
+  assert.ok(p.body.expires - h.clock.now() <= 1800 + 1);
+  // what a non-admin may not hand out
+  assert.equal((await phone.post('/v1/pairings', { kinds: ['journal.*'] })).status, 403);
+  assert.equal((await phone.post('/v1/pairings', { kinds: ['dispatch.*', 'journal.entry'] })).status, 403);
+  assert.equal((await phone.post('/v1/pairings', { scopes: ['read', 'search'] })).status, 403);
+  assert.equal((await phone.post('/v1/pairings', { scopes: ['admin'] })).status, 403);
+  assert.equal((await phone.post('/v1/pairings', { kind: 'worker' })).status, 403);
+  assert.equal((await phone.post('/v1/pairings', { ttl: 7200 })).status, 400);
+  // a read-only client cannot pair anything
+  const reader = await pairClient(h, { name: 'Dashboard', scopes: ['read'] });
+  assert.equal((await reader.post('/v1/pairings', {})).status, 403);
+
+  const r = await h.api().post('/v1/pair', { code: p.body.code, name: 'studio' });
+  assert.equal(r.status, 201);
+  assert.equal(r.body.client.kind, 'service');
+  assert.deepEqual(r.body.client.scopes, ['read', 'write']);
+  assert.deepEqual(r.body.client.kinds, ['dispatch.*']);
+  const dispatch = h.api(r.body.token);
+  // it reads and writes dispatch.* only
+  const calls = { kind: 'dispatch.calls', time: 1, created: 1, updated: 1, data: { enabled: true, calls: [] } };
+  assert.equal((await phone.put('/v1/records/dispatch.calls.a', calls)).status, 201);
+  await phone.put('/v1/records/j1', rec());
+  const seen = await dispatch.get('/v1/changes?after=0');
+  assert.deepEqual(seen.body.changes.map((c) => c.id), ['dispatch.calls.a']);
+  assert.equal((await dispatch.put('/v1/records/dispatch.status.x', { ...calls, kind: 'dispatch.status' })).status, 201);
+  assert.equal((await dispatch.put('/v1/records/j2', rec())).status, 403);
+  // and not the phone's record (not journal.*: only its writer edits it)
+  assert.equal((await dispatch.put('/v1/records/dispatch.calls.a', { ...calls, updated: 2 })).status, 403);
+  // the phone sees the dispatch's status
+  assert.ok((await phone.get('/v1/changes?after=0')).body.changes.some((c) => c.id === 'dispatch.status.x'));
 });
