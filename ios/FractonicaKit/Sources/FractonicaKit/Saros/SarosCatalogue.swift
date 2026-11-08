@@ -1,22 +1,72 @@
 import Foundation
 
-/// The solar Saros series running now, 117 … 156, and every eclipse of each, from NASA's catalogue (Espenak and Meeus,
-/// through saros-eclipse 0.1.0; `SarosData`, made by ios/scripts/make-saros.mjs). Any of them can carry the clock
-/// (`FractonicaClock.on(series:)`); Saros 141 is the reference by default (`SarosReference`).
+/// The solar Saros series and every eclipse of each, from NASA's catalogue (Espenak and Meeus, through saros-eclipse
+/// 0.1.0; `SarosData`, made by ios/scripts/make-saros.mjs): all 180, −2000 … 3000, the 40 running now (117 … 156) among
+/// them. Any running series can carry the clock (`FractonicaClock.on(series:)`); Saros 141 is the reference by default
+/// (`SarosReference`). Every eclipse of every series can be searched by time (`nearest(to:count:)`).
 ///
 ///     let series = SarosCatalogue.series(145)!          // 77 eclipses, 1639 … 3009
-///     series.eclipses[23].time                          // 2017-08-21 18:25:32 UTC, Unix seconds
+///     series.eclipses[21].time                          // 2017-08-21 18:25:32 UTC, Unix seconds
 ///     series.stats(at: now).driftPerSync                // −11.217 s
+///     SarosCatalogue.nearest(to: t, count: 3)           // the three eclipses closest to t, of any series
 public enum SarosCatalogue {
     /// The series with eclipses still to come and gone (the 40 ongoing ones).
     public static let ongoing = 117...156
 
+    /// Every series of the catalogue, by number (1 … 180).
+    public static let every: [SarosSeries] = decode()
+
     /// Every ongoing series, by number.
-    public static let all: [SarosSeries] = decode()
+    public static let all: [SarosSeries] = every.filter { ongoing.contains($0.number) }
 
     /// Series `number`; nil outside `ongoing`.
     public static func series(_ number: Int) -> SarosSeries? {
         ongoing.contains(number) ? all[number - ongoing.lowerBound] : nil
+    }
+
+    /// Series `number` of the whole catalogue, ended or still to begin too; nil outside 1 … 180.
+    public static func anySeries(_ number: Int) -> SarosSeries? {
+        every.indices.contains(number - 1) ? every[number - 1] : nil
+    }
+
+    /// Every eclipse of every series in order of time (13 206 of them).
+    public static let timeline: [SarosEclipse] = every.flatMap(\.eclipses).sorted { $0.unixMilliseconds < $1.unixMilliseconds }
+    /// `timeline`'s times (Unix seconds).
+    static let timelineTimes: [Double] = timeline.map(\.time)
+
+    /// The `count` eclipses closest to the span `from` … `to` (Unix seconds; a moment when they are equal), of any
+    /// series, closest first: an eclipse inside the span is at distance 0, others as far as the span's nearer end.
+    /// Ties go to the earlier eclipse.
+    public static func nearest(from start: Double, to end: Double, count: Int) -> [SarosEclipse] {
+        let times = timelineTimes
+        guard count > 0, !times.isEmpty, !start.isNaN, !end.isNaN else { return [] }
+        let lo = min(start, end), hi = max(start, end)
+        func distance(_ i: Int) -> Double { times[i] < lo ? lo - times[i] : times[i] > hi ? times[i] - hi : 0 }
+        // the first eclipse at or after `lo`, then walk outwards from both sides taking the nearer each time (the
+        // earlier on a tie)
+        var a = 0, b = times.count
+        while a < b {
+            let m = (a + b) / 2
+            if times[m] < lo { a = m + 1 } else { b = m }
+        }
+        var left = a - 1, right = a
+        var picked: [Int] = []
+        while picked.count < count, left >= 0 || right < times.count {
+            if right >= times.count || (left >= 0 && distance(left) <= distance(right)) {
+                picked.append(left)
+                left -= 1
+            } else {
+                picked.append(right)
+                right += 1
+            }
+        }
+        // inside the span every eclipse is at 0: in time order
+        return picked.sorted { distance($0) != distance($1) ? distance($0) < distance($1) : $0 < $1 }.map { timeline[$0] }
+    }
+
+    /// The `count` eclipses closest to the moment t, closest first.
+    public static func nearest(to t: Double, count: Int) -> [SarosEclipse] {
+        nearest(from: t, to: t, count: count)
     }
 
     private static func decode() -> [SarosSeries] {
@@ -89,6 +139,14 @@ public struct SarosSeries: Sendable, Identifiable, Hashable {
 
     /// 1972-01-01T00:00:00Z, when UTC took its present form (SPEC §2.1).
     static let utcEra: Int64 = 63_072_000
+
+    /// The length of a Helion (4 / 125 125 of a Saros) on a clock this series carries, around its eclipse `ordinal`:
+    /// of the Saros after it (`after`) or before it, else the one on the other side at the series' ends.
+    public func helion(near ordinal: Int, after: Bool) -> Double {
+        guard eclipses.count > 1 else { return 4 * 6_585.32 * 86_400 / 125_125 }
+        let k = min(eclipses.count - 2, max(0, after ? ordinal : ordinal - 1))
+        return (eclipses[k + 1].time - eclipses[k].time) * 4 / 125_125
+    }
 
     /// How eclipses of each kind the series has: partial, annular, total, hybrid.
     public var kinds: [SarosEclipseType.Kind: Int] {

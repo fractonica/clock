@@ -16,6 +16,57 @@ import Testing
         }
     }
 
+    @Test func everySeriesOfTheCatalogue() {
+        #expect(SarosCatalogue.every.map(\.number) == Array(1...180))
+        #expect(SarosCatalogue.every.reduce(0) { $0 + $1.eclipses.count } == 13_206)
+        #expect(SarosCatalogue.timeline.count == 13_206)
+        #expect(zip(SarosCatalogue.timeline, SarosCatalogue.timeline.dropFirst()).allSatisfy { $0.unixMilliseconds <= $1.unixMilliseconds })
+        for series in SarosCatalogue.every {
+            #expect(series.eclipses.enumerated().allSatisfy { $0.offset == $0.element.ordinal && $0.element.series == series.number })
+            #expect(zip(series.eclipses, series.eclipses.dropFirst()).allSatisfy { $0.unixMilliseconds < $1.unixMilliseconds })
+        }
+        // the ongoing series are the same records
+        #expect(SarosCatalogue.series(145) == SarosCatalogue.anySeries(145))
+        #expect(SarosCatalogue.series(116) == nil && SarosCatalogue.anySeries(116)?.number == 116)
+        #expect(SarosCatalogue.anySeries(0) == nil && SarosCatalogue.anySeries(181) == nil)
+        // paths exist from 1582 to 2500 only (saros-geo has 101 … 173)
+        #expect(SarosCatalogue.anySeries(100)!.eclipses.allSatisfy { $0.pathRecord == nil })
+        #expect(SarosCatalogue.anySeries(116)!.eclipses.contains { $0.pathRecord != nil })
+    }
+
+    @Test func nearestEclipses() {
+        let list = SarosCatalogue.timeline
+        let times = list.map(\.time)
+        func brute(_ lo: Double, _ hi: Double, _ n: Int) -> [Int] {
+            let d = times.map { $0 < lo ? lo - $0 : $0 > hi ? $0 - hi : 0 }
+            return d.indices.sorted { d[$0] != d[$1] ? d[$0] < d[$1] : $0 < $1 }.prefix(n).map { list[$0].id }
+        }
+        // moments across the catalogue, a day either side of eclipses, and the catalogue's edges
+        var moments: [Double] = [times[0] - 1e9, times.last! + 1e9, 0, 1_793_000_000, -5_000_000_000, 30_000_000_000]
+        for k in stride(from: 0, to: list.count, by: 997) { moments += [times[k], times[k] + 86_400, times[k] - 43_200] }
+        for t in moments {
+            #expect(SarosCatalogue.nearest(to: t, count: 3).map(\.id) == brute(t, t, 3))
+            #expect(SarosCatalogue.nearest(from: t - 43_200, to: t + 43_200, count: 5).map(\.id) == brute(t - 43_200, t + 43_200, 5))
+        }
+        // 2017-08-21: the Great American Eclipse, Saros 145 #21
+        let aug21 = 1_503_273_600.0 // 2017-08-21 00:00 UTC
+        let found = SarosCatalogue.nearest(from: aug21, to: aug21 + 86_400, count: 3)
+        #expect(found.first?.series == 145 && found.first?.ordinal == 21)
+        #expect(SarosCatalogue.nearest(to: 0, count: 0).isEmpty && SarosCatalogue.nearest(to: .nan, count: 3).isEmpty)
+    }
+
+    @Test func helionOfASeries() {
+        let s = SarosCatalogue.series(141)!
+        let saros = s.eclipses[21].time - s.eclipses[20].time
+        #expect(s.helion(near: 20, after: true) == saros * 4 / 125_125)
+        #expect(s.helion(near: 21, after: false) == saros * 4 / 125_125)
+        // the ends use the Saros on the side there is
+        #expect(s.helion(near: 0, after: false) == (s.eclipses[1].time - s.eclipses[0].time) * 4 / 125_125)
+        let last = s.eclipses.count - 1
+        #expect(s.helion(near: last, after: true) == (s.eclipses[last].time - s.eclipses[last - 1].time) * 4 / 125_125)
+        #expect(abs(s.helion(near: 30, after: true) - 18_189) < 30)
+    }
+
     @Test func saros141IsTheLibrarysTable() {
         let s = SarosCatalogue.series(141)!
         #expect(s.unixMilliseconds == Fractonica.saros141UnixMilliseconds)

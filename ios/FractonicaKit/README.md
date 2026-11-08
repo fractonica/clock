@@ -25,7 +25,10 @@ Sources/FractonicaKit/Saros/SarosData.swift by `node ios/scripts/make-saros.mjs`
 milliseconds by the library's own `F.toUnix(F.correctJulianTimestamp(TT))`; 141 equals `F.defaults.unixTimestamps`). A
 series' solar sync counts from its first Alpha in the UTC era (`SarosSeries.solarAnchor`: the first ordinal ≡ 0 mod 4 on
 or after 1972-01-01; 141's is 20). `SarosDrift` reads a series' drift a sync, its lap and how far the lap runs past an
-Alpha. `Fixtures/series.json` (`node ios/scripts/make-series-fixtures.mjs`) holds clocks on Saros 117, 128, 145 and 152
+Alpha. The catalogue holds every solar series too, 1 … 180 (`SarosCatalogue.every`, `anySeries(_:)`), and every
+eclipse in order of time (`SarosCatalogue.timeline`, 13 206): `nearest(to:count:)` / `nearest(from:to:count:)` find
+the eclipses closest to a moment or a span, and `SarosSeries.helion(near:after:)` the length of a Helion of a series
+around one of its eclipses. `Fixtures/series.json` (`node ios/scripts/make-series-fixtures.mjs`) holds clocks on Saros 117, 128, 145 and 152
 to the web model built on their catalogues and anchors (`createModel({ series, timestamps, anchor })`), and
 `SarosCatalogueTests` reads every series at every level without leaving 128 bits.
 
