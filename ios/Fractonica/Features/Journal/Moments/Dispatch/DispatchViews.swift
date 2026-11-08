@@ -194,6 +194,9 @@ struct DispatchPairSheet: View {
             code = try await dispatch.makeCode()
             // the hub syncs right away while the sheet waits (the dispatch's status comes back through it)
             Task { await JournalHooks.refresh?() }
+        } catch HubError.api(let e) where e.code == .forbidden && e.message.contains("admin") {
+            // a hub started before dispatch pairing: only an admin may make codes there
+            problem = "Your hub is running an older version that can't make dispatch codes. Restart it (Ctrl-C where it runs, then hub/start.sh) and try again."
         } catch {
             problem = "The hub could not make a code: \(error.localizedDescription)"
         }
