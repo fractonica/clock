@@ -32,6 +32,9 @@ final class MomentStore {
             refreshStats()
             refillSoon()
             scheduleWake()
+            #if os(iOS)
+            if settings.calls != oldValue.calls || settings.ringtone != oldValue.ringtone { MomentCallKit.shared.update() }
+            #endif
         }
     }
     private(set) var stats = MomentStats() {
@@ -61,6 +64,8 @@ final class MomentStore {
     @ObservationIgnored private var refillTask: Task<Void, Never>?
     @ObservationIgnored private var refillAgain = false
     @ObservationIgnored private var debounce: Task<Void, Never>?
+    /// Whether moments rang by dispatch at the last look (a change refills).
+    @ObservationIgnored private var wasDispatched = false
     @ObservationIgnored private var statsTask: Task<Void, Never>?
     /// What became of each recent call, by moment.
     @ObservationIgnored private var marks: [Int64: CallMark] = [:]
@@ -105,6 +110,10 @@ final class MomentStore {
     func start() {
         guard !started else { return }
         started = true
+        #if os(iOS)
+        // PushKit at launch: a push that launched the app is delivered to the registry made now
+        MomentCallKit.shared.update()
+        #endif
         observeJournal()
         observeSettings()
         refreshStats()
@@ -126,6 +135,9 @@ final class MomentStore {
     func becameActive() {
         start()
         active = true
+        #if os(iOS)
+        MomentCallKit.shared.becameActive()
+        #endif
         Task {
             alarmAuthorization = MomentAlarms.authorization()
             await readAuthorization()
@@ -196,7 +208,29 @@ final class MomentStore {
 
     /// Whether the call screen may ring by itself while the app is in front (the settings' "Ring in the app", and no
     /// `-FXMomentsAuto 0`). Every way it opens without a tap goes through `openByItself(_:)`, which asks this.
-    var opensByItself: Bool { settings.enabled && settings.autoOpen && launch.autoOpen }
+    var opensByItself: Bool { settings.enabled && settings.autoOpen && launch.autoOpen && !dispatched }
+
+    /// Moments ring as real calls pushed by the dispatch: calls chosen, a dispatch paired with the hub (it has written
+    /// its status there) and a push token. Until then, and in alert mode, alarms ring them. (Then the app's own call
+    /// screen does not ring by itself either: CallKit rings in front too.)
+    var dispatched: Bool {
+        #if os(iOS)
+        let d = MomentDispatch.shared
+        return settings.calls == .dispatch && d.hasHub && d.isPaired && d.pushToken != nil
+        #else
+        return false
+        #endif
+    }
+
+    /// A call answered or declined on the system's call screen (`MomentCallKit`): its call opens picked up (the
+    /// cameras film once the app is in front), and it is marked at once — no "Missed Call", no ringing again.
+    func pickedUpByCall(index: Int64, test: Bool, answer: Bool) {
+        pickUp(index: index, test: test, answer: answer)
+        guard !test, let m = calendar.moment(index) else { return }
+        if marks[m.index] == nil || marks[m.index]?.state == .ringing { mark(m, answer ? .answered : .declined) }
+        MomentScheduling.forget(m.index)
+        refillSoon()
+    }
 
     /// The missed calls not looked at yet: the badge's number.
     var unseenMissed: Int { stats.missedCount(after: missedSeen) }
@@ -402,7 +436,9 @@ final class MomentStore {
         // a test call's moment is made up: it rings the lead's mean Flavons before it, until it would ring out
         let after = Double(MomentCalendar.ringFlavons - MomentCalendar.leadFlavons) * flavon
         if let test = testCall, test.time - Double(MomentCalendar.leadFlavons) * flavon <= now + 0.2 {
-            if instant == nil, now < test.time + after {
+            if dispatched, now < test.time + after {
+                // the dispatch rings it, as a call
+            } else if instant == nil, now < test.time + after {
                 clearTest()
                 openCall(test, demo: true)
             } else if now >= test.time + after {
@@ -446,8 +482,15 @@ final class MomentStore {
             _ = JournalStore.shared.revision
         } onChange: { [weak self] in
             Task { @MainActor in
-                self?.refreshStats()
-                self?.observeJournal()
+                guard let self else { return }
+                self.refreshStats()
+                // a dispatch paired (its status arrived from the hub): the calls move over to it
+                if self.dispatched != self.wasDispatched {
+                    self.wasDispatched = self.dispatched
+                    self.refillSoon()
+                    self.scheduleWake()
+                }
+                self.observeJournal()
             }
         }
     }
@@ -520,13 +563,19 @@ final class MomentStore {
         repeat {
             refillAgain = false
             guard !launch.isPreview else { break }
-            let alarms = ringsAsAlarms && launch.autoOpen
+            let dispatched = self.dispatched
+            let alarms = !dispatched && ringsAsAlarms && launch.autoOpen
             let test = testCall.map { (fire: $0.time - Double(MomentCalendar.leadFlavons) * flavon, title: $0.ledTitle()) }
-            let input = MomentScheduling.Input(settings: settings, zone: zone, pure: AppSettings.shared.pure, now: now, alarms: alarms,
+            // rung by dispatch, no ring notifications either (their "Missed Call" stays)
+            let input = MomentScheduling.Input(settings: settings, zone: zone, pure: AppSettings.shared.pure, now: now, alarms: alarms || dispatched,
                                                unseen: unseenMissed, covered: Set(marks.keys), test: test)
             let calendar = calendar
-            // the alarms first: they ring whatever the notification centre does
+            // the alarms first: they ring whatever the notification centre does (none while the dispatch rings)
+            #if os(iOS)
+            if dispatched { MomentAlarms.clear() }
+            #endif
             await syncAlarms(alarms)
+            publishDispatch(dispatched)
             let requests = authorization.canPost && (settings.enabled || testCall != nil)
                 ? await Task.detached(priority: .utility) { MomentScheduling.requests(input, calendar: calendar) }.value
                 : []
@@ -566,6 +615,38 @@ final class MomentStore {
             }
         }
         await MomentAlarms.sync(Array(calls.prefix(MomentAlarms.window)))
+        #endif
+    }
+
+    /// The schedule the dispatch rings (`MomentDispatch`): the next calls for the next days while moments ring by
+    /// dispatch, else alert mode (written only when a schedule was ever written: the pairing stays either way).
+    private func publishDispatch(_ dispatched: Bool) {
+        #if os(iOS)
+        let enabled = dispatched && (settings.enabled || testCall != nil)
+        var calls: [DispatchCall] = []
+        if enabled {
+            let notation = AppSettings.shared.wording.notation
+            let horizon = now + DispatchSchedule.horizon
+            if settings.enabled {
+                let list = calendar.upcoming(after: now, count: DispatchSchedule.maxCalls, scan: 2000) { [settings, zone] in settings.prompts($0, zone: zone) }
+                for m in list where marks[m.index] == nil {
+                    let at = calendar.promptTime(of: m), until = calendar.ringEnd(of: m)
+                    guard at <= horizon, until > now + 1 else { continue }
+                    calls.append(DispatchCall(id: "m\(m.index)", at: at, until: until, moment: m.time, index: m.index, title: m.title(notation),
+                                              rarity: m.rarity.rawValue, level: m.level.rawValue, boundary: m.boundary.rawValue))
+                }
+            }
+            if let test = testCall {
+                let at = test.time - Double(MomentCalendar.leadFlavons) * flavon
+                let until = at + Double(MomentCalendar.ringFlavons) * flavon
+                if until > now + 1 {
+                    calls.append(DispatchCall(id: "t\(test.index)", at: at, until: until, moment: test.time, index: test.index, test: true,
+                                              title: test.title(notation), rarity: test.rarity.rawValue, level: test.level.rawValue,
+                                              boundary: test.boundary.rawValue))
+                }
+            }
+        }
+        MomentDispatch.shared.publish(enabled: enabled, calls: calls.sorted { $0.at < $1.at })
         #endif
     }
 

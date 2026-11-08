@@ -64,7 +64,10 @@ targets:
         NSSupportsLiveActivities: true
         # ProMotion iPhones run CADisplayLink / TimelineView(.animation) above 60 Hz only with this key (Focus)
         CADisableMinimumFrameDurationOnPhone: true
-        UIBackgroundModes: [audio, fetch]
+        # voip: Moments' calls by dispatch arrive as PushKit VoIP pushes, rung by CallKit (Features/Journal/Moments/Dispatch)
+        UIBackgroundModes: [audio, fetch, voip]
+        # the developer team, which the dispatch's APNs provider token names (MomentDispatch.team)
+        FXTeamID: $(DEVELOPMENT_TEAM)
         BGTaskSchedulerPermittedIdentifiers: [app.fractonica.clock.refresh, app.fractonica.clock.hubsync]
         # the journal's hub: Bonjour discovery and plain-http hubs on the local network (Features/Journal/Hub)
         NSLocalNetworkUsageDescription: Fractonica finds your Fractonica Hub on the local network and syncs your journal with it.
@@ -95,6 +98,8 @@ targets:
       properties:
         # timer notifications break through Focus (.timeSensitive)
         com.apple.developer.usernotifications.time-sensitive: true
+        # push: the VoIP pushes of Moments' calls by dispatch (Xcode signs App Store builds for production)
+        aps-environment: development
         # the reference Saros series the widgets read (SarosReference.suiteName)
         com.apple.security.application-groups:
           - group.app.fractonica.clock

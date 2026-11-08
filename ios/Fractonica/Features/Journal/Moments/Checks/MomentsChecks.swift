@@ -26,6 +26,7 @@ struct MomentsChecks {
         soundChecks()
         reelChecks()
         await reelRenderChecks()
+        dispatchChecks()
         Checks.finish()
     }
 }
@@ -740,4 +741,78 @@ private func writeFilm(to url: URL, from start: Double, to end: Double, rate: Do
     writer.finishWriting { done.signal() }
     done.wait()
     return writer.status == .completed ? start : nil
+}
+
+// MARK: - Calls by dispatch
+
+/// The schedule the phone keeps on the hub and the dispatch reads, a push's call, the dispatch's status, the
+/// provisioning profile's push environment and the pairing command (`DispatchSchedule.swift`).
+private func dispatchChecks() {
+    // a push's call, as the dispatch sends it back (`fx`: the call as listed, `kind` added)
+    let payload: [AnyHashable: Any] = ["aps": [String: Any](), "fx": [
+        "id": "m123", "kind": "moment", "at": 1_794_000_000.5, "until": 1_794_000_086.0, "moment": 1_794_000_015.5,
+        "index": 123, "test": false, "title": "Helion 34η Ascending Node", "rarity": "rare", "level": "helion", "boundary": "start",
+    ]]
+    let call = DispatchCall(payload: payload)
+    check(call?.index == 123 && call?.title == "Helion 34η Ascending Node" && call?.isMoment == true && call?.until == 1_794_000_086,
+          "a push's call is read: \(String(describing: call))")
+    // the dispatch's own test (no moment), and what is no call
+    let test = DispatchCall(payload: ["fx": ["id": "test-1", "kind": "test", "at": 1.0, "until": 31.0, "title": "Fractonica Dispatch"]])
+    check(test?.isMoment == false && test?.index == 0 && test?.moment == 1, "the dispatch's test call is no moment")
+    check(DispatchCall(payload: ["aps": [String: Any]()]) == nil && DispatchCall(payload: ["fx": ["id": "x"]]) == nil, "no call without its times")
+
+    // the schedule's record: what the dispatch reads (dispatch/lib/dispatcher.js readSchedule)
+    let schedule = DispatchSchedule(enabled: true, name: "iPhone", team: "G23G724G3D",
+                                    push: .init(token: String(repeating: "ab", count: 32), environment: "development", topic: "app.fractonica.clock.voip"),
+                                    calls: [call!])
+    let data = schedule.data
+    check(data["enabled"] == .bool(true) && data["team"]?.string == "G23G724G3D", "enabled and the team")
+    check(data["push"]?["topic"]?.string == "app.fractonica.clock.voip" && data["push"]?["environment"]?.string == "development"
+          && data["push"]?["token"]?.string?.count == 64, "where to push")
+    if case .array(let calls)? = data["calls"], let first = calls.first {
+        check(first["id"]?.string == "m123" && first["at"]?.number == 1_794_000_000.5 && first["until"]?.number == 1_794_000_086
+              && first["title"]?.string == "Helion 34η Ascending Node", "each call: id, first ring, ring-out, caller")
+    } else {
+        check(false, "the calls are a list")
+    }
+    check(DispatchSchedule(data: data) == schedule, "the schedule round-trips through its record")
+    var tokenless = schedule
+    tokenless.push.token = nil
+    check(tokenless.data["push"]?["token"] == nil && DispatchSchedule(data: tokenless.data) == tokenless, "no token yet: none written")
+    check(DispatchSchedule.recordID(install: "abc") == "dispatch.calls.abc" && DispatchSchedule.kind.hasPrefix("dispatch."),
+          "the record lives under dispatch.*, which the dispatch may read")
+
+    // the dispatch's status
+    let status = HubRecord(id: "dispatch.status.c_1", kind: "dispatch.status", time: 100, data: .object([
+        "name": .string("studio"), "version": .string("1.0.0"), "seen": .number(1000), "heartbeat": .number(600),
+        "apns": .string("ready"), "sent": .number(4),
+        "last": .object(["at": .number(990), "title": .string("Nuclide ε#3 Start"), "status": .number(200)]),
+    ]), created: 100, updated: 1000)
+    let s = DispatchStatus(record: status)
+    check(s?.name == "studio" && s?.canPush == true && s?.sent == 4 && s?.last?.ok == true && s?.last?.title == "Nuclide ε#3 Start",
+          "the dispatch's status is read")
+    check(s?.isOnline(at: 1000 + 1800) == true && s?.isOnline(at: 1000 + 1900) == false, "online for three heartbeats")
+    var noKey = status
+    noKey.data = .object(["name": .string("studio"), "apns": .string("no APNs key")])
+    check(DispatchStatus(record: noKey)?.canPush == false, "a dispatch without its key cannot push")
+    check(DispatchStatus(record: HubRecord(id: "x", kind: "journal.entry", time: 0, data: .object([:]), created: 0, updated: 0)) == nil,
+          "other records are no status")
+
+    // the profile's push environment, and the pairing command
+    let profile = "<plist><dict><key>Entitlements</key><dict><key>aps-environment</key>\n\t\t<string>development</string></dict></dict></plist>"
+    check(DispatchSetup.apsEnvironment(profile: profile) == "development", "a development profile pushes to the sandbox")
+    check(DispatchSetup.apsEnvironment(profile: profile.replacingOccurrences(of: ">development<", with: ">production<")) == "production",
+          "a distribution profile to production")
+    check(DispatchSetup.apsEnvironment(profile: nil) == "production" && DispatchSetup.apsEnvironment(profile: "<plist/>") == "production",
+          "no profile (the App Store): production")
+    check(DispatchSetup.command(code: "7KQ2-M9XD", hub: URL(string: "http://192.168.0.29:8787/")) == "node dispatch/bin/dispatch.mjs 7KQ2-M9XD --hub http://192.168.0.29:8787",
+          "the command: \(DispatchSetup.command(code: "7KQ2-M9XD", hub: URL(string: "http://192.168.0.29:8787/")))")
+    check(DispatchSetup.hex(Data([0x0a, 0xff, 0x00])) == "0aff00", "tokens in hex")
+
+    // the settings: calls by dispatch round-trip, old settings read as alarms
+    var settings = MomentSettings()
+    settings.calls = .dispatch
+    let encoded = try? JSONEncoder().encode(settings)
+    check(encoded.flatMap { try? JSONDecoder().decode(MomentSettings.self, from: $0) }?.calls == .dispatch, "the call mode is kept")
+    check((try? JSONDecoder().decode(MomentSettings.self, from: Data(#"{"enabled":true}"#.utf8)))?.calls == .alarms, "older settings ring alarms")
 }

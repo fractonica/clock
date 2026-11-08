@@ -212,6 +212,8 @@ final class SyncEngine {
         pendingCount = store.pendingRecords().count
         startPathMonitor()
         requestPass()
+        // at launch the app is active before the store loads: the long poll could not start then
+        startLive()
     }
 
     /// The store saved or deleted something: sync a few seconds later (repeated saves push the pass back).

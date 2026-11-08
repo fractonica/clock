@@ -101,9 +101,10 @@ final class JournalStore: RecordSyncing {
     }
 
     /// Live records of other kinds (from other hub clients), newest first. Kept dates (`journal.date`, the Saros
-    /// screen's) are not among them: they have a home of their own.
+    /// screen's) and the dispatch's records (`dispatch.*`, Moments' calls) are not among them: they have homes of their own.
     var otherRecords: [HubRecord] {
-        records.values.filter { !$0.isDeleted && $0.kind != JournalEntry.kind && $0.kind != Self.dateKind }.sorted(by: Self.newestFirst)
+        records.values.filter { !$0.isDeleted && $0.kind != JournalEntry.kind && $0.kind != Self.dateKind && !$0.kind.hasPrefix("dispatch.") }
+            .sorted(by: Self.newestFirst)
     }
 
     /// The kind of the kept dates (`SavedDate.kind`).
