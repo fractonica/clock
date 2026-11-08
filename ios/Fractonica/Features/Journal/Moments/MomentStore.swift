@@ -245,6 +245,16 @@ final class MomentStore {
         instant = InstantRequest(moment: madeUp(at: now + (seconds ?? lead), level: level, boundary: boundary), demo: true)
     }
 
+    /// The dispatch's own test call (`dispatch test`, `--call`), answered or declined: a made-up moment as Test a Call's,
+    /// 2 Flavons after its first ring, with the call's level and boundary (it is named like the next real moment). Never
+    /// a moment of the calendar: nothing is marked.
+    func pickedUpDispatchTest(_ call: DispatchCall, answer: Bool) {
+        guard instant == nil else { return }
+        let m = madeUp(at: call.at + Double(MomentCalendar.leadFlavons) * flavon,
+                       level: MomentLevel(rawValue: call.level), boundary: MomentBoundary(rawValue: call.boundary))
+        instant = InstantRequest(moment: m, demo: true, start: answer ? .answered : .declined(now))
+    }
+
     /// Rings a made-up moment's call in `seconds` (its moment 2 Flavons later): with the phone locked by then, as the
     /// system's alarm (asked for here when it never was), or as a notification without alarms.
     func scheduleTest(in seconds: Double) {

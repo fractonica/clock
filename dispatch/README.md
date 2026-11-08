@@ -28,12 +28,27 @@ Choosing *Alarms* in the app turns the calls off; the dispatch stays paired, so 
 ```
 node dispatch/bin/dispatch.mjs CODE [--hub URL]   pair with the hub, then run
 node dispatch/bin/dispatch.mjs                    run with the saved pairing
+node dispatch/bin/dispatch.mjs --call 2m          run, and ring every phone at that time too: a test call
 node dispatch/bin/dispatch.mjs status             the pairing, the APNs key, the phones and their next calls
 node dispatch/bin/dispatch.mjs test               ring every phone now, to try the setup
+node dispatch/bin/dispatch.mjs test --call 14:30  ring every phone then, and quit: beside a dispatch that runs
 node dispatch/bin/dispatch.mjs unpair             forget the pairing (revoke it on the hub's page too)
 
---hub URL  --apns-key FILE  --key-id ID  --team ID  --name NAME  --data DIR   (--help for each)
+--hub URL  --apns-key FILE  --key-id ID  --team ID  --name NAME  --data DIR  --call WHEN   (--help for each)
 ```
+
+## Test calls
+
+To try a call without waiting for a moment, give the dispatch a time with `--call`: a delay (`90s`, `2m`, `1h30m`, or
+`45` for seconds), a time of day (`14:30`, `14:30:15`: today, or tomorrow once it has passed) or a date and time
+(`2026-11-09T14:30`). Give it more than once for more calls. Each phone in Calls mode rings then like a real call:
+named like its next moment and ringing as long. Answer it, then open Fractonica from the call, and it opens as the
+Moments screen's *Test a Call* does: the call screen picked up and filming. Decline it, and it is declined the same
+way. A test call is never a moment of the calendar.
+
+Only one dispatch runs per data folder, since two would ring every call twice. While one runs, a second start says so.
+To ring a test call beside the running one, use `test --call` instead: it waits for the time, rings, and quits,
+leaving the running dispatch's state alone.
 
 The pairing and state live in `dispatch/data/` (or `--data`): `config.json` (the hub, the dispatch's token, the key's
 id), the key, and `state.json` (the schedules held, the calls sent, the change feed's cursor).

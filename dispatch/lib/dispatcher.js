@@ -9,6 +9,10 @@
 // ringing are left; never when the record says `enabled: false` (the app's alert mode: the pairing stays). The
 // schedules are kept on disk too, so the calls go on while the hub cannot be reached. The dispatch's own record,
 // `dispatch.status.<client id>`, says it is alive (every `heartbeat` seconds) and how its last push went.
+//
+// Test calls (`dispatch test`, `--call WHEN`) go to every phone that rings by dispatch: `kind: 'test'`, named and timed
+// like the phone's next moment, as the app's Test a Call is; the phone opens one as a test, never as a moment of its
+// calendar.
 
 const KIND_CALLS = 'dispatch.calls';
 const KIND_STATUS = 'dispatch.status';
@@ -47,8 +51,11 @@ export class Dispatcher {
    * @param {string} o.clientId  this dispatch's hub client id
    */
   constructor({ hub, apns, store, clientId, name = 'Dispatch', version = '1.0.0', apnsProblem = null, now = () => Date.now() / 1000,
-                log = () => {}, minRing = 10, heartbeat = 600, wait = 30 }) {
+                log = () => {}, minRing = 10, heartbeat = 600, wait = 30, trials = [] }) {
     Object.assign(this, { hub, apns, store, clientId, name, version, apnsProblem, now, log, minRing, heartbeat, wait });
+    /** Test calls at chosen times (`--call`), Unix seconds. */
+    this.trials = [...trials].sort((a, b) => a - b);
+    this.announced = new Set();
     const s = store.load() ?? {};
     this.cursor = s.cursor ?? 0;
     this.devices = new Map(Object.entries(s.devices ?? {}));
@@ -141,10 +148,11 @@ export class Dispatcher {
     }
   }
 
-  /** A device's calls still to send, soonest first. */
+  /** A device's calls still to send (its schedule's and the test calls), soonest first. */
   pending(device, t = this.now()) {
     if (!device.enabled || !device.push.token || !device.push.topic) return [];
-    return device.calls
+    const calls = this.trials.length ? [...device.calls, ...this.trials.map((at) => this.testCall(device, at))] : device.calls;
+    return calls
       .filter((c) => !this.sent.has(`${device.id}|${c.id}`) && c.until - Math.max(t, c.at) >= this.minRing)
       .sort((a, b) => a.at - b.at);
   }
@@ -173,6 +181,13 @@ export class Dispatcher {
     const t = this.now();
     const due = [];
     for (const d of this.devices.values()) for (const c of this.pending(d, t)) if (c.at <= t + 0.02) due.push({ device: d, call: c });
+    for (const at of this.trials) {
+      if (at > t + 0.02 || this.announced.has(at)) continue;
+      this.announced.add(at);
+      const id = this.testCall({ calls: [] }, at).id;
+      const taken = due.some((x) => x.call.id === id) || [...this.sent.keys()].some((k) => k.endsWith(`|${id}`));
+      if (!taken) this.log('test call: no phone rings by dispatch (choose Calls in the app: Moments › Settings › Calls)');
+    }
     if (due.length) {
       for (const { device, call } of due) this.sent.set(`${device.id}|${call.id}`, t);
       this.persist();
@@ -200,17 +215,29 @@ export class Dispatcher {
     const late = this.now() - call.at;
     this.count += r.ok ? 1 : 0;
     this.last = { at: this.now(), device: device.name, call: call.id, title: call.title ?? null, status: r.status, reason: r.reason, late: Math.round(late * 1000) / 1000 };
-    this.log(`${r.ok ? 'called' : 'FAILED'} ${device.name}: ${call.title ?? call.id}${r.ok ? '' : ` (${r.status} ${r.reason})`}${late > 1 ? `, ${late.toFixed(1)} s late` : ''}`);
+    this.log(`${r.ok ? 'called' : 'FAILED'} ${device.name}: ${call.kind === 'test' ? 'test call, ' : ''}${call.title ?? call.id}${r.ok ? '' : ` (${r.status} ${r.reason})`}${late > 1 ? `, ${late.toFixed(1)} s late` : ''}`);
     return r;
   }
 
-  /** A test call to every phone that rings by dispatch, now: rings for `seconds`. */
-  async test(seconds = 30) {
-    const t = this.now();
+  /**
+   * A device's test call ringing from `at`: named like its next moment's call and ringing as long (a call of the
+   * app's own calendar: eleven Flavons), as the app's Test a Call is; `kind: 'test'`, so the phone opens it as a test.
+   */
+  testCall(device, at) {
+    const moments = device.calls.filter((c) => (c.kind ?? 'moment') === 'moment' && !c.test);
+    const model = moments.filter((c) => c.at >= at).sort((a, b) => a.at - b.at)[0] ?? moments.at(-1) ?? null;
+    const call = { id: `test-${Math.round(at)}`, kind: 'test', at, until: at + (model ? Math.min(600, model.until - model.at) : 90),
+                   title: model?.title ?? 'Fractonica' };
+    for (const k of ['rarity', 'level', 'boundary']) if (typeof model?.[k] === 'string') call[k] = model[k];
+    return call;
+  }
+
+  /** A test call to every phone that rings by dispatch, ringing from `at` (now): each phone's result. */
+  async test(at = this.now()) {
     const out = [];
     for (const d of this.devices.values()) {
-      if (!d.enabled || !d.push.token) continue;
-      out.push(await this.send(d, { id: `test-${Math.floor(t)}`, kind: 'test', at: t, until: t + seconds, title: 'Fractonica Dispatch' }));
+      if (!d.enabled || !d.push.token || !d.push.topic) continue;
+      out.push({ device: d.name, ...(await this.send(d, this.testCall(d, at))) });
     }
     return out;
   }

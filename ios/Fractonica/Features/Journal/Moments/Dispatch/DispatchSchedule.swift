@@ -10,7 +10,8 @@ import Foundation
 struct DispatchCall: Codable, Hashable, Sendable {
     /// "m<moment number>", "t<number>" for a test call.
     var id: String
-    /// "moment", or "test" for the dispatch's own test (`dispatch test`), which is no moment.
+    /// "moment", or "test" for the dispatch's own test calls (`dispatch test`, `--call`), which are no moments: one
+    /// opens as the Moments screen's Test a Call (`MomentStore.pickedUpDispatchTest`).
     var kind: String = "moment"
     /// First ring and ring-out (Unix seconds).
     var at: Double

@@ -8,6 +8,7 @@ import { join } from 'node:path';
 import { ApnsClient, keyIdFromFile, providerToken } from '../lib/apns.js';
 import { Dispatcher, readSchedule } from '../lib/dispatcher.js';
 import { Hub } from '../lib/hub.js';
+import { fromNow, parseWhen } from '../lib/when.js';
 import { startHub } from '../../hub/lib/server.js';
 
 const TOKEN = 'a'.repeat(64);
@@ -197,6 +198,69 @@ test('dispatch without an APNs key: follows the schedules and says why nothing r
   const r = await d.send({ id: 'x', name: 'iPhone', enabled: true, push: { token: TOKEN, environment: 'production', topic: 't' } }, { id: 'c', at: 0, until: 1 });
   assert.deepEqual([r.ok, r.reason], [false, 'no APNs key']);
   assert.equal(d.statusRecord().data.apns, 'no APNs key');
+});
+
+test('--call: delays, times of day (today, else tomorrow) and dates', () => {
+  const now = new Date(2026, 10, 9, 13, 0, 0).getTime() / 1000; // 13:00 on this computer's clock
+  const at = (w) => (parseWhen(w, now) === null ? null : parseWhen(w, now) - now);
+  assert.deepEqual(['90s', '2m', '2 min', 'in 2m', '1h30m', '1m30s', '45'].map(at), [90, 120, 120, 120, 5400, 90, 45]);
+  assert.equal(at('14:30'), 5400);
+  assert.equal(at('14:30:15'), 5415);
+  assert.equal(parseWhen('12:00', now), new Date(2026, 10, 10, 12, 0, 0).getTime() / 1000, 'passed today: tomorrow');
+  assert.equal(at('2026-11-09T14:30'), 5400);
+  assert.equal(at('2026-11-09 14:30'), 5400);
+  assert.deepEqual(['soon', '25:00', '', '14:60'].map(at), [null, null, null, null]);
+  assert.deepEqual([fromNow(now + 133, now), fromNow(now + 3900, now), fromNow(now - 1, now)], ['in 2 min 13 s', 'in 1 h 05 min', 'now']);
+});
+
+test('test calls at chosen times: to each phone in Calls mode, named and timed like its next moment, once', async (t) => {
+  const apnsServer = await fakeApns();
+  const { privateKey } = key();
+  const apns = new ApnsClient({ key: privateKey, keyId: 'ABC123DEFG', teamId: 'G23G724G3D', hosts: { production: apnsServer.url, development: apnsServer.url } });
+  t.after(async () => {
+    apns.close();
+    await apnsServer.close();
+  });
+  const t0 = Date.now() / 1000;
+  const hub = { base: 'stub', changes: () => new Promise(() => {}), put: async () => ({}) };
+  const store = { held: null, load() { return this.held; }, save(s) { this.held = structuredClone(s); } };
+  const phone = (id, enabled, token) => ({
+    id, kind: 'dispatch.calls', updated: 1,
+    data: { enabled, name: id, team: 'G23G724G3D', push: { token, environment: 'production', topic: 'app.fractonica.clock.voip' },
+      calls: [{ id: 'm9', at: t0 + 3600, until: t0 + 3685.5, moment: t0 + 3615.5, index: 9, title: 'Helion 34η Peak', rarity: 'rare', level: 'helion', boundary: 'peak' }] },
+  });
+  const start = async () => {
+    const d = new Dispatcher({ hub, apns, store, clientId: 'c_1', trials: [t0 + 0.8], wait: 1, heartbeat: 3600 });
+    d.apply(phone('dispatch.calls.on', true, TOKEN));
+    d.apply(phone('dispatch.calls.off', false, DEV_TOKEN));
+    await d.start();
+    return d;
+  };
+  const d = await start();
+  assert.equal(d.next().call.kind, 'test', 'the test call is the next call');
+  await until(() => apnsServer.requests.length >= 1, 4);
+  await sleep(400);
+  d.stop();
+  assert.equal(apnsServer.requests.length, 1, 'once, and not to the phone in alert mode');
+  const r = apnsServer.requests[0];
+  assert.equal(r.path, `/3/device/${TOKEN}`);
+  assert.ok(Math.abs(r.at - (t0 + 0.8)) < 0.75, `on time: ${r.at - t0}`);
+  const fx = r.body.fx;
+  assert.deepEqual([fx.kind, fx.title, fx.rarity, fx.level, fx.boundary], ['test', 'Helion 34η Peak', 'rare', 'helion', 'peak']);
+  assert.ok(Math.abs(fx.until - fx.at - 85.5) < 1e-6, 'rings as long as a moment');
+  assert.equal(fx.index, undefined, 'no moment of the calendar');
+  assert.equal(r.headers['apns-expiration'], String(Math.floor(fx.until)));
+
+  // launched again with the same time: sent already
+  const again = await start();
+  await sleep(500);
+  again.stop();
+  assert.equal(apnsServer.requests.length, 1);
+
+  // `test`: now, to every phone in Calls mode, each phone's result
+  const results = await again.test();
+  assert.deepEqual(results.map((x) => [x.device, x.ok]), [['dispatch.calls.on', true]]);
+  assert.equal(apnsServer.requests.at(-1).body.fx.kind, 'test');
 });
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));

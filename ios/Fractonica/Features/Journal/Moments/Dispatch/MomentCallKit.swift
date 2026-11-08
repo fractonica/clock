@@ -11,7 +11,8 @@ import os
 /// cameras film once the app is in front (a video call's button opens it), and the system's call ends then so the
 /// camera and microphone are the app's. Decline declines it (photos only if the app opens within a Flavon, as for an
 /// alarm's Stop). Unanswered, it ends when its eleven Flavons are up and is a missed call. Every push is reported, as
-/// PushKit requires — a stale one (alert mode chosen meanwhile, or rung out) ends at once.
+/// PushKit requires — a stale one (alert mode chosen meanwhile, or rung out) ends at once. The dispatch's own test
+/// calls (`dispatch test`, `--call`) ring the same way and open as the Moments screen's Test a Call does.
 ///
 /// PushKit is started at launch (a push that launches the app is delivered to the registry made then) while moments
 /// ring by dispatch; its token goes into the schedule (`MomentDispatch.pushToken`).
@@ -157,9 +158,11 @@ final class MomentCallKit: NSObject {
         action.fulfill()
         if r.call.isMoment {
             MomentStore.shared.pickedUpByCall(index: r.call.index, test: r.call.test, answer: true)
+        } else {
+            MomentStore.shared.pickedUpDispatchTest(r.call, answer: true)
         }
-        // in front already (or the dispatch's own test, which is only a ring): straight to the app
-        if UIApplication.shared.applicationState == .active || !r.call.isMoment {
+        // in front already: straight to the app's call screen
+        if UIApplication.shared.applicationState == .active {
             let uuid = action.callUUID
             Task { @MainActor [weak self] in
                 try? await Task.sleep(for: .milliseconds(600))
@@ -170,8 +173,12 @@ final class MomentCallKit: NSObject {
 
     fileprivate func ended(_ action: CXEndCallAction) {
         action.fulfill()
-        guard let r = calls.removeValue(forKey: action.callUUID), !r.endedByApp, !r.answered, r.call.isMoment else { return }
-        MomentStore.shared.pickedUpByCall(index: r.call.index, test: r.call.test, answer: false)
+        guard let r = calls.removeValue(forKey: action.callUUID), !r.endedByApp, !r.answered else { return }
+        if r.call.isMoment {
+            MomentStore.shared.pickedUpByCall(index: r.call.index, test: r.call.test, answer: false)
+        } else {
+            MomentStore.shared.pickedUpDispatchTest(r.call, answer: false)
+        }
     }
 
     fileprivate func reset() {

@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { ApnsClient, keyIdFromFile, loadKey } from '../lib/apns.js';
 import { Dispatcher } from '../lib/dispatcher.js';
 import { Hub } from '../lib/hub.js';
+import { fromNow, parseWhen } from '../lib/when.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, '..');
@@ -20,9 +21,15 @@ const USAGE = `fractonica-dispatch ${VERSION}: rings the app's moments on your p
   node dispatch/bin/dispatch.mjs CODE [--hub URL]   pair with the hub (CODE from the app: Moments › Settings › Calls ›
                                                      Pair a Dispatch), then run
   node dispatch/bin/dispatch.mjs                    run with the saved pairing
+  node dispatch/bin/dispatch.mjs --call 2m          run, and ring every phone at that time too: a test call
   node dispatch/bin/dispatch.mjs status             the pairing, the APNs key, the phones and their next calls
   node dispatch/bin/dispatch.mjs test               ring every phone now, to try the setup
+  node dispatch/bin/dispatch.mjs test --call 14:30  ring every phone then (and quit): beside a dispatch that runs
   node dispatch/bin/dispatch.mjs unpair             forget the pairing
+
+  --call WHEN      a test call (named like the phone's next moment; Answer opens it as the app's Test a Call): in
+                   90s, 2m, 1h30m or 45 (seconds); at 14:30 or 14:30:15 (today, else tomorrow) or 2026-11-09T14:30.
+                   Give it more than once for more calls.
 
   --hub URL        the hub (default http://localhost:8787)
   --apns-key FILE  your APNs auth key, AuthKey_XXXXXXXXXX.p8 (developer.apple.com › Keys, Apple Push Notifications
@@ -36,7 +43,7 @@ const { values: o, positionals } = parseArgs({
   allowPositionals: true,
   options: {
     hub: { type: 'string' }, 'apns-key': { type: 'string' }, 'key-id': { type: 'string' }, team: { type: 'string' },
-    name: { type: 'string' }, data: { type: 'string' }, help: { type: 'boolean', short: 'h' },
+    name: { type: 'string' }, data: { type: 'string' }, call: { type: 'string', multiple: true }, help: { type: 'boolean', short: 'h' },
     // tests only: another APNs (a stand-in server; plain http/2 for http://)
     'apns-host': { type: 'string' },
   },
@@ -64,6 +71,34 @@ const fail = (m) => {
 const [first] = positionals;
 const command = ['status', 'test', 'unpair', 'run'].includes(first) ? first : first ? 'pair' : 'run';
 let config = readJSON(CONFIG);
+
+// ---- test calls at chosen times (--call) -------------------------------------------------------------------------
+const clock = (t) => new Date(t * 1000).toLocaleString(undefined, { weekday: 'short', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+const trials = (o.call ?? []).map((w) => {
+  const t = parseWhen(w);
+  if (t === null) fail(`--call ${w}: say when, like 90s, 2m, 1h30m, 14:30 or 2026-11-09T14:30`);
+  if (t < Date.now() / 1000 - 60) fail(`--call ${w}: that was ${clock(t)}, in the past`);
+  return t;
+}).sort((a, b) => a - b);
+if (trials.length && !['run', 'pair', 'test'].includes(command)) fail(`--call goes with running the dispatch or with test, not with ${command}`);
+
+// ---- one dispatch at a time per data folder (two would ring every call twice) --------------------------------------
+const LOCK = join(DATA, 'dispatch.pid');
+const alive = (pid) => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (e) {
+    return e.code === 'EPERM';
+  }
+};
+if (command === 'run' || command === 'pair') {
+  const other = existsSync(LOCK) ? Number(readFileSync(LOCK, 'utf8')) : 0;
+  if (other && other !== process.pid && alive(other)) {
+    fail(`a dispatch already runs with ${DATA} (pid ${other}): stop it first (Ctrl-C where it runs)${trials.length
+      ? `, or ring the test call beside it:\n\n  node dispatch/bin/dispatch.mjs test ${(o.call ?? []).map((w) => `--call ${w}`).join(' ')}` : ''}`);
+  }
+}
 
 if (command === 'unpair') {
   if (!config) fail('not paired');
@@ -132,23 +167,39 @@ if (keyFile) {
 
 const hub = new Hub(config.hub, config.token);
 const store = { load: () => readJSON(STATE), save: (s) => writeJSON(STATE, s) };
-const dispatcher = new Dispatcher({ hub, apns, apnsProblem, store, clientId: config.clientId, name: config.name, version: VERSION, log });
+const running = command === 'run' || command === 'pair';
+const dispatcher = new Dispatcher({ hub, apns, apnsProblem, store, clientId: config.clientId, name: config.name, version: VERSION, log,
+                                    trials: running ? trials : [] });
 
-if (command === 'status' || command === 'test') {
-  // a fresh look at the schedules, without following
+/** A fresh look at the schedules, without following (status, test). */
+async function refresh() {
   try {
     const page = await hub.changes(0, { kinds: ['dispatch.calls'] });
     for (const r of page.changes ?? []) dispatcher.apply(r);
   } catch (e) {
     console.log(`(the hub: ${e.message}; the schedules held on disk)`);
   }
+}
+
+if (command === 'status' || command === 'test') {
+  await refresh();
   if (command === 'test') {
+    // test calls only: the state on disk is the running dispatch's, untouched
     if (!apns) fail(`${apnsProblem}: ${keyHelp()}`);
-    const results = await dispatcher.test();
-    if (!results.length) console.log('no phone rings by dispatch: choose Calls in the app (Moments › Settings › Calls)');
-    for (const r of results) console.log(r.ok ? `rang (${r.environment})` : `failed: ${r.status} ${r.reason}`);
+    let ok = true;
+    for (const at of trials.length ? trials : [Date.now() / 1000]) {
+      if (at - Date.now() / 1000 > 1) {
+        log(`a test call at ${clock(at)} (${fromNow(at)}); Ctrl-C to call it off`);
+        await new Promise((r) => setTimeout(r, (at - Date.now() / 1000) * 1000));
+        await refresh();
+      }
+      const results = await dispatcher.test(at);
+      if (!results.length) log('no phone rings by dispatch: choose Calls in the app (Moments › Settings › Calls)');
+      for (const r of results) log(r.ok ? `rang ${r.device} (${r.environment})` : `${r.device}: failed, ${r.status} ${r.reason}`);
+      ok &&= results.length > 0 && results.every((r) => r.ok);
+    }
     apns.close();
-    process.exit(results.every((r) => r.ok) ? 0 : 1);
+    process.exit(ok ? 0 : 1);
   }
   console.log(`hub      ${config.hubName ?? ''} ${config.hub}  (as "${config.name}", ${config.clientId})`);
   console.log(`APNs     ${apns ? `key ${config.apns.keyId}${config.apns.teamId ? `, team ${config.apns.teamId}` : ', team from the app'}` : apnsProblem}`);
@@ -166,6 +217,13 @@ function keyHelp() {
 
 if (!apns) log(`${apnsProblem}: ${keyHelp()}. Following the schedules meanwhile; nothing rings until then.`);
 log(`fractonica-dispatch ${VERSION} · ${config.name} · hub ${config.hub}${apns ? ` · APNs key ${config.apns.keyId}` : ''}`);
+writeFileSync(LOCK, String(process.pid));
+process.on('exit', () => {
+  try {
+    if (Number(readFileSync(LOCK, 'utf8')) === process.pid) rmSync(LOCK);
+  } catch {}
+});
+for (const at of trials) log(`a test call to every phone at ${clock(at)} (${fromNow(at)})`);
 await dispatcher.start();
 const quit = async () => {
   log('stopping');

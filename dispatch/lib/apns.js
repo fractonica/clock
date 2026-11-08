@@ -70,17 +70,27 @@ export class ApnsClient {
     s.on('error', () => this.sessions.delete(environment));
     s.on('goaway', () => this.sessions.delete(environment));
     s.on('close', () => this.sessions.delete(environment));
+    // an idle session keeps no process alive (`request` holds it while a push is on its way)
     s.unref?.();
+    s.inflight = 0;
     this.sessions.set(environment, s);
     return s;
   }
 
   /** One request; resolves { status, reason, apnsId } (status 0 and a reason for a network failure). */
   request(environment, { deviceToken, topic, payload, pushType, priority, expiration, id, teamId }) {
-    return new Promise((resolve) => {
-      let req;
+    return new Promise((settle) => {
+      let req, s;
+      const resolve = (r) => {
+        if (s && --s.inflight === 0) s.unref?.();
+        s = null;
+        settle(r);
+      };
       try {
-        req = this.session(environment).request({
+        s = this.session(environment);
+        s.inflight++;
+        s.ref?.();
+        req = s.request({
           ':method': 'POST',
           ':path': `/3/device/${deviceToken}`,
           authorization: `bearer ${this.bearer(teamId)}`,

@@ -756,9 +756,13 @@ private func dispatchChecks() {
     let call = DispatchCall(payload: payload)
     check(call?.index == 123 && call?.title == "Helion 34η Ascending Node" && call?.isMoment == true && call?.until == 1_794_000_086,
           "a push's call is read: \(String(describing: call))")
-    // the dispatch's own test (no moment), and what is no call
-    let test = DispatchCall(payload: ["fx": ["id": "test-1", "kind": "test", "at": 1.0, "until": 31.0, "title": "Fractonica Dispatch"]])
-    check(test?.isMoment == false && test?.index == 0 && test?.moment == 1, "the dispatch's test call is no moment")
+    // the dispatch's own test call (`test`, `--call`: named and timed like the next moment, no moment itself), and
+    // what is no call
+    let test = DispatchCall(payload: ["fx": ["id": "test-1794000000", "kind": "test", "at": 1_794_000_000.0, "until": 1_794_000_085.5,
+                                             "title": "Helion 34η Peak", "rarity": "epic", "level": "nuclide", "boundary": "peak"]])
+    check(test?.isMoment == false && test?.index == 0 && test?.moment == 1_794_000_000 && test?.test == false, "the dispatch's test call is no moment")
+    check(test.flatMap { MomentLevel(rawValue: $0.level) } == .nuclide && test.flatMap { MomentBoundary(rawValue: $0.boundary) } == .peak
+          && test?.title == "Helion 34η Peak", "the dispatch's test call carries the level and boundary it opens with")
     check(DispatchCall(payload: ["aps": [String: Any]()]) == nil && DispatchCall(payload: ["fx": ["id": "x"]]) == nil, "no call without its times")
 
     // the schedule's record: what the dispatch reads (dispatch/lib/dispatcher.js readSchedule)
