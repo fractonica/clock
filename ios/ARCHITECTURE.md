@@ -107,16 +107,46 @@ catalogue's extent `clock.daySpan` / `clock.yearSpan()` (Shared/Notation+Standar
 `-FXSaros <n>` starts on Saros n; `-FXSarosSwitch <n>` runs the whole switch onto it two seconds after launch, for that
 run only (nothing stored).
 
-### The Saros catalogue (Features/Saros)
+### Saros (Features/Saros)
 
-Settings › Saros series (`SarosCatalogueScreen`): the 40 series with their drift a sync, lap and lap past an Alpha
-(`SarosDrift`), sortable, the reference ticked, each with its next eclipse's thumbnail. A series
-(`SarosSeriesScreen`) shows its figures, switches the clock onto it after a confirmation (`ReferenceSaros.choose`) and
-lists its eclipses; an eclipse opens `EclipseMapScreen` (drag, pinch, double-tap to fit; gnomonic, stereographic or
-globe; borders and graticule; the eclipse's figures). Words: `SarosWords` (UTC dates; pure mode stamps on the reference
-clock, drift in Blinks, laps in Fractonica units).
+Cycles › Saros (`SarosScreen`, the fifth screen of the Cycles group; a sidebar screen on iPad and Mac). From the top:
 
-- Data: `SarosPaths` decodes saros-geo's Resources/Saros/geo-<n>.bin (1582 … 2500; central paths as areas, a partial
+- **Search a date** (`SarosSearchScreen`; logic in `SarosSearch.swift`): a day (or a moment, with a time of day) in the
+  app's zone, and the three eclipses nearest it of all 180 series (`SarosCatalogue.nearest`, a binary search of the
+  13 206 eclipses in `SarosCatalogue.timeline`), nearest first; a whole day is measured from its midnights, an eclipse
+  during it at 0. The day's rarity is its nearest eclipse's, in Helions of that eclipse's own series (the Saros between
+  them × 4 / 125 125, `SarosSeries.helion(near:after:)`): within 1 Helion cosmic, 11 (a ζ) legendary, 77 (a Nuclide)
+  epic, 385 (a Delta) rare, else common (`SarosProximity`; Moments' `MomentRarity` and its frames and badges, never
+  mythic). A timeline of the day among the three (each eclipse's map, the rarity bands round it, the reference clock's
+  δ ticks) and a close-up of the nearest with its bands named; each eclipse opens its map. Dates from 1583 to 2999
+  (Foundation's Gregorian calendar is Julian before 1582). Keep this date opens the editor.
+- **Dates** (Dates/): moments or whole days the person keeps, with an emoji, a title and a description
+  (`SavedDate`), each badged with its nearest eclipse's series and rarity. They are `journal.date` records in the
+  journal's store (hub/API.md), so the hub sync uploads and pulls them with the entries and any device can edit them;
+  `DateBook` reads and writes them (observable through the store's revision), and the journal's timeline leaves them
+  out of its other records. A whole day is kept as its noon in its zone. `DatesScreen` lists them (searchable, swipe to
+  delete) or puts them on the wave (`JournalWaveView` with `JournalWaveModel.dates`, a second model with a zoom of its
+  own, a Gamma and a half at first); `DateDetailScreen` shows one: its header in its rarity's frame, its reading on the
+  clock, its three nearest eclipses, its echoes; `DateEditor` (a sheet) makes and edits them.
+- **Echoes** (`DateEchoPlanner`, `DateEchoes`): notifications when a date comes round again — every year on its solar
+  day (a 29 February on the 28th otherwise) at a time of day in the app's zone, and for each period chosen (α … η) every
+  later cycle at the date's phase in it: the same position within the cycle, so the reference clock reads the same
+  below it (a Delta's echo of ε#2 75η 26ι is ε#2 75η 26ι of each later Delta). A date's echoes at one moment are one,
+  under the longest period. The soonest 8 of all (`echo.` requests; each date's soonest of each kind first) are kept
+  pending, refilled on launch, coming to the front, the background refresh, every change to the store and a switch of
+  the reference series; silent in Alerts' quiet hours; a tap opens the date (`DatesHooks`). Permission is asked when the
+  first echo of a date is turned on.
+- **Helions on the clock** for the reference series, then the catalogue: the 40 running series with their drift a
+  sync, lap and lap past an Alpha (`SarosDrift`), sortable from the section's header, the reference ticked, each with
+  its next eclipse's thumbnail. Settings › Clock › Saros series shows the reference series and leads here.
+
+A series (`SarosSeriesScreen`) shows its figures, switches the clock onto it after a confirmation
+(`ReferenceSaros.choose`) and lists its eclipses; an eclipse opens `EclipseMapScreen` (drag, pinch, double-tap to fit;
+gnomonic, stereographic or globe; borders and graticule; the eclipse's figures). Words: `SarosWords` (UTC dates; pure
+mode stamps on the reference clock, drift in Blinks, laps in Fractonica units), `SarosSearchWords`, `DateWords`.
+
+- Data: `SarosCatalogue` (FractonicaKit) holds every eclipse of the 180 series; `SarosPaths` decodes saros-geo's
+  Resources/Saros/geo-<n>.bin (series 101 … 173, eclipses of 1582 … 2500; central paths as areas, a partial
   eclipse's limits as lines); `WorldMap` reads the FXMP layers (Natural Earth 1:110m land for thumbnails and while a
   finger moves the map, 1:50m land, lakes and borders otherwise). Both are made by ios/scripts/make-saros.mjs.
 - Maps (`SphereMap.swift`): `MapProjection` is an azimuthal perspective from r radii behind the centre (gnomonicube's
@@ -132,12 +162,16 @@ clock, drift in Blinks, laps in Fractonica units).
   and the next nodes with their times of day. Follows the displayed time; a compact dial on each series' page, the
   reference series' from the top of the catalogue. Pure mode puts the Sun at noon and the Moon at midnight in place of
   hours.
-- Launch: `-FXTab settings` with `-FXSarosCatalogue 1`, `-FXSarosSeries <n>`, and `-FXSarosEclipse <ordinal>` for its
-  map straight away; `-FXSarosProjection gnomonic|stereographic|globe`; `-FXSarosHelions 1` for the Helion dial (of
-  `-FXSarosSeries <n>` or the reference series).
+- Launch (with `-FXTab saros`): `-FXSarosSeries <n>`, and `-FXSarosEclipse <ordinal>` for its map straight away;
+  `-FXSarosProjection gnomonic|stereographic|globe`; `-FXSarosHelions 1` for the Helion dial (of `-FXSarosSeries <n>`
+  or the reference series); `-FXSarosSearch <yyyy-mm-dd[Thh:mm]>` the search on that day (or moment); `-FXSarosDates
+  list|wave`; `-FXSarosDate <n>` the n-th date, oldest first; `-FXSarosAddDate 1` the editor; `-FXDatesSeed 1` adds
+  five sample dates (some with echoes) to a store without any.
 - Checks (Features/Saros/Checks): the path files against saros_geo.js's figures and SarosData's records, the layers,
   the projection's round trip, and small circles filled on 180 random views compared point by point with the exact
-  answer.
+  answer; the Helion dial against the engine; the search against every eclipse and the series' own clocks, its rarities
+  and whole days (zones, 23-hour days); dates and their records; echoes on the date's phase at every level, solar days
+  and leap days, merging and the budget. FractonicaKit's SarosCatalogueTests check the whole catalogue and `nearest`.
 
 ### ClockTimeline — the only way to redraw with the clock
 
@@ -286,8 +320,8 @@ it, and both jump boxes read past it (`stripPentad` in parse.js, `PentadLead` in
 ### Screens and navigation
 
 `Screen` (Shared/Screen.swift) lists every screen; its raw value is the id used in links and `-FXTab`:
-`now journal moments rings ladder wave timeline converter month diary sound timer stopwatch alerts focus jump settings`.
-`ScreenGroup` bundles `cycles` (rings ladder wave timeline), `journal` (journal month converter) and `clock` (timer
+`now journal moments rings ladder wave timeline saros converter month diary sound timer stopwatch alerts focus jump settings`.
+`ScreenGroup` bundles `cycles` (rings ladder wave timeline saros), `journal` (journal month converter) and `clock` (timer
 stopwatch alerts). The printable Diary is a sheet over the Journal on iPhone and a sidebar screen in the Journal section
 on iPad and Mac. The Journal (Features/Journal: local store, composer, timeline; hooks for the hub sync in
 JournalHooks.swift) keeps its records and media under Application Support/Journal. Its timeline (Journal/Timeline) is a
@@ -405,7 +439,8 @@ closes it, and `setCompact` moves Jump between the two forms when the layout cha
 in every layout (under the title; the window toolbar on the Mac); its text and focus live in `JumpSearch.shared`
 (Core/JumpSearch.swift), so the sheet keeps the text, and ⌘K and the Cycles tab's button set
 `JumpSearch.shared.isFocused`, which focuses the field even while Jump already shows. The navigation bar's segmented
-controls size their segments by title on iPhone, so the Cycles tab's four fit beside the Jump button.
+controls size their segments by title on iPhone, in 13-point type, so the Cycles tab's five fit between the Jump button
+and a screen's own button (keep a Cycles screen to one toolbar button on iPhone).
 
 The shell gives every screen (`ScreenContent` in App/RootView.swift) its own `NavigationStack`, the backdrop, full
 size and the shared toolbar items. A screen therefore:
@@ -493,7 +528,8 @@ requires; Alerts registers its `BGAppRefreshTask` (`app.fractonica.clock.refresh
 platforms. Features never set the delegate. They post with identifier prefixes — `timer.` (Timer and Stopwatch),
 `alert.` (Alerts), `moment.` (Moments: a call's ring, and `moment.missed.` when it rings out) — attach an `AppLink`,
 request authorization themselves at a moment of intent, and share the system's budget of 64 pending requests: Alerts
-keeps at most 50 `alert.` requests pending and Moments at most 12 `moment.` ones, so Timer always has room. Alerts'
+keeps at most 42 `alert.` requests pending, Moments at most 12 `moment.` ones and the dates at most 8 `echo.` ones, so
+Timer always has room. Alerts'
 background refresh refills the moments (and their alarms) too.
 Never call `UNUserNotificationCenter` on the main thread (except `NotificationRouter.install()`, which must set the
 delegate there before launch finishes): it answers over synchronous XPC, and a slow daemon freezes the interface.

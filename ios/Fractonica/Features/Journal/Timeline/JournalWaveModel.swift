@@ -14,6 +14,10 @@ final class JournalWaveModel {
     static var shared: JournalWaveModel { scoped.value }
     private static let scoped = ClockScoped { JournalWaveModel() }
 
+    /// The kept dates' wave (the Saros screen's), with a zoom of its own: a Gamma and a half the first time.
+    static var dates: JournalWaveModel { datesScoped.value }
+    private static let datesScoped = ClockScoped { JournalWaveModel(scaleKey: "saros.dates.waveScale", initialLevel: 2) }
+
     enum Motion: Equatable {
         /// An eased move between two frames, the moment at height `anchorY` gliding between them.
         case tween(from: JournalWaveFrame, to: JournalWaveFrame, anchorY: Double, start: Date, duration: Double)
@@ -48,6 +52,16 @@ final class JournalWaveModel {
     @ObservationIgnored private var pinching = false
     @ObservationIgnored private var settleTask: Task<Void, Never>?
     @ObservationIgnored private let clock = FractonicaClock.shared
+    /// Where the zoom is kept between visits: nil for the journal's (`JournalBrowsing.waveScale`, with its launch
+    /// arguments), else this defaults key.
+    @ObservationIgnored private let scaleKey: String?
+    /// The level of which about one and a half cycles fill the screen the first time.
+    @ObservationIgnored private let initialLevel: Int
+
+    init(scaleKey: String? = nil, initialLevel: Int = 5) {
+        self.scaleKey = scaleKey
+        self.initialLevel = initialLevel
+    }
 
     var isMoving: Bool { motion != nil }
 
@@ -128,8 +142,10 @@ final class JournalWaveModel {
         placed = true
         let browsing = JournalBrowsing.shared
         let h = size.height
-        let k = 1000 / (browsing.waveScale ?? clock.levelInfo(5).meanSeconds * 1.5 / h * 1000)
-        if let at = browsing.waveAt {
+        let saved = scaleKey.map { UserDefaults.standard.double(forKey: $0) }.flatMap { $0 > 0 ? $0 : nil }
+        let scale = scaleKey == nil ? browsing.waveScale : saved
+        let k = 1000 / (scale ?? clock.levelInfo(initialLevel).meanSeconds * 1.5 / h * 1000)
+        if scaleKey == nil, let at = browsing.waveAt {
             base = limits.frame(showing: at, atY: h / 2, k: k, height: h)
         } else {
             base = limits.frame(showing: limits.newest, atY: h * 0.12, k: k, height: h)
@@ -232,7 +248,11 @@ final class JournalWaveModel {
 
     /// Keeps the zoom for the next visit and launch.
     private func remember() {
-        JournalBrowsing.shared.waveScale = 1000 / base.k
+        if let scaleKey {
+            UserDefaults.standard.set(1000 / base.k, forKey: scaleKey)
+        } else {
+            JournalBrowsing.shared.waveScale = 1000 / base.k
+        }
     }
 
     /// Zoom by `factor` (> 1 closer) about height y (the middle when nil).

@@ -5,6 +5,7 @@ import SwiftUI
 /// glossary. A sheet on iOS, the Settings window on macOS.
 struct SettingsScreen: View {
     @Environment(AppSettings.self) private var settings
+    @Environment(AppRouter.self) private var router
 
     var body: some View {
         @Bindable var settings = settings
@@ -28,15 +29,23 @@ struct SettingsScreen: View {
             }
 
             Section {
-                NavigationLink {
-                    SarosCatalogueScreen()
+                // the catalogue lives in Cycles › Saros, where the series is chosen
+                Button {
+                    router.isSettingsPresented = false
+                    router.show(.saros)
                 } label: {
                     LabeledContent {
-                        Text("Saros \(ReferenceSaros.shared.series)")
+                        HStack(spacing: 6) {
+                            Text("Saros \(ReferenceSaros.shared.series)")
+                            Image(systemName: "arrow.up.forward.square")
+                                .font(.caption)
+                                .foregroundStyle(Theme.ink3)
+                        }
                     } label: {
-                        SettingLabel("Saros series", detail: "The eclipses the clock runs on: the 40 series, their paths, drift and laps", systemImage: "circle.lefthalf.filled")
+                        SettingLabel("Saros series", detail: "The eclipses the clock runs on, chosen in Cycles › Saros", systemImage: "circle.lefthalf.filled")
                     }
                 }
+                .foregroundStyle(Theme.ink)
             } header: {
                 Text("Clock")
             }
@@ -119,26 +128,10 @@ struct SettingsScreen: View {
         .background { Backdrop() }
         .navigationTitle(Screen.settings.title)
         .navigationDestination(isPresented: $showsJournal) { JournalSettingsScreen() }
-        .navigationDestination(isPresented: $showsSaros) { SarosCatalogueScreen() }
-        .navigationDestination(isPresented: $showsHelions) {
-            if let series = SarosCatalogue.series(JournalLaunch.int("FXSarosSeries") ?? ReferenceSaros.shared.series) {
-                HelionDialScreen(series: series)
-            }
-        }
-        .navigationDestination(item: $launchedEclipse) { e in
-            if let series = SarosCatalogue.series(e.series) { EclipseMapScreen(series: series, ordinal: e.ordinal) }
-        }
     }
 
     /// Settings › Journal, open at launch with -FXJournalSettings 1.
     @State private var showsJournal = JournalLaunch.flag("FXJournalSettings")
-    /// Settings › Saros series, open at launch with -FXSarosCatalogue 1 (or a series with -FXSarosSeries <n>; with
-    /// -FXSarosEclipse <ordinal> too, that eclipse's map straight away).
-    @State private var showsSaros = JournalLaunch.int("FXSarosEclipse") == nil && !JournalLaunch.flag("FXSarosHelions")
-        && (JournalLaunch.flag("FXSarosCatalogue") || JournalLaunch.int("FXSarosSeries") != nil)
-    /// The Helion dial at launch: -FXSarosHelions 1 (of -FXSarosSeries <n>, else of the reference series).
-    @State private var showsHelions = JournalLaunch.flag("FXSarosHelions")
-    @State private var launchedEclipse = SarosLaunch.eclipse
 
     private var zoneName: String {
         guard let zone = settings.zone else { return "System" }

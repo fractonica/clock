@@ -133,11 +133,39 @@ private struct EclipseRow: View {
     }
 }
 
-/// The catalogue's launch arguments: `-FXSarosSeries <n> -FXSarosEclipse <ordinal>` names an eclipse to show at launch.
+/// The Saros screen's launch arguments (`SarosScreen` lists them): where it opens.
 enum SarosLaunch {
+    /// `-FXSarosSeries <n> -FXSarosEclipse <ordinal>`: an eclipse's map (of any series).
     @MainActor static var eclipse: SarosEclipse? {
         guard let n = JournalLaunch.int("FXSarosSeries"), let k = JournalLaunch.int("FXSarosEclipse"),
-              let series = SarosCatalogue.series(n), series.eclipses.indices.contains(k) else { return nil }
+              let series = SarosCatalogue.anySeries(n), series.eclipses.indices.contains(k) else { return nil }
         return series.eclipses[k]
+    }
+
+    @MainActor static var route: SarosRoute? {
+        if let e = eclipse { return .eclipse(e) }
+        if JournalLaunch.flag("FXSarosHelions"),
+           let series = SarosCatalogue.series(JournalLaunch.int("FXSarosSeries") ?? ReferenceSaros.shared.series) {
+            return .helions(series)
+        }
+        if let n = JournalLaunch.int("FXSarosSeries"), let series = SarosCatalogue.series(n) { return .series(series) }
+        if let text = JournalLaunch.string("FXSarosSearch"), let (t, hasTime) = moment(text, zone: AppSettings.shared.timeZone) {
+            return .search(t, hasTime: hasTime)
+        }
+        if let mode = JournalLaunch.string("FXSarosDates") { return .dates(wave: mode.lowercased() == "wave") }
+        return nil
+    }
+
+    /// "2017-08-21" (the day: its noon) or "2017-08-21T18:25" (a moment) in `zone`.
+    static func moment(_ text: String, zone: TimeZone) -> (Double, Bool)? {
+        let parts = text.split(separator: "T")
+        let day = parts.first?.split(separator: "-").compactMap { Int($0) } ?? []
+        let time = parts.count > 1 ? parts[1].split(separator: ":").compactMap { Int($0) } : []
+        guard day.count == 3 else { return nil }
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = zone
+        let c = DateComponents(year: day[0], month: day[1], day: day[2], hour: time.first ?? 12, minute: time.count > 1 ? time[1] : 0)
+        guard let date = calendar.date(from: c) else { return nil }
+        return (date.timeIntervalSince1970, time.count >= 2)
     }
 }

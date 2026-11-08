@@ -198,7 +198,7 @@ function kindHue(kind) {
   for (const c of kind) x = (x * 31 + c.charCodeAt(0)) >>> 0;
   return x % 360;
 }
-const prettyKind = (k) => (k === 'journal.entry' ? 'Journal' : k);
+const prettyKind = (k) => (k === 'journal.entry' ? 'Journal' : k === 'journal.date' ? 'Dates' : k);
 
 /** The searchable text of a record (hub/API.md): journal → markdown; else text, data.text, data.summary. */
 function bodyText(r) {

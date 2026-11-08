@@ -186,15 +186,20 @@ func planChecks() {
     check(plan.alerts.contains { $0.ruleID == eclipse.id }, "the fast Flavon rule cannot starve the eclipse")
     check(plan.alerts.contains { $0.ruleID == nuclide.id }, "… nor the Nuclide")
     let byRule = Dictionary(grouping: plan.alerts, by: \.ruleID).mapValues(\.count)
-    check((byRule[flavon.id] ?? 0) >= 20 && byRule[nuclide.id] == 2 && byRule[eclipse.id] == 2,
+    let rest = AlertPlanner.budget - 4 // after the slow rules' two each
+    check((byRule[flavon.id] ?? 0) >= rest / 2 && (byRule[helion.id] ?? 0) >= rest / 2 && byRule[nuclide.id] == 2 && byRule[eclipse.id] == 2,
           "slow rules take their next two, fast ones share the rest: \(byRule.values.sorted())")
     for rule in [helion, flavon] {
         let mine = plan.alerts.filter { $0.ruleID == rule.id }.map(\.fire)
         let all = planner.occurrences(of: rule, after: vectorA, limit: 60).map(\.fire)
         check(mine == Array(all.prefix(mine.count)) || rule.id == flavon.id, "soonest first within a share")
     }
-    // A Nuclide turnover is a Helion turnover too: told once, by the Nuclide, the Helion folded in.
-    let both = planner.plan(rules: [helion, nuclide], quiet: QuietHours(), zone: utc, now: vectorA)
+    // A Nuclide turnover is a Helion turnover too: told once, by the Nuclide, the Helion folded in (with room for the
+    // Helions up to it: 77 of them at most)
+    var roomy = planner
+    roomy.budget = 90
+    roomy.perRule = 90
+    let both = roomy.plan(rules: [helion, nuclide], quiet: QuietHours(), zone: utc, now: vectorA)
     let turn = both.alerts.first { $0.ruleID == nuclide.id }!
     check(turn.also.count == 1 && turn.also[0].ruleID == helion.id, "the Helion beginning folds into the Nuclide's")
     check(!both.alerts.contains { $0.ruleID == helion.id && abs($0.fire - turn.fire) < 0.5 }, "… and is not told twice")
