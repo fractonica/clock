@@ -1,8 +1,9 @@
 // A camera on the Fractonica hardware hub (~/projects/fractonica-hardware: `fr camera …`, docs/design/camera-c1.md),
 // one frame at a time. A frame is a `camera_snap` (REST, POST /api/v1/op/camera_snap: a one-frame stream to the Mac,
-// 150–200 ms), unless the camera streams already — a live view in web/cam, say: one stream per camera, so the snap
-// is DEVICE_BUSY — and then the next frame of that stream, joined on /app/stream with the hub's app token
-// (~/.fractonica/secrets.json `app_token`, or FR_APP_TOKEN) and left at once.
+// 150–250 ms). The camera runs one stream at a time, so a snap is DEVICE_BUSY while another runs: a live view (web/cam,
+// say) gives the next frame of its stream, joined on /app/stream with the hub's app token
+// (~/.fractonica/secrets.json `app_token`, or FR_APP_TOKEN) and left at once; anything else (another program's snap
+// at the same Flavon, a short recording) is waited out, the snap tried again every quarter second until the time is up.
 import { copyFileSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, join } from 'node:path';
@@ -73,11 +74,20 @@ export class FrCamera {
 
   /** One frame into `file` → { via: 'snap' | 'live', width, height, bytes }. */
   async capture(file) {
-    try {
-      return await this.snap(file);
-    } catch (e) {
-      if (e.code !== 'DEVICE_BUSY') throw e;
-      return this.live(file);
+    const deadline = Date.now() + this.timeout;
+    for (;;) {
+      try {
+        return await this.snap(file);
+      } catch (e) {
+        if (e.code !== 'DEVICE_BUSY') throw e;
+      }
+      try {
+        return await this.live(file, Math.min(3000, Math.max(500, deadline - Date.now())));
+      } catch (e) {
+        if (e.code !== 'NOT_LIVE') throw e;
+      }
+      if (Date.now() > deadline - 400) throw new CameraError(`${this.device} stayed busy with another stream (not a live view)`, 'BUSY');
+      await new Promise((r) => setTimeout(r, 250));
     }
   }
 
@@ -112,8 +122,8 @@ export class FrCamera {
     throw new CameraError(`the camera streams already, and no app token is there to join it (${join(this.home, 'secrets.json')} app_token, or FR_APP_TOKEN)`, 'NO_TOKEN');
   }
 
-  /** The next frame of the stream running on the camera. */
-  live(file) {
+  /** The next frame of the live stream running on the camera; NOT_LIVE (at once) when what runs is not live. */
+  live(file, timeout = this.timeout) {
     const token = this.appToken();
     return new Promise((resolve, reject) => {
       const ws = new WebSocket(`${this.api.replace(/^http/, 'ws')}/app/stream`);
@@ -132,7 +142,7 @@ export class FrCamera {
       };
       const timer = setTimeout(() => finish(new CameraError(streaming
         ? 'the camera streams, but no frame came in time'
-        : 'the camera streams, but not live (a recording?): no frame to take', 'BUSY')), this.timeout);
+        : 'the camera streams, but not live: no frame to take', streaming ? 'BUSY' : 'NOT_LIVE')), timeout);
       ws.onopen = () => ws.send(JSON.stringify({ t: 'stream.hello', v: 1, token, device: this.device, ...(this.instance ? { instance: this.instance } : {}) }));
       ws.onmessage = (e) => {
         if (typeof e.data === 'string') {
@@ -142,9 +152,15 @@ export class FrCamera {
           } catch {
             return;
           }
-          if (f.t === 'stream.welcome' || f.t === 'stream.started') streaming ||= !!(f.stream ?? f.t === 'stream.started');
-          else if (f.t === 'error' && f.code !== 'DEVICE_BUSY') finish(new CameraError(f.message ?? 'the live stream refused', f.code ?? null));
-          else if (f.t === 'ping') ws.send(JSON.stringify({ t: 'pong', id: f.id }));
+          // nothing live to join (another's snap, which is never live, or a stream that has ended): snap again
+          if (f.t === 'stream.started') streaming = true;
+          else if (f.t === 'stream.welcome') {
+            if (f.stream) streaming = true;
+            else finish(new CameraError('no live stream to join', 'NOT_LIVE'));
+          } else if (f.t === 'stream.ended') finish(new CameraError('the live stream ended', 'NOT_LIVE'));
+          else if (f.t === 'error') {
+            finish(f.code === 'DEVICE_BUSY' ? new CameraError('the camera streams, but not live', 'NOT_LIVE') : new CameraError(f.message ?? 'the live stream refused', f.code ?? null));
+          } else if (f.t === 'ping') ws.send(JSON.stringify({ t: 'pong', id: f.id }));
           return;
         }
         try {

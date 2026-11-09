@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import http from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -10,7 +10,7 @@ import { FrCamera, parseJpegBlock } from '../lib/camera.js';
 import { clockText, dateText, FLAVON_SECONDS, flavonAt, flavonStart, nextFlavon, parseEvery, PER_HELION, segmentOf, spanName } from '../lib/clock.js';
 import { Hub } from '../lib/hub.js';
 import { agentPlist } from '../lib/launchd.js';
-import { readFrames, Timelapse } from '../lib/timelapse.js';
+import { migrateSpans, readFrames, Timelapse } from '../lib/timelapse.js';
 import { assTime, makeVideo, stampsAss } from '../lib/video.js';
 import { startHub } from '../../hub/lib/server.js';
 
@@ -97,7 +97,7 @@ test('the video: a frame per Flavon, missed ones held, other sizes scaled, a pos
 });
 
 // ---- a stand-in for the hardware hub: camera_snap over REST, and /app/stream (a minimal WebSocket) ---------------
-async function fakeFrHub(home, { busy = () => false } = {}) {
+async function fakeFrHub(home, { busy = () => false, live = () => true } = {}) {
   const calls = [];
   const server = http.createServer(async (req, res) => {
     let body = '';
@@ -133,6 +133,12 @@ async function fakeFrHub(home, { busy = () => false } = {}) {
       const mask = buf.subarray(2, 6);
       const text = Buffer.from(buf.subarray(6, 6 + len).map((x, i) => x ^ mask[i % 4])).toString();
       hellos.push(JSON.parse(text));
+      if (!live()) {
+        // what runs is another's snap (never live): the hub says so, and would wait for a live one
+        send(1, Buffer.from(JSON.stringify({ t: 'stream.welcome', v: 1, device: '80f3da6144d4', alias: 'cam-esp32', instance: 'cam', stream: null })));
+        send(1, Buffer.from(JSON.stringify({ t: 'error', code: 'DEVICE_BUSY', message: 'cam-esp32 cam streams, not live' })));
+        return;
+      }
       send(1, Buffer.from(JSON.stringify({ t: 'stream.welcome', v: 1, device: '80f3da6144d4', alias: 'cam-esp32', instance: 'cam', stream: { kind: 'jpeg', format: 'mjpg1' } })));
       const j = jpeg(640, 480, 7);
       const head = Buffer.alloc(24);
@@ -149,11 +155,12 @@ async function fakeFrHub(home, { busy = () => false } = {}) {
   return { url: `http://127.0.0.1:${server.address().port}`, calls, hellos, close: () => new Promise((r) => (server.closeAllConnections(), server.close(r))) };
 }
 
-test('the camera: a snap moved out of FR_HOME, or the live view\'s next frame while it streams', async (t) => {
+test('the camera: a snap moved out of FR_HOME, the live view\'s next frame while it streams, another\'s snap waited out', async (t) => {
   const home = tmp(t, 'fx-tl-home-');
   const dir = tmp(t, 'fx-tl-cam-');
   let busy = false;
-  const fr = await fakeFrHub(home, { busy: () => busy });
+  let live = true;
+  const fr = await fakeFrHub(home, { busy: () => (typeof busy === 'number' ? busy-- > 0 : busy), live: () => live });
   t.after(() => fr.close());
   writeFileSync(join(home, 'secrets.json'), JSON.stringify({ app_token: 'tok-1', wifi: 'never read' }));
   const cam = new FrCamera({ api: fr.url, device: 'cam-esp32', home, frameSize: 'xga', timeout: 3000 });
@@ -169,6 +176,18 @@ test('the camera: a snap moved out of FR_HOME, or the live view\'s next frame wh
   assert.ok(readFileSync(join(dir, 'b.jpg')).equals(jpeg(640, 480, 7)));
   assert.deepEqual(fr.hellos, [{ t: 'stream.hello', v: 1, token: 'tok-1', device: 'cam-esp32' }], 'joined without starting a stream');
 
+  // another program's snap at the same moment: busy, nothing live to join, the snap again once it is over
+  busy = 2;
+  live = false;
+  fr.calls.length = 0;
+  const t0 = Date.now();
+  const c = await cam.capture(join(dir, 'c.jpg'));
+  assert.equal(c.via, 'snap');
+  assert.equal(fr.calls.length, 3, 'tried again until the camera was free');
+  assert.ok(Date.now() - t0 < 1500);
+  busy = true;
+  await assert.rejects(new FrCamera({ api: fr.url, device: 'cam-esp32', home, timeout: 1200 }).capture(join(dir, 'd.jpg')), (e) => e.code === 'BUSY');
+
   const down = new FrCamera({ api: 'http://127.0.0.1:9', device: 'cam-esp32', home });
   await assert.rejects(down.capture(join(dir, 'c.jpg')), (e) => e.code === 'HUB_DOWN');
   assert.throws(() => parseJpegBlock(new Uint8Array(30)), /no whole JPEG/);
@@ -181,14 +200,14 @@ async function pairedLogger(t) {
   t.after(() => h.close());
   const admin = new Hub(h.url, h.hub.createClient({ name: 'Admin', kind: 'browser', scopes: ['read', 'write', 'search', 'admin'] }).token);
   const code = await admin.request('POST', '/v1/pairings', { name: 'Timelapse', kind: 'worker', scopes: ['write'], kinds: ['journal.entry', 'worker.status'] });
-  const paired = await new Hub(h.url).redeem(code.code, { name: 'Timelapse · cam-esp32', platform: 'test', device: 'logger:timelapse:cam-esp32:test' });
+  const paired = await new Hub(h.url).redeem(code.code, { name: 'Timelapse', platform: 'test', device: 'logger:timelapse:test' });
   assert.equal(paired.client.kind, 'worker');
   return { h, admin, paired, hub: new Hub(h.url, paired.token) };
 }
 
 /** A camera that hands out test frames, failing when told. */
-function fakeCamera() {
-  const cam = { device: 'cam-esp32', fail: null, n: 0 };
+function fakeCamera(device = 'cam-esp32') {
+  const cam = { device, fail: null, n: 0 };
   cam.capture = async (file) => {
     if (cam.fail) throw new Error(cam.fail);
     const j = jpeg(320, 240, cam.n++ % 5);
@@ -198,88 +217,106 @@ function fakeCamera() {
   return cam;
 }
 
-test('the timelapse: a frame each Flavon, a record each span (once), its status, a restart going on with its span', async (t) => {
+const ms = (t) => Math.ceil(t * 1000) / 1000;
+
+test('the timelapse: a frame from each camera each Flavon, an entry each span with a video from each (once), its status, a restart going on with its span', async (t) => {
   const { admin, paired, hub } = await pairedLogger(t);
   const dir = tmp(t, 'fx-tl-data-');
   const every = parseEvery('5');
   const n0 = segmentOf(flavonAt(1794230835), 5).start;
   let now = flavonStart(n0);
   const logs = [];
-  const camera = fakeCamera();
-  const make = () => new Timelapse({ hub, camera, dir, every, fps: 10, clientId: paired.client.id, name: 'Timelapse · cam-esp32', zone: 'Europe/Kyiv',
+  const one = fakeCamera('cam-esp32');
+  const two = fakeCamera('cam-esp32-2');
+  const make = (cameras = [one, two]) => new Timelapse({ hub, cameras, dir, every, fps: 10, clientId: paired.client.id, name: 'Timelapse', zone: 'Europe/Kyiv',
     log: (m) => logs.push(m), now: () => now, heartbeat: 3600, retry: 3600 });
   const tl = make();
   t.after(() => tl.stop());
   await tl.writeStatus();
 
-  // the span n0 … n0+4: four frames, one missed
+  // the span n0 … n0+4: cam-esp32 misses its third Flavon, cam-esp32-2 its first two
   for (const i of [0, 1, 2, 3, 4]) {
     now = flavonStart(n0 + i) + 0.05;
-    camera.fail = i === 2 ? 'the hardware hub did not answer' : null;
+    one.fail = i === 2 ? 'the hardware hub did not answer' : null;
+    two.fail = i < 2 ? 'cam-esp32-2 is offline' : null;
     await tl.flavon(n0 + i, flavonStart(n0 + i));
   }
-  assert.ok(logs.some((l) => l.includes('no frame (the hardware hub did not answer)')));
-  assert.ok(logs.some((l) => l.includes('frames coming again')));
-  assert.equal(readFrames(join(dir, 'frames', String(n0))).length, 4);
+  assert.ok(logs.includes('cam-esp32: no frame (the hardware hub did not answer); trying every Flavon'));
+  assert.ok(logs.includes('cam-esp32: frames coming again'));
+  assert.ok(logs.includes('cam-esp32-2: frames coming again'));
+  const spanDir = join(dir, 'frames', String(n0));
+  assert.deepEqual([readFrames(join(spanDir, 'cam-esp32')).length, readFrames(join(spanDir, 'cam-esp32-2')).length], [4, 3]);
 
-  // the next span's first Flavon closes it
+  // the next span's first Flavon closes it: one entry, a video from each camera
   now = flavonStart(n0 + 5) + 0.05;
   await tl.flavon(n0 + 5, flavonStart(n0 + 5));
   await tl.closing;
-  const id = `timelapse.cam-esp32.${n0}`;
+  const id = `timelapse.${paired.client.id}.${n0}`;
   const r = await admin.request('GET', `/v1/records/${id}`);
   assert.equal(r.kind, 'journal.entry');
   assert.equal(r.source, paired.client.id);
-  assert.equal(r.time, Math.ceil(flavonStart(n0) * 1000) / 1000);
-  assert.equal(r.end, Math.ceil(flavonStart(n0 + 5) * 1000) / 1000);
+  assert.equal(r.time, ms(flavonStart(n0)), 'from the first frame of either camera');
+  assert.equal(r.end, ms(flavonStart(n0 + 5)));
   assert.equal(r.fx.clock, clockText(n0), 'read in its own Flavon, not the one before');
   assert.equal(r.zone, 'Europe/Kyiv');
   assert.deepEqual(r.tags, ['timelapse']);
   assert.equal(r.data.emoji, '🎞️');
   assert.equal(r.data.title, `Timelapse · ${clockText(n0)}`);
-  assert.deepEqual(r.data.timelapse, { camera: 'cam-esp32', every: 5, start: flavonStart(n0), end: flavonStart(n0 + 5), frames: 4, missed: 1, fps: 10 });
-  assert.match(r.data.markdown, /^4 frames from cam-esp32, one each Flavon \(1 missed\)/);
-  const [video, poster] = r.blobs;
-  assert.deepEqual([video.role, video.name, video.type, video.width, video.height, video.duration, video.poster], ['video', 'timelapse', 'video/mp4', 320, 240, 0.5, poster.hash]);
-  assert.deepEqual([poster.role, poster.type], ['poster', 'image/jpeg']);
-  const blob = await fetch(`${hub.base}/v1/blobs/${video.hash}`, { headers: { Authorization: `Bearer ${admin.token}` } });
+  assert.equal(r.data.markdown, '4 frames from cam-esp32 (1 missed) and 3 from cam-esp32-2, one each Flavon, played at 10 a second.');
+  assert.deepEqual(r.data.timelapse, {
+    every: 5, start: flavonStart(n0), end: flavonStart(n0 + 5), fps: 10,
+    cameras: [
+      { camera: 'cam-esp32', frames: 4, missed: 1, start: ms(flavonStart(n0)), end: ms(flavonStart(n0 + 5)) },
+      { camera: 'cam-esp32-2', frames: 3, missed: 0, start: ms(flavonStart(n0 + 2)), end: ms(flavonStart(n0 + 5)) },
+    ],
+  });
+  assert.deepEqual(r.blobs.map((b) => [b.role, b.name, b.type]), [
+    ['video', 'cam-esp32', 'video/mp4'], ['poster', 'cam-esp32', 'image/jpeg'],
+    ['video', 'cam-esp32-2', 'video/mp4'], ['poster', 'cam-esp32-2', 'image/jpeg'],
+  ]);
+  const [v1, p1, v2] = r.blobs;
+  assert.deepEqual([v1.width, v1.height, v1.duration, v1.poster], [320, 240, 0.5, p1.hash]);
+  assert.equal(v2.duration, 0.3, 'its own frames: from its first to its last');
+  const blob = await fetch(`${hub.base}/v1/blobs/${v2.hash}`, { headers: { Authorization: `Bearer ${admin.token}` } });
   assert.equal(blob.status, 200);
-  assert.equal(existsSync(join(dir, 'frames', String(n0))), false, 'its frames are gone once recorded');
+  assert.equal(existsSync(spanDir), false, 'its frames are gone once recorded');
 
   // its status
   const s = await admin.request('GET', `/v1/records/worker.status.${paired.client.id}`);
   assert.equal(s.kind, 'worker.status');
   assert.equal(s.data.worker, 'timelapse');
+  assert.equal(s.data.text, 'A frame from cam-esp32 and cam-esp32-2 each Flavon, their videos each 5 Flavons');
   assert.equal(s.data.records, 1);
   assert.equal(s.data.last.record, id);
-  assert.deepEqual([s.data.frames, s.data.missed], [5, 1]);
-  assert.deepEqual(s.data.every, { flavons: 5, name: '5 Flavons' });
-  assert.equal(s.data.camera.state, 'ok');
-  assert.equal(s.data.span.frames, 1);
+  assert.deepEqual(s.data.last.cameras, [{ camera: 'cam-esp32', frames: 4, missed: 1 }, { camera: 'cam-esp32-2', frames: 3, missed: 0 }]);
+  assert.deepEqual([s.data.frames, s.data.missed], [9, 3]);
+  assert.deepEqual(s.data.cameras.map((c) => [c.device, c.state, c.frames, c.missed]), [['cam-esp32', 'ok', 5, 1], ['cam-esp32-2', 'ok', 4, 2]]);
+  assert.deepEqual(s.data.span.cameras, { 'cam-esp32': 1, 'cam-esp32-2': 1 });
 
   // a restart mid-span goes on with it; the span it was down at the end of is closed when it starts
   now = flavonStart(n0 + 6) + 0.05;
   await tl.flavon(n0 + 6, flavonStart(n0 + 6));
   await tl.stop();
+  assert.equal((await admin.request('GET', `/v1/records/worker.status.${paired.client.id}`)).data.stopped, now, 'it says it stopped');
   now = flavonStart(n0 + 12) + 0.05; // n0+5 … n0+9 ended while it was down
-  const again = make();
+  const again = make([one]); // and it runs with cam-esp32 alone now: the span's cam-esp32-2 frames still go in
   t.after(() => again.stop());
   await again.writeStatus();
+  assert.equal((await admin.request('GET', `/v1/records/worker.status.${paired.client.id}`)).data.stopped, null, 'and runs again');
   again.closeEnded();
   await again.closing;
-  const r2 = await admin.request('GET', `/v1/records/timelapse.cam-esp32.${n0 + 5}`);
-  assert.equal(r2.data.timelapse.frames, 2);
-  assert.equal(r2.data.timelapse.missed, 0, 'the Flavons after it stopped are not missed: the span is shorter');
-  assert.equal(r2.end, Math.ceil(flavonStart(n0 + 7) * 1000) / 1000, 'it ends with its last frame');
+  const r2 = await admin.request('GET', `/v1/records/timelapse.${paired.client.id}.${n0 + 5}`);
+  assert.deepEqual(r2.data.timelapse.cameras.map((c) => [c.camera, c.frames, c.missed]), [['cam-esp32', 2, 0], ['cam-esp32-2', 2, 0]]);
+  assert.equal(r2.end, ms(flavonStart(n0 + 7)), 'it ends with its last frame');
 
-  // a span with one frame (started on its last Flavon) makes no record
+  // a span where no camera has two frames (started on its last Flavon) makes no record
   now = flavonStart(n0 + 14) + 0.05;
   await again.flavon(n0 + 14, flavonStart(n0 + 14));
   now = flavonStart(n0 + 15) + 0.05;
   await again.flavon(n0 + 15, flavonStart(n0 + 15));
   await again.closing;
-  assert.ok(logs.some((l) => l.endsWith('one frame, no record')));
-  await assert.rejects(admin.request('GET', `/v1/records/timelapse.cam-esp32.${n0 + 10}`), (e) => e.status === 404);
+  assert.ok(logs.some((l) => l.endsWith('no camera has two frames, no record')));
+  await assert.rejects(admin.request('GET', `/v1/records/timelapse.${paired.client.id}.${n0 + 10}`), (e) => e.status === 404);
 
   // a span closed twice makes one record: the second finds it done
   const before = (await admin.request('GET', '/v1/kinds')).kinds.find((k) => k.kind === 'journal.entry').count;
@@ -296,7 +333,7 @@ test('the timelapse: a record the hub does not take waits on disk and goes when 
   let now = flavonStart(n0);
   const logs = [];
   const away = new Hub('http://127.0.0.1:9', paired.token);
-  const tl = new Timelapse({ hub: away, camera: fakeCamera(), dir, every, fps: 10, clientId: paired.client.id, name: 'T', log: (m) => logs.push(m), now: () => now, retry: 3600, heartbeat: 3600 });
+  const tl = new Timelapse({ hub: away, cameras: [fakeCamera()], dir, every, fps: 10, clientId: paired.client.id, name: 'T', log: (m) => logs.push(m), now: () => now, retry: 3600, heartbeat: 3600 });
   t.after(() => tl.stop());
   for (const i of [0, 1, 2, 3]) {
     now = flavonStart(n0 + i);
@@ -304,11 +341,38 @@ test('the timelapse: a record the hub does not take waits on disk and goes when 
   }
   await tl.closing;
   assert.ok(logs.some((l) => /no record yet \(the hub at .* did not answer/.test(l)));
-  assert.equal(readFrames(join(dir, 'frames', String(n0))).length, 3, 'its frames wait');
+  assert.equal(readFrames(join(dir, 'frames', String(n0), 'cam-esp32')).length, 3, 'its frames wait');
   tl.hub = new Hub(away.base.replace('127.0.0.1:9', new URL(admin.base).host), paired.token);
   tl.closeEnded();
   await tl.closing;
-  assert.equal((await admin.request('GET', `/v1/records/timelapse.cam-esp32.${n0}`)).data.timelapse.frames, 3);
+  const r = await admin.request('GET', `/v1/records/timelapse.${paired.client.id}.${n0}`);
+  assert.equal(r.data.timelapse.cameras[0].frames, 3);
+  assert.equal(r.data.markdown, '3 frames from cam-esp32, one each Flavon, played at 10 a second.');
+});
+
+test('the first version\'s spans (one camera, frames in the span\'s folder) go on in the camera\'s folder', async (t) => {
+  const { admin, paired, hub } = await pairedLogger(t);
+  const dir = tmp(t, 'fx-tl-old-');
+  const n0 = segmentOf(flavonAt(1794231000), 4).start;
+  const span = join(dir, 'frames', String(n0));
+  mkdirSync(span, { recursive: true });
+  writeFileSync(join(span, 'span.json'), JSON.stringify({ start: n0, end: n0 + 4, every: { flavons: 4, name: '4 Flavons' } }));
+  for (const i of [0, 1, 2]) {
+    writeFileSync(join(span, `${n0 + i}.jpg`), jpeg(320, 240, i));
+    appendFileSync(join(span, 'frames.jsonl'), `${JSON.stringify({ n: n0 + i, at: 0, via: 'snap', width: 320, height: 240, bytes: 1 })}\n`);
+  }
+  migrateSpans(join(dir, 'frames'), 'cam-esp32');
+  migrateSpans(join(dir, 'frames'), 'cam-esp32'); // twice: nothing more to move
+  assert.deepEqual(readdirSync(span).sort(), ['cam-esp32', 'span.json']);
+  assert.equal(readFrames(join(span, 'cam-esp32')).length, 3);
+
+  const tl = new Timelapse({ hub, cameras: [fakeCamera('cam-esp32-2')], dir, every: parseEvery('4'), fps: 10, clientId: paired.client.id, name: 'T',
+    now: () => flavonStart(n0 + 9), retry: 3600, heartbeat: 3600 });
+  t.after(() => tl.stop());
+  tl.closeEnded();
+  await tl.closing;
+  const r = await admin.request('GET', `/v1/records/timelapse.${paired.client.id}.${n0}`);
+  assert.deepEqual(r.data.timelapse.cameras.map((c) => [c.camera, c.frames]), [['cam-esp32', 3]]);
 });
 
 test('in the background: a LaunchAgent plist macOS reads', { skip: process.platform !== 'darwin' }, (t) => {
