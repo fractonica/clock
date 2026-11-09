@@ -302,6 +302,11 @@ function connectEvents() {
   events.addEventListener('worker', (e) => setWorker(JSON.parse(e.data).connected));
   events.addEventListener('change', async (e) => {
     const c = JSON.parse(e.data);
+    if (c.kind?.startsWith('worker.')) {
+      // a worker's status: its home is Devices, not the timeline
+      if (S.view === 'devices') refreshDevicesSoon();
+      return;
+    }
     clearTimeout(kindsTimer);
     kindsTimer = setTimeout(async () => {
       await loadKinds();
@@ -432,7 +437,7 @@ function renderSetup(error = '') {
 
 // ---- timeline ------------------------------------------------------------------------------------------------------
 function passes(r) {
-  if (r.deleted) return false;
+  if (r.deleted || r.kind.startsWith('worker.')) return false;
   if (S.filter.kinds.size && !S.filter.kinds.has(r.kind)) return false;
   if (S.filter.sources.size && !S.filter.sources.has(r.source)) return false;
   return true;
@@ -470,7 +475,7 @@ function resetTimeline() {
 
 let filtersEl = null;
 function renderFilters() {
-  const kinds = S.kinds;
+  const kinds = S.kinds.filter((k) => !k.kind.startsWith('worker.'));
   const sources = new Map();
   for (const k of kinds) for (const s of k.sources) sources.set(s.id, { id: s.id, name: s.name, count: (sources.get(s.id)?.count ?? 0) + s.count });
   const total = kinds.reduce((a, k) => a + k.count, 0);
@@ -1029,7 +1034,7 @@ async function renderDevices() {
     return;
   }
   if (!main.querySelector('.clients')) main.replaceChildren(h('div', { class: 'loading' }, 'Loading…'));
-  await loadClients();
+  await Promise.all([loadClients(), loadWorkerStatus()]);
   const w = await renderWorker();
   const all = [...S.clients.values()];
   const live = all.filter((c) => !c.revoked).sort((a, b) => (b.lastSeen ?? 0) - (a.lastSeen ?? 0));
@@ -1043,12 +1048,52 @@ async function renderDevices() {
       h('button', { class: 'btn primary', type: 'button', onclick: openPair }, icon('plus'), 'Pair a device'),
     ),
     h('div', { class: 'clients' }, live.map(clientCard)),
-    revoked.length ? h('div', { class: 'section-h', style: { marginTop: '30px' } }, h('h2', null, `Revoked · ${revoked.length}`)) : null,
-    revoked.length ? h('div', { class: 'clients' }, revoked.map(clientCard)) : null,
+    revoked.length ? h('div', { class: 'section-h', style: { marginTop: '30px' } }, h('h2', null, `Revoked · ${revoked.length}`)) : '',
+    revoked.length ? h('div', { class: 'clients' }, revoked.map(clientCard)) : '',
   );
+}
+/** The workers' own statuses (`worker.status.<client id>` records, API.md), by the client that writes each. */
+async function loadWorkerStatus() {
+  try {
+    const { records } = await api('GET', '/v1/records?kind=worker.status&limit=200');
+    S.workerStatus = new Map(records.map((r) => [r.source, r.data]));
+  } catch {
+    S.workerStatus = new Map();
+  }
+}
+let devicesTimer = null;
+function refreshDevicesSoon() {
+  clearTimeout(devicesTimer);
+  devicesTimer = setTimeout(() => S.view === 'devices' && !main.querySelector('.client-h input') && renderDevices(), 600);
+}
+/** A worker's status is fresh while its heartbeat is (twice over, and a minute's grace). */
+const workerAlive = (w) => w && Date.now() / 1000 - (w.seen ?? 0) < (w.heartbeat ?? 600) * 2 + 60;
+const inTime = (t) => {
+  const s = Math.round(t - Date.now() / 1000);
+  if (s <= 0) return 'now';
+  if (s < 3600) return `in ${Math.floor(s / 60)} min ${String(s % 60).padStart(2, '0')} s`;
+  return `in ${Math.floor(s / 3600)} h ${String(Math.round((s % 3600) / 60)).padStart(2, '0')} min`;
+};
+/** What a worker says of itself, as rows of the card's list: what it does, its source, where it is, what it last wrote. */
+function workerRows(w, alive) {
+  const rows = [];
+  const row = (k, ...v) => rows.push(h('dt', null, k), h('dd', null, ...v));
+  if (w.text) row('Does', w.text);
+  if (!alive) row('State', `not running: last heard from ${ago(w.seen)}`);
+  else if (w.camera) {
+    const ok = w.camera.state === 'ok';
+    row('Camera', h('span', { class: `tag${ok ? ' teal' : w.camera.state === 'failing' ? ' bad' : ''}` }, w.camera.device),
+      ' ', ok ? (w.camera.via === 'live' ? 'frames from its live view' : 'taking frames') : w.camera.problem ?? w.camera.state);
+  }
+  if (w.span && alive) row('Now', `${w.span.name}: ${w.span.frames} frames${w.span.missed ? `, ${w.span.missed} missed` : ''}, ends ${inTime(w.span.end)}`);
+  if (w.last) row('Last', `${w.last.title ?? w.last.record}${w.last.frames ? ` · ${w.last.frames} frame${w.last.frames === 1 ? '' : 's'}` : ''} · ${ago(w.last.at)}`);
+  if (Number.isFinite(w.records)) row('Wrote', `${w.records} record${w.records === 1 ? '' : 's'}${alive && w.started ? ` · running since ${Date.now() / 1000 - w.started < 86400 ? earthTime(w.started) : fmt.dayYear.format(d(w.started))}` : ''}`);
+  return rows;
 }
 function clientCard(c) {
   const self = c.id === S.me.id;
+  const work = c.revoked ? null : S.workerStatus?.get(c.id) ?? null;
+  const alive = work ? workerAlive(work) : c.lastSeen && Date.now() / 1000 - c.lastSeen < 120;
   const nameEl = h('b', { title: 'Rename' }, c.name);
   const rename = () => {
     const input = h('input', { class: 'input', value: c.name, 'aria-label': 'Name' });
@@ -1072,9 +1117,12 @@ function clientCard(c) {
     h('div', { class: 'client-h' },
       h('div', { class: 'ico' }, icon(c.kind)),
       h('div', { class: 'nm' }, nameEl, h('small', null, [c.kind, c.platform, self ? 'this browser' : null].filter(Boolean).join(' · '))),
-      c.lastSeen && Date.now() / 1000 - c.lastSeen < 120 && !c.revoked ? h('i', { class: 'dot on', title: 'Active' }) : null,
+      work && !alive
+        ? h('i', { class: 'dot warn', title: `Not heard from since ${ago(work.seen)}` })
+        : alive && !c.revoked ? h('i', { class: 'dot on', title: work ? 'Running' : 'Active' }) : null,
     ),
     h('dl', { class: 'kv' },
+      work ? workerRows(work, alive) : null,
       h('dt', null, 'Records'), h('dd', null, String(c.records)),
       h('dt', null, 'Seen'), h('dd', null, c.revoked ? `revoked ${ago(c.revoked)}` : ago(c.lastSeen)),
       h('dt', null, 'Scopes'), h('dd', null, h('span', { class: 'chips', style: { gap: '4px' } }, c.scopes.map((s) => h('span', { class: `tag${s === 'admin' ? ' warn' : ''}` }, s)))),
@@ -1096,18 +1144,30 @@ function clientCard(c) {
   );
 }
 
-const DEFAULT_SCOPES = { device: ['read', 'write', 'search'], service: ['write'], worker: ['worker'], browser: ['read', 'write', 'search', 'admin'] };
+// What each choice pairs: a Logger is a worker that writes (a timelapse of a camera, say: loggers/README.md), the
+// Worker the embedding worker that takes jobs.
+const PAIR_AS = {
+  device: { kind: 'device', scopes: ['read', 'write', 'search'], kinds: '*' },
+  service: { kind: 'service', scopes: ['write'], kinds: '*' },
+  worker: { kind: 'worker', scopes: ['worker'], kinds: '*' },
+  logger: { kind: 'worker', scopes: ['write'], kinds: 'journal.entry, worker.status' },
+  browser: { kind: 'browser', scopes: ['read', 'write', 'search', 'admin'], kinds: '*' },
+};
 function openPair() {
   const name = h('input', { class: 'input', placeholder: 'iPhone, Studio thermometer…', required: true });
-  let kind = 'device';
+  let as = 'device';
   const scopeBoxes = ['read', 'write', 'search', 'worker', 'admin'].map((s) => h('input', { type: 'checkbox', value: s }));
-  const setScopes = () => scopeBoxes.forEach((b) => (b.checked = DEFAULT_SCOPES[kind].includes(b.value)));
-  setScopes();
   const kinds = h('input', { class: 'input mono', value: '*', placeholder: '* or journal.*, sensor.*' });
+  const setScopes = () => {
+    scopeBoxes.forEach((b) => (b.checked = PAIR_AS[as].scopes.includes(b.value)));
+    kinds.value = PAIR_AS[as].kinds;
+    if (as === 'logger' && !name.value) name.value = 'Timelapse · cam-esp32';
+  };
+  setScopes();
   const seg = h('div', { class: 'seg' },
-    Object.keys(DEFAULT_SCOPES).map((k) =>
-      h('button', { type: 'button', 'aria-pressed': String(k === kind), onclick: (e) => {
-        kind = k;
+    Object.keys(PAIR_AS).map((k) =>
+      h('button', { type: 'button', 'aria-pressed': String(k === as), onclick: (e) => {
+        as = k;
         seg.querySelectorAll('button').forEach((b) => b.setAttribute('aria-pressed', String(b === e.currentTarget)));
         setScopes();
       } }, k[0].toUpperCase() + k.slice(1)),
@@ -1119,8 +1179,8 @@ function openPair() {
     try {
       const scopes = scopeBoxes.filter((b) => b.checked).map((b) => b.value);
       const ks = kinds.value.split(',').map((s) => s.trim()).filter(Boolean);
-      const p = await api('POST', '/v1/pairings', { name: name.value.trim(), kind, scopes, kinds: ks.length ? ks : ['*'] });
-      showCode(p, kind, name.value.trim());
+      const p = await api('POST', '/v1/pairings', { name: name.value.trim(), kind: PAIR_AS[as].kind, scopes, kinds: ks.length ? ks : ['*'] });
+      showCode(p, as, name.value.trim());
     } catch (x) {
       err.textContent = x.message;
     }
@@ -1153,7 +1213,9 @@ function showCode(p, kind, name) {
       ? 'Scan it with the iPhone camera, or type the code into the Fractonica app’s hub settings.'
       : kind === 'browser'
         ? 'Open the link in the other browser (or scan it with a phone).'
-        : 'Redeem it from the script or worker:';
+        : kind === 'logger'
+          ? 'Start the logger with it, on the Mac its camera’s hardware hub runs on:'
+          : 'Redeem it from the script or worker:';
   dlg.className = 'narrow';
   dlg.replaceChildren(
     h('div', { class: 'dlg-h' }, h('div', { class: 't' }, `Pair “${name}”`), h('button', { class: 'btn icon ghost', type: 'button', 'aria-label': 'Close', onclick: () => dlg.close() }, icon('close'))),
@@ -1167,9 +1229,11 @@ function showCode(p, kind, name) {
         ),
       ),
       h('div', { class: 'linkbox' }, h('span', { title: link }, link), h('button', { class: 'btn icon sm ghost', type: 'button', 'aria-label': 'Copy link', onclick: () => copy(link) }, icon('copy'))),
-      kind === 'service' || kind === 'worker'
-        ? h('div', { class: 'snippet' }, `curl -X POST ${base}/v1/pair -H 'Content-Type: application/json' \\\n  -d '{"code":"${p.code}","name":${JSON.stringify(name)},"kind":"${kind}"}'`)
-        : null,
+      kind === 'logger'
+        ? h('div', { class: 'snippet' }, `node loggers/bin/timelapse.mjs ${p.code} --hub ${base}`)
+        : kind === 'service' || kind === 'worker'
+          ? h('div', { class: 'snippet' }, `curl -X POST ${base}/v1/pair -H 'Content-Type: application/json' \\\n  -d '{"code":"${p.code}","name":${JSON.stringify(name)},"kind":"${kind}"}'`)
+          : null,
       h('div', { class: 'actions', style: { marginTop: '18px' } }, h('button', { class: 'btn', type: 'button', onclick: () => dlg.close() }, 'Done')),
     ),
   );

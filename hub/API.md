@@ -42,8 +42,8 @@ party client. Anything not written here is an implementation detail.
 
 A **client** is anything holding a token: `{ id, name, kind, platform, scopes, kinds, created, lastSeen }`.
 
-- `kind`: `device` (an app on a phone or computer), `service` (a script, sensor, MCP server), `worker`, `browser`
-  (the hub's own web UI).
+- `kind`: `device` (an app on a phone or computer), `service` (a script, sensor, MCP server), `worker` (the embedding
+  worker; a logger), `browser` (the hub's own web UI).
 - `scopes`, any of:
   - `read`: list and get records, the change feed, blobs, vectors
   - `write`: create, update and delete records; upload blobs
@@ -76,6 +76,11 @@ Defaults: scopes `["read","write","search"]`, kinds `["*"]`, ttl 600 s. An optio
 `worker`, `browser`) is the default kind of the client that redeems the code. Codes are 8 characters from
 `23456789ABCDEFGHJKMNPQRSTVWXYZ` shown as `XXXX-XXXX`; input is case-insensitive and ignores `-` and spaces. The `link`
 uses the hub's LAN address so a phone can reach it, and is what the web UI shows as a QR code.
+
+**Workers.** A worker is a client of kind `worker`: the embedding worker (scope `worker`, it takes jobs), and the
+**loggers** (`loggers/`), which write on their own in step with the clock: pair one with a code of kind `worker`,
+scope `write` and kinds `journal.entry`, `worker.status` (the hub's page: Devices › Pair a device › Logger). A logger
+says how it is in a `worker.status` record (below).
 
 **Delegated pairing.** A client without `admin` may make one kind of code: for a `service` with at most its own `read`
 and `write` on kinds under `dispatch.` only — how the app pairs its dispatch (fractonica-dispatch, dispatch/README.md),
@@ -275,6 +280,38 @@ each call and every `heartbeat` seconds; the app shows it).
   "sent": 1 }
 ```
 `apns` is `ready`, or why nothing can be pushed (`no APNs key`, `APNs key: …`).
+
+`journal.entry` with `timelapse` — a **timelapse** written by the timelapse logger (`loggers/`, a worker): a frame
+from a camera at the start of every Flavon, made at the end of each span (a Helion, or a set number of Flavons
+counted from the Helion's start) into a video, a frame per Flavon (a missed one holding the frame before), each
+stamped with the clock's date, its time down to the Flavon and the Earth time. id `timelapse.<camera>.<the span's
+first Flavon>` (the Flavon's cycle number at level λ), so a retry never makes a second one; `time` is its first
+frame's Flavon, `end` the end of its last; tag `timelapse`.
+```json
+{ "emoji": "🎞️", "title": "Timelapse · Helion 33η", "markdown": "2340 frames from cam-esp32, one each Flavon, played at 30 a second.",
+  "timelapse": { "camera": "cam-esp32", "every": 2340, "start": 1794228891.78, "end": 1794247080.73, "frames": 2340,
+                 "missed": 0, "fps": 30 } }
+```
+Its video is a blob of role `video`, `name` `timelapse`, `video/mp4` (H.264), with a `poster` (the frame halfway).
+`every` is the span in Flavons (2340 a Helion, 65 a Preon); the title names a whole Helion (`Helion 33η`) or Preon
+(`Preon 33η 3ι`), otherwise the clock where the span starts (`33η 3ι 0λ`).
+
+`worker.status` — a worker's own state (id `worker.status.<its client id>`), written by a logger on start, after
+each record, when its source fails or comes back, and every `heartbeat` seconds; `time` is when it started. The hub's
+Devices page shows it on the worker's card (not running once `seen` is two heartbeats old); the apps and the
+timeline leave `worker.*` records out.
+```json
+{ "name": "Timelapse · cam-esp32", "worker": "timelapse", "version": "1.0.0", "started": 1794230000.1,
+  "seen": 1794230600.4, "heartbeat": 600, "text": "A frame from cam-esp32 each Flavon, a video each Helion",
+  "camera": { "device": "cam-esp32", "state": "ok", "problem": null, "via": "snap" },
+  "every": { "flavons": 2340, "name": "Helion" }, "fps": 30,
+  "span": { "name": "Helion 33η", "start": 1794228891.78, "end": 1794247080.73, "frames": 211, "missed": 0 },
+  "last": { "record": "timelapse.cam-esp32.1678629420", "title": "Timelapse · Helion 32η", "at": 1794228893.2,
+            "start": 1794210702.8, "end": 1794228891.78, "frames": 2340, "missed": 0, "duration": 78, "bytes": 61400211 },
+  "frames": 211, "missed": 0, "records": 1 }
+```
+`text`, `last.title` and `last.at` are what any worker should write; the rest is the timelapse's (`camera.state` `ok`,
+`failing` with the `problem`, or `starting`; `via` `snap`, or `live` while the camera streams for someone else).
 
 Sky events near an entry are **tags** `sky:<event>` with the event names of the printable diary's astronomy
 (`src/diary/astro/index.js` `EVENT_INFO`: `sky:full-moon`, `sky:solar-eclipse`, `sky:june-solstice`, …): the apps add

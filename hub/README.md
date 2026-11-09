@@ -76,6 +76,16 @@ Without a worker everything works except semantic search: `auto` searches fall b
 answers `503`. The Devices page shows whether the worker is connected, its model and device, the queue and any parked
 jobs (with a retry button). When the worker reports a different model, the hub drops every vector and re-embeds.
 
+## Loggers
+
+Workers that write on their own, in step with the clock, live in [`loggers/`](../loggers/README.md). The first takes a
+frame from a camera on the Fractonica hardware hub every Flavon and writes a video of them to the journal each Helion.
+On the hub's page, **Devices → Pair a device → Logger** makes its code; its card there shows what it is doing.
+
+```sh
+node loggers/bin/timelapse.mjs XXXX-XXXX                                 # pair, then run
+```
+
 ## Write a provider
 
 A provider is anything that writes records. Make it a token with only what it needs, then `PUT` records with
