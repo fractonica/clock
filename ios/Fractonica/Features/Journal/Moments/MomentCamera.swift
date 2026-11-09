@@ -67,6 +67,10 @@ final class MomentCamera {
             return
         }
         let sound = await AVCaptureDevice.requestAccess(for: .audio)
+        #if os(iOS)
+        // after a call of the system answered: once it has let the audio go, or letting it go would stop the cameras
+        await MomentCallKit.shared.handedOver()
+        #endif
         let result = await rig.configure(sound: sound)
         previews = result.previews
         hearing = result.hearing
@@ -178,8 +182,15 @@ private final class CameraRig: @unchecked Sendable {
 
     private func build(sound: Bool) -> Configured {
         #if os(iOS)
-        // (a call's ringing or its film has set the session up already: kept as it is)
-        if sound, AVAudioSession.sharedInstance().category != .playAndRecord { MomentCamera.prepareAudio(recording: true) }
+        // (a call's ringing or its film has set the session up already: kept as it is, and active — a call of the
+        // system's ending has let it go)
+        if sound {
+            if AVAudioSession.sharedInstance().category != .playAndRecord {
+                MomentCamera.prepareAudio(recording: true)
+            } else {
+                try? AVAudioSession.sharedInstance().setActive(true)
+            }
+        }
         if AVCaptureMultiCamSession.isMultiCamSupported {
             // the back camera with the most lenses that runs beside the selfie camera
             let types: [AVCaptureDevice.DeviceType] = [.builtInTripleCamera, .builtInDualWideCamera, .builtInDualCamera, .builtInWideAngleCamera]
@@ -286,6 +297,7 @@ private final class CameraRig: @unchecked Sendable {
         self.session = session
         taps = made
         self.sound = mic
+        watch(session)
         if lenses.zooms.count > 1 {
             self.back = back
             zooms = lenses.zooms
@@ -398,6 +410,7 @@ private final class CameraRig: @unchecked Sendable {
         taps = [tap]
         self.sound = mic
         #if os(iOS)
+        watch(session)
         if device.position == .back { backCamera = device }
         return Configured(previews: [name: layer], hearing: mic != nil, torch: device.position == .back && device.hasTorch)
         #else
@@ -407,6 +420,10 @@ private final class CameraRig: @unchecked Sendable {
 
     func stop() {
         queue.async {
+            #if os(iOS)
+            self.observers.forEach(NotificationCenter.default.removeObserver)
+            self.observers = []
+            #endif
             if let session = self.session, session.isRunning { session.stopRunning() }
             self.session = nil
             self.back = nil
@@ -417,6 +434,75 @@ private final class CameraRig: @unchecked Sendable {
             self.sound = nil
         }
     }
+
+    #if os(iOS)
+    private var observers: [NSObjectProtocol] = []
+
+    /// Interruptions met. A call of the system ringing in, or one of the app's own letting the audio session go, takes
+    /// the microphone, and that stops the whole session: the cameras' frames too, the film frozen. The audio session is
+    /// taken back where it can be (the session runs on with its sound); where it cannot (a phone call holds the
+    /// microphone), the microphone leaves the session and the cameras run on, the film's sound ending there. A session
+    /// stopped by an error starts again.
+    private func watch(_ session: AVCaptureSession) {
+        let center = NotificationCenter.default
+        observers = [
+            center.addObserver(forName: AVCaptureSession.wasInterruptedNotification, object: session, queue: nil) { [weak self] note in
+                guard let self else { return }
+                let reason = (note.userInfo?[AVCaptureSessionInterruptionReasonKey] as? Int).flatMap(AVCaptureSession.InterruptionReason.init(rawValue:))
+                self.queue.async { self.interrupted(reason) }
+            },
+            center.addObserver(forName: AVCaptureSession.interruptionEndedNotification, object: session, queue: nil) { _ in
+                momentsLog.info("cameras: the interruption ended")
+            },
+            center.addObserver(forName: AVCaptureSession.runtimeErrorNotification, object: session, queue: nil) { [weak self] note in
+                guard let self else { return }
+                let code = (note.userInfo?[AVCaptureSessionErrorKey] as? AVError)?.code
+                self.queue.async { self.failed(code) }
+            },
+        ]
+    }
+
+    private func interrupted(_ reason: AVCaptureSession.InterruptionReason?) {
+        momentsLog.info("cameras interrupted (reason \(reason.map { String($0.rawValue) } ?? "?"))")
+        guard reason == .audioDeviceInUseByAnotherClient, sound != nil else { return }
+        // the app's own audio session let go (a call of the system's ending): taken back, the session resumes
+        if (try? AVAudioSession.sharedInstance().setActive(true)) != nil {
+            queue.asyncAfter(deadline: .now() + 0.5) { [weak self] in self?.resumeOrGoOnSilent() }
+        } else {
+            goOnSilent()
+        }
+    }
+
+    /// Half a second after the audio session was taken back: running again, or on without the microphone.
+    private func resumeOrGoOnSilent() {
+        guard let session else { return }
+        if !session.isRunning, !session.isInterrupted { session.startRunning() }
+        if session.isInterrupted || !session.isRunning {
+            goOnSilent()
+        } else {
+            momentsLog.info("cameras: running again, with their sound")
+        }
+    }
+
+    /// The microphone out of the session (something else holds it): the cameras run on, the film's sound ends here.
+    private func goOnSilent() {
+        guard let session, let tap = sound else { return }
+        session.beginConfiguration()
+        for case let input as AVCaptureDeviceInput in session.inputs where input.device.hasMediaType(.audio) { session.removeInput(input) }
+        for output in session.outputs where output is AVCaptureAudioDataOutput { session.removeOutput(output) }
+        session.commitConfiguration()
+        sound = nil
+        tap.finishNow()
+        if !session.isRunning { session.startRunning() }
+        momentsLog.info("cameras: the microphone is taken, filming on without sound (running: \(session.isRunning))")
+    }
+
+    private func failed(_ code: AVError.Code?) {
+        momentsLog.error("cameras stopped by an error (\(code.map { String($0.rawValue) } ?? "?"))")
+        guard let session, !session.isRunning else { return }
+        session.startRunning()
+    }
+    #endif
 
     /// Films from `start` to `end` on every camera (those in `only`), and the microphone; the files once all are written.
     func record(from start: Double, to end: Double, only: Set<String>?) async -> [MomentFilm] {

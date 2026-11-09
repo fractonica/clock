@@ -1,4 +1,5 @@
 #if os(iOS)
+import AVFoundation
 import CallKit
 import Foundation
 import PushKit
@@ -9,7 +10,8 @@ import os
 /// once as an incoming video call — the moment's name for the caller, the chosen ringtone — so the phone rings it as a
 /// call, locked or not, through Focus as calls do. Answer opens the moment's call picked up (`MomentStore.pickUp`): the
 /// cameras film once the app is in front (a video call's button opens it), and the system's call ends then so the
-/// camera and microphone are the app's. Decline declines it (photos only if the app opens within a Flavon, as for an
+/// camera and microphone are the app's — the cameras start only once its audio session is let go (`handedOver()`):
+/// the system deactivating it under a running capture session would stop the session, video and all. Decline declines it (photos only if the app opens within a Flavon, as for an
 /// alarm's Stop). Unanswered, it ends when its eleven Flavons are up and is a missed call. Every push is reported, as
 /// PushKit requires — a stale one (alert mode chosen meanwhile, or rung out) ends at once. The dispatch's own test
 /// calls (`dispatch test`, `--call`) ring the same way and open as the Moments screen's Test a Call does.
@@ -34,6 +36,8 @@ final class MomentCallKit: NSObject {
     private var provider: CXProvider?
     private let controller = CXCallController()
     private var calls: [UUID: Ringing] = [:]
+    /// The system's call holds the app's audio session (activated for an answered call, until it is let go).
+    private var callAudio = false
     private var ringtone: String?
     private let log = Logger(subsystem: "app.fractonica.clock", category: "calls")
 
@@ -67,6 +71,19 @@ final class MomentCallKit: NSObject {
     /// The app came to the front: an answered call hands over to the app's own call screen (the cameras film there).
     func becameActive() {
         for (uuid, r) in calls where r.answered && !r.endedByApp { end(uuid) }
+    }
+
+    /// Waits until no call of the system's holds the app's audio (an answered call ends once the app is in front, and
+    /// its audio session is let go after), 3 s at most. The cameras start after: an audio session deactivated under a
+    /// capture session interrupts it, the video with the sound.
+    func handedOver() async {
+        let deadline = Date.now.addingTimeInterval(3)
+        var waited = false
+        while callAudio || calls.values.contains(where: \.answered), Date.now < deadline {
+            waited = true
+            try? await Task.sleep(for: .milliseconds(50))
+        }
+        if waited { log.info("handed over to the app (\(self.callAudio ? "timed out" : "the call's audio let go"))") }
     }
 
     private func configureProvider() {
@@ -128,7 +145,13 @@ final class MomentCallKit: NSObject {
         let until = call.until
         Task { @MainActor [weak self] in
             try? await Task.sleep(for: .seconds(max(0, until - Date.now.timeIntervalSince1970)))
-            guard let self, let r = self.calls[uuid], !r.answered else { return }
+            guard let self, let r = self.calls[uuid] else { return }
+            guard !r.answered else {
+                // answered, and the app never opened from it: the system's call ends a while after the ringing would
+                try? await Task.sleep(for: .seconds(120))
+                if let r = self.calls[uuid], !r.endedByApp { self.end(uuid) }
+                return
+            }
             self.ringOut(uuid, reason: .unanswered)
             // the missed call's entry (the iPhone writes them)
             try? await Task.sleep(for: .seconds(2))
@@ -183,6 +206,12 @@ final class MomentCallKit: NSObject {
 
     fileprivate func reset() {
         calls.removeAll()
+        callAudio = false
+    }
+
+    fileprivate func audio(active: Bool) {
+        callAudio = active
+        log.info("the call's audio \(active ? "activated" : "let go")")
     }
 }
 
@@ -223,6 +252,14 @@ extension MomentCallKit: CXProviderDelegate {
 
     nonisolated func provider(_ provider: CXProvider, perform action: CXSetMutedCallAction) {
         action.fulfill()
+    }
+
+    nonisolated func provider(_ provider: CXProvider, didActivate audioSession: AVAudioSession) {
+        MainActor.assumeIsolated { MomentCallKit.shared.audio(active: true) }
+    }
+
+    nonisolated func provider(_ provider: CXProvider, didDeactivate audioSession: AVAudioSession) {
+        MainActor.assumeIsolated { MomentCallKit.shared.audio(active: false) }
     }
 }
 #endif

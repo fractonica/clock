@@ -176,6 +176,9 @@ final class InstantModel {
     // MARK: The film
 
     private func film() async {
+        // the cameras running first (picked up from a call of the system's, they wait for it to let the audio go): the
+        // film then starts at their first frame
+        await camera.start()
         // the microphone heard as it is from here: the ringtone's gain control would keep it down for half a minute
         MomentCamera.prepareAudio(recording: MomentCamera.mayRecordSound, filming: true)
         await MomentClock.sleep(until: filmStart - 0.05)
