@@ -79,11 +79,12 @@ jobs (with a retry button). When the worker reports a different model, the hub d
 ## Loggers
 
 Workers that write on their own, in step with the clock, live in [`loggers/`](../loggers/README.md). The first takes a
-frame from a camera on the Fractonica hardware hub every Flavon and writes a video of them to the journal each Helion.
+frame from each of its cameras on the Fractonica hardware hub every Flavon and writes an entry to the journal each
+Helion, with a video from each camera.
 On the hub's page, **Devices → Pair a device → Logger** makes its code; its card there shows what it is doing.
 
 ```sh
-node loggers/bin/timelapse.mjs XXXX-XXXX                                 # pair, then run
+node loggers/bin/timelapse.mjs XXXX-XXXX --camera cam-esp32,cam-esp32-2    # pair, then run
 ```
 
 ## Write a provider

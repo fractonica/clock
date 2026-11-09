@@ -1066,8 +1066,8 @@ function refreshDevicesSoon() {
   clearTimeout(devicesTimer);
   devicesTimer = setTimeout(() => S.view === 'devices' && !main.querySelector('.client-h input') && renderDevices(), 600);
 }
-/** A worker's status is fresh while its heartbeat is (twice over, and a minute's grace). */
-const workerAlive = (w) => w && Date.now() / 1000 - (w.seen ?? 0) < (w.heartbeat ?? 600) * 2 + 60;
+/** A worker runs while its status is fresh (its heartbeat twice over, and a minute's grace) and it has not said it stopped. */
+const workerAlive = (w) => w && !w.stopped && Date.now() / 1000 - (w.seen ?? 0) < (w.heartbeat ?? 600) * 2 + 60;
 const inTime = (t) => {
   const s = Math.round(t - Date.now() / 1000);
   if (s <= 0) return 'now';
@@ -1079,14 +1079,22 @@ function workerRows(w, alive) {
   const rows = [];
   const row = (k, ...v) => rows.push(h('dt', null, k), h('dd', null, ...v));
   if (w.text) row('Does', w.text);
-  if (!alive) row('State', `not running: last heard from ${ago(w.seen)}`);
-  else if (w.camera) {
-    const ok = w.camera.state === 'ok';
-    row('Camera', h('span', { class: `tag${ok ? ' teal' : w.camera.state === 'failing' ? ' bad' : ''}` }, w.camera.device),
-      ' ', ok ? (w.camera.via === 'live' ? 'frames from its live view' : 'taking frames') : w.camera.problem ?? w.camera.state);
+  if (!alive) row('State', w.stopped ? `stopped ${ago(w.stopped)}` : `not running: last heard from ${ago(w.seen)}`);
+  else {
+    const cams = w.cameras ?? (w.camera ? [w.camera] : []);
+    for (const [i, cam] of cams.entries()) {
+      const ok = cam.state === 'ok';
+      row(i ? '' : cams.length > 1 ? 'Cameras' : 'Camera', h('span', { class: `tag${ok ? ' teal' : cam.state === 'failing' ? ' bad' : ''}` }, cam.device),
+        ' ', ok ? (cam.via === 'live' ? 'frames from its live view' : 'taking frames') : cam.problem ?? cam.state);
+    }
   }
   if (w.span && alive) row('Now', `${w.span.name}: ${w.span.frames} frames${w.span.missed ? `, ${w.span.missed} missed` : ''}, ends ${inTime(w.span.end)}`);
-  if (w.last) row('Last', `${w.last.title ?? w.last.record}${w.last.frames ? ` · ${w.last.frames} frame${w.last.frames === 1 ? '' : 's'}` : ''} · ${ago(w.last.at)}`);
+  if (w.last) {
+    const frames = w.last.cameras?.length > 1
+      ? ` · ${w.last.cameras.map((c) => `${c.frames} from ${c.camera}`).join(', ')}`
+      : w.last.frames ? ` · ${w.last.frames} frame${w.last.frames === 1 ? '' : 's'}` : '';
+    row('Last', `${w.last.title ?? w.last.record}${frames} · ${ago(w.last.at)}`);
+  }
   if (Number.isFinite(w.records)) row('Wrote', `${w.records} record${w.records === 1 ? '' : 's'}${alive && w.started ? ` · running since ${Date.now() / 1000 - w.started < 86400 ? earthTime(w.started) : fmt.dayYear.format(d(w.started))}` : ''}`);
   return rows;
 }
@@ -1118,7 +1126,7 @@ function clientCard(c) {
       h('div', { class: 'ico' }, icon(c.kind)),
       h('div', { class: 'nm' }, nameEl, h('small', null, [c.kind, c.platform, self ? 'this browser' : null].filter(Boolean).join(' · '))),
       work && !alive
-        ? h('i', { class: 'dot warn', title: `Not heard from since ${ago(work.seen)}` })
+        ? h('i', { class: 'dot', title: work.stopped ? `Stopped ${ago(work.stopped)}` : `Not heard from since ${ago(work.seen)}` })
         : alive && !c.revoked ? h('i', { class: 'dot on', title: work ? 'Running' : 'Active' }) : null,
     ),
     h('dl', { class: 'kv' },
@@ -1161,7 +1169,7 @@ function openPair() {
   const setScopes = () => {
     scopeBoxes.forEach((b) => (b.checked = PAIR_AS[as].scopes.includes(b.value)));
     kinds.value = PAIR_AS[as].kinds;
-    if (as === 'logger' && !name.value) name.value = 'Timelapse · cam-esp32';
+    if (as === 'logger' && !name.value) name.value = 'Timelapse';
   };
   setScopes();
   const seg = h('div', { class: 'seg' },

@@ -282,36 +282,47 @@ each call and every `heartbeat` seconds; the app shows it).
 `apns` is `ready`, or why nothing can be pushed (`no APNs key`, `APNs key: …`).
 
 `journal.entry` with `timelapse` — a **timelapse** written by the timelapse logger (`loggers/`, a worker): a frame
-from a camera at the start of every Flavon, made at the end of each span (a Helion, or a set number of Flavons
-counted from the Helion's start) into a video, a frame per Flavon (a missed one holding the frame before), each
-stamped with the clock's date, its time down to the Flavon and the Earth time. id `timelapse.<camera>.<the span's
-first Flavon>` (the Flavon's cycle number at level λ), so a retry never makes a second one; `time` is its first
-frame's Flavon, `end` the end of its last; tag `timelapse`.
+from each of its cameras at the start of every Flavon, made at the end of each span (a Helion, or a set number of
+Flavons counted from the Helion's start) into a video per camera, a frame per Flavon (a missed one holding the frame
+before), each stamped with the clock's date, its time down to the Flavon, the camera and the Earth time. id
+`timelapse.<the logger's client id>.<the span's first Flavon>` (the Flavon's cycle number at level λ), so a retry
+never makes a second one; `time` is the first frame's Flavon (of any camera), `end` the end of the last; tag
+`timelapse`.
 ```json
-{ "emoji": "🎞️", "title": "Timelapse · Helion 33η", "markdown": "2340 frames from cam-esp32, one each Flavon, played at 30 a second.",
-  "timelapse": { "camera": "cam-esp32", "every": 2340, "start": 1794228891.78, "end": 1794247080.73, "frames": 2340,
-                 "missed": 0, "fps": 30 } }
+{ "emoji": "🎞️", "title": "Timelapse · Helion 33η",
+  "markdown": "2340 frames from cam-esp32 and 2338 from cam-esp32-2 (2 missed), one each Flavon, played at 30 a second.",
+  "timelapse": { "every": 2340, "start": 1794228891.78, "end": 1794247080.73, "fps": 30,
+                 "cameras": [ { "camera": "cam-esp32", "frames": 2340, "missed": 0, "start": 1794228891.783, "end": 1794247080.726 },
+                              { "camera": "cam-esp32-2", "frames": 2338, "missed": 2, "start": 1794228891.783, "end": 1794247080.726 } ] } }
 ```
-Its video is a blob of role `video`, `name` `timelapse`, `video/mp4` (H.264), with a `poster` (the frame halfway).
-`every` is the span in Flavons (2340 a Helion, 65 a Preon); the title names a whole Helion (`Helion 33η`) or Preon
-(`Preon 33η 3ι`), otherwise the clock where the span starts (`33η 3ι 0λ`).
+Each camera's video is a blob of role `video` named after the camera (`cam-esp32`), `video/mp4` (H.264), with its
+`poster` (the frame halfway, role `poster`, the same name), in the order of `cameras`; a camera with fewer than two
+frames in the span is left out (and no camera with two, no entry). `every` is the span in Flavons (2340 a Helion,
+65 a Preon); the title names a whole Helion (`Helion 33η`) or Preon (`Preon 33η 3ι`), otherwise the clock where the
+span starts (`33η 3ι 0λ`); `missed` counts the Flavons between a camera's first and last frame it has no frame for.
 
 `worker.status` — a worker's own state (id `worker.status.<its client id>`), written by a logger on start, after
-each record, when its source fails or comes back, and every `heartbeat` seconds; `time` is when it started. The hub's
-Devices page shows it on the worker's card (not running once `seen` is two heartbeats old); the apps and the
-timeline leave `worker.*` records out.
+each record, when a source fails or comes back, every `heartbeat` seconds, and as it stops (`stopped`, the time);
+`time` is when it started. The hub's Devices page shows it on the worker's card (not running once it says it stopped,
+or `seen` is two heartbeats old); the apps and the timeline leave `worker.*` records out.
 ```json
-{ "name": "Timelapse · cam-esp32", "worker": "timelapse", "version": "1.0.0", "started": 1794230000.1,
-  "seen": 1794230600.4, "heartbeat": 600, "text": "A frame from cam-esp32 each Flavon, a video each Helion",
-  "camera": { "device": "cam-esp32", "state": "ok", "problem": null, "via": "snap" },
+{ "name": "Timelapse", "worker": "timelapse", "version": "1.0.0", "started": 1794230000.1,
+  "seen": 1794230600.4, "heartbeat": 600, "stopped": null,
+  "text": "A frame from cam-esp32 and cam-esp32-2 each Flavon, their videos each Helion",
+  "cameras": [ { "device": "cam-esp32", "state": "ok", "problem": null, "via": "snap", "frames": 211, "missed": 0 },
+               { "device": "cam-esp32-2", "state": "failing", "problem": "cam-esp32-2 is offline", "via": null, "frames": 0, "missed": 211 } ],
   "every": { "flavons": 2340, "name": "Helion" }, "fps": 30,
-  "span": { "name": "Helion 33η", "start": 1794228891.78, "end": 1794247080.73, "frames": 211, "missed": 0 },
-  "last": { "record": "timelapse.cam-esp32.1678629420", "title": "Timelapse · Helion 32η", "at": 1794228893.2,
-            "start": 1794210702.8, "end": 1794228891.78, "frames": 2340, "missed": 0, "duration": 78, "bytes": 61400211 },
-  "frames": 211, "missed": 0, "records": 1 }
+  "span": { "name": "Helion 33η", "start": 1794228891.78, "end": 1794247080.73, "frames": 211, "missed": 211,
+            "cameras": { "cam-esp32": 211 } },
+  "last": { "record": "timelapse.c_01K8….1678629420", "title": "Timelapse · Helion 32η", "at": 1794228893.2,
+            "start": 1794210702.8, "end": 1794228891.78, "frames": 4680,
+            "cameras": [ { "camera": "cam-esp32", "frames": 2340, "missed": 0 }, { "camera": "cam-esp32-2", "frames": 2340, "missed": 0 } ],
+            "duration": 78, "bytes": 122800422 },
+  "frames": 211, "missed": 211, "records": 1 }
 ```
-`text`, `last.title` and `last.at` are what any worker should write; the rest is the timelapse's (`camera.state` `ok`,
-`failing` with the `problem`, or `starting`; `via` `snap`, or `live` while the camera streams for someone else).
+`text`, `last.title` and `last.at` are what any worker should write; the rest is the timelapse's (a camera's `state`
+`ok`, `failing` with the `problem`, or `starting`; `via` `snap`, or `live` while the camera streams for someone else;
+`frames` and `missed` since it started).
 
 Sky events near an entry are **tags** `sky:<event>` with the event names of the printable diary's astronomy
 (`src/diary/astro/index.js` `EVENT_INFO`: `sky:full-moon`, `sky:solar-eclipse`, `sky:june-solstice`, …): the apps add
