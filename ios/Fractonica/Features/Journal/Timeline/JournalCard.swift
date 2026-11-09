@@ -196,7 +196,8 @@ struct MediaStrip: View {
 }
 
 /// A photo, filling its tile, or a video's poster, whole: fitted over itself blurred and dimmed, which fills the tile.
-/// (A moment's reel is two squares stacked: filling a wide tile cut a strip from its middle and blew it up.)
+/// (A moment's reel is two squares stacked: filling a wide tile cut a strip from its middle and blew it up.) Each is
+/// loaded at the size it is drawn at, so it stays sharp however wide the tile.
 struct MediaTile: View {
     let blob: BlobRef
     let words: Wording
@@ -210,7 +211,7 @@ struct MediaTile: View {
             .overlay {
                 if blob.role == "video" {
                     GeometryReader { geo in
-                        let points = Self.fittedPoints(blob, in: geo.size)
+                        let points = Self.drawnPoints(blob, in: geo.size, fill: false)
                         ZStack {
                             // (kept to the tile: filling, it is larger, and the stack would fit the poster to that)
                             BlobImage(blob: blob, points: points)
@@ -223,7 +224,10 @@ struct MediaTile: View {
                         .frame(width: geo.size.width, height: geo.size.height)
                     }
                 } else {
-                    BlobImage(blob: blob, points: 260)
+                    GeometryReader { geo in
+                        BlobImage(blob: blob, points: Self.drawnPoints(blob, in: geo.size, fill: true))
+                            .frame(width: geo.size.width, height: geo.size.height)
+                    }
                 }
             }
             .overlay {
@@ -258,16 +262,18 @@ struct MediaTile: View {
             .accessibilityLabel(blob.role == "video" ? "Video" : "Photo")
     }
 
-    /// The long side, in points, of a poster fitted into `size` (by the video's own shape; the tile's long side when it
-    /// is not known), rounded up to 40 so that resizing a window keeps to a few cached sizes.
-    static func fittedPoints(_ blob: BlobRef, in size: CGSize) -> CGFloat {
+    /// The long side, in points, of a picture drawn into `size`, filling it or fitted, by its own shape — either way
+    /// round, as a photo's recorded size may be before its rotation — or, not known, the tile's long side (one and a
+    /// half times it, filling); rounded up to 40 so that resizing a window keeps to a few cached sizes, 1200 at most.
+    static func drawnPoints(_ blob: BlobRef, in size: CGSize, fill: Bool) -> CGFloat {
         guard size.width > 0, size.height > 0 else { return 260 }
-        var long = max(size.width, size.height)
+        var long = max(size.width, size.height) * (fill ? 1.5 : 1)
         if let w = blob.width, let h = blob.height, w > 0, h > 0 {
-            let aspect = CGFloat(w) / CGFloat(h)
-            long = aspect > size.width / size.height ? max(size.width, size.width / aspect) : max(size.height, size.height * aspect)
+            long = [(CGFloat(w), CGFloat(h)), (CGFloat(h), CGFloat(w))].map { w, h in
+                max(w, h) * (fill ? max(size.width / w, size.height / h) : min(size.width / w, size.height / h))
+            }.max() ?? long
         }
-        return max(80, (long / 40).rounded(.up) * 40)
+        return min(1200, max(80, (long / 40).rounded(.up) * 40))
     }
 }
 
