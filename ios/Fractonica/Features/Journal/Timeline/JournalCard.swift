@@ -195,7 +195,8 @@ struct MediaStrip: View {
     }
 }
 
-/// A photo or a video's poster, filling its tile.
+/// A photo, filling its tile, or a video's poster, whole: fitted over itself blurred and dimmed, which fills the tile.
+/// (A moment's reel is two squares stacked: filling a wide tile cut a strip from its middle and blew it up.)
 struct MediaTile: View {
     let blob: BlobRef
     let words: Wording
@@ -206,7 +207,25 @@ struct MediaTile: View {
     var body: some View {
         Color.clear
             .frame(maxWidth: .infinity)
-            .overlay { BlobImage(blob: blob, points: 260) }
+            .overlay {
+                if blob.role == "video" {
+                    GeometryReader { geo in
+                        let points = Self.fittedPoints(blob, in: geo.size)
+                        ZStack {
+                            // (kept to the tile: filling, it is larger, and the stack would fit the poster to that)
+                            BlobImage(blob: blob, points: points)
+                                .frame(width: geo.size.width, height: geo.size.height)
+                                .clipped()
+                                .blur(radius: 18, opaque: true)
+                                .overlay(Color.black.opacity(0.3))
+                            BlobImage(blob: blob, points: points, contentMode: .fit)
+                        }
+                        .frame(width: geo.size.width, height: geo.size.height)
+                    }
+                } else {
+                    BlobImage(blob: blob, points: 260)
+                }
+            }
             .overlay {
                 if blob.role == "video" {
                     Image(systemName: "play.fill")
@@ -237,6 +256,18 @@ struct MediaTile: View {
             }
             .clipShape(.rect(cornerRadius: cornerRadius, style: .continuous))
             .accessibilityLabel(blob.role == "video" ? "Video" : "Photo")
+    }
+
+    /// The long side, in points, of a poster fitted into `size` (by the video's own shape; the tile's long side when it
+    /// is not known), rounded up to 40 so that resizing a window keeps to a few cached sizes.
+    static func fittedPoints(_ blob: BlobRef, in size: CGSize) -> CGFloat {
+        guard size.width > 0, size.height > 0 else { return 260 }
+        var long = max(size.width, size.height)
+        if let w = blob.width, let h = blob.height, w > 0, h > 0 {
+            let aspect = CGFloat(w) / CGFloat(h)
+            long = aspect > size.width / size.height ? max(size.width, size.width / aspect) : max(size.height, size.height * aspect)
+        }
+        return max(80, (long / 40).rounded(.up) * 40)
     }
 }
 
