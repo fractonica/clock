@@ -165,6 +165,13 @@ private func remoteChecks() async {
     store.applyRemote(sensor)
     check(store.otherRecords.map(\.id) == ["temp:studio:1"] && store.entries.isEmpty, "other kinds are kept apart from entries")
     check(!store.isPending("temp:studio:1") && changes == 0, "a remote record is never pending and fires no local change")
+    // a worker's status (a timelapse logger's) lives on the hub's Devices page, not among the other records
+    var status = sensor
+    status.id = "worker.status.c_01"
+    status.kind = "worker.status"
+    store.applyRemote(status)
+    check(store.otherRecords.map(\.id) == ["temp:studio:1"] && store.record("worker.status.c_01") != nil,
+          "a worker's status is kept but not shown among the other records")
 
     // LWW: newer remote wins, older loses
     clock.t = 100
