@@ -49,6 +49,11 @@ struct HubClient: Sendable {
         return try await json(try builder.request(.pair, json: body))
     }
 
+    /// `POST /v1/pairings`: a code that pairs the app's dispatch (fractonica-dispatch) with the hub.
+    func createDispatchPairing(name: String) async throws -> HubMadeCode {
+        try await json(authorize(builder.request(.pairings, json: HubPairingRequest(name: name)), .pairings))
+    }
+
     /// `GET /v1/me`.
     func me() async throws -> HubClientInfo {
         try await json(authorized(.me))

@@ -145,8 +145,8 @@ final class InstantModel {
     }
 
     /// The reel's centre: the moment, or (none in the film) its middle.
-    private func center(end: Double) -> Double {
-        moment.time > filmStart && moment.time < end ? moment.time : (filmStart + end) / 2
+    private func center(start: Double, end: Double) -> Double {
+        moment.time > start && moment.time < end ? moment.time : (start + end) / 2
     }
 
     // MARK: Lifecycle
@@ -176,6 +176,9 @@ final class InstantModel {
     // MARK: The film
 
     private func film() async {
+        // the cameras running first (picked up from a call of the system's, they wait for it to let the audio go): the
+        // film then starts at their first frame
+        await camera.start()
         // the microphone heard as it is from here: the ringtone's gain control would keep it down for half a minute
         MomentCamera.prepareAudio(recording: MomentCamera.mayRecordSound, filming: true)
         await MomentClock.sleep(until: filmStart - 0.05)
@@ -221,7 +224,7 @@ final class InstantModel {
         if !films.isEmpty || camera.mode == .none {
             let disk = JournalStore.shared.disk
             let url = disk.temporaryFile(ext: "mov")
-            let script = reelScript()
+            let script = reelScript(films: films)
             do {
                 let report = try await MomentReelRenderer.render(films: films, script: script, to: url) { [weak self] p in
                     Task { @MainActor in self?.developed = max(self?.developed ?? 0, p) }
@@ -259,14 +262,19 @@ final class InstantModel {
         endBackgroundWork()
     }
 
-    /// The film from the press to its end, once at real time.
-    private func reelScript() -> MomentReelScript {
+    /// The film from the press to its end, once at real time — from the cameras' first frame where they came up after
+    /// the press (picked up from a call of the system's, they start once it has let the audio go): the reel would
+    /// otherwise open on that frame, held.
+    private func reelScript(films: [MomentFilm]) -> MomentReelScript {
         let rgb = moment.rarity.color.resolve(in: EnvironmentValues())
         let side = JournalPreferences.shared.videoQuality == .hevc720 ? 640 : 960
-        let end = max(filmEnd, filmStart + 0.1)
-        let center = center(end: end)
+        let firstFrame = films.filter { $0.camera != "sound" }.map(\.start).max() ?? filmStart
+        let start = max(filmStart, firstFrame)
+        if start > filmStart + 0.2 { momentsLog.info("the cameras' first frame came \(start - self.filmStart) s after the film's start: the reel starts there") }
+        let end = max(filmEnd, start + 0.1)
+        let center = center(start: start, end: end)
         let inside = center == moment.time
-        return MomentReelScript(center: center, before: center - filmStart, after: end - center,
+        return MomentReelScript(center: center, before: center - start, after: end - center,
                                 notation: AppSettings.shared.wording.notation,
                                 accent: [Double(rgb.red), Double(rgb.green), Double(rgb.blue)], side: side,
                                 marked: inside, missed: missed, mark: MomentReelScript.mark(for: moment.rarity))

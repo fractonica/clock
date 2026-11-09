@@ -1,0 +1,13 @@
+{
+  "name": "fractonica-dispatch",
+  "version": "1.0.0",
+  "description": "Rings the Fractonica app's moments on your phones as calls (APNs VoIP pushes), paired through your Fractonica Hub",
+  "type": "module",
+  "private": true,
+  "bin": { "fractonica-dispatch": "bin/dispatch.mjs" },
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "start": "node bin/dispatch.mjs",
+    "test": "node --test test/*.test.mjs"
+  }
+}

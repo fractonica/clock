@@ -506,6 +506,21 @@ enum MomentRingtone: String, CaseIterable, Codable, Sendable {
     static let rings = 7
 }
 
+/// How moments' calls ring while the app is not in front.
+enum MomentCallMode: String, Codable, CaseIterable, Sendable {
+    /// The system's alarms (AlarmKit), or a time-sensitive notification without them.
+    case alarms
+    /// Real calls (CallKit), pushed at each call's first ring by a dispatch paired with the hub.
+    case dispatch
+
+    var title: String {
+        switch self {
+        case .alarms: "Alarms"
+        case .dispatch: "Calls"
+        }
+    }
+}
+
 /// Moments' preferences, persisted as one JSON value under `moments.v1`.
 struct MomentSettings: Hashable, Codable, Sendable {
     var enabled = true
@@ -514,6 +529,9 @@ struct MomentSettings: Hashable, Codable, Sendable {
     /// The call rings in the app by itself while the app is in front (otherwise the system's alarm rings even then).
     var autoOpen = true
     var ringtone = MomentRingtone.helion
+    /// How calls ring while the app is not in front: the system's alarms (or notifications), or as real calls pushed by
+    /// a dispatch (fractonica-dispatch, iPhone and iPad).
+    var calls = MomentCallMode.alarms
 
     init() {}
 
@@ -526,9 +544,10 @@ struct MomentSettings: Hashable, Codable, Sendable {
         quiet = (try? c.decodeIfPresent(MomentQuietHours.self, forKey: .quiet)) ?? d.quiet
         autoOpen = (try? c.decodeIfPresent(Bool.self, forKey: .autoOpen)) ?? d.autoOpen
         ringtone = (try? c.decodeIfPresent(MomentRingtone.self, forKey: .ringtone)) ?? d.ringtone
+        calls = (try? c.decodeIfPresent(MomentCallMode.self, forKey: .calls)) ?? d.calls
     }
 
-    private enum CodingKeys: String, CodingKey { case enabled, helion, quiet, autoOpen, ringtone }
+    private enum CodingKeys: String, CodingKey { case enabled, helion, quiet, autoOpen, ringtone, calls }
 
     /// Whether the settings ask for this kind of moment (quiet hours aside).
     func asks(_ m: Moment) -> Bool {

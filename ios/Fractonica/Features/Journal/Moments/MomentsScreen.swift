@@ -632,10 +632,15 @@ struct MomentSettingsView: View {
             } footer: {
                 Text("A call rings 2 Flavons before its moment for 11 Flavons, through the silent switch.")
             }
-            Section {
-                Toggle("Ring in the app", isOn: $moments.settings.autoOpen)
-            } footer: {
-                Text("While Fractonica is in front its call screen rings; otherwise an alarm rings it, on the Lock Screen too. With Ring in the app off, the alarm rings even then.")
+            #if os(iOS)
+            DispatchSection()
+            #endif
+            if !moments.dispatched {
+                Section {
+                    Toggle("Ring in the app", isOn: $moments.settings.autoOpen)
+                } footer: {
+                    Text("While Fractonica is in front its call screen rings; otherwise an alarm rings it, on the Lock Screen too. With Ring in the app off, the alarm rings even then.")
+                }
             }
             Section {
                 LabeledContent("Alarms", value: alarmPermission)

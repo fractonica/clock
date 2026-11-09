@@ -142,8 +142,11 @@ export async function startHub(opts = {}) {
         }
         break;
       case 'pairings':
-        admin();
-        if (seg.length === 1 && method === 'POST') return send(res, 201, hub.createPairing(await readJSON(req, 64 * 1024)));
+        if (seg.length === 1 && method === 'POST') {
+          const body = await readJSON(req, 64 * 1024);
+          // an admin pairs anything; others only a service of their own scopes on dispatch.* (the app's dispatch)
+          return send(res, 201, client.scopes.includes('admin') ? hub.createPairing(body) : hub.createDelegatedPairing(client, body));
+        }
         break;
       case 'records':
         if (seg.length === 1 && method === 'GET')

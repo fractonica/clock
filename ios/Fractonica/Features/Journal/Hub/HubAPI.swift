@@ -25,6 +25,8 @@ struct HubEndpoint: Sendable, Equatable {
     static let embed = HubEndpoint(method: "POST", path: "/v1/embed", timeout: 15)
     static let search = HubEndpoint(method: "POST", path: "/v1/search", timeout: 20)
     static let kinds = HubEndpoint(method: "GET", path: "/v1/kinds")
+    /// `POST /v1/pairings`: a pairing code; without admin, for the app's dispatch only (a service on `dispatch.*`).
+    static let pairings = HubEndpoint(method: "POST", path: "/v1/pairings")
 
     static func putRecord(_ id: String) -> HubEndpoint {
         HubEndpoint(method: "PUT", path: "/v1/records/\(segment(id))")
@@ -172,6 +174,21 @@ struct HubClientInfo: Codable, Sendable, Equatable {
 }
 
 /// `POST /v1/pair` answer.
+/// `POST /v1/pairings` for a dispatch: a service with read and write on `dispatch.*`, for half an hour.
+struct HubPairingRequest: Codable, Sendable, Equatable {
+    var name: String
+    var kind = "service"
+    var scopes = ["read", "write"]
+    var kinds = ["dispatch.*"]
+    var ttl = 1800
+}
+
+/// A pairing code the hub made: "7KQ2-M9XD", when it expires (Unix seconds).
+struct HubMadeCode: Codable, Sendable, Equatable {
+    var code: String
+    var expires: Double
+}
+
 struct HubPairResponse: Codable, Sendable, Equatable {
     var client: HubClientInfo
     var token: String

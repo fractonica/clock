@@ -389,6 +389,25 @@ numbering the app's badge — the missed calls not yet looked at on the Moments 
 Older entries keep their reels, or their photo captures (`back@-1`, `front@-1` …, `MomentCaptures`), shown as
 `CaptureTiles` as before. Every way a call rings without a tap goes through `MomentStore.openByItself`, which "Ring in
 the app" and `-FXMomentsAuto 0` turn off. The streak, the collection and the missed calls derive from the records.
+**Calls by dispatch** (Moments/Dispatch; Moment Settings › Calls: Alarms or Calls, iPhone and iPad): the calls ring as
+real calls. fractonica-dispatch (dispatch/, a small Node program on a computer that reaches the hub) pushes each call at
+its first ring as an APNs VoIP push; `MomentCallKit` reports it to CallKit at once as an incoming video call (PushKit's
+rule: every push is a call; a stale one ends at once), the moment's name for the caller, the chosen ringtone; Answer
+opens its call picked up (`MomentStore.pickedUpByCall`: marked at once, so no "Missed Call") and the cameras film once
+the app is in front, where the system's call ends so the camera and microphone are the app's; Decline declines it (as
+an alarm's Stop); unanswered, it ends at its eleventh Flavon and is a missed call. The phone keeps its schedule on the
+hub, `dispatch.calls.<install>` (`DispatchSchedule`: its next calls for four days, its VoIP token, push environment —
+read from the provisioning profile — topic and team; written through the journal's store at every refill, so each
+call's push, which wakes the app, rolls it on); the dispatch writes `dispatch.status.<client>` (`DispatchStatus`:
+online, its APNs key, its last call; hub/API.md). Pairing is the hub's: Pair a Dispatch asks the hub for a code for a
+`service` on `dispatch.*` (`POST /v1/pairings`, which a device may call for that alone) and shows the command,
+`node dispatch/bin/dispatch.mjs CODE --hub URL`; the sheet closes when the dispatch's status arrives. Moments ring by
+dispatch (`MomentStore.dispatched`) once calls are chosen, a dispatch has written its status (remembered, so a launch
+by a push knows it before the store loads) and PushKit has given a token: then no alarms, no ring notifications (their
+"Missed Call" stays) and no ringing in the app by itself (CallKit rings in front too). Alarms again writes
+`enabled: false` into the schedule: the dispatch sends nothing and stays paired. The Simulator gets no VoIP pushes and
+ends CallKit's incoming calls at once: `-FXDispatchToken <hex>` stands in for the token and `-FXDispatchRing 1` rings
+the next call six seconds after launch, as its push would (on a device it shows the call).
 Moments is a screen of its own (`MomentsScreen`: the streak, the next moment, the missed calls, Test a Call — a made-up
 moment calling now, or in 2 Flavons to hear the alarm with the phone locked, `MomentStore.openTest` / `scheduleTest`,
 saved like a real call but never on the streak — the collection by rarity, recent captures, the settings); cards wear
@@ -526,7 +545,8 @@ requires; Alerts registers its `BGAppRefreshTask` (`app.fractonica.clock.refresh
 
 `NotificationRouter` (App/) is the one `UNUserNotificationCenter` delegate, installed while launching on both
 platforms. Features never set the delegate. They post with identifier prefixes — `timer.` (Timer and Stopwatch),
-`alert.` (Alerts), `moment.` (Moments: a call's ring, and `moment.missed.` when it rings out) — attach an `AppLink`,
+`alert.` (Alerts), `moment.` (Moments: a call's ring, and `moment.missed.` when it rings out; with calls by dispatch the
+ring is CallKit's, not a notification) — attach an `AppLink`,
 request authorization themselves at a moment of intent, and share the system's budget of 64 pending requests: Alerts
 keeps at most 42 `alert.` requests pending, Moments at most 12 `moment.` ones and the dates at most 8 `echo.` ones, so
 Timer always has room. Alerts'

@@ -19,6 +19,8 @@ mode) live in [`ios/`](ios/README.md); their engine is checked against this app'
 The **Fractonica Hub** ([`hub/`](hub/README.md)) is a personal server the apps' journals sync to: it collects records
 from every device and any other data source ([API](hub/API.md)), shows them on a web page and searches them by meaning
 with an EmbeddingGemma 2 worker ([`hub/worker/`](hub/worker/README.md)). `npm run hub` starts it.
+**fractonica-dispatch** ([`dispatch/`](dispatch/README.md)) pairs with the hub by a code from the app and rings the
+app's moments on your phones as real calls (APNs VoIP pushes).
 
 ![Rings view](docs/img/rings.jpg)
 
