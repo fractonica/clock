@@ -7,3 +7,4 @@ hub/worker/.venv/
 __pycache__/
 dispatch/data/
 dispatch/*.p8
+loggers/data/

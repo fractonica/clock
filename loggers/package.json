@@ -1,0 +1,13 @@
+{
+  "name": "fractonica-loggers",
+  "version": "1.0.0",
+  "description": "Auto data loggers for your Fractonica Hub: workers that write records on their own, in step with the clock (the first: a camera's timelapse)",
+  "type": "module",
+  "private": true,
+  "bin": { "fractonica-timelapse": "bin/timelapse.mjs" },
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "timelapse": "node bin/timelapse.mjs",
+    "test": "node --test test/*.test.mjs"
+  }
+}
